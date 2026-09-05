@@ -15,7 +15,7 @@
  * Three independent conditions must all hold before a single statement runs:
  *
  *   1 · `DATABASE_URL` must parse, name a LOOPBACK host, and name the database
- *       `faff_deferral_scratch`. A URL that merely "looks local" is not
+ *       `faff_ledger_scratch`. A URL that merely "looks local" is not
  *       enough — the same predicate `lib/adaptation-harness/fence.ts` applies
  *       to its own scratch database, for the same reason.
  *   2 · `DATABASE_URL_RO` must satisfy the same test, because the READ half of
@@ -31,10 +31,10 @@
  * it looked at nothing is the worst available outcome, since it also reports
  * confidence. Run it with:
  *
- *     createdb faff_deferral_scratch
- *     psql -d faff_deferral_scratch -f web-v2/db/migrations/165_canonical_adaptation_deferrals.sql
- *     DATABASE_URL=postgresql://localhost/faff_deferral_scratch \
- *     DATABASE_URL_RO=postgresql://localhost/faff_deferral_scratch \
+ *     createdb faff_ledger_scratch
+ *     psql -d faff_ledger_scratch -f web-v2/db/migrations/167_reassessment_schedule.sql
+ *     DATABASE_URL=postgresql://localhost/faff_ledger_scratch \
+ *     DATABASE_URL_RO=postgresql://localhost/faff_ledger_scratch \
  *       npx vitest run lib/adaptation/canonical-shadow/_deferral_store.db.test.ts
  *
  * ── RULE 22 · WHAT THIS FILE CANNOT FAIL ON ────────────────────────────────
@@ -61,7 +61,7 @@ import {
 } from './deferral-store';
 import { writeDeferral, DeferralWriteRefused } from './deferral-writer';
 
-const SCRATCH_DB = 'faff_deferral_scratch';
+const SCRATCH_DB = 'faff_ledger_scratch';
 const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '']);
 
 /** The same predicate `lib/adaptation-harness/fence.ts` applies, asked here
@@ -135,9 +135,10 @@ describe.skipIf(!REACHABLE)('the deferral survives the process that queued it', 
     // Only this test's own synthetic athlete. Rule 14: the population is
     // named, and it is a uuid nothing else has ever used.
     await writeDeferral(
-      `UPDATE canonical_adaptation_deferrals
-          SET expired_at = now(), expiry_reason = $2, expiry_detail = $3
-        WHERE user_uuid = $1::uuid AND expired_at IS NULL`,
+      `UPDATE reassessment_schedule
+          SET status = 'EXPIRED', resolved_at = now(),
+              resulting_decision = $2, resulting_decision_detail = $3
+        WHERE user_uuid = $1::uuid AND status IN ('PENDING', 'DUE')`,
       [ATHLETE, 'BLOCK_ENDED', 'test teardown · this synthetic athlete has no block'],
     );
   });
@@ -237,11 +238,11 @@ describe.skipIf(!REACHABLE)('the deferral survives the process that queued it', 
     // available gate for "an item never leaves without a stated reason" is the
     // table's own CHECK constraint. Falsified here by trying to break it.
     await expect(writeDeferral(
-      `UPDATE canonical_adaptation_deferrals
-          SET expired_at = now()
-        WHERE user_uuid = $1::uuid AND expired_at IS NULL`,
+      `UPDATE reassessment_schedule
+          SET status = 'EXPIRED', resolved_at = now()
+        WHERE user_uuid = $1::uuid AND status IN ('PENDING', 'DUE')`,
       [ATHLETE],
-    )).rejects.toThrow(/canonical_adaptation_deferrals_expiry_is_explained/);
+    )).rejects.toThrow(/reassessment_schedule_terminal_is_explained/);
   });
 });
 
@@ -254,13 +255,13 @@ describe('the write fence refuses everything but its two shapes', () => {
   });
 
   it('a DELETE against its OWN table is refused — rows are never deleted', async () => {
-    await expect(writeDeferral('DELETE FROM canonical_adaptation_deferrals WHERE user_uuid = $1', ['x']))
+    await expect(writeDeferral('DELETE FROM reassessment_schedule WHERE user_uuid = $1', ['x']))
       .rejects.toBeInstanceOf(DeferralWriteRefused);
   });
 
   it('a second statement smuggled after a legal one is refused', async () => {
     await expect(writeDeferral(
-      'UPDATE canonical_adaptation_deferrals SET expired_at = now(); UPDATE plan_workouts SET distance_mi = 9',
+      "UPDATE reassessment_schedule SET status = 'EXPIRED'; UPDATE plan_workouts SET distance_mi = 9",
       [],
     )).rejects.toBeInstanceOf(DeferralWriteRefused);
   });
@@ -272,13 +273,13 @@ describe('the write fence refuses everything but its two shapes', () => {
     // connection error with no database at all — the ONE outcome that must not
     // occur is a `DeferralWriteRefused`.
     const shapes = [
-      'INSERT INTO canonical_adaptation_deferrals (user_uuid) VALUES ($1)',
-      'UPDATE canonical_adaptation_deferrals SET expired_at = now() WHERE user_uuid = $1',
+      'INSERT INTO reassessment_schedule (user_uuid) VALUES ($1)',
+      "UPDATE reassessment_schedule SET status = 'EXPIRED' WHERE user_uuid = $1",
       // The real upsert, whose `ON CONFLICT ... DO UPDATE SET` contains a
       // SECOND `UPDATE` keyword. The "no second verb anywhere" scan would
       // refuse the store's own only insert if it did not know that clause.
-      'INSERT INTO canonical_adaptation_deferrals (user_uuid) VALUES ($1) '
-      + 'ON CONFLICT (user_uuid, lever, idempotency_key) WHERE expired_at IS NULL '
+      'INSERT INTO reassessment_schedule (user_uuid) VALUES ($1) '
+      + "ON CONFLICT (user_uuid, kind, idempotency_key) WHERE status IN ('PENDING', 'DUE') "
       + 'DO UPDATE SET updated_at = now()',
     ];
     for (const sql of shapes) {
@@ -299,9 +300,9 @@ async function countRows(userUuid: string): Promise<{ total: number; expired: nu
   const { roQuery } = await import('./read-only-db');
   const r = await roQuery<{ total: string; expired: string }>(
     `SELECT COUNT(*)::text AS total,
-            COUNT(*) FILTER (WHERE expired_at IS NOT NULL)::text AS expired
-       FROM canonical_adaptation_deferrals
-      WHERE user_uuid = $1::uuid`,
+            COUNT(*) FILTER (WHERE resolved_at IS NOT NULL)::text AS expired
+       FROM reassessment_schedule
+      WHERE user_uuid = $1::uuid AND kind = 'DEFERRAL'`,
     [userUuid],
   );
   return { total: Number(r.rows[0].total), expired: Number(r.rows[0].expired) };

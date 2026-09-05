@@ -81,6 +81,44 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'failed to list users', detail: e.message }, { status: 500 });
   }
 
+  /* ── LEDGER-1 (2026-09-05) · ONE PASS OVER THE DURABLE REASSESSMENT SCHEDULE
+   *
+   * Every promise the engine made to look at something again — a deferred
+   * progression, an earning gate, a post-race recovery check, an unanswered
+   * proposal — lives in `reassessment_schedule` and is swept here.
+   *
+   * IT IS NOT A NEW CRON, AND THAT IS THE POINT (Rule 23). `lib/ops/cron-ledger.ts`
+   * already registers this route, already due-gates it and already raises
+   * `cron_stale` when it stops completing, and its own EXCLUDED_FROM_TICK list
+   * gives the argument in one line: "another schedule is another thing that can
+   * silently stop firing." A second cron for the sweep would be a second thing
+   * to notice going quiet.
+   *
+   * It runs ONCE, across every runner, before the per-user loop, because
+   * due-ness is a property of a date and not of a runner — putting it inside
+   * the loop would re-read the same due set once per account.
+   *
+   * Lateness is harmless: the sweep compares dates, so the twelve-hours-late
+   * run this repo's GitHub cron actually produces does exactly what the on-time
+   * run would have done.
+   *
+   * Contained: a scheduler failure must never stop the adaptation pass, and its
+   * refusal is REPORTED rather than swallowed — `refusal` non-null means
+   * nothing was attempted, which an operator must be able to tell apart from a
+   * sweep that found nothing to do (Rule 11). */
+  const todayISO = new Date().toISOString().slice(0, 10);
+  let reassessmentSweep: unknown = null;
+  try {
+    const { sweepReassessments } = await import('@/lib/ops/reassessment-scheduler');
+    reassessmentSweep = await sweepReassessments(todayISO);
+  } catch (e) {
+    reassessmentSweep = {
+      refusal: 'threw',
+      detail: `the reassessment sweep threw and was contained: ${e instanceof Error ? e.message : String(e)}`,
+    };
+    console.error('[cron/run-adaptations] reassessment sweep threw ·', e);
+  }
+
   const results: Array<{
     user_id: string; triggers: number; applied: number; proposed: number;
     /** 2026-09-02 · plan-mutating actions the adaptation seam refused and
@@ -423,6 +461,11 @@ export async function POST(req: NextRequest) {
     total_proposed: totalProposed,
     total_sealed_recorded: totalSealed,
     adaptation_seam: { id: ADAPTATION_SEAM_ID, open: false },
+    /* What one pass did to the durable reassessment schedule. Reported rather
+     * than logged, because a sweep that REFUSED (the table is not applied on
+     * this database, the read broke) and a sweep that found nothing due are the
+     * same shape and opposite facts. */
+    reassessment_sweep: reassessmentSweep,
     results,
     timestamp: new Date().toISOString(),
   });

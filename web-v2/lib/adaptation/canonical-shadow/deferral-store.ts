@@ -12,7 +12,7 @@
  *      deploy. That gap is real and is stated rather than implied."
  *
  * This file closes that gap. It is the ONLY thing that reads or writes
- * `canonical_adaptation_deferrals`, and it contains no policy: which items are
+ * `reassessment_schedule` with `kind = 'DEFERRAL'`, and it contains no policy: which items are
  * carried, which expire and why is entirely `reconsiderAtBoundary`'s answer,
  * and this file records it.
  *
@@ -32,7 +32,7 @@
  *
  *   READ    · these are the live items. An EMPTY array is a measured empty
  *             queue and is a different fact from the two below.
- *   ABSENT  · the table does not exist on this database (migration 165 is not
+ *   ABSENT  · the table does not exist on this database (migration 167 is not
  *             applied). Not an error and not an empty queue.
  *   FAILED  · the read broke. Loud, and NOT collapsed into "no deferrals" —
  *             that collapse is exactly how a deferred progression would
@@ -45,11 +45,12 @@
  *
  * ── ROWS ARE NEVER DELETED ─────────────────────────────────────────────────
  *
- * An item leaving the queue is stamped `expired_at` + `expiry_reason` +
- * `expiry_detail`, which the table's own CHECK constraint requires together.
- * The live queue is `expired_at IS NULL`, and the unique index enforcing one
- * live item per identity is PARTIAL on that predicate, so the history
- * accumulates underneath instead of being overwritten by the next re-queue.
+ * An item leaving the queue is stamped with a terminal `status` +
+ * `resulting_decision` + `resulting_decision_detail`, which the table's own
+ * CHECK constraint requires together. The live queue is
+ * `status IN ('PENDING','DUE')`, and the unique index enforcing one live item
+ * per identity is PARTIAL on that predicate, so the history accumulates
+ * underneath instead of being overwritten by the next re-queue.
  *
  * ── RULE 22 · WHAT A GATE OVER THIS FILE CANNOT FAIL ON ────────────────────
  *
@@ -70,7 +71,7 @@ import type {
 } from '@/lib/adaptation/canonical/deferral-queue';
 import type { CanonicalLever, Measured } from '@/lib/adaptation/canonical/input';
 import { roQuery } from './read-only-db';
-import { writeDeferral, CANONICAL_ADAPTATION_DEFERRALS_TABLE } from './deferral-writer';
+import { writeDeferral, REASSESSMENT_SCHEDULE_TABLE } from './deferral-writer';
 
 /* `measured` / `absent` / `failed` are re-declared here rather than imported
  * from the engine. They are three-line tagged-union constructors, and
@@ -84,17 +85,23 @@ const broke = <T>(what: string): Measured<T> => ({ ok: false, why: { kind: 'FAIL
 
 interface DeferralRow {
   plan_version: string;
-  evidence_version: string;
+  evidence_version: string | null;
   lever: string;
   before_value: string | number;
   proposed_after_value: string | number;
   magnitude: QueuedDeferral['magnitude'];
   evidence: QueuedDeferral['evidence'];
   newest_evidence_iso: string | null;
-  reason: string;
+  reason_code: string;
   reason_detail: string;
   queued_at_iso: string;
-  next_boundary_iso: string | null;
+  /** `assess_on_iso` is NOT NULL on the shared table, and `nextBoundaryISO` is
+   *  legitimately null for an item with no known boundary. The original nullable
+   *  value is carried in `payload.nextBoundaryISO` so the round trip is lossless;
+   *  `assess_on_iso` is the derived due date, which is `queued_at_iso` when there
+   *  is no boundary — i.e. due at the next pass, which is what a NULL boundary
+   *  already meant under the old `ORDER BY next_boundary_iso NULLS FIRST`. */
+  payload: { nextBoundaryISO?: string | null } | null;
   idempotency_key: string;
 }
 
@@ -106,7 +113,7 @@ async function deferralTableExists(): Promise<boolean> {
   if (tableExists != null) return tableExists;
   try {
     const r = await roQuery<{ reg: string | null }>(
-      `SELECT to_regclass('public.${CANONICAL_ADAPTATION_DEFERRALS_TABLE}')::text AS reg`,
+      `SELECT to_regclass('public.${REASSESSMENT_SCHEDULE_TABLE}')::text AS reg`,
     );
     tableExists = r.rows[0]?.reg != null;
   } catch {
@@ -129,17 +136,17 @@ function rowToItem(athleteId: string, r: DeferralRow): QueuedDeferral {
     queueId: `${athleteId} · ${r.lever} · ${r.idempotency_key}`,
     athleteId,
     planVersion: r.plan_version,
-    evidenceVersion: r.evidence_version,
+    evidenceVersion: r.evidence_version ?? '',
     lever: r.lever as CanonicalLever,
     beforeValue: asNum(r.before_value),
     proposedAfterValue: asNum(r.proposed_after_value),
     magnitude: r.magnitude,
     evidence: r.evidence,
     newestEvidenceISO: asDate(r.newest_evidence_iso),
-    reason: r.reason as QueuedDeferral['reason'],
+    reason: r.reason_code as QueuedDeferral['reason'],
     reasonDetail: r.reason_detail,
     queuedAtISO: r.queued_at_iso.slice(0, 10),
-    nextBoundaryISO: asDate(r.next_boundary_iso),
+    nextBoundaryISO: asDate(r.payload?.nextBoundaryISO ?? null),
     idempotencyKey: r.idempotency_key,
   };
 }
@@ -148,14 +155,16 @@ function rowToItem(athleteId: string, r: DeferralRow): QueuedDeferral {
  * THIS ATHLETE'S LIVE QUEUE.
  *
  * Rule 14 · the population is stated: this user by uuid, live rows only
- * (`expired_at IS NULL`), oldest boundary first so a reader sees what is due
- * next. Never "all deferrals" and never filtered on anything but the uuid.
+ * (`status IN ('PENDING','DUE')`) and `kind = 'DEFERRAL'` — the table is shared
+ * with the six other kinds of scheduled reassessment, so the kind predicate is
+ * part of stating the population and not an optimisation. Oldest assessment
+ * date first, so a reader sees what is due next.
  */
 export async function loadLiveQueue(userUuid: string): Promise<Measured<QueuedDeferral[]>> {
   if (!(await deferralTableExists())) {
     return noTable(
-      `${CANONICAL_ADAPTATION_DEFERRALS_TABLE} does not exist on this database, so no queue `
-      + 'could be read. Migration 165 has not been applied here. That is not an empty queue.',
+      `${REASSESSMENT_SCHEDULE_TABLE} does not exist on this database, so no queue `
+      + 'could be read. Migration 167 has not been applied here. That is not an empty queue.',
     );
   }
   // The table name is written LITERALLY in the SELECT below rather than through
@@ -166,9 +175,9 @@ export async function loadLiveQueue(userUuid: string): Promise<Measured<QueuedDe
   // this layer's only read of its own authored columns invisible to the gate
   // that exists to notice unread authored content. The assertion keeps the
   // literal from drifting away from the constant the writer is fenced to.
-  if (CANONICAL_ADAPTATION_DEFERRALS_TABLE !== 'canonical_adaptation_deferrals') {
+  if (REASSESSMENT_SCHEDULE_TABLE !== 'reassessment_schedule') {
     throw new Error(
-      'CANONICAL_ADAPTATION_DEFERRALS_TABLE no longer matches the literal table name in this '
+      'REASSESSMENT_SCHEDULE_TABLE no longer matches the literal table name in this '
       + 'SELECT — keep them in sync, never edit just one of the two.',
     );
   }
@@ -177,14 +186,15 @@ export async function loadLiveQueue(userUuid: string): Promise<Measured<QueuedDe
       `SELECT plan_version, evidence_version, lever,
               before_value, proposed_after_value, magnitude,
               evidence, newest_evidence_iso::text AS newest_evidence_iso,
-              reason, reason_detail,
+              reason_code, reason_detail,
               queued_at_iso::text AS queued_at_iso,
-              next_boundary_iso::text AS next_boundary_iso,
+              payload,
               idempotency_key
-         FROM canonical_adaptation_deferrals
+         FROM reassessment_schedule
         WHERE user_uuid = $1::uuid
-          AND expired_at IS NULL
-        ORDER BY next_boundary_iso NULLS FIRST, queued_at_iso`,
+          AND kind = 'DEFERRAL'
+          AND status IN ('PENDING', 'DUE')
+        ORDER BY assess_on_iso, queued_at_iso`,
       [userUuid],
     );
     return ok(r.rows.map((row) => rowToItem(userUuid, row)));
@@ -207,18 +217,18 @@ export async function loadLiveQueue(userUuid: string): Promise<Measured<QueuedDe
  */
 export async function upsertDeferral(userUuid: string, item: QueuedDeferral): Promise<void> {
   await writeDeferral(
-    `INSERT INTO canonical_adaptation_deferrals (
-       user_uuid, plan_version, evidence_version, lever,
+    `INSERT INTO reassessment_schedule (
+       user_uuid, kind, plan_version, evidence_version, lever,
        before_value, proposed_after_value, magnitude,
        evidence, newest_evidence_iso,
-       reason, reason_detail, queued_at_iso, next_boundary_iso, idempotency_key
+       reason_code, reason_detail, queued_at_iso, assess_on_iso, payload, idempotency_key
      ) VALUES (
-       $1::uuid, $2, $3, $4,
+       $1::uuid, 'DEFERRAL', $2, $3, $4,
        $5, $6, $7::jsonb,
        $8::jsonb, $9::date,
-       $10, $11, $12::date, $13::date, $14
+       $10, $11, $12::date, $13::date, $14::jsonb, $15
      )
-     ON CONFLICT (user_uuid, lever, idempotency_key) WHERE expired_at IS NULL
+     ON CONFLICT (user_uuid, kind, idempotency_key) WHERE status IN ('PENDING', 'DUE')
      DO UPDATE SET
        plan_version = EXCLUDED.plan_version,
        evidence_version = EXCLUDED.evidence_version,
@@ -227,15 +237,21 @@ export async function upsertDeferral(userUuid: string, item: QueuedDeferral): Pr
        magnitude = EXCLUDED.magnitude,
        evidence = EXCLUDED.evidence,
        newest_evidence_iso = EXCLUDED.newest_evidence_iso,
-       reason = EXCLUDED.reason,
+       reason_code = EXCLUDED.reason_code,
        reason_detail = EXCLUDED.reason_detail,
-       next_boundary_iso = EXCLUDED.next_boundary_iso,
+       assess_on_iso = EXCLUDED.assess_on_iso,
+       payload = EXCLUDED.payload,
        updated_at = now()`,
     [
       userUuid, item.planVersion, item.evidenceVersion, item.lever,
       item.beforeValue, item.proposedAfterValue, JSON.stringify(item.magnitude),
       JSON.stringify(item.evidence), item.newestEvidenceISO,
-      item.reason, item.reasonDetail, item.queuedAtISO, item.nextBoundaryISO,
+      item.reason, item.reasonDetail, item.queuedAtISO,
+      // `assess_on_iso` is NOT NULL. An item with no known boundary is due at
+      // the next pass, which is exactly what `ORDER BY next_boundary_iso NULLS
+      // FIRST` already meant. The nullable original round-trips in `payload`.
+      item.nextBoundaryISO ?? item.queuedAtISO,
+      JSON.stringify({ nextBoundaryISO: item.nextBoundaryISO }),
       item.idempotencyKey,
     ],
   );
@@ -244,22 +260,24 @@ export async function upsertDeferral(userUuid: string, item: QueuedDeferral): Pr
 /**
  * Retire one item, with its stated reason. Never a DELETE.
  *
- * The WHERE clause carries `expired_at IS NULL` so retiring an already-retired
- * item is a no-op rather than a rewrite of the first expiry — "it was retired
- * when the block ended" must not be quietly replaced by "it was retired
- * because its evidence went stale" on a later pass.
+ * The WHERE clause carries `status IN ('PENDING','DUE')` so retiring an
+ * already-retired item is a no-op rather than a rewrite of the first expiry —
+ * "it was retired when the block ended" must not be quietly replaced by "it was
+ * retired because its evidence went stale" on a later pass.
  */
 export async function expireDeferral(userUuid: string, ex: ExpiredDeferral): Promise<void> {
   await writeDeferral(
-    `UPDATE canonical_adaptation_deferrals
-        SET expired_at = now(),
-            expiry_reason = $4,
-            expiry_detail = $5,
+    `UPDATE reassessment_schedule
+        SET status = 'EXPIRED',
+            resolved_at = now(),
+            resulting_decision = $4,
+            resulting_decision_detail = $5,
             updated_at = now()
       WHERE user_uuid = $1::uuid
+        AND kind = 'DEFERRAL'
         AND lever = $2
         AND idempotency_key = $3
-        AND expired_at IS NULL`,
+        AND status IN ('PENDING', 'DUE')`,
     [userUuid, ex.item.lever, ex.item.idempotencyKey, ex.expiry, ex.detail],
   );
 }
@@ -295,8 +313,8 @@ export async function persistQueueAtBoundary(
       written: 0, retired: 0,
       refusal: 'table-absent',
       detail:
-        `${CANONICAL_ADAPTATION_DEFERRALS_TABLE} does not exist on this database (migration `
-        + '165 not applied here), so the queue was computed but not persisted. It is in '
+        `${REASSESSMENT_SCHEDULE_TABLE} does not exist on this database (migration `
+        + '167 not applied here), so the queue was computed but not persisted. It is in '
         + 'memory only for this process, exactly as it was before this feature landed.',
     };
   }
