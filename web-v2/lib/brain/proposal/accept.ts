@@ -181,7 +181,9 @@ export async function applyBrainAction(
       const { applyAdaptations } = await import('@/lib/plan/adapt');
       try {
         const applied = await applyAdaptations(ctx.userUuid, [adaptation], 'RUNNER_ACCEPTED');
-        return { ok: true, applied, recordedOnly: false, watch, undo };
+        return applied > 0
+          ? { ok: true, applied, recordedOnly: false, watch, undo }
+          : zeroIsNotSuccess(action.kind);
       } catch (e) {
         console.error('[proposal/accept] pipeline apply failed:', e);
         return { ok: false, error: 'apply_failed', detail: 'the adaptation pipeline refused the write' };
@@ -225,9 +227,40 @@ export async function applyBrainAction(
             : 'the mutation boundary refused the write',
         };
       }
-      return { ok: true, applied: boundary.value, recordedOnly: false, watch, undo };
+      return boundary.value > 0
+        ? { ok: true, applied: boundary.value, recordedOnly: false, watch, undo }
+        : zeroIsNotSuccess(action.kind);
     }
   }
+}
+
+/**
+ * A MUTATING ACCEPT THAT TOUCHED NO ROW IS A FAILURE, NOT A SUCCESS.
+ *
+ * Found while wiring this: `mark_upgrade` joined `PROPOSABLE_KINDS` on
+ * 2026-09-05, and the accept route rebuilt its `AdaptationAction` from
+ * `newType` / `newDate` / `shaveFraction` — three fields, none of which is
+ * `bumps`. `applyAdaptations`'s upgrade limb is guarded on
+ * `a.bumps && a.bumps.length > 0`, so an accepted upward proposal wrote NOTHING
+ * and answered `{ ok: true, applied: 0 }`. The runner taps "Add to Thursday",
+ * the plan does not move, and the response says it worked — which is the exact
+ * lie the route's own header says it removed for FAILED applies, surviving in
+ * the one case the lane had just been opened for.
+ *
+ * The bumps are supplied now. This is the guard that would have caught it, and
+ * that catches the next one: on a path that claims to mutate, zero rows is a
+ * refusal the runner is owed.
+ *
+ * Deliberately NOT applied to `REPRICE_APPLY`: a repricing whose every future
+ * day is already sealed genuinely updates nothing, and that is an honest
+ * outcome rather than a failed write.
+ */
+function zeroIsNotSuccess(kind: string): AcceptOutcome {
+  return {
+    ok: false,
+    error: 'apply_failed',
+    detail: `the ${kind} was accepted and touched no row; the plan did not move`,
+  };
 }
 
 /* ══════════════════════════════════════════════════════════════════════════

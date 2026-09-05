@@ -471,6 +471,25 @@ describe('GUARD 1 · ACCEPT_EXECUTOR · every kind reaches a named apply path', 
     expect(checked, 'the executor scan examined no kinds').toBeGreaterThan(0);
   });
 
+  it('an upward distance change carries the bumps the pipeline needs', () => {
+    /* THE DEFECT THIS PINS, found by wiring the executor: `mark_upgrade` joined
+     * PROPOSABLE_KINDS on 2026-09-05, the accept route rebuilt its
+     * AdaptationAction from newType / newDate / shaveFraction, and
+     * `applyAdaptations`'s upgrade limb is guarded on
+     * `a.bumps && a.bumps.length > 0`. So an accepted UPWARD proposal wrote
+     * nothing and answered `{ ok: true, applied: 0 }` — the runner's one
+     * push-shaped card, doing nothing, reporting success.
+     *
+     * Asserted at the SOURCE rather than by executing, because executing needs
+     * a plan: the bridge must build `bumps` for a MORE and `shaveFraction` for
+     * a LESS, and those are two different fields of one kind. */
+    const src = readOwned('lib/brain/proposal/accept.ts');
+    expect(src, 'the bridge no longer builds bumps for an upward distance change')
+      .toContain('newDistanceMi: action.to!.value');
+    expect(src, 'a mutating accept that touched no row is reported as success again')
+      .toContain('zeroIsNotSuccess');
+  });
+
   it('a non-mutating kind is recorded rather than quietly applied', () => {
     for (const kind of ['HOLD', 'REFUSAL', 'SAFETY_STOP', 'CONDITIONAL'] as ActionKind[]) {
       expect(executorFor(SPECIMENS[kind]).path, `${kind} should be RECORD_ONLY`).toBe('RECORD_ONLY');
