@@ -96,6 +96,9 @@
 
 import type { AdaptationAction } from './adapt';
 import { partitionActionsForCron } from './adapt';
+import { refusalFromSeal } from '@/lib/brain/proposal/generate/from-seal';
+import { actionFromAdaptation } from '@/lib/brain/proposal/generate/from-adaptation';
+import { serializeAction } from '@/lib/brain/proposal/serialize';
 
 /**
  * THE SWITCH. Default OFF, and it must stay off until the owner says
@@ -211,8 +214,42 @@ export interface SealedActionLanes {
   recorded: AdaptationAction[];
 }
 
-/** Turn a refused plan-mutating action into a record-only note. */
+/**
+ * Turn a refused plan-mutating action into a record-only note.
+ *
+ * ── ACTIONCOMPLETE-1 (2026-09-05) · THE REFUSAL NOW CARRIES ITS AXIS ───────
+ *
+ * `sealed_kind: 'reshape'` records THAT something was refused and not WHICH WAY
+ * it pointed, so the engine's own log cannot answer "what has the seam been
+ * stopping" — which is Rule 21's complaint word for word, and the reason
+ * establishing "309 intents, zero upward" needed a sideways query.
+ *
+ * Two `BrainAction`s now ride on the note beside the existing payload:
+ * `refusal_action` (the seam's own decision, always NEUTRAL, because refusing a
+ * push is not a push) and `refused_action` (what it refused, with its direction
+ * intact). Nothing about what the seam PERMITS moves; this is additive record.
+ */
 function toObservationalNote(a: AdaptationAction): AdaptationAction {
+  /* The refused action in the union's own vocabulary, when it is a per-workout
+   * change with a row to describe. Rule 11: a kind with no translation records
+   * nothing rather than a no-op action that would join the census as neutral. */
+  const refused = (() => {
+    const r = a.reshape;
+    /* Rule 11 · a partially-filled `reshape` is a read we cannot make, not a
+     * decision with no direction. Recording nothing beats recording an action
+     * built from fields that were never there — and this guard is not
+     * hypothetical: `_seal_single_seam.test.ts` drives the seam with a reshape
+     * that carries only `weekStartISO`, because that is all the once-per-week
+     * marker needs. */
+    if (r?.resolution == null || r.row == null) return null;
+    return actionFromAdaptation(a, {
+      planWorkoutId: r.resolution.workoutId,
+      dateISO: r.resolution.dateISO,
+      type: r.row.type,
+      distanceMi: r.row.distanceMi,
+    });
+  })();
+
   return {
     kind: 'note',
     sourceTrigger: a.sourceTrigger,
@@ -262,6 +299,12 @@ function toObservationalNote(a: AdaptationAction): AdaptationAction {
       // travels with the refusal. Spread last and only when present, so no
       // other sealed kind gains a key it cannot honour.
       ...(a.reshape?.weekStartISO ? { week_start_iso: a.reshape.weekStartISO } : {}),
+      /* ACTIONCOMPLETE-1 · the seam's decision, and the decision it refused,
+       * both in the one vocabulary a census can count. Serialized rather than
+       * stored raw so the shape is versioned and a reader that cannot parse it
+       * refuses instead of guessing. */
+      refusal_action: serializeAction(refusalFromSeal(a)),
+      ...(refused ? { refused_action: serializeAction(refused) } : {}),
     },
     why: a.why,
   };

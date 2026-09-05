@@ -378,6 +378,19 @@ const PLAN_WRITER_SITE_OWNERS: Record<string, string> = {
     'runner-initiated: reached from POST /api/plan/change and POST /api/plan/replan, both runner '
     + 'actions. lib/plan/v5-block.ts also imports it but calls only proposeChange and the read-only '
     + 'gates, never applyChange.',
+  'lib/brain/proposal/accept.ts::applyWritePlan':
+    'runner-initiated: ACTIONCOMPLETE-1 (2026-09-05). Reached ONLY from applyBrainAction in the same '
+    + 'file, whose only caller is POST /api/plan/workout-proposals/[id]/accept — the runner tapping '
+    + 'accept on a card he read. It runs INSIDE mutatePlan\'s own apply callback, so the boundary '
+    + 'snapshots and validates the week around it and rolls back a write that introduces a doctrine '
+    + 'violation, and it declares authority RUNNER_ACCEPTED on every path (never LIFECYCLE, never '
+    + 'COACHING_ADAPTATION). It reads AUTOMATIC_ADAPTATION_AUTHORITY nowhere. The columns it may set '
+    + 'are an explicit allowlist written out longhand rather than derived from a type, and its '
+    + 'insert branch throws rather than authoring a row without a composer-built workout_spec. '
+    + 'check-action-completeness.sh guard 2 fails if the RUNNER_ACCEPTED declaration or the '
+    + 'mutatePlan call disappears, and lib/plan/_seal_single_seam.test.ts carries the matching '
+    + 'MUTATOR_NAME_EXEMPT entry. If a cron ever imports this module, the exemption is wrong and the '
+    + 'import is the bug.',
   'lib/plan/reschedule.ts::writeEdits':
     'runner-initiated: reached ONLY from applyReschedule and undoReschedule in the same file, and '
     + 'both of those only from POST /api/plan/reschedule, which requires an option id AND the '

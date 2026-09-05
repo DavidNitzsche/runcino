@@ -1,0 +1,282 @@
+/**
+ * lib/brain/proposal/serialize.ts · AN ACTION THAT SURVIVES THE DATABASE.
+ *
+ * ── WHY A PROPOSAL NEEDS ONE ───────────────────────────────────────────────
+ *
+ * `plan_workout_proposals.action_payload` carried three fields — `newType`,
+ * `newDate`, `shaveFraction` — and `staleness.ts:actionFromPending`
+ * RECONSTRUCTS a `BrainAction` from them by guessing which of five engine kinds
+ * wrote the row. That works for the five kinds that exist and cannot work for
+ * the sixteen that do not: there is no field in that payload that could carry a
+ * rep count, a recovery interval or a coordinated part list.
+ *
+ * So the action itself is stored. `action_payload` is jsonb with no constraint,
+ * which is the same property `reprice` and `newDistanceMi` already used — no
+ * migration, and the column could always have held this. What changes is that
+ * the propose lane now carries the DECISION rather than a lossy summary of it,
+ * and the reader stops inferring.
+ *
+ * ── READING IS DEFENSIVE, WRITING IS NOT ───────────────────────────────────
+ *
+ * A stored payload is DATA. It was written by an older build, possibly by a
+ * kind this build no longer has, possibly by a partial write. So
+ * `deserializeAction` type-checks every field it reads and returns `null` for
+ * anything it cannot fully reconstruct — never a partially-filled action, and
+ * never a no-op one. Rule 11: a payload that cannot be read is a refusal the
+ * caller must handle, not an action that applies nothing while reporting
+ * success.
+ *
+ * ── WHAT THIS CANNOT FAIL ON (Rule 22) ─────────────────────────────────────
+ *
+ * · WHETHER THE ROUND TRIP IS SEMANTICALLY RIGHT. It proves the same values
+ *   come back, not that the values were right going in. `validate.ts` is the
+ *   coherence check and it is deliberately run on the way out as well as in.
+ * · A FIELD ADDED TO A MEMBER AND NOT ADDED HERE. The writer is
+ *   `JSON.parse(JSON.stringify(action))`, so a new field is written; the READER
+ *   is hand-built per kind, so a new field is silently dropped on the way back.
+ *   `_action_completeness.test.ts`'s round-trip assertion is what catches that,
+ *   by comparing the whole object rather than a field list — which means the
+ *   protection lives in the test, not in this file, and would go with it.
+ */
+
+import {
+  ACTION_SCHEMA_VERSION,
+  type ActionDirection,
+  type BrainAction,
+  type Quantity,
+  type RowBefore,
+} from './action';
+
+/** The stored shape. Deliberately just the action plus its version stamp. */
+export interface StoredAction {
+  readonly v: typeof ACTION_SCHEMA_VERSION;
+  readonly action: Record<string, unknown>;
+}
+
+/**
+ * An action, as jsonb.
+ *
+ * `undefined` is not a JSON value, so a field the action deliberately omitted
+ * (Rule 11's "not recorded", as against `null`'s "recorded as nothing") must
+ * DISAPPEAR rather than become null. `JSON.stringify` does exactly that for
+ * object properties, which is why the round trip goes through it rather than
+ * through a hand-built copy that would have to remember.
+ */
+export function serializeAction(action: BrainAction): StoredAction {
+  return {
+    v: ACTION_SCHEMA_VERSION,
+    action: JSON.parse(JSON.stringify(action)) as Record<string, unknown>,
+  };
+}
+
+/**
+ * Read a stored action back, or refuse.
+ *
+ * Accepts either a `StoredAction` envelope or a bare action object, because the
+ * first rows written under this scheme carry the envelope and a caller holding
+ * only `action_payload.action` should not have to know which.
+ */
+export function deserializeAction(raw: unknown): BrainAction | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const outer = raw as Record<string, unknown>;
+  const body = (outer.action != null && typeof outer.action === 'object')
+    ? outer.action as Record<string, unknown>
+    : outer;
+
+  const version = typeof outer.v === 'number' ? outer.v : body.schemaVersion;
+  if (version !== ACTION_SCHEMA_VERSION) return null;
+
+  const direction = dir(body.direction);
+  const before = beforeList(body.before);
+  if (direction === null || before === null) return null;
+  const base = { schemaVersion: ACTION_SCHEMA_VERSION, direction, before } as const;
+
+  switch (body.kind) {
+    case 'PACE_CHANGE': {
+      const to = qty(body.to);
+      const lever = oneOf(body.lever, ['THRESHOLD', 'MARATHON', 'INTERVAL', 'EASY'] as const);
+      return to !== null && lever !== null ? { ...base, kind: 'PACE_CHANGE', to, lever } : null;
+    }
+    case 'DISTANCE_CHANGE': {
+      /* `to` is legitimately null — a decision made without a target distance —
+       * so null must round-trip as null and an unreadable value must NOT. */
+      const to = body.to === null ? null : qty(body.to);
+      if (body.to !== null && to === null) return null;
+      if (body.ofBefore === undefined) return { ...base, kind: 'DISTANCE_CHANGE', to };
+      const ofBefore = num(body.ofBefore);
+      if (ofBefore === null) return null;
+      return { ...base, kind: 'DISTANCE_CHANGE', to, ofBefore };
+    }
+    case 'DURATION_CHANGE': {
+      const to = qty(body.to);
+      return to !== null ? { ...base, kind: 'DURATION_CHANGE', to } : null;
+    }
+    case 'REPETITION_CHANGE': {
+      const to = qty(body.to);
+      return to !== null ? { ...base, kind: 'REPETITION_CHANGE', to } : null;
+    }
+    case 'RECOVERY_INTERVAL_CHANGE': {
+      const to = qty(body.to);
+      return to !== null ? { ...base, kind: 'RECOVERY_INTERVAL_CHANGE', to } : null;
+    }
+    case 'QUALITY_DOSE_CHANGE': {
+      const to = qty(body.to);
+      const lever = oneOf(body.lever, ['THRESHOLD', 'MARATHON', 'INTERVAL'] as const);
+      return to !== null && lever !== null ? { ...base, kind: 'QUALITY_DOSE_CHANGE', to, lever } : null;
+    }
+    case 'LONG_RUN_STRUCTURE_CHANGE': {
+      const to = str(body.to); const describe = str(body.describe);
+      return to !== null && describe !== null
+        ? { ...base, kind: 'LONG_RUN_STRUCTURE_CHANGE', to, describe } : null;
+    }
+    case 'WORKOUT_TYPE_CHANGE': {
+      const to = str(body.to);
+      return to !== null ? { ...base, kind: 'WORKOUT_TYPE_CHANGE', to } : null;
+    }
+    case 'ADD_WORKOUT': {
+      const dateISO = str(body.dateISO); const type = str(body.type);
+      const distanceMi = num(body.distanceMi);
+      return dateISO !== null && type !== null && distanceMi !== null
+        ? { ...base, kind: 'ADD_WORKOUT', dateISO, type, distanceMi } : null;
+    }
+    case 'REMOVE_WORKOUT':
+      return { ...base, kind: 'REMOVE_WORKOUT' };
+    case 'FREQUENCY_CHANGE': {
+      const to = qty(body.to);
+      return to !== null ? { ...base, kind: 'FREQUENCY_CHANGE', to } : null;
+    }
+    case 'RESCHEDULE': {
+      const toDateISO = str(body.toDateISO);
+      if (toDateISO === null) return null;
+      const swap = body.swapWithId === null ? null : str(body.swapWithId);
+      if (body.swapWithId !== null && swap === null) return null;
+      return { ...base, kind: 'RESCHEDULE', toDateISO, swapWithId: swap };
+    }
+    case 'COORDINATED': {
+      const describe = str(body.describe);
+      if (describe === null || !Array.isArray(body.parts)) return null;
+      const parts: BrainAction[] = [];
+      for (const p of body.parts) {
+        const one = deserializeAction(p);
+        // A coordinated action is applied whole or not at all, so a part that
+        // cannot be read poisons the decision rather than shrinking it.
+        if (one === null) return null;
+        parts.push(one);
+      }
+      return { ...base, kind: 'COORDINATED', describe, parts };
+    }
+    case 'RACE_TARGET_CHANGE': {
+      const raceSlug = str(body.raceSlug); const toSecPerMi = num(body.toSecPerMi);
+      return raceSlug !== null && toSecPerMi !== null
+        ? { ...base, kind: 'RACE_TARGET_CHANGE', raceSlug, toSecPerMi } : null;
+    }
+    case 'TAPER_CHANGE': {
+      const describe = str(body.describe);
+      return describe !== null ? { ...base, kind: 'TAPER_CHANGE', describe } : null;
+    }
+    case 'RECOVERY_CHANGE': {
+      const describe = str(body.describe);
+      return describe !== null ? { ...base, kind: 'RECOVERY_CHANGE', describe } : null;
+    }
+    case 'CONDITIONAL': {
+      const defaultTo = qty(body.defaultTo); const earnedTo = qty(body.earnedTo);
+      const assessOnISO = str(body.assessOnISO);
+      return defaultTo !== null && earnedTo !== null && assessOnISO !== null
+        ? { ...base, kind: 'CONDITIONAL', defaultTo, earnedTo, assessOnISO } : null;
+    }
+    case 'FIELD_TEST': {
+      const describe = str(body.describe);
+      return describe !== null ? { ...base, kind: 'FIELD_TEST', describe } : null;
+    }
+    case 'HOLD': {
+      const because = str(body.because);
+      return because !== null ? { ...base, kind: 'HOLD', because } : null;
+    }
+    case 'REFUSAL': {
+      const because = str(body.because);
+      return because !== null ? { ...base, kind: 'REFUSAL', because } : null;
+    }
+    case 'SAFETY_STOP': {
+      const because = str(body.because);
+      if (because === null) return null;
+      const until = body.until === null ? null : str(body.until);
+      if (body.until !== null && until === null) return null;
+      return { ...base, kind: 'SAFETY_STOP', because, until };
+    }
+    // Rule 11 · a kind this build does not have is not a no-op. The caller
+    // withholds the card rather than applying nothing and reporting success.
+    default:
+      return null;
+  }
+}
+
+/* ── readers · each returns null rather than a coerced value ────────────── */
+
+/**
+ * A string, or null when the value is NOT A STRING.
+ *
+ * The empty string is returned as itself. An earlier cut read `''` as null,
+ * which is COERCION-1's zero-erasure shape in miniature: "the field held an
+ * empty sentence" and "the field was not a string" are different facts, and a
+ * reader that collapses them makes a malformed row indistinguishable from a
+ * type error. Whether an empty `describe` is acceptable is
+ * `validateAction`'s question, and it refuses one.
+ */
+function str(v: unknown): string | null {
+  return typeof v === 'string' ? v : null;
+}
+
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null;
+}
+
+function dir(v: unknown): ActionDirection | null {
+  return oneOf(v, ['MORE', 'LESS', 'NEUTRAL', 'STOP'] as const);
+}
+
+function oneOf<T extends string>(v: unknown, allowed: readonly T[]): T | null {
+  return typeof v === 'string' && (allowed as readonly string[]).includes(v) ? v as T : null;
+}
+
+function qty(v: unknown): Quantity | null {
+  if (v == null || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  const unit = oneOf(o.unit, ['mi', 'min', 'sec_per_mi', 'reps', 'count'] as const);
+  const value = num(o.value);
+  return unit && value !== null ? { unit, value } as Quantity : null;
+}
+
+/**
+ * The before list, preserving the three-state distinction exactly.
+ *
+ * A field that was ABSENT stays absent; a field stored as `null` comes back as
+ * `null`. Collapsing them here would undo the whole point of `RowBefore`'s
+ * optionality and would make the staleness check refuse every legacy card.
+ */
+function beforeList(v: unknown): readonly RowBefore[] | null {
+  if (!Array.isArray(v)) return null;
+  const out: RowBefore[] = [];
+  for (const raw of v) {
+    if (raw == null || typeof raw !== 'object') return null;
+    const o = raw as Record<string, unknown>;
+    const id = str(o.planWorkoutId);
+    if (id === null) return null;
+    const row: Record<string, unknown> = { planWorkoutId: id };
+    if ('dateISO' in o) { const d = str(o.dateISO); if (d === null) return null; row.dateISO = d; }
+    if ('type' in o) { const t = str(o.type); if (t === null) return null; row.type = t; }
+    if ('distanceMi' in o) {
+      if (o.distanceMi === null) row.distanceMi = null;
+      else { const n = num(o.distanceMi); if (n === null) return null; row.distanceMi = n; }
+    }
+    if ('paceTargetSecPerMi' in o) {
+      if (o.paceTargetSecPerMi === null) row.paceTargetSecPerMi = null;
+      else { const n = num(o.paceTargetSecPerMi); if (n === null) return null; row.paceTargetSecPerMi = n; }
+    }
+    if ('planVersion' in o) {
+      if (o.planVersion === null) row.planVersion = null;
+      else { const s = str(o.planVersion); if (s === null) return null; row.planVersion = s; }
+    }
+    out.push(row as unknown as RowBefore);
+  }
+  return out;
+}
