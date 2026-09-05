@@ -58,6 +58,7 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
 import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 import { runAndPersistPaceShadowCompare } from '@/lib/adaptation/shadow-compare';
+import { shadowExit, summarisePass, type ShadowExit } from '@/lib/adaptation/canonical-shadow/shadow-exit';
 
 export const maxDuration = 120;
 
@@ -118,6 +119,14 @@ export async function POST(req: NextRequest) {
     };
     console.error('[cron/run-adaptations] reassessment sweep threw ·', e);
   }
+
+  /* SHADOWOBS-1 · one entry per athlete the loop reaches, summarised once
+   * after the loop. Declared here rather than inside the loop so a pass that
+   * reaches ZERO athletes still produces a verdict — `summarisePass([])` is
+   * an `error`, because a loop that looked at nothing is indistinguishable
+   * from a healthy quiet night in every previous version of this reporting,
+   * and that is the exact liveness failure Rule 18 names. */
+  const canonicalShadowExits: ShadowExit[] = [];
 
   const results: Array<{
     user_id: string; triggers: number; applied: number; proposed: number;
@@ -219,14 +228,43 @@ export async function POST(req: NextRequest) {
       // (Rule 23) — and it never throws: any failure is caught, logged, and
       // reported in its own result, exactly like the pace shadow-compare
       // call above it. Best-effort: never blocks the real adaptation pass.
+      //
+      // ── SHADOWOBS-1 (2026-09-05) · THE EXIT IS COLLECTED, NOT LOGGED ─────
+      //
+      // This block used to end at `console.warn`. Measured against production
+      // on 2026-09-05: `canonical_adaptation_shadow_log` held THREE rows, all
+      // written 2026-09-03 18:22 UTC by a hand-run of
+      // `scripts/p0-proof/trigger-canonical-shadow-once.ts` on a laptop, while
+      // `cron/run-adaptations` had twelve `cron_ok` rows and the PACE shadow
+      // three lines above this one was writing fourteen rows a day. The cron
+      // ran. This call ran. It returned `ran: false · DATABASE_URL_RO is not
+      // configured` into a log buffer, four times a day, for two days, and
+      // nothing could see it. Rule 23's third clause: a job that does not do
+      // its work must be NOTICED.
+      //
+      // Every exit now carries a code and a health verdict (`shadow-exit.ts`).
+      // They are accumulated across the whole pass and reported ONCE below,
+      // after the loop, so a DEFECT raises an `ops_alerts` row and an honest
+      // "this runner had nothing to say" does not. One alert per pass, not
+      // one per runner — an alert nobody can skim is an alert nobody reads
+      // (Rule 17).
       try {
         const { runAndPersistCanonicalShadowEvaluation } =
           await import('@/lib/adaptation/canonical-shadow/run-live-shadow-evaluation');
         const canonicalShadow = await runAndPersistCanonicalShadowEvaluation(uid);
-        if (!canonicalShadow.ran) {
-          console.warn(`[canonical-shadow] ${uid}: ${canonicalShadow.detail}`);
+        canonicalShadowExits.push(canonicalShadow.exit);
+        if (canonicalShadow.exit.health === 'DEFECT') {
+          console.warn(
+            `[canonical-shadow] ${uid}: ${canonicalShadow.exit.code} · ${canonicalShadow.detail}`,
+          );
         }
       } catch (e) {
+        // Rule 11 · a throw from a function whose own contract says it never
+        // throws is EVALUATION_ERROR, not "nothing happened". Recorded as an
+        // exit so the pass verdict counts it, rather than vanishing into the
+        // catch the way the RO-connection refusal did.
+        const detail = `runAndPersistCanonicalShadowEvaluation threw: ${e instanceof Error ? e.message : String(e)}`;
+        canonicalShadowExits.push(shadowExit('EVALUATION_ERROR', detail));
         console.warn(`[canonical-shadow] ${uid} threw:`, e instanceof Error ? e.message : e);
       }
 
@@ -472,17 +510,43 @@ export async function POST(req: NextRequest) {
         await updateCoachLog(uid);
       } catch { /* logged inside · non-fatal */ }
       if (applied > 0) await bustBriefingCacheForEvent(uid, 'plan_swap');
-      // Stamp last_adapted_at even when 0 actions applied — this is the only
-      // cron-fire proof we have. Without it we can't distinguish "cron never
-      // fired" from "cron fired but found nothing to do". applyAdaptations
-      // already stamps on the mutating path; this covers the no-op path.
-      if (applied === 0) {
-        await pool.query(
-          `UPDATE training_plans SET last_adapted_at = NOW()
-            WHERE user_uuid = $1 AND archived_iso IS NULL`,
-          [uid],
-        );
-      }
+      //
+      // ── NOOPSTAMP-1 (2026-09-05) · THE NO-OP STAMP IS GONE ───────────────
+      //
+      // What stood here:
+      //
+      //   // Stamp last_adapted_at even when 0 actions applied — this is the
+      //   // only cron-fire proof we have. Without it we can't distinguish
+      //   // "cron never fired" from "cron fired but found nothing to do".
+      //   if (applied === 0) {
+      //     await pool.query(
+      //       `UPDATE training_plans SET last_adapted_at = NOW()
+      //         WHERE user_uuid = $1 AND archived_iso IS NULL`, [uid]);
+      //   }
+      //
+      // The reasoning was sound and its premise has since become false.
+      // `lib/ops/cron-ledger.ts` landed 2026-08-30 and `recordCronSuccess`
+      // runs at the bottom of this very route, so "did the cron fire" is
+      // answered by `ops_alerts` `kind='cron_ok'` — measured on production
+      // 2026-09-05, twelve rows for `cron/run-adaptations`, twice daily,
+      // 09-01 through 09-05. It is no longer "the only cron-fire proof we
+      // have"; it is a second answer to a question that has an owner, which
+      // is a Rule 16 violation, and the second answer is the destructive one.
+      //
+      // Destructive because `last_adapted_at` is not a log. It is half of
+      // `planVersion` (`${id}:${last_adapted_at}`, `lib/plan/plan-version.ts`)
+      // and five consumers read that as "the prescription changed":
+      // `/api/v5/today`, `week-loader`, `plan-snapshot` (the watch),
+      // `lib/brain/proposal/staleness.ts` — which marks a pending proposal
+      // STALE the moment it moves — and `canonical/deferral-queue.ts`, which
+      // expires a deferred progression with `PLAN_VERSION_CHANGED`. So this
+      // statement retired every outstanding question the coach had asked the
+      // runner, twice a day, on nights when the engine had decided nothing.
+      //
+      // Nothing replaces it here. `applyAdaptations` stamps when it actually
+      // touches a workout, and the mutation boundary stamps on every other
+      // real write. A pass that changed nothing now leaves the version alone,
+      // which is what every one of those five consumers already assumed.
       results.push({
         user_id: uid, triggers: triggers.length, applied, proposed,
         sealed_recorded: sealedRecorded, session_moved: sessionMoved,
@@ -500,6 +564,41 @@ export async function POST(req: NextRequest) {
   const totalApplied = results.reduce((a, r) => a + r.applied, 0);
   const totalProposed = results.reduce((a, r) => a + r.proposed, 0);
   const totalSealed = results.reduce((a, r) => a + (r.sealed_recorded ?? 0), 0);
+
+  /* ── SHADOWOBS-1 · THE CANONICAL SHADOW PASS REPORTS ITSELF ──────────────
+   *
+   * One row per PASS, not per runner, on the surface CLAUDE.md Rule 23 already
+   * names for this. `severity` is decided by `summarisePass`, not here, so the
+   * rule "a DEFECT is louder than an honest nothing" has exactly one owner
+   * (Rule 16).
+   *
+   * WHY IT IS RAISED EVEN WHEN EVERYTHING IS FINE: `cron_ok` already proves
+   * the ROUTE completed, and proved it every day while this mechanism wrote
+   * nothing at all — so route-completion is not evidence about the mechanism.
+   * This row is that evidence, and it carries the per-code histogram INCLUDING
+   * the zeroes, because an absent key and a zero read the same to a human
+   * skimming JSON and are not the same fact.
+   *
+   * Never blocks the pass. An alerting failure must not cost the adaptation
+   * run, and `raiseAlert` already swallows its own insert error internally. */
+  const canonicalShadowPass = summarisePass(canonicalShadowExits);
+  await raiseAlert({
+    kind: 'canonical_shadow_exit',
+    severity: canonicalShadowPass.severity,
+    message: canonicalShadowPass.message,
+    metadata: {
+      athletes: canonicalShadowPass.athletes,
+      users_in_loop: userIds.length,
+      by_code: canonicalShadowPass.byCode,
+      defects: canonicalShadowPass.defects,
+      records_persisted: canonicalShadowPass.recordsPersisted,
+      // The remedy, carried to the alert rather than left in a source file
+      // nobody reads at 3am. First DEFECT only — Rule 17, the reader reads a
+      // sentence once, and every DEFECT of the same code has the same remedy.
+      remedy: canonicalShadowExits.find((e) => e.health === 'DEFECT')?.remedy ?? null,
+    },
+    source: 'cron/run-adaptations',
+  }).catch(() => {});
   // 2026-08-30 · scheduler ledger (lib/ops/cron-ledger.ts). Stamped by the
   // ROUTE, not by whatever triggered it, so the GitHub workflow and the
   // in-process tick dedupe against each other instead of both firing this pass.
@@ -520,6 +619,9 @@ export async function POST(req: NextRequest) {
      * this database, the read broke) and a sweep that found nothing due are the
      * same shape and opposite facts. */
     reassessment_sweep: reassessmentSweep,
+    /* SHADOWOBS-1 · the same verdict in the response body, so an operator who
+     * curls this route sees it without going to `ops_alerts`. */
+    canonical_shadow: canonicalShadowPass,
     results,
     timestamp: new Date().toISOString(),
   });

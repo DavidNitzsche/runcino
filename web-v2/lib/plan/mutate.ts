@@ -200,11 +200,20 @@
  * question, and the reason its census of 309 production intents had to be
  * reconstructed sideways out of `coach_intents`.
  *
- * `plan_decision_ledger` (migration 166) is now written on every exit of this
- * function: the successes, the rejections, the bypass, the no-plan refusal, the
+ * Every exit of this function ATTEMPTS a `plan_decision_ledger` (migration 166)
+ * write: the successes, the rejections, the bypass, the no-plan refusal, the
  * authority refusal that throws before a connection is opened, and the crash.
  * `scripts/check-decision-ledger.sh` guard 1 walks the exits and fails when one
  * of them does not.
+ *
+ * STATUSWORDS-1 (2026-09-05) · this paragraph used to say the ledger "is now
+ * written on every exit". It is not, and saying so conflated BUILT with
+ * DEPLOYED (Rule 19). Migration 166 IS NOT APPLIED TO PRODUCTION — deliberately;
+ * DDL needs the owner's per-statement go — so on the live database every one of
+ * those exits currently resolves to `state: 'table_absent'` and a
+ * `DECISION NOT RECORDED` line on stderr. `decision-ledger.ts` says this
+ * correctly in its own header and this file did not. What is true today: the
+ * code path is complete and gated; the rows do not exist yet.
  *
  * Two properties are worth naming because they are what make it a ledger:
  *
@@ -220,10 +229,12 @@
  *
  * `training_plans.adaptation_log` is UNCHANGED and `applyAdaptations` keeps
  * appending to it — `docs/OVERNIGHT-REPORT.md` records consumers deriving
- * "last changed" as `max(adaptation_log.ts)`. What changes is its STATUS: it
- * is a per-plan convenience index and this table is the record of truth, for
- * the two reasons migration 166's header sets out (it lives inside the thing a
- * rebuild discards, and its only writer is the nightly cron).
+ * "last changed" as `max(adaptation_log.ts)`. What changes is its INTENDED
+ * status: it is a per-plan convenience index and this table is MEANT to be the
+ * record of truth, for the two reasons migration 166's header sets out (it
+ * lives inside the thing a rebuild discards, and its only writer is the
+ * nightly cron). Until 166 is applied, `adaptation_log` is still the only
+ * durable record there is, and it is still emptied by every rebuild.
  *
  * ─── ADDING A NEW WRITER ─────────────────────────────────────────────────────
  *
@@ -805,6 +816,44 @@ export interface MutatePlanOptions<T> {
   /** The writes. Runs inside the boundary's transaction; must not BEGIN,
    *  COMMIT or ROLLBACK. */
   apply: (tx: PoolClient, planId: string) => Promise<T>;
+  /**
+   * NOOPSTAMP-1 (2026-09-05) · did this mutation actually MOVE the runner's
+   * prescription? Optional, and omitting it keeps the old behaviour exactly
+   * (`stampAdapted` runs on every commit), so no existing caller changes.
+   *
+   * ── WHY A CALLER HAS TO ANSWER THIS, AND THE BOUNDARY CANNOT ────────────
+   *
+   * `last_adapted_at` is not a log. It is the second half of `planVersion`
+   * (`${id}:${last_adapted_at}`, `lib/plan/plan-version.ts`), which is what
+   * V5 Today, the week strip, the watch snapshot, `brain/proposal/staleness`
+   * and the canonical deferral queue all compare against. So stamping it means
+   * "the prescription changed" to five consumers and meant "we committed a
+   * transaction" to this function, and those are different questions
+   * (Rule 16 · one quantity, one name).
+   *
+   * Measured on production 2026-09-05: all seven active plans carried
+   * `last_adapted_at` within 15 seconds of each other — 11:21:27 to 11:21:42
+   * UTC, the `snapshot-projections` pass, whose `cron_ok` row is stamped
+   * 11:21:42 — while the most recent `plan_adapt_*` coach intent for ANY
+   * runner was 2026-09-03 07:53. Nothing adapted; every version moved. The
+   * consequences are not cosmetic: `lib/brain/proposal/action.ts` marks a
+   * pending proposal stale the moment `planVersion` moves, and
+   * `canonical/deferral-queue.ts` expires a deferral with
+   * `PLAN_VERSION_CHANGED` on the same signal. A nightly no-op stamp retires
+   * every outstanding question the coach has asked the runner.
+   *
+   * The boundary genuinely cannot answer it: `apply` is an opaque closure and
+   * a transaction committing says nothing about whether a prescribed pace
+   * moved. `reanchor-plan.ts` is the worked case — all three of its arms write
+   * a fresh `pace_blend.reanchored_at` unconditionally, so the row always
+   * changes even when `recomputePacesForPlan` reports `workoutsUpdated: 0`.
+   * Only the caller holds the number that answers this.
+   *
+   * When it returns false the plan is NOT stamped and the CURRENT version is
+   * read and returned instead, so the ledger still records the version this
+   * mutation left behind rather than a null.
+   */
+  didChange?: (value: T) => boolean;
 }
 
 export interface MutatePlanResult<T> {
@@ -1005,9 +1054,17 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
    * `pace_target_s_per_mi` and `authored_state` through `bypass`/`derivations`
    * on this exact boundary, and neither path stamped the plan — a runner's
    * prescribed paces could move with `planVersion` never noticing, so a
-   * cached client day would never invalidate. `check-planversion-ratchet.sh`
-   * is the gate this closes; see that script's header for the registry it
-   * verifies against.
+   * cached client day would never invalidate.
+   *
+   * STATUSWORDS-1 (2026-09-05) · this sentence used to name
+   * `check-planversion-ratchet.sh` as "the gate this closes".
+   * `check-planversion-ratchet.sh` does not exist, anywhere in the repo, and
+   * never has. Rule 20's corollary: gate the
+   * claim or delete the sentence, because a citation nothing verifies is worse
+   * than silence — it stops the next reader from checking. The real gates are
+   * `lib/plan/_planversion_invalidation.test.ts` (every in-place writer must
+   * reach a stamp) and `lib/plan/_noop_stamp.test.ts` (and a writer that knows
+   * nothing moved must not).
    *
    * Deliberately excluded: `touches === 'authorship'` (a brand-new
    * `training_plans` row — its `id` already differs, so `planVersion` moves
@@ -1021,8 +1078,22 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
    * `plan-snapshot.ts` already build (`${id}:${last_adapted_at}`) — Rule 16,
    * one quantity, one definition.
    */
-  const stampAdapted = async (planIdToStamp: string | null): Promise<string | null> => {
+  const stampAdapted = async (
+    planIdToStamp: string | null,
+    value: T,
+  ): Promise<string | null> => {
     if (!planIdToStamp) return null;
+    /* NOOPSTAMP-1 · a caller that KNOWS nothing moved says so, and the version
+     * signal holds still. Read, never stamped — Rule 11: "we looked and
+     * nothing changed" is a third fact beside "we changed it" and "we could
+     * not tell", and it must not be reported as either. */
+    if (opts.didChange && !opts.didChange(value)) {
+      const r = await client.query<{ last_adapted_at: string | null }>(
+        `SELECT last_adapted_at::text AS last_adapted_at FROM training_plans WHERE id = $1`,
+        [planIdToStamp],
+      );
+      return `${planIdToStamp}:${r.rows[0]?.last_adapted_at ?? 'none'}`;
+    }
     const r = await client.query<{ last_adapted_at: string | null }>(
       `UPDATE training_plans SET last_adapted_at = NOW() WHERE id = $1
         RETURNING last_adapted_at::text AS last_adapted_at`,
@@ -1115,7 +1186,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     // 2 · the marked bypass. Runs the writes, records the decision, commits.
     if (opts.bypass) {
       const value = await opts.apply(client, planId ?? '');
-      if (touches !== 'authorship') producedPlanVersion = await stampAdapted(planId);
+      if (touches !== 'authorship') producedPlanVersion = await stampAdapted(planId, value);
       await client.query('COMMIT');
       console.warn(
         `[plan/mutate] BYPASS · source=${opts.source} plan=${planId ?? 'none'} · ${opts.bypass.reason}`,
@@ -1215,7 +1286,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         );
         return fail('undeclared_structural', v, [], afterPlanId);
       }
-      producedPlanVersion = await stampAdapted(afterPlanId);
+      producedPlanVersion = await stampAdapted(afterPlanId, value);
       await client.query('COMMIT');
       await land(
         'APPLY', 'applied', [],
@@ -1312,7 +1383,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
       return fail('rejected', diff.introduced, diff.preExisting, afterPlanId);
     }
 
-    producedPlanVersion = await stampAdapted(afterPlanId);
+    producedPlanVersion = await stampAdapted(afterPlanId, value);
     await client.query('COMMIT');
     await land(
       'APPLY', 'applied', [],

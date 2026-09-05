@@ -525,6 +525,14 @@ export async function refreshRaceRowsForPlan(
     planId,
     touches: 'derivations',
     detail: { path: 'race-row-refresh' },
+    /* NOOPSTAMP-1 · a refresh that moved no row must not move `planVersion`.
+     * This call runs for EVERY runner on EVERY `snapshot-projections` pass, so
+     * an unconditional stamp here is the mechanism that put `last_adapted_at`
+     * within fifteen seconds of itself on all seven production plans at
+     * 2026-09-05 11:21 UTC, on a day with no `plan_adapt_*` intent since 09-03.
+     * `updated` is the row count this refresh actually wrote; `unchanged`,
+     * `sealed` and `refused` rows are not changes to the prescription. */
+    didChange: (v) => (v?.updated ?? 0) > 0,
     apply: async (tx) => refreshRaceRowsCore(tx, planId, userUuid, today, opts?.source),
   });
   if (!boundary.ok) {

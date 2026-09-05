@@ -83,9 +83,26 @@ export function workoutTypeTitle(type: WorkoutType | string | null | undefined):
   // was still waiting for the next type nobody remembered to add here.
   //
   // Underscores become spaces so the worst case is a clumsy phrase rather than
-  // something that reads as a leaked database value. `check-enum-register.sh`
-  // fails the build when a type the plan can emit has no entry above, so this
-  // is a floor, never a substitute for the map.
+  // something that reads as a leaked database value.
+  //
+  // STATUSWORDS-1 (2026-09-05) · this comment used to say
+  // "`check-enum-register.sh` fails the build when a type the plan can emit
+  // has no entry above". `check-enum-register.sh` does not exist and never has,
+  // so that sentence
+  // was documentation wearing enforcement's clothes — the exact shape Rule 20's
+  // corollary names, and the third instance found in one pass (see
+  // `lib/plan/mutate.ts` and `lib/plan/plan-version.ts` for the other two,
+  // which cited an equally imaginary gate — `check-planversion-ratchet.sh`
+  // does not exist either).
+  //
+  // THE CLAIM IS CURRENTLY UNENFORCED, and this is what closing it needs: the
+  // set of `type` values the plan engine can emit is not enumerated anywhere a
+  // checker can read — `plan_workouts.type` is free text and the generator
+  // writes it from several sites — so a gate must first derive that set (from
+  // `lib/plan/generate.ts`'s writers, or from a DISTINCT over production) and
+  // then diff it against the map above. Until that exists, the fallback below
+  // is the ONLY thing standing between a new workout type and a token in the
+  // display register, and nothing will tell you when it fires.
   return key.replace(/_/g, ' ').toUpperCase();
 }
 

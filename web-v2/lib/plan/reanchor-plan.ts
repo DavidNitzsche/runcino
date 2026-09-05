@@ -557,6 +557,13 @@ async function reanchorOffCanonicalPrior(
     planId: planRow.id,
     touches: 'derivations',
     detail: { to_vdot: priorVdot, source_mode: sourceMode, measured: false },
+    /* NOOPSTAMP-1 · `recomputePacesForPlan` already declines its OWN
+     * `last_adapted_at` stamp when nothing moved (`recompute-paces.ts`), and
+     * this boundary used to stamp anyway on the way past — because the arm
+     * writes a fresh `pace_blend.reanchored_at` unconditionally, so the row
+     * always changes even when no prescribed pace did. The two now agree.
+     * Rule 16: one quantity, one answer. */
+    didChange: (v) => (v?.workoutsUpdated ?? 0) > 0,
     apply: async (client) => {
       await client.query(
         `UPDATE training_plans
@@ -960,6 +967,13 @@ async function reanchorRacePrep(
     planId,
     touches: 'derivations',
     detail: { to_vdot: measuredVdot, was_provisional: wasProvisional },
+    /* NOOPSTAMP-1 · `recomputePacesForPlan` already declines its OWN
+     * `last_adapted_at` stamp when nothing moved (`recompute-paces.ts`), and
+     * this boundary used to stamp anyway on the way past — because the arm
+     * writes a fresh `pace_blend.reanchored_at` unconditionally, so the row
+     * always changes even when no prescribed pace did. The two now agree.
+     * Rule 16: one quantity, one answer. */
+    didChange: (v) => (v?.workoutsUpdated ?? 0) > 0,
     apply: async (client) => {
     // GUARD 3 · the marks this run resolves are cleared, so the plan stops
     // advertising a calibration that has ended. `jsonb ||` is a shallow merge,

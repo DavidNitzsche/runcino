@@ -285,6 +285,58 @@ export async function supersedeProposalsForArchivedPlans(
 }
 
 /**
+ * ACKSURVIVE-1 (2026-09-05) · THE SAME SUPERSEDE, FOR
+ * `plan_workout_proposals`.
+ *
+ * The third table with this shape, and the last one still open. A rebuild
+ * archives the plan and authors a new one; a pending workout proposal keeps
+ * pointing at a `plan_workouts.id` on the block that was put away — by a TEXT
+ * column with NO foreign key, so nothing in the schema notices, and
+ * `loadPendingProposals` does not join `training_plans` at all. The card
+ * renders. The runner taps accept. `lib/brain/proposal/staleness.ts` refuses
+ * it with a 409 at that point, which is correct and is also the worst moment
+ * to find out: the coach asked a question, the runner answered it, and the
+ * answer was thrown away.
+ *
+ * Until now the ONLY place this ran was `app/api/plan/undo/route.ts`, whose
+ * own comment states the reasoning exactly — "accepting one after this would
+ * apply an adaptation to a workout on an archived plan" — and which scopes it
+ * to the one block it just put away. Undo is the rarest archive path in the
+ * app. The five common ones (`generate.ts`, `seed-from-onboarding.ts`,
+ * `injury-builder.ts`, `result-chain.ts`, the drift cron) all archived plans
+ * and left these rows behind.
+ *
+ * MARK, DON'T DELETE, and don't touch anything already resolved: only
+ * `status = 'pending'` rows move, so a proposal the runner ACCEPTED or
+ * DECLINED keeps the record of what he decided. That is the half of item 12's
+ * "plan rebuilds erasing acknowledged events" this function must not become.
+ *
+ * Scoped like both its siblings: ANY pending proposal pointing at an archived
+ * plan's workout, so a later sweep also heals rows orphaned before this
+ * existed. Rule 14 · the population is the archived plans of THIS user, named
+ * in the query rather than implied by the call site.
+ */
+export async function supersedeWorkoutProposalsForArchivedPlans(
+  client: { query: typeof pool.query },
+  userUuid: string,
+): Promise<number> {
+  const result = await client.query(
+    `UPDATE plan_workout_proposals p
+        SET status = 'superseded', resolved_at = NOW()
+      WHERE p.user_uuid = $1::uuid
+        AND p.status = 'pending'
+        AND p.plan_workout_id IN (
+          SELECT pw.id::text FROM plan_workouts pw
+            JOIN training_plans tp ON tp.id = pw.plan_id
+           WHERE tp.user_uuid = $1::uuid
+             AND tp.archived_iso IS NOT NULL
+        )`,
+    [userUuid],
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
  * 2026-08-28 · THE SAME SUPERSEDE, FOR coach_intents.
  *
  * The function above closes the dangling-proposal shape; coach_intents had

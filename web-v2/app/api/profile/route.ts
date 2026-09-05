@@ -289,13 +289,36 @@ export async function PATCH(req: NextRequest) {
     // 7 · plan-shaping change → rebuild the active race-prep OR goal-mode
     //     plan inline (2026-07-06 · P1-16), same generatePlan path as the
     //     race hooks. Failure is isolated so the settings save still succeeds.
+    /* REBUILDTRUTH-1 (2026-09-05) · the same defect as
+     * `app/api/race/[slug]/route.ts`'s `rebuildTriggered`, one degree milder.
+     * `replanned = !!r.ok` reported TRUE for two outcomes where no plan was
+     * replaced: `deduped_within_30s` (nothing ran at all) and `unchanged`
+     * (the rebuild ran and was rolled back, which `auto-rebuild.ts` itself
+     * distinguishes precisely so "a notice card pointing at a new_plan_id
+     * equal to the plan they were already on" cannot happen).
+     *
+     * `newPlanId` is the honest discriminator and it is already on the return
+     * type — absent on both of those, present on a real replan. Reading it
+     * here rather than re-deriving the distinction keeps one owner (Rule 16). */
     let replanned = false;
+    let replanStatus: 'replanned' | 'no_change' | 'not_replanned' | 'not_attempted' = 'not_attempted';
+    let replanReason: string | null = null;
     if (changedPlanShaping.length > 0) {
-      const r = await rebuildActivePlanForPrefs(userId, changedPlanShaping).catch(() => ({ ok: false }));
-      replanned = !!r.ok;
+      const r = await rebuildActivePlanForPrefs(userId, changedPlanShaping)
+        .catch((e: unknown) => ({
+          ok: false,
+          // Rule 11 · a swallowed throw is not "the rebuild declined".
+          reason: `the rebuild threw: ${e instanceof Error ? e.message : String(e)}`,
+        } as Awaited<ReturnType<typeof rebuildActivePlanForPrefs>>));
+      const newPlanId = r.newPlanId ?? null;
+      replanned = Boolean(r.ok && newPlanId);
+      replanStatus = replanned
+        ? 'replanned'
+        : r.ok ? 'no_change' : 'not_replanned';
+      replanReason = replanned ? null : (r.reason ?? 'the rebuild produced no new plan');
     }
 
-    return NextResponse.json({ ok: true, updated: acked, replanned });
+    return NextResponse.json({ ok: true, updated: acked, replanned, replanStatus, replanReason });
   } catch (err: any) {
     return NextResponse.json({ error: 'profile update failed', detail: err.message }, { status: 500 });
   }

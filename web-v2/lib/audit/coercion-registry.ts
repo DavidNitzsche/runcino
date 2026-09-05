@@ -572,7 +572,12 @@ export const HANDED_BACK_FAILS = false;
 // null) ?? null`) is gone — the resolver-matched prescription's type is now
 // the ONLY source, with no coerced fallback to a passive stamp. Taken from
 // the scanner's own count, not from arithmetic on the diff.
-export const PERIPHERAL_BASELINE = 175;
+// 2026-09-05 · SHADOWOBS-1 · 175 → 174. `run-live-shadow-evaluation.ts`'s
+// `built.refusal ?? 'No input could be built.'` is gone: the loader now returns
+// a machine-readable `refusalCode` alongside the sentence, so the entry point
+// branches on the code rather than coercing an absent string into a generic
+// one. Taken from the scanner's own count, not from arithmetic on the diff.
+export const PERIPHERAL_BASELINE = 174;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
