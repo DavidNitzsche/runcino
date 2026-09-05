@@ -58,7 +58,7 @@ import {
   ROLLING_SEVEN_DAYS,
   type ComposePlanInput, type DOW,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { PER_CYCLE_PEAK_GROWTH } from './load-progression-contract';
 
 const START_MONDAY = '2026-08-24';
@@ -96,7 +96,7 @@ function cimInput(): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
     rxRaceSpecific: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
-    tPaceSec: tPaceFromGoal(goalSec, raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, raceDistanceMi),
     lthr: null,
     maxHr: null,
     bestRecentVdot: 47.8,

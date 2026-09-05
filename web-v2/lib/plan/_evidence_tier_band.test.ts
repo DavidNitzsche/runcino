@@ -67,7 +67,7 @@ import { TIER_TARGETS, demonstratedLoadCeilingTier, CYCLE_GROWTH_CEILING } from 
 import { buildSimPlan } from './sim-inputs';
 import type { SimInputs } from './sim-constants';
 import type { ThesisAtAuthoring } from './phase-answers';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 
 /** Counted so the file can state what it actually exercised (Rule 18). */
@@ -271,7 +271,7 @@ function tenKInput(thesis: ThesisAtAuthoring | null): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(2400, raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(2400, raceDistanceMi),
     lthr: 168,
     maxHr: 185,
     ...(thesis ? { thesisAtAuthoring: thesis } : {}),

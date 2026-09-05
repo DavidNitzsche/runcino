@@ -7,7 +7,8 @@ import {
   type ComposePlanInput,
   type DOW,
 } from './generate';
-import { buildWorkoutSpec, capSpecToDistance, totalDistanceMiFromSpec, tPaceFromGoal } from './spec-builder';
+import { buildWorkoutSpec, capSpecToDistance, totalDistanceMiFromSpec } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 const START_MONDAY = '2026-01-05';
 
@@ -35,7 +36,7 @@ function davidInput(): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(goalSec, distanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, distanceMi),
     lthr: null,
     maxHr: null,
   } as ComposePlanInput;

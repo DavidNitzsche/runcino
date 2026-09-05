@@ -585,11 +585,12 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
         canDisagree: true,
       },
       {
-        module: 'lib/plan/spec-builder.ts',
-        symbol: 'tPaceFromGoal',
-        at: 'lib/plan/spec-builder.ts:2128',
-        computes: 'Threshold from the runner GOAL time by a flat offset. '
-          + 'Measured live at 394 against the canonical 430.',
+        module: 'lib/plan/seed-from-onboarding.ts',
+        symbol: 'persistMaintenancePlan',
+        at: 'lib/plan/seed-from-onboarding.ts:564',
+        computes: 'The cold-start threshold for the very first plan, off a '
+          + 'measured or mileage-derived VDOT, inside the onboarding '
+          + 'transaction before the resolver can read the runner at all.',
         canDisagree: true,
       },
       {
@@ -608,20 +609,24 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
       between: [
         'lib/training/capacity-resolver.ts#resolveThresholdCapacity',
         'lib/training/vdot.ts#resolveCurrentTPace',
-        'lib/plan/spec-builder.ts#tPaceFromGoal',
+        'lib/plan/seed-from-onboarding.ts#persistMaintenancePlan',
       ],
       shouldOwn: 'lib/training/capacity-resolver.ts#resolveThresholdCapacity',
       because: 'Constitution 5 names this exact function as the one '
         + 'application-level answer, and it is the only one of the three '
-        + 'that carries confidence, source mode and evidence ids. '
-        + 'tPaceFromGoal is worse than a duplicate: it is a goal reaching '
-        + 'capacity directly, which Constitution 4 lists as a forbidden side '
-        + 'door.',
-      notRoutedBecause: 'The migration already has an owner and an '
-        + 'instrument: lib/plan/authoring-shadow-compare.ts exists to measure '
-        + 'exactly this gap, and the legacy cascade is still the fallback '
-        + 'rungs the canonical resolver itself calls. Routing callers is '
-        + 'that migration, not a registry entry.',
+        + 'that carries confidence, source mode and evidence ids.',
+      notRoutedBecause: 'THE GOAL SIDE DOOR IS CLOSED (THRESHOLD-OWNER-1, '
+        + '2026-09-05). spec-builder.tPaceFromGoal was the third competitor '
+        + 'in this row and it is DELETED: it read the stated goal and '
+        + 'returned a threshold, measured live at 394 s/mi against the '
+        + 'canonical 430, and its last caller (adapt.ts single-row rebuild) '
+        + 'now reads resolvePrescribedPaceAnchors. The executed-run grader '
+        + '(execution/reconstruct.ts) was migrated in the same pass and three '
+        + 'dead imports of the legacy cascade were removed. What is left is '
+        + 'not a side door: resolveCurrentTPace survives only as rungs 2-4 '
+        + 'the canonical resolver itself calls, and the seeder answers before '
+        + 'any belief exists. lib/training/_threshold_owner_scan.test.ts is '
+        + 'now the gate on this row and fails when a new owner appears.',
     },
     movesUpOn: [
       {
@@ -690,8 +695,9 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
         + 'guarantee long-distance performance and that durability is what '
         + 'bridges them. A flat offset from threshold is the population '
         + 'assumption doctrine 26 says to REPLACE once individual evidence '
-        + 'exists. And the goal branch is the same forbidden side door as '
-        + 'tPaceFromGoal.',
+        + 'exists. And the goal branch is the same forbidden side door '
+        + 'tPaceFromGoal was, which was deleted on 2026-09-05 · this one is '
+        + 'the last of that shape left in the engine.',
       notRoutedBecause: 'The fork is already gated on whether the caller '
         + 'passes resolved anchors, so the legacy branch is reached only by '
         + 'callers that have none. Closing it means giving every caller '

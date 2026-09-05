@@ -238,7 +238,17 @@ export async function loadKeySessionExecutions(
       ? runData.watchCompletionRef : null;
     const statusFallback = watchRef ? watchStatusByRef.get(watchRef) ?? null : null;
     const actual: ActualRead | null = runData
-      ? actualStimulus(runData, planned, session, { vdot, watchStatusFallback: statusFallback })
+      ? actualStimulus(runData, planned, session, {
+        vdot,
+        // THRESHOLD-OWNER-1 · the SAME canonical threshold `establishedPaceFor`
+        // reads three lines below, instead of `tPaceFromVdot(vdot)` inside the
+        // grader. The anchors were already resolved above; the grader was
+        // simply not being handed them. Null when the anchor read refused,
+        // which `paceDomain`'s caller already treats as "no reclassification"
+        // rather than as a domain (Rule 11).
+        tPaceSecPerMi: anchors?.thresholdSecPerMi ?? null,
+        watchStatusFallback: statusFallback,
+      })
       : null;
 
     // A run happened and nothing could describe its work. Missing evidence,

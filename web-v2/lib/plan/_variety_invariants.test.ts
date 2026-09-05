@@ -74,7 +74,8 @@ import {
   beginnerSurgeDose, beginnerHillReps,
   type ComposePlanInput, type DOW, type DayPlan,
 } from './generate';
-import { tPaceFromGoal, buildWorkoutSpec, strideRepsForPhase, STRIDE_REPS_BY_PHASE, STRIDE_DEFAULT_REPS, STRIDE_DAYS_PER_WEEK, extractLongSegments } from './spec-builder';
+import { buildWorkoutSpec, strideRepsForPhase, STRIDE_REPS_BY_PHASE, STRIDE_DEFAULT_REPS, STRIDE_DAYS_PER_WEEK, extractLongSegments } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { DRESS_REHEARSAL, dressRehearsalDose } from './long-run-rows';
 import { dayDoses, weeklyDoseBudgetMi } from './dosing';
 import { splitDay } from './intensity-distribution';
@@ -118,7 +119,7 @@ function inputFor(opts: {
     crossModes: [],
     rxQuality: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
     rxRaceSpecific: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
-    tPaceSec: tPaceFromGoal(goalSec, raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, raceDistanceMi),
     lthr: null,
     maxHr: null,
     ...(opts.bestRecentVdot != null ? { bestRecentVdot: opts.bestRecentVdot } : {}),

@@ -102,7 +102,7 @@ import {
 } from './generate';
 import { validateComposedPlan } from './validate';
 import { designedWeekendFindings, type PlacementRecord } from './combined-stress';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 /* ────────────────────────────────────────────────────────────── fixtures */
 
@@ -529,7 +529,7 @@ function cimInput(over: Partial<ComposePlanInput> = {}): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions('m'),
     rxRaceSpecific: inlinePrescriptions('m'),
-    tPaceSec: tPaceFromGoal(10800, 26.2),
+    tPaceSec: fixtureTPaceFromGoalPace(10800, 26.2),
     lthr: null,
     maxHr: null,
     midBlockRaces: DODGERS,

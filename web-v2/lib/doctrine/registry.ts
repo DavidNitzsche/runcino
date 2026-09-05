@@ -153,8 +153,8 @@ import {
 import { TRAINING_ESTIMATE_SOFT_CAP_VDOT } from '@/lib/training/vdot';
 import {
   TRAINING_LEAD_DELTA_THRESHOLD,
-  TRAINING_LEAD_MIN_SESSIONS,
-  TRAINING_LEAD_MIN_SPAN_DAYS,
+  TRAINING_TREND_MIN_SESSIONS,
+  TRAINING_TREND_MIN_SPAN_DAYS,
   REGRESSION_DELTA_THRESHOLD,
 } from '@/lib/plan/adapt';
 import {
@@ -18174,8 +18174,8 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     id: 'ADAPTATION.training-lead-quantum',
     binds: [
       'lib/plan/adapt.ts#TRAINING_LEAD_DELTA_THRESHOLD',
-      'lib/plan/adapt.ts#TRAINING_LEAD_MIN_SESSIONS',
-      'lib/plan/adapt.ts#TRAINING_LEAD_MIN_SPAN_DAYS',
+      'lib/plan/adapt.ts#TRAINING_TREND_MIN_SESSIONS',
+      'lib/plan/adapt.ts#TRAINING_TREND_MIN_SPAN_DAYS',
       'lib/training/vdot.ts#TRAINING_ESTIMATE_SOFT_CAP_VDOT',
     ],
     doc: 'Research/01-pace-zones-vdot.md',
@@ -18247,18 +18247,18 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       if (!sessions) {
         throw new Error('Research/01 §"Triggers to retest" no longer states a session count for sustained tempo evidence');
       }
-      if (TRAINING_LEAD_MIN_SESSIONS !== Number(sessions[1])) {
+      if (TRAINING_TREND_MIN_SESSIONS !== Number(sessions[1])) {
         throw new Error(
-          `TRAINING_LEAD_MIN_SESSIONS = ${TRAINING_LEAD_MIN_SESSIONS}, doctrine's sustained-evidence count is ${sessions[1]}`,
+          `TRAINING_TREND_MIN_SESSIONS = ${TRAINING_TREND_MIN_SESSIONS}, doctrine's sustained-evidence count is ${sessions[1]}`,
         );
       }
       const weeks = /sustained\s*(?:≥|>=)\s*(\d+)\s*weeks/i.exec(text);
       if (!weeks) {
         throw new Error('Research/01 §"Triggers to retest" no longer states a sustained-signal window in weeks');
       }
-      if (TRAINING_LEAD_MIN_SPAN_DAYS !== Number(weeks[1]) * 7) {
+      if (TRAINING_TREND_MIN_SPAN_DAYS !== Number(weeks[1]) * 7) {
         throw new Error(
-          `TRAINING_LEAD_MIN_SPAN_DAYS = ${TRAINING_LEAD_MIN_SPAN_DAYS}, doctrine's sustained window is `
+          `TRAINING_TREND_MIN_SPAN_DAYS = ${TRAINING_TREND_MIN_SPAN_DAYS}, doctrine's sustained window is `
           + `${weeks[1]} weeks (${Number(weeks[1]) * 7} days)`,
         );
       }

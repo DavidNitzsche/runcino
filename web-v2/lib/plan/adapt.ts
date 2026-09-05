@@ -90,6 +90,9 @@ import {
   TRAINING_LEAD_REANCHOR_DELTA,
   anchorVdotFromState,
 } from '@/lib/training/pace-anchor';
+// THRESHOLD-OWNER-1 · the ONE threshold a rebuilt quality row may be priced
+// at. Same function `recompute-paces.ts` and `reanchor-plan.ts` call.
+import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import { distanceMiOfMeta } from '@/lib/race/distance';
 import { distanceCategoryOrNull, type DistanceCategory } from '@/lib/race/distance-category';
 import { logSealSkip } from './seal';
@@ -1912,13 +1915,17 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
           )).rows[0];
           if (!row) continue;
           // Pace anchor · the row's own quality pace target when sane,
-          // else the goal-derived T (same fallback rebuildWorkoutDerivations
-          // uses). May be null → degraded path: type/label/notes only, the
-          // read pipeline's prescription fallback fills the rest.
+          // else the CANONICAL threshold anchor (same fallback
+          // rebuildWorkoutDerivations uses). THRESHOLD-OWNER-1 · this used to
+          // read "the goal-derived T"; it is now
+          // `resolvePrescribedPaceAnchors`, so a field test is sized off what
+          // the runner has demonstrated rather than off what they typed. May
+          // be null → degraded path: type/label/notes only, the read
+          // pipeline's prescription fallback fills the rest.
           const rowPace = row.pace_target_s_per_mi != null ? Number(row.pace_target_s_per_mi) : null;
           const tPace = (rowPace != null && rowPace >= 240 && rowPace <= 960)
             ? rowPace
-            : await deriveTPaceSecForRebuild(client, userId, row.race_id);
+            : await deriveTPaceSecForRebuild(userId);
           const notes = 'Field test. 1 mi easy warm-up, then 30 minutes at a hard, even effort · the fastest pace you could hold for about an hour. 1 mi easy cool-down. The last 20 minutes tell us your current threshold; paces recalibrate from it.';
           if (tPace != null) {
             const coreMi = Math.round((1800 / tPace) * 10) / 10;
@@ -2326,10 +2333,11 @@ async function rebuildWorkoutDerivations(
     if (!['tempo', 'threshold', 'intervals'].includes(type)) return;
     if (distanceMi == null || distanceMi <= 0) return;
 
-    // 2. Derive T-pace from the active race goal. No goal · skip ·
-    //    we'd produce a spec with no pace anchor, which is worse
-    //    than the existing stale-but-consistent spec.
-    const tPaceSec = await deriveTPaceSecForRebuild(client, userId, row.race_id);
+    // 2. THRESHOLD-OWNER-1 · the CANONICAL threshold anchor, not the race
+    //    goal. A refusal (no evidence, or an incoherent anchor set) · skip ·
+    //    we'd produce a spec with no pace anchor, which is worse than the
+    //    existing stale-but-consistent spec.
+    const tPaceSec = await deriveTPaceSecForRebuild(userId);
     if (tPaceSec == null) return;
 
     /* 3. Build the fresh spec from (type, current distance, T-pace, HR anchors).
@@ -2459,45 +2467,64 @@ async function rebuildWorkoutDerivations(
 }
 
 /**
- * Mirror of /api/plan/restore's deriveTPaceSec helper. Lives here so
- * adapt.ts doesn't take a cross-module dependency on a route file.
- * Returns null when no goal time is set or no race is linked · caller
- * skips the rebuild (the stale spec stays · better than wiping pace
- * info we can't reconstruct).
+ * THE THRESHOLD ANCHOR A REBUILT ROW IS PRICED AT · THRESHOLD-OWNER-1
+ * (2026-09-05).
+ *
+ * ── WHAT THIS WAS, AND WHY IT COULD NOT STAY ────────────────────────────────
+ *
+ * A mirror of `/api/plan/restore`'s helper that read the plan's race row,
+ * pulled `plan.goal.finish_time_s`, and handed it to `tPaceFromGoal`. So the
+ * pace written onto a shaved or field-tested quality row came from THE
+ * RUNNER'S ASPIRATION, not from anything they had run.
+ * `docs/BRAIN_CONSTITUTION.md` §4 lists "Goal Time → Fitness directly" as a
+ * forbidden side door and §G's hard rule is "goal ≠ current training
+ * capacity".
+ *
+ * Measured on the owner's own account, 2026-09-05: the goal path returned
+ * **394 s/mi** (6:34/mi) off his 3:00 CIM goal while
+ * `resolveThresholdCapacity` returned **430 s/mi** (7:10/mi) off his own
+ * corroborated threshold corpus, and every future threshold/tempo row in his
+ * live block already carried 430. A shave would have re-priced one of those
+ * rows 36 s/mi faster than its neighbours, and nothing would have looked
+ * wrong — the row is well-formed either way. That is the Rule 16 defect
+ * exactly.
+ *
+ * ── WHAT IT IS NOW ──────────────────────────────────────────────────────────
+ *
+ * `resolvePrescribedPaceAnchors` — the Pace Prescription layer over the four
+ * canonical capacity resolvers, and the SAME function `recompute-paces.ts`
+ * and `reanchor-plan.ts` already call. A shave, a recompute and a nightly
+ * re-anchor now price the same row off one number.
+ *
+ * It takes a `userId` and a date and NOTHING else, so this function no longer
+ * needs the plan's race id at all: the parameter is gone rather than accepted
+ * and ignored, which is §6's structural separation rather than a conventional
+ * one. The `raceId` the callers hold is still theirs to use for race-day
+ * pricing (Constitution §J); it just cannot reach a TRAINING pace from here.
+ *
+ * ── RULE 11 · THREE STATES ──────────────────────────────────────────────────
+ *
+ * The anchor read has an explicit refusal branch that carries no `anchors`
+ * field. A refusal returns null and the caller skips the rebuild, leaving the
+ * stale-but-consistent spec in place — which is what it already did when the
+ * goal was absent. It must NEVER fall back to the old cascade: "sometimes
+ * old, sometimes new" is Constitution §8, and it is how a coherence defect
+ * becomes invisible. A read that THREW is logged, not swallowed into a silent
+ * null.
  */
-async function deriveTPaceSecForRebuild(
-  client: { query: typeof pool.query },
-  userId: string,
-  raceId: string | null,
-): Promise<number | null> {
-  if (!raceId) return null;
+async function deriveTPaceSecForRebuild(userId: string): Promise<number | null> {
   try {
-    const { tPaceFromGoal } = await import('./spec-builder');
-    const race = (await client.query<{ meta: any; plan: any }>(
-      `SELECT meta, plan FROM races
-        WHERE user_uuid = $1::uuid AND slug = $2
-        LIMIT 1`,
-      [userId, raceId],
-    )).rows[0];
-    if (!race) return null;
-    const goalSec = Number(race.plan?.goal?.finish_time_s);
-    // RESOLVED AT READ TIME, NOT READ RAW.
-    //
-    // This was `Number(race.meta?.distanceMi)`, and that field is NULL on
-    // every race row written by a path that stores a label only — which is
-    // most of them. David's Santa Monica 10K carries `distanceLabel: "10K"`
-    // and no number, so this produced NaN, `tPaceFromGoal` could not size the
-    // race, and the T-pace anchored on that goal silently did not exist. A
-    // lever that CANNOT fire looks exactly like a lever with nothing to say.
-    //
-    // `distanceMiOfMeta` is the one parser the read paths converged on. It
-    // still returns null on genuinely unresolvable, which callers must treat
-    // as "unknown distance" — never default it.
-    const goalDistanceMi = distanceMiOfMeta(race.meta);
-    if (goalDistanceMi == null) return null;
-    const fromGoal = tPaceFromGoal(goalSec, goalDistanceMi);
-    return fromGoal ?? null;
-  } catch {
+    const read = await resolvePrescribedPaceAnchors(userId);
+    if (!read.ok) {
+      console.warn(
+        `[adapt] rebuild anchor REFUSED · user=${userId} · ${read.reason} · ${read.detail}`,
+      );
+      return null;
+    }
+    return read.anchors.thresholdSecPerMi;
+  } catch (e: unknown) {
+    // Named, never swallowed into "the runner has no threshold" (Rule 11).
+    console.warn('[adapt] rebuild anchor read failed:', e instanceof Error ? e.message : e);
     return null;
   }
 }
@@ -3594,17 +3621,84 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
   const nDays = drift?.n != null ? Number(drift.n) : 0;
   const best28 = drift?.best != null ? Number(drift.best) : null;
   if (nDays >= 8 && best28 != null && fitnessRegressionFires(oldVdot, best28)) {
+    /* ── THRESHOLD-OWNER-1 (2026-09-05) · THE CORROBORATION THIS ARM NEVER HAD
+     *
+     * CLAUDE.md Rule 21: "The bar to go UP may not be higher than the bar to
+     * come DOWN. When you write or touch an adaptation trigger, put its
+     * threshold beside its opposite number's and justify any asymmetry with a
+     * citation." Done, in `TRAINING_TREND_MIN_SESSIONS`' header. Four
+     * conditions guarded the upward path and none guarded this one.
+     *
+     * `nDays >= 8` is not corroboration and its own comment mis-describes it —
+     * "so one bad week can't re-anchor a season". It counts DISTINCT
+     * `snapshot_date` rows, which the projection cron writes every morning
+     * whether the runner ran or not, so eight of them means the cron ran eight
+     * times in four weeks. A single stale candidate re-read daily satisfies it.
+     * That is a data-presence question wearing a corroboration threshold's
+     * clothes — the exact shape CLAUDE.md Rule 9 names ("a threshold standing
+     * in for a question it cannot actually ask").
+     *
+     * The bar added here is not invented and it is not the upward path's:
+     * `Research/01` §"Triggers to retest" states it in the DOWNWARD row this
+     * arm implements — "Tempo runs unexpectedly hard for >=2 sessions; HR
+     * elevated | -1 to -2 VDOT". `ADAPTATION.training-lead-quantum` already
+     * parses that ">=2 sessions" out of the doc at build time and pins
+     * `TRAINING_TREND_MIN_SESSIONS` to it. Doctrine wrote this gate for this
+     * row; the engine had only ever spent it on the other one.
+     *
+     * NOT A WEAKENED GUARD (Rule 21's closing clause). The DELTA is untouched
+     * at 1.5, still 50% heavier than the upward 1.0, so a real drop is still
+     * caught sooner going down than a real gain is credited going up. The RACE
+     * arm above is untouched entirely — a race is a measurement and doctrine's
+     * first row says "update VDOT from race" with no session count at all. What
+     * changed is that a downward re-anchor now requires the runner's own
+     * sessions to say so, twice, over a fortnight, which is what the cited row
+     * asks for and what the upward arm has always had to prove.
+     *
+     * RULE 11 · a read that FAILS is not a read that found nothing. An
+     * unreadable candidate set leaves the anchor alone and says so, rather
+     * than re-anchoring a runner we could not measure. */
+    const { loadVdotInputs } = await import('@/lib/training/vdot-inputs');
+    const { bestRecentVdot: readBestVdot, VDOT_FULL_VALUE_DAYS } = await import('@/lib/training/vdot');
+    // Rule 11 · the failure is NAMED in the catch, not collapsed into a bare
+    // null that reads downstream as "no qualifying sessions". A runner we
+    // could not measure must not be re-anchored, and the log has to say which
+    // of the two happened.
+    const inputs = await loadVdotInputs(userId, today).catch((e: unknown) => {
+      console.warn(
+        '[adapt] fitness_regression/training_drift · candidate read failed · anchor left alone:',
+        e instanceof Error ? e.message : e,
+      );
+      return null;
+    });
+    if (!inputs) return null;
+    const read = readBestVdot(
+      inputs.raceCandidates, today, VDOT_FULL_VALUE_DAYS,
+      inputs.runCandidates, inputs.runFloorMi,
+    );
+    const qualifying = read.considered.filter(
+      (c) => c.source === 'run' && fitnessRegressionFires(oldVdot, c.vdot),
+    );
+    const span = sustainedTrainingTrend(qualifying.map((c) => c.date), today);
+    if (!span.sustained) return null;
+
     const delta = best28 - oldVdot;
     return {
       kind: 'fitness_regression',
       severity: 'warn',
-      reason: `28 days of training evidence reads VDOT ${best28.toFixed(1)} vs the plan's ${oldVdot.toFixed(1)} anchor (${delta.toFixed(1)}). Recommend re-anchoring paces to current fitness.`,
+      reason: `${span.sessions} quality sessions over ${span.spanDays} days read VDOT ${best28.toFixed(1)} vs the plan's ${oldVdot.toFixed(1)} anchor (${delta.toFixed(1)}). Recommend re-anchoring paces to current fitness.`,
       evidence: {
         source: 'training_drift',
         new_vdot: best28,
         old_vdot: oldVdot,
         delta,
         snapshot_days: nDays,
+        // The corroboration, recorded so the log can answer "on what
+        // evidence" and not only "that it happened" (Rule 21).
+        sessions: span.sessions,
+        span_days: span.spanDays,
+        newest_age_days: span.newestAgeDays,
+        citation: 'Research/01-pace-zones-vdot.md §"Triggers to retest"',
       },
     };
   }
@@ -3646,7 +3740,37 @@ async function detectFitnessRegression(userId: string): Promise<AdaptationTrigge
 export const TRAINING_LEAD_DELTA_THRESHOLD = TRAINING_LEAD_REANCHOR_DELTA;
 
 /**
- * How much corroboration a training lead needs before it is acted on.
+ * How much corroboration a training trend needs before it is acted on —
+ * IN EITHER DIRECTION.
+ *
+ * ── RENAMED 2026-09-05 · THRESHOLD-OWNER-1 · AND WHY THAT IS THE FIX ────────
+ *
+ * These were `TRAINING_LEAD_MIN_SESSIONS` / `_MIN_SPAN_DAYS` / `_MAX_AGE_DAYS`,
+ * and the name was the defect. The session count below is read out of
+ * doctrine's DOWNWARD row — `ADAPTATION.training-lead-quantum` parses it from
+ * "Tempo runs unexpectedly hard for >=2 sessions" and pins this constant to it
+ * in CI — and then it was applied to the UPWARD path only. The engine took
+ * doctrine's bar for coming DOWN, spent it going UP, and left the downward
+ * training arm gated on `COUNT(DISTINCT snapshot_date) >= 8`, which counts
+ * mornings the projection cron ran, not sessions the runner completed.
+ *
+ * Measured against CLAUDE.md Rule 21's own test — put each upward condition
+ * beside its downward counterpart:
+ *
+ *     UP  (detectTrainingLead)          DOWN (fitness_regression · training)
+ *     delta >= +1.0                     delta <  -1.5           doctrine-cited
+ *     >= 2 qualifying sessions          (none)                  HABIT
+ *     span >= 14 days                   (none)                  HABIT
+ *     newest <= 28 days old             (none)                  HABIT
+ *     winner must be a RUN              (none)                  HABIT
+ *     race-week suppression             race-week suppression   equal
+ *     non-provisional anchor            non-provisional anchor  equal
+ *     yields to pr_bank AND regression  yields to pr_bank       stricter up
+ *
+ * Four conditions on the way up, none on the way down, and doctrine licenses
+ * exactly one of the differences: the DELTA. "+1" up against "-1 to -2" down is
+ * the table's own asymmetry and it stays. The corroboration is the same row's
+ * same sentence and it is now the same bar both ways.
  *
  * `Research/01` §"Triggers to retest" qualifies both directions the same way:
  * the downward row fires on ">=2 sessions", and the upward HR row on "sustained
@@ -3666,8 +3790,8 @@ export const TRAINING_LEAD_DELTA_THRESHOLD = TRAINING_LEAD_REANCHOR_DELTA;
  * between is not sustained either. Requiring the span AND the count is what
  * separates a trend from a warm Tuesday.
  */
-export const TRAINING_LEAD_MIN_SESSIONS = 2;
-export const TRAINING_LEAD_MIN_SPAN_DAYS = 14;
+export const TRAINING_TREND_MIN_SESSIONS = 2;
+export const TRAINING_TREND_MIN_SPAN_DAYS = 14;
 
 /**
  * How stale the most recent qualifying session may be.
@@ -3678,7 +3802,7 @@ export const TRAINING_LEAD_MIN_SPAN_DAYS = 14;
  * must sit inside the same fresh window, or the lead is describing a fitness
  * the runner last showed a month ago.
  */
-export const TRAINING_LEAD_MAX_AGE_DAYS = 28;
+export const TRAINING_TREND_MAX_AGE_DAYS = 28;
 
 /**
  * Pure firing predicate · the signed mirror of `fitnessRegressionFires`, at the
@@ -3700,10 +3824,15 @@ export function trainingLeadFires(
 }
 
 /**
- * Is a set of qualifying sessions a SUSTAINED lead? Pure · exported so the gate
- * can be exercised without a database.
+ * Is a set of qualifying sessions a SUSTAINED trend? Pure · exported so the
+ * gate can be exercised without a database, and DIRECTION-FREE: the caller
+ * decides which sessions qualify (`trainingLeadFires` upward,
+ * `fitnessRegressionFires` downward) and this answers only whether that set is
+ * a trend. One quantity, one name (Rule 16) — it was `trainingLeadSustained`,
+ * which is how a bar doctrine states for the DOWNWARD row came to guard the
+ * upward one alone.
  */
-export function trainingLeadSustained(
+export function sustainedTrainingTrend(
   qualifyingDatesISO: string[],
   todayISO: string,
 ): { sustained: boolean; sessions: number; spanDays: number; newestAgeDays: number | null } {
@@ -3714,9 +3843,9 @@ export function trainingLeadSustained(
   const spanDays = Math.round((day(dates[dates.length - 1]) - day(dates[0])) / 86400000);
   const newestAgeDays = Math.round((day(todayISO) - day(dates[dates.length - 1])) / 86400000);
   return {
-    sustained: sessions >= TRAINING_LEAD_MIN_SESSIONS
-      && spanDays >= TRAINING_LEAD_MIN_SPAN_DAYS
-      && newestAgeDays <= TRAINING_LEAD_MAX_AGE_DAYS,
+    sustained: sessions >= TRAINING_TREND_MIN_SESSIONS
+      && spanDays >= TRAINING_TREND_MIN_SPAN_DAYS
+      && newestAgeDays <= TRAINING_TREND_MAX_AGE_DAYS,
     sessions,
     spanDays,
     newestAgeDays,
@@ -3875,7 +4004,7 @@ async function detectTrainingLead(userId: string): Promise<AdaptationTrigger | n
   const qualifying = read.considered.filter(
     (c) => c.source === 'run' && trainingLeadFires(oldVdot, c.vdot),
   );
-  const span = trainingLeadSustained(qualifying.map((c) => c.date), today);
+  const span = sustainedTrainingTrend(qualifying.map((c) => c.date), today);
   if (!span.sustained) return null;
 
   const delta = measured - oldVdot;

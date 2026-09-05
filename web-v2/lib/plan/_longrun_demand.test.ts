@@ -124,7 +124,7 @@ import {
 import {
   longRunWoWCeilingMi, isPlannedDeloadWeek, validateComposedPlan, PlanValidationError,
 } from './validate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { deriveBlockStrategy, type WeekAnswers, type BlockAnswers } from './strategy-contracts';
 import { buildWeeks, buildBlockAnswers } from './v5-block';
 
@@ -163,7 +163,7 @@ function cimInput(midBlockRaces?: ComposePlanInput['midBlockRaces']): ComposePla
     crossModes: [],
     rxQuality: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
     rxRaceSpecific: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
-    tPaceSec: tPaceFromGoal(goalSec, raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, raceDistanceMi),
     lthr: null,
     maxHr: null,
     bestRecentVdot: 47.8,

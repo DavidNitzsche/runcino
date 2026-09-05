@@ -30,7 +30,14 @@ import { pickWorkout, type WorkoutFamily } from './workout-library-static';
 import { recoveryDayAfterLongMi } from './plan-templates';
 import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
-import { parseRaceTime, tPaceFromVdot, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, resolveCurrentTPace, clampToSanePace, EVIDENCE_RUN_FLOOR_MI, type BelowTableAnchor } from '@/lib/training/vdot';
+// THRESHOLD-OWNER-1 (2026-09-05) · `tPaceFromVdot` and `resolveCurrentTPace`
+// REMOVED from this import. AUTHORING-CANONICAL-1 deleted every call to both
+// (the composer prices its threshold from `anchors.thresholdSecPerMi`); the
+// NAMES stayed bound in this line for four days with nothing using them.
+// `docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md` §4 is about exactly
+// that residue: a legacy path someone can still reach is not a deleted one,
+// and the composer is the most tempting place in the app to reach for it.
+import { parseRaceTime, vdotFromTpace, iPaceFromVdot, iPaceFromAnchorPace, vdotFromRace, predictRaceTime, bestRecentVdot as computeBestRecentVdot, clampToSanePace, EVIDENCE_RUN_FLOOR_MI, type BelowTableAnchor } from '@/lib/training/vdot';
 import { achievableRaceTarget, boundedRacePaceSPerMi } from '@/lib/training/achievable-target';
 // 2026-06-03 · Rule 16 · canonical max-HR reader · resolves
 // users.max_hr_override → hybrid 12-mo observed → users.max_hr → null.

@@ -293,7 +293,7 @@ describe('composeV5Today · state precedence', () => {
     expect(out.panel.dayState).toBe('race');
     expect(out.groups).toHaveLength(1);
     // A step's `sub` is its pace or HR target, and both come out of
-    // `prescriptionFor` → `paces(p)` / `hrTargets(p)` → `tPaceFromGoal(...)`.
+    // `prescriptionFor` → `paces(p)` / `hrTargets(p)` → `fixtureTPaceFromGoalPace(...)`.
     // That is the runner's own typed GOAL TIME back-solved to a threshold pace
     // and offset by Daniels constants: modelled, not measured.
     expect(out.groups[0].steps[0].sub?.modelled).toBe(true);

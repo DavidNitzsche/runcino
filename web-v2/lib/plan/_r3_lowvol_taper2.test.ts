@@ -16,7 +16,7 @@ import {
   type DOW,
 } from './generate';
 import { validateComposedPlan, type PlanValidationContext } from './validate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 const START_MONDAY = '2026-01-05';
 
@@ -53,7 +53,7 @@ function build(opts: {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(goalSec, opts.distMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, opts.distMi),
     lthr: null,
     maxHr: null,
   };

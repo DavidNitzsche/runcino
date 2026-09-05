@@ -39,7 +39,8 @@ import {
   composePlan, inlinePrescriptions,
   type ComposePlanInput, type ComposePlanResult, type DOW, type LevelKey,
 } from './generate';
-import { buildWorkoutSpec, tPaceFromGoal, conservativeVdotFromMileage } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import {
   anchorPaceFrom, bestRecentVdot, resolveCurrentTPace, tPaceFromVdot, iPaceFromAnchorPace,
   vdotFromTpace, iPaceFromVdot, tPaceFromAnchorPace,
@@ -94,7 +95,7 @@ function buildInput(o: {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: goalPaceSec != null ? tPaceFromGoal(goalSec, o.raceMi) : null,
+    tPaceSec: goalPaceSec != null ? fixtureTPaceFromGoalPace(goalSec, o.raceMi) : null,
     lthr: null,
     maxHr: null,
   };

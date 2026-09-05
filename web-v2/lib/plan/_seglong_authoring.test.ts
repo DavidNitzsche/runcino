@@ -14,7 +14,8 @@
 import { describe, it, expect } from 'vitest';
 import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import { composePlan, finalizeComposedPlan, inlinePrescriptions, type ComposePlanInput, type DOW } from './generate';
-import { tPaceFromGoal, extractLongSegments } from './spec-builder';
+import { extractLongSegments } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 const START_MONDAY = '2026-01-05';
 
@@ -58,7 +59,7 @@ function marathonInput(weeklyBaseMi = 60): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(goalSec, distanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, distanceMi),
     lthr: null,
     maxHr: null,
   } as ComposePlanInput;

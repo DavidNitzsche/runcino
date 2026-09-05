@@ -47,7 +47,7 @@ import {
   type ComposePlanInput, type ComposePlanResult, type DOW,
 } from '@/lib/plan/generate';
 import { validateComposedPlan } from '@/lib/plan/validate';
-import { tPaceFromGoal } from '@/lib/plan/spec-builder';
+import { fixtureTPaceFromGoalPace } from '@/lib/plan/_fixture-goal-tpace';
 import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import { resolveLoadTier } from '@/lib/plan/goal-tiers';
 import { predictRaceTime } from '@/lib/training/vdot';
@@ -371,7 +371,7 @@ function planInput(over: Partial<ComposePlanInput> & {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(goalSec, raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, raceDistanceMi),
     lthr: null,
     maxHr: null,
     ...rest,

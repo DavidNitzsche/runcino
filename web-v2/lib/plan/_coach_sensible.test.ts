@@ -353,7 +353,7 @@ describe('COACH-SENSIBLE · would a coach hand this week to this runner?', () =>
     // GONE, AND THAT IS THE FIX.
     //
     // It read `toBeGreaterThan`, and it was calibrated on a real defect: the
-    // block's plan-wide `tPaceSec` was `min(tPaceFromGoal(goal), currentT)`,
+    // block's plan-wide `tPaceSec` was `min(fixtureTPaceFromGoalPace(goal), currentT)`,
     // i.e. the GOAL's threshold pace for this sub-3 runner, so an easy pace
     // that merely equalled `tPaceSec + 80` would have been the easy band
     // priced off an ambition. There is no goal blend any more: `tPaceSec` IS

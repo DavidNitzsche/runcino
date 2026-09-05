@@ -33,7 +33,7 @@ import {
   composePlan, finalizeComposedPlan, inlinePrescriptions,
   type ComposePlanInput, type DOW, type DayPlan,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import {
   isTravelDay, shapeTravelWindows, travelDatesBetween,
   TRAVEL_EASY_NOTE, type TravelWindow,
@@ -69,7 +69,7 @@ function cimInput(overrides: Partial<ComposePlanInput> = {}): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
     rxRaceSpecific: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
-    tPaceSec: tPaceFromGoal(goalSec, raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, raceDistanceMi),
     lthr: null,
     maxHr: null,
     bestRecentVdot: 45.1,

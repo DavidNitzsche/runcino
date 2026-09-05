@@ -34,7 +34,7 @@ import {
   type ComposePlanInput,
   type DOW,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { tPaceFromVdot } from '@/lib/training/vdot';
 import { cardFromSpec } from '@/lib/training/spec-card';
 
@@ -45,7 +45,7 @@ function cimBlock(): ComposePlanInput {
   const distanceMi = 26.2;
   const goalSec = 10800;
   const currentT = tPaceFromVdot(44.1);
-  const goalT = tPaceFromGoal(goalSec, distanceMi);
+  const goalT = fixtureTPaceFromGoalPace(goalSec, distanceMi);
   return {
     raceDistanceMi: distanceMi, goalSec,
     goalPaceSec: Math.round(goalSec / distanceMi),

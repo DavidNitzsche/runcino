@@ -481,7 +481,13 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/plan/adapt.ts::actionsForTrigger',
   'lib/plan/adapt.ts::actionsForTrigger',
   'lib/plan/adapt.ts::applyAdaptations',
-  'lib/plan/adapt.ts::deriveTPaceSecForRebuild',
+  // 2026-09-05 · THRESHOLD-OWNER-1 · one fewer. `deriveTPaceSecForRebuild`
+  // read the plan's race row and handed the runner's GOAL to
+  // `tPaceFromGoal`, swallowing every failure on the way into a bare
+  // `catch { return null }`. It no longer takes a race at all: it reads
+  // `resolvePrescribedPaceAnchors`, branches on the refusal explicitly,
+  // and logs a thrown read rather than collapsing it into "this runner
+  // has no threshold" (Rule 11). EMPTIED_BASELINE 353 -> 352.
   'lib/plan/adapt.ts::detectFitnessRegression',
   'lib/plan/adapt.ts::detectFitnessRegression',
   'lib/plan/adapt.ts::detectFitnessRegression',
@@ -742,7 +748,7 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // .catch()`) is fixed to `rowOrNull` in the same change; the other
 // (`loadEffectiveRaceTarget`'s catch) is a genuine, argued exemption — see
 // its entry above. Net +1, not +2: 352 -> 353.
-export const EMPTIED_BASELINE = 353;
+export const EMPTIED_BASELINE = 352;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

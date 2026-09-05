@@ -20,9 +20,16 @@ import {
   type PlannedSession,
 } from './reconstruct';
 import { runPhases, watchStoppedInsideWork, workToleranceShare, asRunData } from '@/lib/runs/run-shape';
+import { tPaceFromVdot } from '@/lib/training/vdot';
 
 const T = 462; // David's T-pace at VDOT 44.1, 7:42/mi.
 const VDOT = 44.1;
+/* THRESHOLD-OWNER-1 · the grader now takes the CANONICAL threshold rather
+ * than re-deriving one from a VDOT. These fixtures have no runner and no
+ * corpus, so they assert the same number the old code computed — which
+ * keeps every expectation below byte-identical while the production caller
+ * (`lib/execution/load.ts`) passes `anchors.thresholdSecPerMi`. */
+const T_PACE = tPaceFromVdot(VDOT);
 
 /** A 2 mi warm-up, 4 mi of tempo, 2 mi cool-down — the shape of every quality
  *  day in the AFC block. */
@@ -222,7 +229,7 @@ describe('actual stimulus', () => {
   });
 
   it('takes the work from the watch s own phases and nothing else', () => {
-    const a = actualStimulus(watchRow, planned, tempoSession(), { vdot: VDOT });
+    const a = actualStimulus(watchRow, planned, tempoSession(), { vdot: VDOT, tPaceSecPerMi: T_PACE });
     expect(a?.basis).toBe('watch-phases');
     // 4 miles, not the 7.56 the runner covered. Warm-up and cool-down are not
     // the stimulus, and every distance-heuristic read of this run counted them.
@@ -236,7 +243,7 @@ describe('actual stimulus', () => {
     // conflated "too slow" with "too fast". The canonical resolver re-grades
     // the work phase from its actuals as the session the plan row names, and
     // this 446.5 s/mi block against its target is `slow`.
-    const a = actualStimulus(watchRow, planned, tempoSession(), { vdot: VDOT });
+    const a = actualStimulus(watchRow, planned, tempoSession(), { vdot: VDOT, tPaceSecPerMi: T_PACE });
     expect(a?.watchStatus).toBe('abandoned');
     expect(a?.workVerdicts).toEqual(['slow']);
     // 1140 of 1780 graded seconds inside the band, per the device, against the
@@ -247,14 +254,14 @@ describe('actual stimulus', () => {
   it('accepts the status from the completion blob for rows written before it was stored', () => {
     const noStatus = asRunData({ ...watchRow, status: undefined });
     const a = actualStimulus(noStatus, planned, tempoSession(), {
-      vdot: VDOT, watchStatusFallback: 'abandoned',
+      vdot: VDOT, tPaceSecPerMi: T_PACE, watchStatusFallback: 'abandoned',
     });
     expect(a?.watchStatus).toBe('abandoned');
   });
 
   it('returns null — never a zero — when a run exists and no basis can read it', () => {
     const opaque = asRunData({ date: '2026-07-07', distanceMi: 7.5 });
-    expect(actualStimulus(opaque, planned, tempoSession(), { vdot: VDOT })).toBeNull();
+    expect(actualStimulus(opaque, planned, tempoSession(), { vdot: VDOT, tPaceSecPerMi: T_PACE })).toBeNull();
   });
 
   it('reads the whole run where the whole run is the work', () => {
@@ -266,7 +273,7 @@ describe('actual stimulus', () => {
       asRunData({ date: '2026-07-12', distanceMi: 12.6, movingTimeS: 6276 }),
       longPlanned,
       { dateISO: '2026-07-12', type: 'long', isQuality: false, isLong: true, distanceMi: 12, paceTargetSPerMi: 480, spec: null },
-      { vdot: VDOT },
+      { vdot: VDOT, tPaceSecPerMi: T_PACE },
     );
     expect(a?.basis).toBe('whole-run');
     expect(a?.stimulus.workMi).toBeCloseTo(12.6, 2);

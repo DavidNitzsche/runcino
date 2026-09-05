@@ -42,7 +42,8 @@ import {
   type DayPlan,
 } from './generate';
 import { validateComposedPlan } from './validate';
-import { tPaceFromGoal, buildWorkoutSpec } from './spec-builder';
+import { buildWorkoutSpec } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import {
   buildReRampActions,
   reRampWeeklyCeilingMi,
@@ -81,7 +82,7 @@ function davidCimInput(midBlockRaces?: ComposePlanInput['midBlockRaces']): Compo
     crossModes: [],
     rxQuality: inlinePrescriptions('m'),
     rxRaceSpecific: inlinePrescriptions('m'),
-    tPaceSec: tPaceFromGoal(10800, 26.2),
+    tPaceSec: fixtureTPaceFromGoalPace(10800, 26.2),
     lthr: null,
     maxHr: null,
     midBlockRaces,
@@ -278,7 +279,7 @@ describe('MIDRACE-1 · mid-block tune-up race embedding', () => {
     expect(friday.type).toBe('threshold');
     expect(friday.subLabel).toBe(MIDRACE_RESUME_RX);
     expect(friday.notes).toContain('Research/04 §5.3');
-    const tSec = tPaceFromGoal(10800, 26.2);
+    const tSec = fixtureTPaceFromGoalPace(10800, 26.2);
     if (tSec == null) throw new Error('fixture T pace unresolvable');
     const resume = buildWorkoutSpec('threshold', friday.distanceMi, tSec, null, friday.subLabel).spec as {
       rep_count: number; rep_distance_mi: number; rep_rest_s: number; rep_pace_s_per_mi: number | null;

@@ -25,7 +25,7 @@ import {
   composePlan, finalizeComposedPlan, inlinePrescriptions,
   type ComposePlanInput, type DOW, type DayPlan, type EmbeddedRaceSummary,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { ROLE_POST_QUALITY_FREE_DAYS } from '@/lib/race/race-role';
 
 const START_MONDAY = '2026-08-31';
@@ -57,7 +57,7 @@ function cimInput(midBlockRaces: NonNullable<ComposePlanInput['midBlockRaces']>)
     crossModes: [],
     rxQuality: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
     rxRaceSpecific: inlinePrescriptions(distanceCategoryOrThrow(raceDistanceMi)),
-    tPaceSec: tPaceFromGoal(goalSec, raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, raceDistanceMi),
     lthr: null,
     maxHr: null,
     bestRecentVdot: 45.1,
