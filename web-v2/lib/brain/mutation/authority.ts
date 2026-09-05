@@ -4,11 +4,18 @@
  * David, 2026-09-05: "AUTOMATIC_ADAPTATION_AUTHORITY=false is meaningless if
  * reanchorActivePlan can bypass it and rewrite 76 workouts."
  *
- * He is right, and it is verified: `lib/plan/reanchor-plan.ts` never consults
+ * He is right, and it is verified: `lib/plan/reanchor-plan.ts` never consulted
  * the seam, and it is called from `app/api/cron/snapshot-projections/route.ts`,
  * an unattended scheduled job. On 2026-09-02 it moved VDOT 46.3 to 47.7 and
  * rewrote 76 workouts on a live plan while the flag said no automatic coaching
  * adaptation was permitted.
+ *
+ * CLOSED 2026-09-05 (REANCHORPROPOSES-1). The first fix classified that writer
+ * as `COACHING_ADAPTATION` and handed it a named hold, which let it go on
+ * writing — his verdict: "a hold that continues writing is an exemption with
+ * better paperwork." The self-heal now PROPOSES; the plan moves under
+ * `RUNNER_ACCEPTED`, on his tap. No `hold` is passed anywhere in the pace
+ * layer, and `lib/plan/_reanchor_proposes.test.ts` fails if one returns.
  *
  * ── THE CONSOLIDATION, AND WHY IT IS NOT A NEW LAYER ───────────────────────
  *

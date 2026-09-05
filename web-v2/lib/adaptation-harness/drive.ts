@@ -99,10 +99,23 @@ export async function bump(pullbackApplied = false) {
   return tryAdaptiveBump(OWNER_UUID, pullbackApplied);
 }
 
-/** The pace axis. Re-derives every future prescription from a new anchor. */
+/**
+ * The pace axis. Re-derives every future prescription from a new anchor.
+ *
+ * REANCHORPROPOSES-1 (2026-09-05) · declares `RUNNER_ACCEPTED`, because that is
+ * the class of the ONLY production path that now reaches this function
+ * standalone: the runner tapping accept on a reprice card
+ * (`applyReanchorProposal`) or answering the race-authority question. The
+ * harness stands in for him. It does not declare `COACHING_ADAPTATION`, which
+ * `mutationIsPermitted` refuses while the seam is closed — that is the
+ * `apply()` wrapper below, whose whole job is to prove the refusal still holds.
+ */
 export async function repaceTo(planId: string, vdot: number) {
   const { recomputePacesForPlan } = await import('@/lib/plan/recompute-paces');
-  return recomputePacesForPlan(planId, vdot, { source: 'adaptation-harness' });
+  return recomputePacesForPlan(planId, vdot, {
+    source: 'adaptation-harness',
+    authority: 'RUNNER_ACCEPTED',
+  });
 }
 
 /** The missed-session detector, alone. */

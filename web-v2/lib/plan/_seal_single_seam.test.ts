@@ -252,6 +252,46 @@ describe('GUARD 3 · no unattended path reaches a plan mutation around the seam'
     ).toEqual([]);
   });
 
+  /**
+   * REANCHORPROPOSES-1 (2026-09-05) · THE WRITER THAT WAS OUTSIDE THIS SEAM.
+   *
+   * `adaptation-authority.ts`'s own header used to carry `reanchorActivePlan`
+   * under "what this does NOT gate, and why", deliberately left for the owner
+   * to rule on. He ruled: "AUTOMATIC_ADAPTATION_AUTHORITY=false is meaningless
+   * if reanchorActivePlan can bypass it and rewrite 76 workouts." It now
+   * proposes, and this guard is what keeps it that way.
+   *
+   * The check is on the DECLARED AUTHORITY rather than on the presence of a
+   * write, because the write statements have to stay — the accept path and the
+   * race-authority answer both reach them. What may never come back is an
+   * unattended caller with a class the seam refuses plus a hold that lets it
+   * through anyway.
+   */
+  it('the daily self-heal cannot write the plan on its own authority', () => {
+    const f = join(WEB, 'lib', 'plan', 'reanchor-plan.ts');
+    const c = code(readFileSync(f, 'utf8'));
+    expect(c.length, 'reanchor-plan is gone or the stripper broke').toBeGreaterThan(5000);
+    expect(
+      c.includes("authority: 'COACHING_ADAPTATION'"),
+      'reanchor-plan declares the class the seam refuses. The only way that becomes a working '
+      + 'write is a hold, and a hold that continues writing is an exemption with better paperwork.',
+    ).toBe(false);
+    expect(
+      /^\s*hold:\s*\{/m.test(c),
+      'a hold reappeared in the self-heal.',
+    ).toBe(false);
+    const fn = /export async function reanchorActivePlan[\s\S]*?\n}\n/.exec(c)?.[0] ?? '';
+    expect(fn.length, 'reanchorActivePlan is gone or renamed').toBeGreaterThan(200);
+    expect(
+      fn.includes("'propose'"),
+      'the unattended entry point no longer asks for the propose half.',
+    ).toBe(true);
+    expect(
+      fn.includes('mutatePlan'),
+      'reanchorActivePlan reaches the mutation boundary directly again.',
+    ).toBe(false);
+  });
+
   it('the volume bump refuses at the seam BEFORE it reads anything', () => {
     const f = join(WEB, 'lib', 'plan', 'adaptive-ramp.ts');
     const c = code(readFileSync(f, 'utf8'));

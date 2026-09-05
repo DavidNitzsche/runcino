@@ -154,6 +154,14 @@ const EVIDENCE_LABELS: Record<string, string> = {
   days_since_test: 'Days since last test',
   weekly_mi: 'Week volume, miles',
   long_mi: 'Longest run, miles',
+  // REANCHORPROPOSES-1 · what a repricing measured.
+  anchor_vdot_now: 'Block is priced at',
+  anchor_vdot_proposed: 'Your evidence reads',
+  evidence_source: 'Evidence came from',
+  anchor_confidence: 'Confidence in that read',
+  anchor_source: 'How the anchor is known',
+  ends_calibration_intro: 'Ends the calibration intro',
+  priced_before_canonical_layer: 'Block predates the canonical pace layer',
 };
 
 /**
@@ -293,6 +301,28 @@ function reassessOnFrom(ev: Record<string, unknown>): string | null {
  * place a second date belongs (see `V5ProposalWire.dateISO`).
  */
 function affectedFrom(p: PendingProposal): V5ProposalWorkoutWire[] {
+  // REANCHORPROPOSES-1 · a repricing touches the whole remaining block, and
+  // listing 77 rows here would be the seventy-seven-cards defect wearing a
+  // different hat. One row, naming the count, from the day it takes effect.
+  const r = p.actionPayload?.reprice;
+  if (p.actionKind === 'reprice' && r != null) {
+    const n = numberOrNull(r.workoutsAffected);
+    const rows: V5ProposalWorkoutWire[] = [{
+      dateISO: p.workoutDateISO,
+      what: n == null || n === 1
+        ? 'Every prescribed session from this day on'
+        : `${n} prescribed sessions, from this day to the end of the block`,
+    }];
+    const sealed = numberOrNull(r.workoutsSealed);
+    if (sealed != null && sealed > 0) {
+      rows.push({
+        dateISO: p.workoutDateISO,
+        what: `${sealed} day${sealed === 1 ? '' : 's'} left alone because you already ran ${sealed === 1 ? 'it' : 'them'}`,
+      });
+    }
+    return rows;
+  }
+
   const ev = p.evidence ?? {};
   const type = firstString(ev.planned_type);
   const mi = numberOrNull(ev.planned_distance_mi);

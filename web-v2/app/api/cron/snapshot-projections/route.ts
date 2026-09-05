@@ -26,7 +26,7 @@ import {
 import { recordProjectionSnapshot } from '@/lib/training/projection-snapshots';
 import { loadEffectiveMaxHr, ratchetUsersMaxHr } from '@/lib/training/max-hr';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
-import { reanchorActivePlan, isReanchorDeferral } from '@/lib/plan/reanchor-plan';
+import { reanchorActivePlan, isReanchorDeferral, isReanchorProposed } from '@/lib/plan/reanchor-plan';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { refreshRunnerCalibration } from '@/lib/coach/runner-calibration';
 import { resolveNextAGoalProjection } from '@/lib/training/goal-projection-resolve';
@@ -225,7 +225,7 @@ export async function POST(req: NextRequest) {
   // hardcoded-user append. (Pre-signup this force-included David's UUID
   // as legacy-row paranoia; every active plan now carries user_uuid.)
 
-  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { mode: string; from: number | null; to: number; workouts: number; sealed: number; cleared_provisional: boolean }; reanchor_skipped?: { plan_id: string; reason: string; window_hours: number }; calibration?: { data_quality: string; workouts: number; quality: number } | { error: string }; projectionAlert?: { race_slug: string; sent: boolean; reason: string; recorded: boolean } | { error: string }; error?: string }> = [];
+  const results: Array<{ user_uuid: string; vdot: number | null; snapshots: Array<{ distance: number; sec: number | null }>; reanchored?: { mode: string; from: number | null; to: number; workouts: number; sealed: number; cleared_provisional: boolean }; reanchor_skipped?: { plan_id: string; reason: string; window_hours: number }; reanchor_proposed?: { plan_id: string; arm: string; status: string; proposal_id?: number; workouts?: number; sealed?: number; mean_anchor_delta_s_per_mi?: number; superseded_id?: number | null; reason?: string; error?: string; until?: string }; calibration?: { data_quality: string; workouts: number; quality: number } | { error: string }; projectionAlert?: { race_slug: string; sent: boolean; reason: string; recorded: boolean } | { error: string }; error?: string }> = [];
   for (const u of userIds) {
     try {
       const today = await runnerToday(u);
@@ -277,11 +277,39 @@ export async function POST(req: NextRequest) {
         // 2026-08-28 · a same-morning deferral to the 03:00 adapter is a
         // recorded no-op, not silence — the audit trail must distinguish
         // "stood down for the adapter's move" from "nothing to do".
+        // REANCHORPROPOSES-1 (2026-09-05) · the third branch, and the one this
+        // job now takes on every ordinary day. The self-heal RAISES A CARD
+        // instead of writing; `reanchor_proposed.status` carries the writer's
+        // own verdict so `written`, `unchanged`, `quiet_after_dismissal`,
+        // `no_target`, `refused` and `read_failed` are six distinguishable
+        // facts in the response rather than one absent key (Rule 11). The
+        // `reanchored` branch below survives because `forceReanchorActivePlan`
+        // still applies on the runner's own race-authority answer.
         ...(r.reanchor && isReanchorDeferral(r.reanchor)
           ? { reanchor_skipped: { plan_id: r.reanchor.planId, reason: r.reanchor.reason, window_hours: r.reanchor.windowHours } }
-          : r.reanchor
-            ? { reanchored: { mode: r.reanchor.mode, from: r.reanchor.fromVdot, to: r.reanchor.toVdot, workouts: r.reanchor.workoutsUpdated, sealed: r.reanchor.workoutsSealed, cleared_provisional: r.reanchor.clearedProvisional } }
-            : {}),
+          : r.reanchor && isReanchorProposed(r.reanchor)
+            ? { reanchor_proposed: {
+                plan_id: r.reanchor.planId,
+                arm: r.reanchor.arm,
+                status: r.reanchor.outcome.status,
+                ...(r.reanchor.outcome.status === 'written'
+                  ? {
+                      proposal_id: r.reanchor.outcome.proposalId,
+                      workouts: r.reanchor.outcome.payload.workoutsAffected,
+                      sealed: r.reanchor.outcome.payload.workoutsSealed,
+                      mean_anchor_delta_s_per_mi: r.reanchor.outcome.payload.meanAnchorDeltaSecPerMi,
+                      superseded_id: r.reanchor.outcome.supersededId,
+                    }
+                  : r.reanchor.outcome.status === 'read_failed'
+                    ? { error: r.reanchor.outcome.error.message }
+                    : r.reanchor.outcome.status === 'refused' || r.reanchor.outcome.status === 'unchanged'
+                      || r.reanchor.outcome.status === 'no_target'
+                      ? { reason: r.reanchor.outcome.reason }
+                      : { until: r.reanchor.outcome.untilISO }),
+              } }
+            : r.reanchor
+              ? { reanchored: { mode: r.reanchor.mode, from: r.reanchor.fromVdot, to: r.reanchor.toVdot, workouts: r.reanchor.workoutsUpdated, sealed: r.reanchor.workoutsSealed, cleared_provisional: r.reanchor.clearedProvisional } }
+              : {}),
         calibration,
         ...(projectionAlert ? { projectionAlert } : {}),
       });

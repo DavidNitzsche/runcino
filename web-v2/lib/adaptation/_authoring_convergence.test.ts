@@ -49,8 +49,12 @@ describe('CANNOT-CONVERGE-1 · a plan nothing is pricing must be re-priced, and 
   it('GUARD 2 no longer returns null for a runner with no measured VDOT', () => {
     // The exact shape of the defect: `if (measuredVdot == null …) return null;`
     expect(/measuredVdot == null[^\n]*\)\s*return null;/.test(REANCHOR)).toBe(false);
-    // And what stands in its place.
-    expect(REANCHOR).toContain('return reanchorOffCanonicalPrior(userId, today);');
+    // And what stands in its place. REANCHORPROPOSES-1 (2026-09-05) · the arm
+    // now takes a mode, and the UNATTENDED caller must pass 'propose'. Asserted
+    // with the mode included rather than loosened to a bare name: an edit that
+    // changed this call site to 'apply' would restore exactly the unattended
+    // write the conversion removed, and a name-only assertion could not see it.
+    expect(REANCHOR).toContain("return reanchorOffCanonicalPrior(userId, today, 'propose');");
   });
 
   it('the prior-priced arm never claims a measurement', () => {

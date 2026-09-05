@@ -87,6 +87,12 @@ import { rowOrNull } from '@/lib/db/read';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import { mutatePlan } from './mutate';
+import {
+  writeReanchorProposal, pricedAnchorsOf,
+  type RepriceProposalOutcome,
+} from './reanchor-proposal';
+import type { RepriceArm } from './reprice-payload';
+import { fmtPace } from '@/lib/format/run';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 import { recordPaceZoneEvent, type PaceZoneEvidenceSource } from './pace-drop-event';
 import {
@@ -326,11 +332,112 @@ export interface ReanchorDeferral {
   windowHours: number;
 }
 
-export type ReanchorOutcome = ReanchorResult | ReanchorDeferral | null;
+/**
+ * REANCHORPROPOSES-1 (2026-09-05) · WHAT THE UNATTENDED PATH RETURNS NOW.
+ *
+ * The daily self-heal no longer changes a pace. It calculates exactly what it
+ * always calculated and raises a card, and this is what it reports having done
+ * with it. `outcome` is the writer's own status, so a cron response can tell
+ * `written` from `unchanged` from `read_failed` — a re-anchor that goes QUIET
+ * is the one failure this conversion could introduce, and it must be visible
+ * in the response rather than inferable from its absence (Rule 11).
+ */
+export interface ReanchorProposed {
+  planId: string;
+  proposed: true;
+  arm: RepriceArm;
+  outcome: RepriceProposalOutcome;
+}
+
+export type ReanchorOutcome = ReanchorResult | ReanchorDeferral | ReanchorProposed | null;
 
 /** Discriminant helper for consumers of `ReanchorOutcome`. */
 export function isReanchorDeferral(o: ReanchorOutcome): o is ReanchorDeferral {
   return o != null && (o as ReanchorDeferral).skipped === true;
+}
+
+/** Discriminant helper · the card-raising branch. */
+export function isReanchorProposed(o: ReanchorOutcome): o is ReanchorProposed {
+  return o != null && (o as ReanchorProposed).proposed === true;
+}
+
+/**
+ * Which half of the self-heal is being asked for.
+ *
+ *   'propose' · calculate and raise a card. The ONLY mode an unattended
+ *               scheduled job may use, and the only one `reanchorActivePlan`
+ *               offers.
+ *   'apply'   · write the plan. Reached from exactly two places, both of them
+ *               the runner: `applyReanchorProposal` (he tapped accept) and
+ *               `forceReanchorActivePlan` (he answered the race-authority
+ *               question). Both declare `RUNNER_ACCEPTED`, which
+ *               `mutationIsPermitted` allows outright, so no hold is needed
+ *               and none is passed.
+ */
+export type ReanchorMode = 'propose' | 'apply';
+
+/**
+ * The runner-facing sentence for a repricing, in one place.
+ *
+ * Rule 16 · the card's `why`, the log line and the intent all say the same
+ * thing because they all call this. Coach voice: no em dash, no exclamation,
+ * and it names what was measured rather than how the engine feels about it —
+ * `describesEvidence` is applied at the write site and refuses anything that
+ * does not.
+ */
+export function repriceReason(opts: {
+  arm: RepriceArm;
+  fromThresholdSecPerMi: number | null;
+  toThresholdSecPerMi: number | null;
+  evidence?: ReanchorEvidence | null;
+}): string {
+  const to = fmtPace(opts.toThresholdSecPerMi);
+  const from = fmtPace(opts.fromThresholdSecPerMi);
+  if (opts.arm === 'canonical-prior') {
+    return 'This block was priced before the canonical pace layer read your history. '
+      + (to != null
+        ? `Your evidence puts threshold at ${to} per mile, and the block is written at ${from ?? 'another number'}.`
+        : 'Repricing it puts every session on the anchors the rest of the app reads.');
+  }
+  const source = opts.evidence?.source === 'race' ? 'A race result' : 'Your recent training';
+  if (to == null || from == null) {
+    return `${source} moved the fitness anchor this block is priced from.`;
+  }
+  return `${source} puts your threshold at ${to} per mile. This block is written at ${from} per mile.`;
+}
+
+/**
+ * Say what happened to the card, on every run, at a level the operator reads.
+ *
+ * The hazard this conversion introduces is silence: the engine calculates a
+ * repricing, the write path is gone, and nothing appears. Every branch of the
+ * writer therefore prints, and `refused` / `read_failed` print as errors so
+ * they surface in Railway rather than scrolling past.
+ */
+function logProposalOutcome(arm: RepriceArm, planId: string, o: RepriceProposalOutcome): void {
+  const head = `[reanchorPlan] ${arm} PROPOSED · plan=${planId} ·`;
+  switch (o.status) {
+    case 'written':
+      console.log(`${head} card ${o.proposalId} raised · ${o.payload.workoutsAffected} sessions · `
+        + `mean ${Math.round(o.payload.meanAnchorDeltaSecPerMi)} s/mi`
+        + (o.supersededId != null ? ` · superseded card ${o.supersededId}` : ''));
+      return;
+    case 'unchanged':
+      console.log(`${head} no new card · ${o.reason}`);
+      return;
+    case 'quiet_after_dismissal':
+      console.log(`${head} not re-raised · card ${o.dismissedProposalId} was dismissed and the engine `
+        + `still believes the same thing · quiet until ${o.untilISO}`);
+      return;
+    case 'no_target':
+      console.log(`${head} nothing to reprice · ${o.reason}`);
+      return;
+    case 'refused':
+      console.error(`${head} REFUSED · ${o.reason} · the runner sees no card and his paces do not move`);
+      return;
+    case 'read_failed':
+      console.error(`${head} READ FAILED · ${o.error.message} · this is NOT "nothing to propose"`);
+  }
 }
 
 /**
@@ -364,6 +471,7 @@ export function isReanchorDeferral(o: ReanchorOutcome): o is ReanchorDeferral {
 async function reanchorOffCanonicalPrior(
   userId: string,
   today: string,
+  mode: ReanchorMode,
 ): Promise<ReanchorOutcome> {
   // `rowOrNull`, not a `.catch(() => ({rows: []}))`: a failed read and "this
   // runner has no active plan" would otherwise be the same empty, and this
@@ -404,18 +512,45 @@ async function reanchorOffCanonicalPrior(
   // anchors and reads this only for the race-target input and the stamp.
   const priorVdot = anchors.basis.threshold.vdot;
   const sourceMode = anchors.basis.threshold.sourceMode;
+  const priced = pricedAnchorsOf(planRow.authored_state);
+
+  if (mode === 'propose') {
+    const outcome = await writeReanchorProposal({
+      userUuid: userId,
+      planId: planRow.id,
+      arm: 'canonical-prior',
+      todayISO: today,
+      fromVdot: st.pace_blend?.season_anchor_vdot != null ? Number(st.pace_blend.season_anchor_vdot) : null,
+      toVdot: priorVdot,
+      // NOT `measured_vdot`. The canonical mode is carried through as it is, so
+      // a reader can see exactly how well this number is known.
+      toSource: sourceMode,
+      measured: false,
+      pricedAnchors: priced,
+      liveAnchors: anchors,
+      reason: repriceReason({
+        arm: 'canonical-prior',
+        fromThresholdSecPerMi: priced?.threshold_s_per_mi != null ? Number(priced.threshold_s_per_mi) : null,
+        toThresholdSecPerMi: anchors.thresholdSecPerMi,
+      }),
+      evidence: {
+        anchor_source: sourceMode,
+        anchor_confidence: anchors.basis.threshold.confidence,
+        priced_before_canonical_layer: true,
+      },
+    });
+    logProposalOutcome('canonical-prior', planRow.id, outcome);
+    return { planId: planRow.id, proposed: true, arm: 'canonical-prior', outcome };
+  }
 
   const boundary = await mutatePlan<{ workoutsUpdated: number; workoutsSealed: number } | null>({
-    // AUTHORITY (2026-09-05) · this IS a coaching adaptation: it rewrites
-    // prescribed paces on a live plan from the engine's own judgement, and it
-    // is called from an unattended cron. Held, not exempted: the hold is
-    // logged on every run and the gate fails when any field is missing.
-    authority: 'COACHING_ADAPTATION',
-    hold: {
-      owner: 'David',
-      blocker: 'the refusal has nowhere to go until reanchor raises a proposal instead of writing',
-      expiresWhen: 'reanchorActivePlan creates a proposal and applies it under RUNNER_ACCEPTED',
-    },
+    // AUTHORITY (2026-09-05) · REANCHORPROPOSES-1. This branch is now reached
+    // ONLY from `applyReanchorProposal`, after the runner tapped accept on the
+    // card the propose branch above raised. `mutationIsPermitted` allows
+    // RUNNER_ACCEPTED outright, so there is no hold here and none is needed —
+    // which is the whole point of the conversion. A hold that continues
+    // writing is an exemption with better paperwork.
+    authority: 'RUNNER_ACCEPTED',
     userUuid: userId,
     source: 'reanchor-plan/canonical-prior',
     todayISO: today,
@@ -466,12 +601,37 @@ async function reanchorOffCanonicalPrior(
 }
 
 /**
- * Re-anchor a user's ACTIVE plan to their measured fitness, whatever its mode.
+ * PROPOSE a re-anchor of the runner's ACTIVE plan. WRITES NO PLAN ROW.
  *
- * No-op (returns null) when there is no active plan, no measured VDOT, or no
- * refresh is warranted. Returns a `ReanchorDeferral` when the adapter already
- * moved this anchor this morning (see the type above). Best-effort by design
- * — the cron catches per-user.
+ * ── REANCHORPROPOSES-1 (2026-09-05) · WHAT CHANGED, AND WHAT DID NOT ───────
+ *
+ * Every calculation below is the one this function has always made: the same
+ * GUARD 2 split, the same adapter deferral, the same two arms, the same gates.
+ * What it does with the answer is different. It used to call `mutatePlan` under
+ * `authority: 'COACHING_ADAPTATION'` — which `mutationIsPermitted` REFUSES —
+ * and pass a named hold that let the write through anyway. On 2026-09-02 that
+ * moved VDOT 46.3 to 47.7 and rewrote 76 workouts on a live plan, from an
+ * unattended cron, while the seam said no automatic coaching adaptation was
+ * permitted.
+ *
+ * It now raises one coordinated `plan_workout_proposals` card. The runner
+ * accepts it and `applyReanchorProposal` performs exactly the write this
+ * function used to perform, under `RUNNER_ACCEPTED`.
+ *
+ * ── THE COST, STATED RATHER THAN DISCOVERED ────────────────────────────────
+ *
+ * This is the only upward adaptation path in the engine that fired end to end
+ * (Rule 21: 309 production intents, one `vdot_auto_recalc`, and it came from
+ * here). After this change HIS PACES DO NOT MOVE UNTIL HE TAPS ACCEPT. That is
+ * the intended consequence of the owner's ruling, not an oversight. The failure
+ * mode to guard is the OTHER one — the re-anchor going quiet with no card — and
+ * `logProposalOutcome` plus the cron's `reanchor_proposed` block exist so that
+ * cannot happen unseen.
+ *
+ * Returns null when there is no active plan or no refresh is warranted, a
+ * `ReanchorDeferral` when the adapter already moved this anchor this morning,
+ * and a `ReanchorProposed` carrying the writer's own status otherwise.
+ * Best-effort by design — the cron catches per-user.
  */
 export async function reanchorActivePlan(
   userId: string,
@@ -511,7 +671,7 @@ export async function reanchorActivePlan(
    * did both would be one `if` away from writing "measured" over a guess.
    */
   if (measuredVdot == null || !Number.isFinite(measuredVdot) || measuredVdot <= 0) {
-    return reanchorOffCanonicalPrior(userId, today);
+    return reanchorOffCanonicalPrior(userId, today, 'propose');
   }
 
   const planRow = (await pool.query<{
@@ -559,8 +719,76 @@ export async function reanchorActivePlan(
   }
 
   return isRacePrep
-    ? reanchorRacePrep(userId, planRow.id, st, measuredVdot, today, evidence)
-    : reanchorMaintenance(userId, planRow.id, st, measuredVdot, today, evidence);
+    ? reanchorRacePrep(userId, planRow.id, st, measuredVdot, today, evidence, false, 'propose')
+    : reanchorMaintenance(userId, planRow.id, st, measuredVdot, today, evidence, false, 'propose');
+}
+
+/**
+ * APPLY a repricing the runner accepted. The only automatic-path write left,
+ * and it is not automatic: it runs on his tap.
+ *
+ * ── WHY IT RE-RESOLVES RATHER THAN REPLAYING THE CARD ──────────────────────
+ *
+ * Rule 10's recompute posture, applied to the part that decides a pace. The
+ * card carries a STAMP of the anchors as they stood when it was raised, and it
+ * is NOT replayed: the arms below price every row off
+ * `resolvePrescribedPaceAnchors` at the moment of the accept, so if evidence
+ * landed in between, the paces that land are the current ones. Replaying a
+ * two-day-old anchor set would write numbers the engine no longer holds, which
+ * is the staleness Rule 10 exists to stop.
+ *
+ * What DOES come from the card is `toVdot`, and it is worth being exact rather
+ * than sweeping it into the sentence above: it is the anchor VDOT stamped onto
+ * `authored_state` and fed to the race-target input. No training pace is
+ * derived from it — the prescription layer owns those — so a stale VDOT here
+ * mislabels the stamp rather than mispricing a session, and the accept route
+ * returns `proposed_to_vdot` beside `applied_to_vdot` so the difference is
+ * visible rather than assumed away.
+ *
+ * `force` is true because the runner has already answered. Re-running
+ * `shouldReanchorRacePrep` here would let a hair's movement in the gate turn
+ * his accept into a silent no-op, which is Rule 9's shape and, worse, a tap
+ * that does nothing and says nothing.
+ */
+export async function applyReanchorProposal(
+  userId: string,
+  payload: { planId: string; arm: RepriceArm; toVdot: number | null },
+  today: string,
+  evidence?: ReanchorEvidence | null,
+): Promise<ReanchorResult | null> {
+  const planRow = (await pool.query<{
+    id: string; mode: string | null; race_id: string | null;
+    authored_state: Record<string, unknown> | null;
+  }>(
+    `SELECT id, mode, race_id, authored_state FROM training_plans
+      WHERE id = $1 AND user_uuid = $2 AND archived_iso IS NULL`,
+    [payload.planId, userId],
+  )).rows[0];
+  if (!planRow) {
+    // Rule 11 · the plan the card was raised against has been archived or
+    // rebuilt. That is not "the accept did nothing wrong"; it is a stale card,
+    // and the route turns this into a visible answer rather than a silent 200.
+    console.error(
+      `[reanchorPlan] accept REFUSED · plan=${payload.planId} is no longer this runner's active plan`,
+    );
+    return null;
+  }
+  const st = (planRow.authored_state ?? {}) as Record<string, any>;
+
+  if (payload.arm === 'canonical-prior') {
+    const out = await reanchorOffCanonicalPrior(userId, today, 'apply');
+    return out != null && !isReanchorDeferral(out) && !isReanchorProposed(out) ? out : null;
+  }
+  if (payload.toVdot == null || !Number.isFinite(payload.toVdot) || payload.toVdot <= 0) {
+    console.error(
+      `[reanchorPlan] accept REFUSED · plan=${payload.planId} · the card carries no usable anchor VDOT`,
+    );
+    return null;
+  }
+  const out = payload.arm === 'race-prep'
+    ? await reanchorRacePrep(userId, planRow.id, st, payload.toVdot, today, evidence, true, 'apply')
+    : await reanchorMaintenance(userId, planRow.id, st, payload.toVdot, today, evidence, true, 'apply');
+  return out != null && !isReanchorDeferral(out) && !isReanchorProposed(out) ? out : null;
 }
 
 /**
@@ -597,9 +825,16 @@ export async function forceReanchorActivePlan(
   const st = (planRow.authored_state ?? {}) as Record<string, any>;
   const isRacePrep = planRow.mode === 'race-prep' || planRow.race_id != null;
 
-  return isRacePrep
-    ? reanchorRacePrep(userId, planRow.id, st, newVdot, today, evidence, /* force */ true)
-    : reanchorMaintenance(userId, planRow.id, st, newVdot, today, evidence, /* force */ true);
+  // REANCHORPROPOSES-1 · 'apply', and it stays 'apply'. This is the runner's
+  // own confirmed answer to a question the app asked him, so it is
+  // RUNNER_ACCEPTED by the same reading that lets an accepted proposal write.
+  // Routing it through a card instead would ask him the same question twice
+  // and, worse, would leave the plan on the paces of a race he has just told
+  // us was not representative (the HARD CONSTRAINT above).
+  const out = isRacePrep
+    ? await reanchorRacePrep(userId, planRow.id, st, newVdot, today, evidence, /* force */ true, 'apply')
+    : await reanchorMaintenance(userId, planRow.id, st, newVdot, today, evidence, /* force */ true, 'apply');
+  return out != null && !isReanchorDeferral(out) && !isReanchorProposed(out) ? out : null;
 }
 
 /** `ReanchorEvidence.source` → the vocabulary `pace-drop-event.ts` stores. */
@@ -639,7 +874,8 @@ async function reanchorRacePrep(
   today: string,
   evidence?: ReanchorEvidence | null,
   force = false,
-): Promise<ReanchorResult | null> {
+  mode: ReanchorMode = 'apply',
+): Promise<ReanchorOutcome> {
   const paceBlend = st.pace_blend ?? null;
   // The plan follows EVERY belief: reprice when the VDOT anchor moved, or
   // when any canonical anchor has drifted from the Rule 10 stamp (see
@@ -666,6 +902,46 @@ async function reanchorRacePrep(
     ? Number(paceBlend.season_anchor_vdot) : null;
   const fromSource = (paceBlend?.season_anchor_source as string) ?? null;
 
+  if (mode === 'propose') {
+    const live = await resolvePrescribedPaceAnchors(userId, today);
+    if (!live.ok) {
+      // Rule 11 · a refusal to price this runner is not "nothing drifted".
+      console.error(
+        `[reanchorPlan] race-prep PROPOSE REFUSED · plan=${planId} · anchors ${live.reason} · `
+        + `${live.detail} · no card raised and no pace moved`,
+      );
+      return null;
+    }
+    const priced = pricedAnchorsOf(st);
+    const outcome = await writeReanchorProposal({
+      userUuid: userId,
+      planId,
+      arm: 'race-prep',
+      todayISO: today,
+      fromVdot,
+      toVdot: measuredVdot,
+      toSource: 'measured_vdot',
+      measured: true,
+      pricedAnchors: priced,
+      liveAnchors: live.anchors,
+      reason: repriceReason({
+        arm: 'race-prep',
+        fromThresholdSecPerMi: priced?.threshold_s_per_mi != null ? Number(priced.threshold_s_per_mi) : null,
+        toThresholdSecPerMi: live.anchors.thresholdSecPerMi,
+        evidence,
+      }),
+      evidence: {
+        anchor_vdot_now: fromVdot,
+        anchor_vdot_proposed: measuredVdot,
+        evidence_source: evidence?.source ?? null,
+        anchor_confidence: live.anchors.basis.threshold.confidence,
+        ends_calibration_intro: wasProvisional,
+      },
+    });
+    logProposalOutcome('race-prep', planId, outcome);
+    return { planId, proposed: true, arm: 'race-prep', outcome };
+  }
+
   // Routed through the plan mutation boundary (lib/plan/mutate.ts) as a
   // 'derivations' mutation. A re-anchor rewrites pace_target_s_per_mi and
   // workout_spec off a new VDOT; it changes no date, no type, no distance and
@@ -673,16 +949,11 @@ async function reanchorRacePrep(
   // and rolls back if the claim turns out to be false, so the declaration is
   // proven rather than trusted.
   const boundary = await mutatePlan<{ workoutsUpdated: number; workoutsSealed: number } | null>({
-    // AUTHORITY (2026-09-05) · this IS a coaching adaptation: it rewrites
-    // prescribed paces on a live plan from the engine's own judgement, and it
-    // is called from an unattended cron. Held, not exempted: the hold is
-    // logged on every run and the gate fails when any field is missing.
-    authority: 'COACHING_ADAPTATION',
-    hold: {
-      owner: 'David',
-      blocker: 'the refusal has nowhere to go until reanchor raises a proposal instead of writing',
-      expiresWhen: 'reanchorActivePlan creates a proposal and applies it under RUNNER_ACCEPTED',
-    },
+    // AUTHORITY (2026-09-05) · REANCHORPROPOSES-1. Reached only on the runner's
+    // own action: `applyReanchorProposal` (he accepted the card) or
+    // `forceReanchorActivePlan` (he answered the race-authority question).
+    // RUNNER_ACCEPTED is permitted outright, so there is no hold here.
+    authority: 'RUNNER_ACCEPTED',
     userUuid: userId,
     source: 'reanchor-plan/race-prep',
     todayISO: today,
@@ -764,7 +1035,8 @@ async function reanchorMaintenance(
   today: string,
   evidence?: ReanchorEvidence | null,
   force = false,
-): Promise<ReanchorResult | null> {
+  mode: ReanchorMode = 'apply',
+): Promise<ReanchorOutcome> {
   const anchorVdot = st.anchorVdot != null ? Number(st.anchorVdot) : null;
   const anchorSource = (st.anchorSource as string) ?? null;
   if (!force && !shouldReanchor(anchorSource, anchorVdot, measuredVdot)) return null;
@@ -792,6 +1064,37 @@ async function reanchorMaintenance(
     return null;
   }
   const anchors = anchorRead.anchors;
+
+  if (mode === 'propose') {
+    const priced = pricedAnchorsOf(st);
+    const outcome = await writeReanchorProposal({
+      userUuid: userId,
+      planId,
+      arm: 'maintenance',
+      todayISO: today,
+      fromVdot: anchorVdot,
+      toVdot: measuredVdot,
+      toSource: 'measured_vdot',
+      measured: true,
+      pricedAnchors: priced,
+      liveAnchors: anchors,
+      reason: repriceReason({
+        arm: 'maintenance',
+        fromThresholdSecPerMi: priced?.threshold_s_per_mi != null ? Number(priced.threshold_s_per_mi) : null,
+        toThresholdSecPerMi: anchors.thresholdSecPerMi,
+        evidence,
+      }),
+      evidence: {
+        anchor_vdot_now: anchorVdot,
+        anchor_vdot_proposed: measuredVdot,
+        evidence_source: evidence?.source ?? null,
+        anchor_confidence: anchors.basis.threshold.confidence,
+        ends_calibration_intro: anchorSource !== 'measured_run',
+      },
+    });
+    logProposalOutcome('maintenance', planId, outcome);
+    return { planId, proposed: true, arm: 'maintenance', outcome };
+  }
 
   /* ── THE HR ANCHORS, READ LIVE (ANCHORSTAMP-1) ────────────────────────────
    *
@@ -857,16 +1160,10 @@ async function reanchorMaintenance(
   let updated = 0;
   let sealedCount = 0;
   const boundary = await mutatePlan<void>({
-    // AUTHORITY (2026-09-05) · this IS a coaching adaptation: it rewrites
-    // prescribed paces on a live plan from the engine's own judgement, and it
-    // is called from an unattended cron. Held, not exempted: the hold is
-    // logged on every run and the gate fails when any field is missing.
-    authority: 'COACHING_ADAPTATION',
-    hold: {
-      owner: 'David',
-      blocker: 'the refusal has nowhere to go until reanchor raises a proposal instead of writing',
-      expiresWhen: 'reanchorActivePlan creates a proposal and applies it under RUNNER_ACCEPTED',
-    },
+    // AUTHORITY (2026-09-05) · REANCHORPROPOSES-1. Reached only on the runner's
+    // own action. See the race-prep arm for the full note; the hold is gone
+    // because nothing unattended reaches this statement any more.
+    authority: 'RUNNER_ACCEPTED',
     userUuid: userId,
     source: 'reanchor-plan/maintenance',
     todayISO: today,

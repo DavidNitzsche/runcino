@@ -92,6 +92,8 @@ export interface LegacyPayload {
   newDate?: string | null;
   shaveFraction?: number | null;
   newDistanceMi?: number | null;
+  /** REANCHORPROPOSES-1 · a whole-block repricing, carried as one decision. */
+  reprice?: { meanAnchorDeltaSecPerMi?: number; workoutsAffected?: number } | null;
   why?: string | null;
 }
 
@@ -168,6 +170,37 @@ export function actionFromPending(p: {
     case 'field_test':
       return { ...base, kind: 'FIELD_TEST', direction: 'NEUTRAL', describe: 'field test' };
 
+    case 'reprice': {
+      const shape = actionShapeOfEngineKind('reprice', p.actionPayload);
+      if (shape == null) return null;
+      const r = p.actionPayload.reprice;
+      const n = typeof r?.workoutsAffected === 'number' ? r.workoutsAffected : null;
+      const d = typeof r?.meanAnchorDeltaSecPerMi === 'number' ? r.meanAnchorDeltaSecPerMi : null;
+      /* A repricing is about the BLOCK, so this is the one headline that does
+       * not name a weekday. The card's date already says where the change
+       * starts, and saying it twice would be Rule 17. */
+      const sessions = n == null ? 'Every session ahead'
+        : n === 1 ? '1 session ahead'
+          : `${n} sessions ahead`;
+      const describe = d == null || (d > -1 && d < 1)
+        // "1 session ahead GETS", "4 sessions ahead GET". Verb agreement only
+        // shows up when you read the rendered string.
+        ? `${sessions} ${n === 1 ? 'gets' : 'get'} updated paces`
+        : d < 0 ? `${sessions} move to faster paces`
+          : `${sessions} move to easier paces`;
+      return {
+        ...base,
+        kind: 'COORDINATED',
+        direction: shape.direction,
+        describe,
+        // The parts are not enumerated: a repricing is applied by
+        // `applyReanchorProposal` against canonical anchors, not by replaying
+        // N per-row writes, and inventing seventy-seven parts here would be a
+        // second description of a change this file does not own.
+        parts: [],
+      };
+    }
+
     case 'reschedule': {
       const to = p.actionPayload.newDate;
       if (typeof to !== 'string' || to === '') return null;
@@ -230,6 +263,23 @@ export function actionShapeOfEngineKind(
 ): ActionShape | null {
   switch (kind) {
     case 'field_test': return { kind: 'FIELD_TEST', direction: 'NEUTRAL' };  // see phoneDirectionOf: the KIND decides this one
+    /* A repricing moves the paces of every future session at once, which is
+     * COORDINATED: one decision, many rows, answered once. Offering it as
+     * seventy-seven cards would be a worse product than offering none.
+     *
+     * A pace is seconds per mile, so NEGATIVE IS FASTER. A repricing whose
+     * anchors do not move on balance is genuinely a HOLD — threshold can move
+     * faster while marathon moves slower, and telling the runner the block is
+     * being re-priced without claiming a direction is the honest answer. */
+    case 'reprice': {
+      const d = payload.reprice?.meanAnchorDeltaSecPerMi;
+      // Rule 11 · a payload we cannot read is not a hold. Withheld.
+      if (typeof d !== 'number' || !Number.isFinite(d)) return null;
+      return {
+        kind: 'COORDINATED',
+        direction: d <= -1 ? 'MORE' : d >= 1 ? 'LESS' : 'NEUTRAL',
+      };
+    }
     case 'reschedule': return { kind: 'RESCHEDULE', direction: 'NEUTRAL' };
     case 'shave': return { kind: 'DISTANCE_CHANGE', direction: 'LESS' };
     case 'mark_upgrade': return { kind: 'DISTANCE_CHANGE', direction: 'MORE' };

@@ -603,6 +603,13 @@ describe('GUARD 6 · a surfaced change reaches the phone, not just the web', () 
   const SURFACE_ENDPOINTS: Record<string, string> = {
     'cron/plan-drift': 'api/plan/proposal',
     'cron/run-adaptations': 'api/plan/workout-proposals',
+    // REANCHORPROPOSES-1 (2026-09-05) · the daily self-heal stopped writing
+    // the plan and started raising a card on the same table. Its entry flipped
+    // from `audit_row_only` to `surfaced`, and this is the claim that has to
+    // hold for that word to mean anything: the runner's paces now move only
+    // when he taps, so a card he cannot see is a pace axis that has gone
+    // silent.
+    'cron/snapshot-projections': 'api/plan/workout-proposals',
   };
 
   it('opened the native tree', () => {
