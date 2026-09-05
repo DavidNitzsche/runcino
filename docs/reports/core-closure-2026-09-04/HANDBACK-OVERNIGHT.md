@@ -103,6 +103,12 @@ nothing for them). The tree that succeeded at 01:04 is a strict superset of both
 failed ones, so a persistent code fault is unlikely, but I am not asserting
 "transient" without evidence I do not have.
 
+**Final state, confirmed by deployment STATUS rather than by a push result:**
+
+    51db4cf31  committed 01:30:51  ->  deploy 7ce635ce 01:31:17  SUCCESS
+
+A twenty-six second match. `origin/main` is deployed.
+
 ---
 
 ## 3 · Agents and responsibility
