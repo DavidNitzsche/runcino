@@ -76,6 +76,10 @@ import {
 import { gradeStimulus, type StimulusInput } from '@/lib/adaptation/canonical/stimulus';
 import { workHrCeilingFor } from '@/lib/adaptation/canonical/work-hr-ceiling';
 import { workTraceIsCredible } from '@/lib/adaptation/canonical/hr-trace-credibility';
+/* The phase VOCABULARY and its one translation from the generator's own label.
+ * Imported rather than re-implemented so this loader cannot coin a second
+ * phase name (Rule 16). */
+import { phaseFromAuthoredLabel } from '@/lib/adaptation/canonical/phase-priority';
 import {
   asRunData, runDay, runDaySql, runDistanceMi, runPaceSecPerMi, runAvgHr, runPhases,
   runNotMergedSql, splitsWithHrAndPace, type RunData,
@@ -155,6 +159,12 @@ interface PlanWeekRow {
   week_start_iso: string;
   is_race_week: boolean;
   is_cutback: boolean;
+  /**
+   * The authored phase label, joined from `plan_phases`. NULL when the week
+   * carries no phase row, which Rule 11 keeps distinct from any phase name:
+   * `phaseFromAuthoredLabel` maps it to UNKNOWN, never to BASE.
+   */
+  phase_label: string | null;
 }
 
 interface PlanWorkoutRow {
@@ -229,9 +239,20 @@ async function readPlan(
 
 async function readPlanWeeks(planId: string): Promise<PlanWeekRow[]> {
   const r = await roQuery<PlanWeekRow>(
-    `SELECT id::text AS id, week_idx, week_start_iso::text AS week_start_iso,
-            is_race_week, is_cutback
-       FROM plan_weeks WHERE plan_id = $1 ORDER BY week_idx`,
+    // The phase LABEL, joined rather than re-derived. `plan_weeks.phase_id`
+    // points at `plan_phases`, which is where `lib/plan/generate.ts` wrote the
+    // phase it authored; deriving a phase here from week index and race date
+    // would be a second answer to a question the Plan Generator owns
+    // (docs/BRAIN_CONSTITUTION.md §2H).
+    //
+    // Rule 14 · the join is scoped to THIS plan on both sides. `plan_phases`
+    // rows exist for every plan version this user has ever had, and a join on
+    // `phase_id` alone would be correct only by the accident of id uniqueness.
+    `SELECT w.id::text AS id, w.week_idx, w.week_start_iso::text AS week_start_iso,
+            w.is_race_week, w.is_cutback, p.label AS phase_label
+       FROM plan_weeks w
+       LEFT JOIN plan_phases p ON p.id = w.phase_id AND p.plan_id = w.plan_id
+      WHERE w.plan_id = $1 ORDER BY w.week_idx`,
     [planId],
   );
   return r.rows;
@@ -700,6 +721,30 @@ export async function buildLiveCanonicalInput(
 
   /* ── BOUNDARIES · cutback / race / taper, from the plan's own week flags ── */
 
+  /* ── THE PHASE · authored, joined, never re-derived ───────────────────────
+   *
+   * The phase of the week a proposal would first affect — NEXT week, the same
+   * week rule 1 prices. Reading THIS week's phase would arbitrate a proposal
+   * against a phase it cannot change, which is the same defect the ceiling had
+   * before it was moved onto `nextWeekStart`.
+   *
+   * Rule 11 · a week with no phase row, or a label a future generator adds,
+   * resolves to UNKNOWN and is recorded as such. It is never defaulted to BASE.
+   *
+   * A RACE WEEK or a CUTBACK is not a phase and does not overwrite one here.
+   * `is_race_week` and `is_cutback` already reach the engine as boundaries
+   * (`nextRaceBoundaryISO`, `nextCutbackBoundaryISO`) and as
+   * `WeekObservation.isCutback`, and a second reading of them as "the phase"
+   * would be one fact under two names.
+   */
+  const nextWeekRow = weeks.find((w) => w.week_start_iso === nextWeekStart);
+  const authoredPhase = phaseFromAuthoredLabel(nextWeekRow?.phase_label);
+  const phaseSource = nextWeekRow == null
+    ? `no plan_weeks row for ${nextWeekStart}, so no phase could be read`
+    : nextWeekRow.phase_label == null
+      ? `plan_weeks ${nextWeekStart} carries no phase_id, so no phase could be read`
+      : `plan_phases.label "${nextWeekRow.phase_label}" on the week starting ${nextWeekStart}`;
+
   const futureCutbackWeek = weeks.find((w) => w.week_start_iso >= currentWeekStart && w.is_cutback);
   const futureRaceWeek = weeks.find((w) => w.week_start_iso >= currentWeekStart && w.is_race_week);
   const isTaperPlan = (plan.mode ?? '').toLowerCase().includes('taper');
@@ -766,6 +811,31 @@ export async function buildLiveCanonicalInput(
     goal: {
       goalFinishSeconds: goalSec ?? Math.round(raceDistMi * belief.thresholdPaceSecPerMi),
       goalPaceSecPerMi: goalSec != null ? Math.round(goalSec / raceDistMi) : belief.thresholdPaceSecPerMi,
+    },
+    phaseContext: {
+      phase: authoredPhase,
+      /**
+       * RULE 11, AND A STATED GAP. The Coaching Thesis owns `primary_limiter`
+       * (`docs/BRAIN_CONSTITUTION.md` §2F) and nothing persists one yet, so the
+       * honest answer is UNKNOWN rather than a limiter this loader inferred.
+       *
+       * The consequence is stated plainly rather than hidden: NO LEVER IS EVER
+       * PROMOTED FOR A LIMITER ON A LIVE EVALUATION until a thesis is
+       * persisted. The phase order still applies, which is the part doctrine
+       * cites; the limiter promotion is the part that is currently unreachable
+       * live, and `_phase_arbitration.test.ts` says so in its Rule 22 header.
+       */
+      limiter: 'UNKNOWN',
+      /**
+       * The Safety owner has no persisted verdict this loader can read either,
+       * and NORMAL is the correct default here for one reason only: this engine
+       * proposes nothing that reaches a runner. It is shadow-only, its output is
+       * a record, and `run-live-shadow-evaluation.ts` writes no plan. If that
+       * ever changes, this field must be wired to Safety BEFORE it does, and
+       * this comment is the marker for whoever does it.
+       */
+      safety: 'NORMAL',
+      phaseSource,
     },
     plan: {
       planVersion: plan.id,
@@ -860,6 +930,12 @@ function buildUnreadableInput(
       goal: {
         goalFinishSeconds: goalSec ?? Math.round(raceDistMi * (belief.thresholdPaceSecPerMi || 1)),
         goalPaceSecPerMi: goalSec != null ? Math.round(goalSec / raceDistMi) : belief.thresholdPaceSecPerMi,
+      },
+      // The whole read failed, so the phase is UNKNOWN for the same reason
+      // everything else is. Not BASE, not the plan's mode read as a phase.
+      phaseContext: {
+        phase: 'UNKNOWN', limiter: 'UNKNOWN', safety: 'NORMAL',
+        phaseSource: 'the training data for this athlete could not be read',
       },
       plan: {
         planVersion: plan.id, nextWeekStartISO: nextWeekStart, nextWeekPrescribedMi: 0,

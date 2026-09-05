@@ -43,6 +43,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { evaluateAdaptation } from './evaluate';
 import { arbitrate, type ArbitrationReading } from './arbitration';
+import { resolveArbitrationPriority } from './phase-priority';
 import { demandCeilingForWeek } from './plan-load';
 import { enqueueDeferrals } from './deferral-queue';
 import { failed, type Measured } from './input';
@@ -312,6 +313,16 @@ describe('property 4 · the legacy reading is reachable from exactly one file', 
       baseQualityMinutes: input.plan.nextWeekQualityMinutes,
       athleteCeilingWeeklyDemand: input.athleteCeilingWeeklyDemand,
       nextBoundaryISO: '2026-10-05',
+      // The live priority for this fixture's own phase context, resolved by
+      // the real resolver rather than hand-built, so this comparison cannot
+      // drift from what `evaluateAdaptation` would have used (Rule 15).
+      priority: resolveArbitrationPriority({
+        phase: input.phaseContext.phase,
+        raceDistance: input.race.raceDistance,
+        limiter: input.phaseContext.limiter,
+        safety: input.phaseContext.safety,
+        stepsTakenThisCycle: input.plan.stepsTakenThisCycle,
+      }),
     };
     const paceOf = (reading: ArbitrationReading) =>
       arbitrate({ ...shared, reading })

@@ -190,6 +190,23 @@ export const baseInput = (
       LONG_RUN: false,
     },
   },
+  /**
+   * The base fixture is a runner MID-BLOCK in a quality phase, with no thesis
+   * limiter named and Safety normal.
+   *
+   * QUALITY rather than BASE deliberately: BASE and MAINTENANCE both resolve to
+   * the phase-neutral order, so a fixture on either of them would leave every
+   * test unable to tell "phase-aware ordering worked" from "the order never
+   * changed". QUALITY's order differs from the phase-neutral one (threshold
+   * rises above the long run), so the default exercises the resolver rather
+   * than agreeing with the constant it replaced (Rule 15).
+   */
+  phaseContext: {
+    phase: 'QUALITY',
+    limiter: 'UNKNOWN',
+    safety: 'NORMAL',
+    phaseSource: 'fixture',
+  },
   qualitySessions: [],
   weeks: [],
   longRuns: [],

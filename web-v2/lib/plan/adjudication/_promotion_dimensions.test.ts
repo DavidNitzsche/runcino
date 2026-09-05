@@ -182,7 +182,11 @@ describe('ADJ-DIM-1 · the baseline promotes, so every failure below is the chan
     // walked by the belt-and-braces loop and never reported by this file.
     const r = checkPromotion([trace(W1)], { weeks: [W1] });
     expect([...PROMOTION_DIMENSIONS].sort()).toEqual(Object.keys(r.check).sort());
-    expect(PROMOTION_DIMENSIONS.length).toBe(10);
+    // ELEVEN since 2026-09-05 (`coldStartHonesty`). The literal is deliberate
+    // and is the point of this assertion: a dimension added to the TYPE
+    // without a case below would otherwise pass silently, so the count is
+    // bumped by hand, in the same change that adds the cases for it.
+    expect(PROMOTION_DIMENSIONS.length).toBe(11);
   });
 });
 

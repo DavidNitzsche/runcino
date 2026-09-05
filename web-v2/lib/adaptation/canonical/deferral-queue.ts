@@ -230,6 +230,21 @@ const QUEUEABLE_REASONS: ReadonlySet<DeferralRule> = new Set<DeferralRule>([
   'WEEK_AT_DEMAND_CEILING',
   'ONE_MATERIAL_LEVER_PER_CYCLE',
   'ARBITRATED_AT_WEEKLY_BOUNDARY',
+  /**
+   * A taper or a recovery block is a phase that ENDS, and the evidence the
+   * runner earned before it should not be thrown away for having been earned
+   * at the wrong moment. Queueing it is what makes the phase decline a DEFER
+   * rather than a DROP, which is the property Rule 9 needs: crossing into a
+   * taper buys a delay, not a categorically different plan.
+   */
+  'PHASE_PRESCRIBES_RECOVERY',
+  /**
+   * `SAFETY_HARD_STOP` is deliberately absent. A hard stop lifts when the
+   * Safety owner says so, not at a boundary this engine can schedule against,
+   * and a queued item carries a `nextBoundaryISO` it would be re-offered at.
+   * Queueing one would mean re-proposing a push on a date nobody chose, which
+   * is the opposite of "Safety may override other systems".
+   */
 ]);
 
 export const queueIdFor = (athleteId: string, lever: CanonicalLever, key: string): string =>

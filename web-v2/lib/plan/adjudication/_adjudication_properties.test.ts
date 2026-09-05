@@ -472,6 +472,15 @@ const DETECTOR_GATES: readonly {
     gate: 'progression',
   },
   {
+    detector: 'coldStartFaults · a runner this layer has never seen run',
+    gate: 'coldStartHonesty',
+    wasDetectorOnly: 'Neither existed before 2026-09-05. Six of seven active production plans '
+      + 'belong to accounts with zero canonical runs, and the layer had no way to say anything '
+      + 'about them except UNKNOWN — while a HOLD hard-coded to SUPPORTED claimed a demonstrated '
+      + 'level that did not exist and won every week. The detector is what makes a cold start an '
+      + 'explicit, checkable state rather than a silent bypass of the other ten dimensions.',
+  },
+  {
     detector: 'a PUSH inside a taper or race week',
     gate: 'taperIntegrity',
     wasDetectorOnly: 'The gate existed and was keyed on `t.stacked`, which detectStackedStress '

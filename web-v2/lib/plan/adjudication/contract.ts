@@ -67,6 +67,8 @@
  * mileage exceeds a plan-derived ceiling.
  */
 
+import type { ColdStartPosture } from './cold-start';
+
 // ── PROVENANCE · defect 4 ──────────────────────────────────────────────────
 
 /**
@@ -197,6 +199,21 @@ export interface AthleteEvidence {
   /** Present only when this evidence is used to REFUSE something. */
   readonly ceilingClaim: CeilingClaim | null;
 
+  /**
+   * Set when this layer has NEVER SEEN this runner produce this quantity.
+   *
+   * `cold-start.ts` owns what may then be said. The two `demonstratedMax*`
+   * fields stay NULL with their honest basis — the research allowance travels
+   * on the posture, in its own voice — because putting a table's number into
+   * the field the gate reads as athlete evidence is the invented support this
+   * whole posture exists to avoid.
+   *
+   * Measured 2026-09-05: six of seven active production plans are cold on
+   * every quantity, and before this existed all six were blocked by
+   * `progression · no decision in this block advances anything`.
+   */
+  readonly coldStart: ColdStartPosture | null;
+
   readonly why: string;
 }
 
@@ -320,7 +337,19 @@ export interface WeeklyDemandSummary {
 /**
  * The dimensions that must all hold before a plan may reach production.
  *
- * ── WHY THERE ARE TEN AND NOT SIX (CORPUS-ADJ-1, 2026-09-04) ───────────────
+ * ── WHY THERE ARE ELEVEN, AND WHAT THE ELEVENTH IS FOR (2026-09-05) ────────
+ *
+ * `coldStartHonesty`. Six of seven active production plans belong to runners
+ * with zero completed runs, and every one of them was blocked by `progression`
+ * — a gate correctly observing that a plan which never advances is not a
+ * training plan, applied to a runner who had nothing to advance from. Correct
+ * Rule 11 semantics, useless as a product policy.
+ *
+ * The eleventh dimension is what makes the fix safe: a cold start now
+ * PROMOTES, and this is the check that it promoted honestly rather than by
+ * skipping adjudication.
+ *
+ * ── WHY THERE WERE TEN AND NOT SIX (CORPUS-ADJ-1, 2026-09-04) ──────────────
  *
  * The owner's standard for this gate: "No literal true, nonempty-array proxy
  * or structurally impossible failure", and the final gate must be able to
@@ -350,6 +379,15 @@ export interface PromotionCheck {
    * Rule 16 violation.
    */
   readonly stackedStress: boolean;
+  /**
+   * A cold start is an explicit STATE, never a silent bypass.
+   *
+   * A decision about a quantity this runner has never produced must carry a
+   * LOW-confidence posture, a research allowance or an earning gate, a
+   * scheduled calibration and a reassessment date — and must never claim
+   * athlete support it does not have. `coldStartFaults` is the check.
+   */
+  readonly coldStartHonesty: boolean;
   /**
    * An earning gate must be assessable. It is checked BEFORE the prescription
    * it guards lands, and it may not ask whether a week that has not yet run
@@ -381,6 +419,16 @@ export interface PlanAdjudication {
   readonly blockedBecause: readonly string[];
   /** Every gate this plan is carrying, so nothing conditional is forgotten. */
   readonly earningGates: readonly EarningGate[];
+  /**
+   * How many decisions were taken about a quantity this runner has never
+   * produced.
+   *
+   * Reported rather than inferred, because `coldStartHonesty: true` on a block
+   * with NO cold-start decision and on a block where every one of them passed
+   * are different facts, and a dimension that is vacuously true on an empty set
+   * is not evidence about the mechanism (Rule 18 §2).
+   */
+  readonly coldStartDecisions: number;
 }
 
 /** Every dimension, so a caller cannot silently forget one. */
@@ -388,4 +436,5 @@ export const PROMOTION_DIMENSIONS = [
   'athleteSpecificSupport', 'wholeBlockCoherence', 'recoverability',
   'progression', 'taperIntegrity', 'doctrineResolution',
   'stackedStress', 'earningGateTiming', 'executionIdentity', 'evidenceProvenance',
+  'coldStartHonesty',
 ] as const satisfies readonly (keyof PromotionCheck)[];

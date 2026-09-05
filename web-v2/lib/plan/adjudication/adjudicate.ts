@@ -56,6 +56,7 @@ import type {
   StackedStress,
 } from './contract';
 import { MIN_COMPARABLES_FOR_CEILING_CLAIM, PROMOTION_DIMENSIONS } from './contract';
+import { coldStartClassFor, coldStartFaults, type ColdStartPosture } from './cold-start';
 import { describesEvidence, objectionToChoice } from '@/lib/brain/objective';
 
 /** What the runner has actually done, in the units decisions are made in. */
@@ -195,6 +196,13 @@ export interface AthleteEvidenceArgs {
   /** Set when this evidence might be used to REFUSE, so a ceiling is claimed. */
   readonly ceilingQuantity?: (c: ComparableSession) => number | null;
   readonly historyWindow: string;
+  /**
+   * Supplied when this layer has never seen the runner produce this quantity.
+   * Build it with `coldStartFor` in `cold-start.ts`, which returns NULL unless
+   * `demonstratedMaxToday` is genuinely absent — so a caller cannot declare a
+   * cold start for a runner who has one.
+   */
+  readonly coldStart?: ColdStartPosture | null;
 }
 
 /**
@@ -216,6 +224,15 @@ export function athleteEvidenceFor(args: AthleteEvidenceArgs): AthleteEvidence {
     comparables, ceilingQuantity, historyWindow,
   } = args;
 
+  /**
+   * COLD START · the posture is only real when the quantity is genuinely
+   * absent, and `coldStartFor` is what decides that, not the caller. A caller
+   * that hands one in for a runner WITH a demonstrated maximum is ignored here
+   * and named by `coldStartFaults` at the gate.
+   */
+  const coldStart = args.coldStart != null && demonstratedMaxToday === null
+    ? args.coldStart : null;
+
   const today = classifyStep(prescribed, demonstratedMaxToday);
   const projected = classifyStep(prescribed, demonstratedMaxProjected);
 
@@ -228,13 +245,50 @@ export function athleteEvidenceFor(args: AthleteEvidenceArgs): AthleteEvidence {
 
   // Defect 2 enforced rather than documented: an invalid ceiling claim may not
   // produce a CONTRAINDICATED verdict.
-  const finalCls: EvidenceClass =
+  const guarded: EvidenceClass =
     cls === 'CONTRAINDICATED' && (ceilingClaim === null || !ceilingClaim.valid) ? 'UNKNOWN' : cls;
+
+  /**
+   * A COLD START IS CAPPED AT ALLOWED, WHATEVER THE PROJECTION SAYS.
+   *
+   * ── THE DEFECT THIS BRANCH SHIPPED WITH, FOR ABOUT AN HOUR ──────────────
+   *
+   * The first version replaced UNKNOWN only. `_cold_start.test.ts` failed
+   * immediately on eleven of twelve weeks of a cold-start block, all reading
+   * SUPPORTED — because from week two onward `demonstratedMaxProjected` is the
+   * largest week the PLAN has asked for, and a 6% step over that classifies as
+   * SUPPORTED.
+   *
+   * That is invented athlete support wearing a projection's clothes. For an
+   * ESTABLISHED runner the projection is a plan built on top of demonstrated
+   * capacity, and defect 1 of the owner's list is right that a November week
+   * must be judged against it. For a COLD START the chain is anchored in
+   * nothing: week five is "supported" by week four, which is supported by week
+   * three, which is supported by a number the runner has never produced.
+   *
+   * So a cold start caps at ALLOWED. The projection is still REPORTED, with its
+   * POLICY_ASSUMPTION provenance and its "assumes the plan is executed" basis,
+   * because it is honest and a reader needs it. It just may not upgrade the
+   * class.
+   *
+   * A projection-derived CONDITIONAL is KEPT, because that is a real finding —
+   * a week that reaches well past what the block itself builds toward is a
+   * reach whether or not the runner is new — and taking the cold-start class
+   * there would be the cap making the layer MORE permissive, which is the
+   * failure mode Rule 8's corollary warns about in a different place.
+   */
+  const finalCls: EvidenceClass = coldStart === null
+    ? guarded
+    : guarded === 'CONDITIONAL' || guarded === 'CONTRAINDICATED'
+      ? guarded
+      : coldStartClassFor(prescribed, coldStart);
 
   const pctToday = today.step == null ? null : Math.round(today.step * 1000) / 10;
   const pctProj = projected.step == null ? null : Math.round(projected.step * 1000) / 10;
 
-  const why = finalCls === 'UNKNOWN'
+  const why = coldStart !== null
+    ? `${coldStart.confidenceSentence} ${coldStart.why}`
+    : finalCls === 'UNKNOWN'
     ? `Nothing comparable in his history to size ${what} against, over ${historyWindow}. `
       + 'That is an absence, not a pass.'
     : usingProjection
@@ -266,6 +320,7 @@ export function athleteEvidenceFor(args: AthleteEvidenceArgs): AthleteEvidence {
     stepOverDemonstratedToday: today.step,
     stepOverProjected: projected.step,
     ceilingClaim,
+    coldStart,
     why,
   };
 }
@@ -897,6 +952,30 @@ export function checkPromotion(
     }
   }
 
+  /* ── COLD START · an explicit state, never a silent bypass (2026-09-05) ──
+   *
+   * `athleteSpecificSupport` already blocks a CONDITIONAL with no gate, and
+   * `progression` already blocks a block that never advances. Neither can see
+   * the failure this dimension exists for: a decision that CLAIMS a cold start
+   * while reporting a demonstrated maximum, or that opens at a research
+   * allowance and then never schedules anything that would end the low
+   * confidence. Both would promote silently under the other ten.
+   */
+  const coldStartComplaints: string[] = [];
+  let coldStartDecisions = 0;
+  for (const t of traces) {
+    const posture = t.athlete.coldStart;
+    if (posture === null) continue;
+    coldStartDecisions += 1;
+    coldStartComplaints.push(...coldStartFaults({
+      decisionId: t.decisionId,
+      athlete: t.athlete,
+      posture,
+      hasGate: t.earningGate !== null,
+      landsOnISO: t.dateISO,
+    }));
+  }
+
   if (ungated.length > 0) {
     blocked.push(`athleteSpecificSupport · ${ungated.length} decision(s) are not supported by his own `
       + `history, carry no earning gate and are not marked for reassessment: ${ungated.map((t) => t.decisionId).join(', ')}`);
@@ -958,6 +1037,10 @@ export function checkPromotion(
     blocked.push(`evidenceProvenance · ${provenanceFaults.length} number(s) are printed in the wrong `
       + `voice or with no basis: ${provenanceFaults.join(' | ')}`);
   }
+  if (coldStartComplaints.length > 0) {
+    blocked.push(`coldStartHonesty · ${coldStartComplaints.length} cold-start decision(s) are not `
+      + `honest about what is missing: ${coldStartComplaints.join(' | ')}`);
+  }
 
   const check: PromotionCheck = {
     athleteSpecificSupport: ungated.length === 0 && markedButUnexplained.length === 0
@@ -971,7 +1054,9 @@ export function checkPromotion(
     earningGateTiming: gateTimingFaults.length === 0,
     executionIdentity: identityFaults.length === 0,
     evidenceProvenance: provenanceFaults.length === 0,
+    coldStartHonesty: coldStartComplaints.length === 0,
   };
+
   // Belt and braces · a dimension added to the type but forgotten here would
   // otherwise silently read as passing.
   for (const d of PROMOTION_DIMENSIONS) {
@@ -982,5 +1067,10 @@ export function checkPromotion(
     .map((t) => t.earningGate)
     .filter((g): g is EarningGate => g != null);
 
-  return { traces, check, mayPromote: blocked.length === 0, blockedBecause: blocked, earningGates };
+  return {
+    traces, check, mayPromote: blocked.length === 0, blockedBecause: blocked, earningGates,
+    // Rule 18 §2 · reported so a caller can tell "no cold-start decision was
+    // made" from "every one of them passed".
+    coldStartDecisions,
+  };
 }

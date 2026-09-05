@@ -61,6 +61,9 @@ import type { StimulusGrade } from './stimulus';
  * this type surface stays small enough to audit by reading — which is the
  * mitigation `_forbidden_inputs.test.ts` guard 3 asserts. */
 import type { AthleteWeeklyDemandCeiling } from './demand-ceiling';
+/* TYPE-ONLY, same reason. `phase-priority.ts` owns the phase vocabulary and
+ * the ordering; this file owns only the fact that the engine is told them. */
+import type { CurrentLimiter, SafetyPosture, TrainingPhase } from './phase-priority';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * IDENTITY AND VERSIONING
@@ -384,6 +387,38 @@ export interface GoalRequirement {
 }
 
 /**
+ * WHERE IN THE BLOCK THIS EVALUATION IS, AND WHETHER TRAINING LOGIC MAY RUN AT
+ * ALL.
+ *
+ * Three facts, all of them CARRIED and none of them derived here:
+ *
+ *   · `phase` is authored by the Plan Generator, which
+ *     `docs/BRAIN_CONSTITUTION.md` §2H gives "phase progression" to.
+ *   · `limiter` is the Coaching Thesis's `primary_limiter` (§2F).
+ *   · `safety` is the Safety owner's verdict (§2E, "Safety may override other
+ *     systems"). This engine derives NOTHING about it — deriving one would be
+ *     the "injury or illness automation" this file's header forbids — it
+ *     consumes a stop and refuses.
+ *
+ * Rule 11 is the reason each of these has an explicit unknown state rather than
+ * a default: an unread phase is not a base phase, and no thesis having named a
+ * limiter is not a finding that nothing limits him.
+ *
+ * WHY THIS IS SEPARATE FROM `ProjectedPlanContext`: that type answers "what
+ * does the future plan look like", in miles and dates. This one answers "what
+ * is this block currently FOR". Folding them together would put a coaching
+ * judgement inside a description of the calendar, and the two have different
+ * owners.
+ */
+export interface PhaseContext {
+  readonly phase: TrainingPhase;
+  readonly limiter: CurrentLimiter;
+  readonly safety: SafetyPosture;
+  /** Where the phase came from, for the record. Never a guess dressed as a read. */
+  readonly phaseSource: string;
+}
+
+/**
  * What the future plan looks like, for reach and arbitration. Read-only: this
  * engine projects against it and never edits it.
  */
@@ -428,6 +463,16 @@ export interface CanonicalAdaptationInput {
   readonly race: RaceCalendar;
   readonly goal: GoalRequirement;
   readonly plan: ProjectedPlanContext;
+  /**
+   * Where in the block this is, what is currently limiting him, and whether
+   * Safety permits ordinary training logic to run. See `PhaseContext`.
+   *
+   * This is what replaced arbitration's static global lever order. That
+   * constant applied one sentence about the EARLY part of a block ("Duration is
+   * the primary early lever") to every phase including the taper, where the
+   * same document says the opposite.
+   */
+  readonly phaseContext: PhaseContext;
 
   readonly qualitySessions: readonly GradedSession[];
   readonly weeks: readonly WeekObservation[];

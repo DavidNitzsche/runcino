@@ -26,10 +26,11 @@ import { SHORT_LAYOFF_WEEKS } from './generate';
 // not acceptable." `adjudication-corpus.ts` is the translation — it authors no
 // verdict of its own; every one below comes out of `adjudication/adjudicate.ts`.
 import {
-  ADJ_REACH_BRANCHES, adjReachOf, adjudicateComposedBlock,
+  ADJ_REACH_BRANCHES, adjReachOf, adjudicateColdStartBlock, adjudicateComposedBlock,
   type AdjReachBranch, type CorpusAdjudication,
 } from './adjudication-corpus';
 import { PROMOTION_DIMENSIONS } from './adjudication/contract';
+import { RACE_DISTANCE_KEYS, type RaceDistanceKey } from './adjudication/cold-start';
 
 const catOfMi = (mi: number) => distanceCategoryOf(mi);
 
@@ -107,6 +108,13 @@ const PROBES = new Map<string, ProbeRow[]>();
 //     constructed case per dimension with the other nine asserted still true.
 //   · WHETHER A BLOCK THAT PROMOTES IS A GOOD BLOCK. Adjudicable is not the
 //     same as well-coached, and this ledger only ever says the first.
+/**
+ * The distances `Research/00a`'s volume table states a beginner band for.
+ * `SimDistance` also carries '100k' beyond them; anything outside this set gets
+ * a NULL research allowance rather than a borrowed one.
+ */
+const COLD_START_DISTANCES: ReadonlySet<string> = new Set(RACE_DISTANCE_KEYS);
+
 const ADJ_REACHED = new Map<AdjReachBranch, number>();
 /** Per promotion dimension: how many archetypes it BLOCKED. Rule 22 §2 asks for
  *  the distribution, not the count, and a dimension that blocks nothing across
@@ -292,6 +300,28 @@ function grade(a: Arc) {
     // a null is a real defect in the bridge rather than a quiet skip (Rule 11).
     if (adj == null) firm('ADJ_BRIDGE_RETURNED_NULL_FOR_A_RUNNER_WITH_A_PAST', a);
     else recordAdjudication(a, adj);
+  } else {
+    /* ── COLD START · the corpus reaches it (2026-09-05, Rule 15) ──────────
+     *
+     * `RenderedHistory.peakWeeklyMi` is typed `number` and is never null, so
+     * no HISTORY-BEARING archetype can be a cold start and the branch above
+     * cannot reach the policy at all. The arcs with no history are the ones
+     * that can, and they are the majority of the cross-product — which is
+     * also the production population: six of seven active plans belong to
+     * accounts with zero canonical runs.
+     *
+     * Before this branch existed those arcs were adjudicated by nothing.
+     */
+    const adj = adjudicateColdStartBlock({
+      weeks: built.composed.weeks as any,
+      // Rule 11 · a distance with no beginner row in the volume table gets a
+      // NULL allowance, which leaves the prescription CONDITIONAL with a gate
+      // rather than sized off a band that does not exist for it.
+      raceDistance: COLD_START_DISTANCES.has(a.distance)
+        ? (a.distance as RaceDistanceKey) : null,
+      why: 'this archetype carries no rendered history at all',
+    });
+    recordAdjudication(a, adj);
   }
 
   // Grade BOTH connection states a new runner can be in: a COLD-START signup (no Strava → prod sets

@@ -378,6 +378,39 @@ const ALLOWLIST: readonly AllowedImport[] = [
   // A pure predicate over one `WeekObservation`; it returns a boolean and a
   // sentence.
   { file: ALLOWED_DEMAND_LOADER_FILE, module: '@/lib/adaptation/canonical/input', symbols: new Set(['prescribedNonNormalWeek']) },
+  // PHASEARB-1 (2026-09-05) · the loader must now tell the engine WHICH PHASE
+  // the affected week is in, because arbitration's lever order is no longer a
+  // static global constant. `phaseFromAuthoredLabel` is the ONE translation
+  // from the plan generator's own `plan_phases.label` to the engine's phase
+  // vocabulary — a pure string switch with a Rule 11 default of UNKNOWN, no
+  // I/O, no plan read, no write. It is imported rather than re-implemented so
+  // the loader cannot coin a second phase vocabulary (Rule 16), which is
+  // exactly the drift that would put a taper week into a BASE ordering.
+  { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/phase-priority', symbols: new Set(['phaseFromAuthoredLabel']) },
+  // COLDSTART-1 (2026-09-05) · the cold-start policy imports the SIX EVIDENCE
+  // BARS this engine's contract already states, and imports them rather than
+  // restating them for the reason Rule 16 gives: the thing a runner with no
+  // record is asked to demonstrate before his low confidence ends must be the
+  // SAME thing an established runner is asked to demonstrate before a lever
+  // moves. Two copies of "three consecutive weeks at 95%" would drift the first
+  // time either changed, and the cold start would then be calibrating against a
+  // bar no lever reads.
+  //
+  // All six are `export const number` declarations in a file guards 1-3 already
+  // prove has no I/O of any kind. `cold-start.ts` itself is pure: no pool, no
+  // plan read, no write, and this grant cannot widen that in any direction.
+  {
+    file: path.join(WEB, 'lib/plan/adjudication/cold-start.ts'),
+    module: '@/lib/adaptation/canonical/contract-constants',
+    symbols: new Set([
+      'LONG_RUN_LOOKBACK_COUNT',
+      'LONG_RUN_COMPLETION_MIN_FRAC',
+      'THRESHOLD_EVIDENCE_WINDOW_DAYS',
+      'THRESHOLD_MIN_QUALIFYING_SESSIONS',
+      'VOLUME_MIN_CONSECUTIVE_WEEKS',
+      'VOLUME_WEEK_COMPLETION_MIN_FRAC',
+    ]),
+  },
   // ── A GATE THAT WAS ALREADY RED, FIXED HERE RATHER THAN LEFT ────────────
   //
   // `lib/plan/adjudication/weekly-demand.ts` landed on main in fc9257d2 and

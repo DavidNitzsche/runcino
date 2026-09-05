@@ -66,6 +66,7 @@ import type {
   ComparableSession, DecisionTrace, EvidenceClass, OptionAppraisal, PlanAdjudication,
 } from './adjudication/contract';
 import type { RenderedHistory } from './history-shapes';
+import { coldStartFor, type RaceDistanceKey } from './adjudication/cold-start';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 0 · COUNTS ARE NUMBERS BEFORE THEY ARE ARITHMETIC
@@ -273,6 +274,48 @@ export function plannedWeeksFrom(weeks: readonly ComposedWeekLike[]): PlannedWee
  */
 const isMaterial = (w: PlannedWeek): boolean => w.weeklyMi > 0;
 
+/**
+ * The evidence class of "hold this quantity where he has demonstrated it".
+ *
+ * THIS WAS THE COLD-START DEFECT, and it was here rather than in the gate.
+ * `optionsFor` was called with a hard-coded `'SUPPORTED'` hold on every
+ * archetype, which for a runner with a demonstrated maximum is true by
+ * definition — he has done it — and for a runner with NONE is invented athlete
+ * support for a level that does not exist.
+ *
+ * The consequence was not cosmetic. A SUPPORTED hold scores 0.85 x 0.95 while
+ * an UNKNOWN push scores nothing, so the hold won every week of every block for
+ * every runner with no history, `anyAdvance` was false, and `checkPromotion`
+ * blocked with "no decision in this block advances anything". Six of seven
+ * active production plans failed promotion on exactly that.
+ *
+ * Rule 11 · a demonstrated maximum that is genuinely ABSENT makes the hold
+ * UNKNOWN, which `heuristicRankScore` declines to rank at all — so the ranking
+ * falls to the option that IS classifiable, which is the research-allowed
+ * opening prescription. That is the correct answer and it comes out of the
+ * layer's own arithmetic rather than from a thumb on the scale.
+ */
+/**
+ * Which policy a block is adjudicated under.
+ *
+ * `COLD_START` is the live one and the only one any production caller may pass.
+ * `LEGACY_NO_COLD_START` reproduces the pre-2026-09-05 engine exactly — no
+ * cold-start posture, and a hold hard-coded to SUPPORTED — and exists for ONE
+ * reason: `_promotion_replay.script.ts` has to replay the live plans through
+ * both to measure what the change actually did.
+ *
+ * It is not a fallback, a flag, or a migration path, and it is the same
+ * construction (and the same guard) `arbitration.ts`'s `ArbitrationReading`
+ * already uses for exactly the same purpose. `_cold_start.test.ts` asserts by
+ * scanning source that the replay script is the only caller that names it, so
+ * this cannot quietly become a second live engine.
+ */
+export type AdjudicationReading = 'COLD_START' | 'LEGACY_NO_COLD_START';
+
+export function holdClassFor(demonstratedMax: number | null): EvidenceClass {
+  return demonstratedMax === null ? 'UNKNOWN' : 'SUPPORTED';
+}
+
 function optionsFor(cls: EvidenceClass, holdCls: EvidenceClass): OptionAppraisal[] {
   return [
     {
@@ -281,14 +324,22 @@ function optionsFor(cls: EvidenceClass, holdCls: EvidenceClass): OptionAppraisal
       risk: cls === 'SUPPORTED' ? 'none he has not already carried' : 'load he has not demonstrated',
     },
     {
-      option: 'HOLD', describe: 'hold the week at his demonstrated level', evidenceClass: holdCls,
+      option: 'HOLD',
+      describe: holdCls === 'UNKNOWN'
+        ? 'hold the week where he has demonstrated it, which is nowhere'
+        : 'hold the week at his demonstrated level',
+      evidenceClass: holdCls,
       heuristicRankScore: heuristicRankScore(holdCls),
-      risk: 'leaves adaptation on the table',
+      risk: holdCls === 'UNKNOWN'
+        ? 'there is no demonstrated level to hold at, so this is not an option so much as a refusal'
+        : 'leaves adaptation on the table',
     },
     {
       option: 'PULL_BACK', describe: 'cut a stressor out of the week', evidenceClass: holdCls,
       heuristicRankScore: heuristicRankScore(holdCls),
-      risk: 'loses a session he can absorb',
+      risk: holdCls === 'UNKNOWN'
+        ? 'cuts from a level nothing established'
+        : 'loses a session he can absorb',
     },
   ];
 }
@@ -314,14 +365,48 @@ export function traceForWeek(args: {
    *  the runner who exists today. Null for week 0, which has no runway. */
   readonly projectedPeakMi: number | null;
   readonly historyWindow: string;
+  /**
+   * The goal event, for the cold-start research allowance. Rule 11 · NULL when
+   * it is not known, which leaves a cold start with no allowance and therefore
+   * CONDITIONAL with a gate, rather than an allowance for a distance nobody
+   * named.
+   */
+  readonly raceDistance?: RaceDistanceKey | null;
+  /**
+   * THE PRE-2026-09-05 ENGINE, REPRODUCED EXACTLY. See `AdjudicationReading`.
+   *
+   * It exists for ONE reason: the read-only production replay has to measure
+   * what the cold-start policy actually changed, and Rule 21's standard is that
+   * a change be PROVEN on real history rather than asserted. That proof needs
+   * the before as well as the after.
+   */
+  readonly reading?: AdjudicationReading;
+  /**
+   * TRUE only for a runner this layer has NEVER SEEN RUN AT ALL.
+   *
+   * A cold start is about the absence of a RECORD, not the absence of a
+   * COMPARABLE. A runner with a training history who has never done a
+   * marathon-pace dose is not cold-started on it: `UNKNOWN` is the honest class
+   * there, and the gate already forces an earning gate on it.
+   *
+   * Making this an explicit opt-in rather than inferring it from a null
+   * demonstrated maximum is what keeps those two apart. The first version
+   * inferred it, and the archetype sweep caught it immediately: `adj:evidence-
+   * unknown` became unreachable across all 8,781 blocks, because every
+   * missing comparable had been converted into a research allowance.
+   */
+  readonly noHistory?: boolean;
 }): DecisionTrace {
   const { week, priorWeeks, hist, projectedPeakMi, historyWindow } = args;
+  const legacy = args.reading === 'LEGACY_NO_COLD_START';
+  const cold = args.noHistory === true && !legacy;
   // The largest week the block asks before this one, which is what an earning
   // gate should require and what a REDUCE should fall back to.
   const gateBaselineMi = priorWeeks.length === 0
     ? null
     : Math.max(...priorWeeks.map((w) => w.weeklyMi));
 
+  const assessOnISO = addDays(week.weekStartISO, -7);
   const athlete = athleteEvidenceFor({
     what: `a ${week.weeklyMi} mi week`,
     asOfISO: week.weekStartISO,
@@ -330,6 +415,27 @@ export function traceForWeek(args: {
     demonstratedMaxProjected: projectedPeakMi,
     comparables: hist.after,
     historyWindow,
+    // Returns null unless `peakWeeklyMi` is genuinely absent, so this cannot
+    // declare a cold start for a runner who has one.
+    /**
+     * A cold start is declared on the ABSENCE OF HISTORY, not on knowing the
+     * goal event. Gating it on a known distance left two active production
+     * plans — both with no race row at all — with no posture, so
+     * `demonstratedMaxProjected` (the largest week the block itself asks for)
+     * classified their weeks SUPPORTED from week two onward. That is the
+     * projection chain anchored in nothing, and it is the exact defect the
+     * ALLOWED cap exists to close.
+     *
+     * With an unknown distance the allowance is NULL, which makes the
+     * prescription CONDITIONAL and forces an earning gate. Rule 11: not knowing
+     * the event is a reason to ask for more, not to assume more.
+     */
+    coldStart: !cold ? null : coldStartFor({
+      quantity: 'WEEKLY_VOLUME',
+      distance: args.raceDistance ?? null,
+      demonstratedMaxToday: hist.peakWeeklyMi,
+      reassessOnISO: assessOnISO,
+    }),
   });
 
   const stacked = detectStackedStress(week, hist);
@@ -340,7 +446,7 @@ export function traceForWeek(args: {
   // one, which the function already refuses on.
   const addsBoth = detectSimultaneousStressAddition(week, priorWeeks);
   const cls = athlete.evidenceClass;
-  const options = optionsFor(cls, 'SUPPORTED');
+  const options = optionsFor(cls, legacy ? 'SUPPORTED' : holdClassFor(hist.peakWeeklyMi));
   const ranked = rankOptions(options);
   let chosen = ranked[0].option;
 
@@ -362,10 +468,22 @@ export function traceForWeek(args: {
    * only the pushes would have left every held-but-still-prescribed week
    * ungated and read as a defect in the block rather than in the caller.
    */
-  const needsGate = mustArgue
+  /**
+   * A COLD START owes a gate whenever the prescription is not inside the
+   * research allowance, and a reassessment always.
+   *
+   * `cls` is ALLOWED inside the allowance, which is not one of the classes the
+   * general rule gates — correctly, because "a research table permits it" is a
+   * real basis. What it is NOT is athlete support, so the reassessment date is
+   * mandatory either way and `coldStartFaults` blocks a cold start without one.
+   */
+  const coldStartOwesGate = athlete.coldStart !== null
+    && (athlete.coldStart.allowance === null
+      || (athlete.prescribed !== null && athlete.prescribed > athlete.coldStart.allowance.value));
+
+  const needsGate = mustArgue || coldStartOwesGate
     || cls === 'CONDITIONAL' || cls === 'CONTRAINDICATED' || cls === 'UNKNOWN';
 
-  const assessOnISO = addDays(week.weekStartISO, -7);
   const earningGate = needsGate
     ? earningGateFor({
       decisionId: `wk:${week.weekStartISO}`,
@@ -387,8 +505,24 @@ export function traceForWeek(args: {
         // that asks about a week which has not run yet cannot be answered.
         byISO: assessOnISO,
       }],
-      ifUnmet: 'REDUCE',
-      reduceTo: gateBaselineMi ?? hist.peakWeeklyMi,
+      /**
+       * "REDUCE TO WHAT?" · the same defect `mpTraceForWeek` fixed below, found
+       * by the sweep on its first run over cold-start blocks: 1,787 archetypes
+       * blocked on `earningGateTiming · reduces on failure but names no reduced
+       * value, so "REDUCE" is a word rather than an instruction`.
+       *
+       * `gateBaselineMi` is null at a block's opening week, which has no
+       * earlier week to fall back to, and for a COLD START `hist.peakWeeklyMi`
+       * is null as well — so the fallback fell through to null and the gate
+       * promised a reduction it could not name.
+       *
+       * The honest answer when there is nothing to fall back to is DEFER: the
+       * week waits for the boundary rather than shrinking to a number nobody
+       * chose. Rule 11 · a missing baseline is not a baseline of zero.
+       */
+      ...((gateBaselineMi ?? hist.peakWeeklyMi) == null
+        ? { ifUnmet: 'DEFER' as const, reduceTo: null }
+        : { ifUnmet: 'REDUCE' as const, reduceTo: (gateBaselineMi ?? hist.peakWeeklyMi)! }),
     })
     : null;
 
@@ -408,7 +542,10 @@ export function traceForWeek(args: {
     rejected: ranked.slice(1).map((o) => ({ option: o.option, why: o.risk })),
     conflicts: [],
     citations: [],
-    reassessOnISO: needsGate ? assessOnISO : null,
+    // A cold start is ALWAYS re-taken, gate or no gate: the low confidence is
+    // supposed to be temporary, and a posture nothing revisits makes it
+    // permanent.
+    reassessOnISO: needsGate || athlete.coldStart !== null ? assessOnISO : null,
     earningGate,
   };
 }
@@ -434,8 +571,14 @@ function mpTraceForWeek(args: {
   readonly hist: DemonstratedHistory;
   readonly projectedMpMi: number | null;
   readonly historyWindow: string;
+  readonly raceDistance?: RaceDistanceKey | null;
+  readonly reading?: AdjudicationReading;
+  /** See `traceForWeek`. A missing comparable is not a cold start. */
+  readonly noHistory?: boolean;
 }): DecisionTrace {
   const { week, hist, projectedMpMi, historyWindow } = args;
+  const legacy = args.reading === 'LEGACY_NO_COLD_START';
+  const cold = args.noHistory === true && !legacy;
   const athlete = athleteEvidenceFor({
     what: `a ${week.mpMi} mi marathon-pace dose`,
     asOfISO: week.weekStartISO,
@@ -444,9 +587,19 @@ function mpTraceForWeek(args: {
     demonstratedMaxProjected: projectedMpMi,
     comparables: hist.after,
     historyWindow,
+    // No research table states an opening marathon-pace dose, so this posture
+    // carries a NULL allowance and the prescription stays CONDITIONAL with a
+    // gate. That is the honest answer and it is the reason `researchAllowanceFor`
+    // refuses rather than inventing a share of something.
+    coldStart: !cold ? null : coldStartFor({
+      quantity: 'MARATHON_PACE_DOSE',
+      distance: args.raceDistance ?? null,
+      demonstratedMaxToday: hist.maxCompletedMpMi,
+      reassessOnISO: addDays(week.weekStartISO, -7),
+    }),
   });
   const cls = athlete.evidenceClass;
-  const options = optionsFor(cls, 'SUPPORTED');
+  const options = optionsFor(cls, legacy ? 'SUPPORTED' : holdClassFor(hist.maxCompletedMpMi));
   const ranked = rankOptions(options);
   // `heuristicRankScore('UNKNOWN')` is null, so an unknown PUSH ranks below a
   // supported hold WITHOUT anyone writing "be careful" — which is the layer
@@ -474,7 +627,7 @@ function mpTraceForWeek(args: {
     rejected: ranked.slice(1).map((o) => ({ option: o.option, why: o.risk })),
     conflicts: [],
     citations: [],
-    reassessOnISO: needsGate ? assessOnISO : null,
+    reassessOnISO: needsGate || athlete.coldStart !== null ? assessOnISO : null,
     earningGate: needsGate
       ? earningGateFor({
         decisionId: `mp:${week.weekStartISO}`,
@@ -526,6 +679,8 @@ export function adjudicateComposedBlock(args: {
   readonly weeks: readonly ComposedWeekLike[];
   readonly blockStartISO: string;
   readonly windowDescribed: string;
+  /** The goal event, for a cold-start research allowance. Rule 11 · optional. */
+  readonly raceDistance?: RaceDistanceKey | null;
 }): CorpusAdjudication | null {
   const { rendered, weeks, blockStartISO, windowDescribed } = args;
   if (rendered == null) return null;
@@ -551,7 +706,10 @@ export function adjudicateComposedBlock(args: {
     // The body the plan builds him to by this week: the largest week it has
     // asked for before this one, or null at the opening, which has no runway.
     const projectedPeakMi = maxOf(earlier.map((w) => w.weeklyMi));
-    traces.push(traceForWeek({ week, priorWeeks: earlier, hist, projectedPeakMi, historyWindow: windowDescribed }));
+    traces.push(traceForWeek({
+      week, priorWeeks: earlier, hist, projectedPeakMi,
+      historyWindow: windowDescribed, raceDistance: args.raceDistance ?? null,
+    }));
     if (week.mpMi > 0) {
       traces.push(mpTraceForWeek({
         week,
@@ -563,6 +721,81 @@ export function adjudicateComposedBlock(args: {
         // never arrives here wearing a zero's clothes (Rule 11).
         projectedMpMi: maxOf(earlier.map((w) => w.mpMi).filter((mi) => mi > 0)),
         historyWindow: windowDescribed,
+        raceDistance: args.raceDistance ?? null,
+      }));
+    }
+  }
+
+  return { weeks: planned, hist, result: checkPromotion(traces, { weeks: planned }) };
+}
+
+/**
+ * ADJUDICATE A BLOCK FOR A RUNNER WITH NO HISTORY AT ALL.
+ *
+ * The sibling of `adjudicateComposedBlock`, and a SEPARATE function on purpose
+ * (Rule 16): "adjudicate this runner's block against his past" and "adjudicate
+ * this runner's block when he has no past" are two questions, and one entry
+ * point taking a nullable history would let a caller reach the cold-start
+ * policy by accident — which is exactly how a cold start becomes a silent
+ * bypass rather than an explicit state.
+ *
+ * The history handed to the layer is ALL NULLS, not zeros. Rule 11: a runner
+ * with no recorded run has an ABSENT peak week, and a measured zero would mean
+ * he was observed and ran nothing, which is a different runner with a different
+ * correct plan.
+ *
+ * Rule 15 · this is what makes the cold-start policy corpus-reachable. Every
+ * archetype with `history: null` goes through here, and the read-only
+ * production replay drives the same function against the six live plans whose
+ * accounts have zero canonical runs.
+ */
+export function adjudicateColdStartBlock(args: {
+  readonly weeks: readonly ComposedWeekLike[];
+  readonly raceDistance: RaceDistanceKey | null;
+  /** Why this runner has no history, in the runner's language. */
+  readonly why: string;
+  /** See `AdjudicationReading`. Defaults to the live policy. */
+  readonly reading?: AdjudicationReading;
+}): CorpusAdjudication {
+  const hist: DemonstratedHistory = {
+    peakWeeklyMi: null,
+    longestRunMi: null,
+    maxCompletedMpMi: null,
+    maxStressorsInAWeek: null,
+    after: [],
+    windowDescribed: args.why,
+  };
+  const planned = plannedWeeksFrom(args.weeks);
+  const material = planned.filter(isMaterial);
+
+  const traces: DecisionTrace[] = [];
+  for (let i = 0; i < material.length; i += 1) {
+    const week = material[i];
+    const earlier = material.slice(0, i);
+    traces.push(traceForWeek({
+      week,
+      priorWeeks: earlier,
+      hist,
+      // The body the plan builds him to. Null at the opening, and thereafter
+      // the largest week the block has asked for — which is a POLICY_ASSUMPTION
+      // about the future either way, and is labelled as one by
+      // `athleteEvidenceFor`. It is not athlete evidence and never becomes any.
+      projectedPeakMi: earlier.length === 0 ? null
+        : earlier.reduce((m, w) => (w.weeklyMi > m ? w.weeklyMi : m), earlier[0].weeklyMi),
+      historyWindow: args.why,
+      raceDistance: args.raceDistance,
+      reading: args.reading,
+      noHistory: true,
+    }));
+    if (week.mpMi > 0) {
+      traces.push(mpTraceForWeek({
+        week,
+        hist,
+        projectedMpMi: null,
+        historyWindow: args.why,
+        raceDistance: args.raceDistance,
+        reading: args.reading,
+        noHistory: true,
       }));
     }
   }
@@ -580,6 +813,10 @@ export const ADJ_REACH_BRANCHES = [
   'adj:evidence-allowed',        // a real reach a table permits
   'adj:evidence-conditional',    // past +25% · must be earned
   'adj:evidence-unknown',        // no demonstrated max to size against (Rule 11)
+  // ── cold start · a runner this layer has never seen run ──
+  'adj:cold-start',              // at least one quantity is genuinely absent
+  'adj:cold-start-allowed',      // inside the research band · ALLOWED, never SUPPORTED
+  'adj:cold-start-conditional',  // past the band, or a quantity research does not size
   'adj:projection-used',         // judged against the body the plan builds, not today's
   'adj:projection-absent',       // the opening week · judged against today
   // ── comparables ──
@@ -620,6 +857,11 @@ export function adjReachOf(adj: CorpusAdjudication): Set<AdjReachBranch> {
     }
     got.add(t.athlete.demonstratedMaxProjected.value == null
       ? 'adj:projection-absent' : 'adj:projection-used');
+    if (t.athlete.coldStart !== null) {
+      got.add('adj:cold-start');
+      got.add(t.athlete.evidenceClass === 'ALLOWED'
+        ? 'adj:cold-start-allowed' : 'adj:cold-start-conditional');
+    }
     if (t.athlete.comparables.length > 0) got.add('adj:comparables-present');
     if (t.athlete.comparables.some((c) => c.next7DaysMi == null)) got.add('adj:comparable-window-open');
 
