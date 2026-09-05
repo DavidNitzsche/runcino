@@ -25,7 +25,14 @@ import { pool } from '@/lib/db/pool';
 //                       nothing in the app is pricing it. Before this the
 //                       majority of production plans were in that state and
 //                       there was no alert of any kind (Rule 23).
-export type AlertKind = 'plan_convergence' | 'cron_fail' | 'cron_ok' | 'cron_stale' | 'cron_precondition' | 'regen_fail' | 'asc_stall' | 'crash' | 'briefing_failure' | 'webhook_failure' | 'apns_send_failed' | 'notifications_cron_error' | 'dedup_flag_census' | 'dedup_absorption_invariant' | 'account_deleted' | 'unknown';
+export type AlertKind = 'plan_convergence' | 'cron_fail' | 'cron_ok' | 'cron_stale' | 'cron_precondition' | 'regen_fail' | 'asc_stall' | 'crash' | 'briefing_failure' | 'webhook_failure' | 'apns_send_failed' | 'notifications_cron_error' | 'dedup_flag_census' | 'dedup_absorption_invariant' | 'account_deleted'
+  /* LEDGER-1 (2026-09-05) · a promise the engine made and did not keep. Raised
+   * by `lib/ops/reassessment-scheduler.ts` for an item still unassessed past its
+   * own `overdue_after_iso`. CLAUDE.md Rule 23's third clause: a job that does
+   * not run must be NOTICED, and the cron ledger being green is not the same as
+   * the work being done. */
+  | 'reassessment_overdue'
+  | 'unknown';
 export type AlertSeverity = 'info' | 'warn' | 'error' | 'critical';
 
 export interface RaiseAlertInput {

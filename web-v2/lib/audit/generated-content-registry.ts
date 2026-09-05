@@ -356,15 +356,39 @@ export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
     reason: 'Read by app/api/admin/canonical-adaptation-shadow (GET), an admin-gated diagnostic endpoint per docs/ADAPTATION_ENGINE_CONTRACT.md\'s "reasonable minimum bar" for owner-visible tonight -- see that route\'s own header. Classified internal, not surfaced: the reader is an operator diagnostic (requireAdmin-gated JSON), not a runner-facing screen, and the route\'s own header names explicitly what a fuller phone surface would still need (a native build, a product decision on whether a fourth lever that has never once returned PROGRESS belongs on a runner-facing screen at all). Reclassify to surfaced if/when that decision lands and a real UI renders it.',
   },
 
-  // -- the canonical Adaptation Engine's DEFERRAL QUEUE (migration 165) ------
+  // -- the DURABLE DECISION LEDGER (migration 166) ---------------------------
   {
-    id: 'canonical_adaptation_deferrals.reason',
+    id: 'plan_decision_ledger.explanation',
     verdict: 'internal',
-    holds: "The arbitration rule that deferred a progression, as a closed code -- WEEK_AT_DEMAND_CEILING, ONE_MATERIAL_LEVER_PER_CYCLE or ARBITRATED_AT_WEEKLY_BOUNDARY. The runner-facing SENTENCE lives beside it in reason_detail; this column is the machine-readable half.",
-    reason: 'Read by lib/adaptation/canonical-shadow/deferral-store.ts:loadLiveQueue, which reconstructs a QueuedDeferral so the next boundary can reconsider it, and by nothing else. Internal, never surfaced: a deferral is engine state the runner never asked about, and putting one in front of him is the "forced goal decision" failure mode CLAUDE.md already rules out for a neighbouring mechanism. It is also NOT yet written on production -- migration 165 is applied to a local scratch database only -- so the honest current reader count is one process-local one. Reclassify if a runner-facing surface for deferred progressions is ever decided on.',
+    holds: "One clause saying what the mutation boundary did and why, e.g. \"rolled back - this mutation introduced 2 doctrine violation(s) the plan did not already carry\" or \"a new plan was authored, replacing pln_..., whose ledger lineage it inherits.\" The caller's own sentence is prefixed to it when it supplies one.",
+    reason: 'Read by lib/brain/ledger/decision-ledger.ts:loadRecentDecisions and rendered by app/api/admin/decision-ledger (GET), an admin-gated operator diagnostic on the same posture as app/api/admin/canonical-adaptation-shadow. Internal, not surfaced: a decision ledger is engine state, and a runner-facing history of what the coach did is a real product decision that has not been taken -- see that route\'s own header, which names it rather than building past it. It is also NOT yet written on production: migration 166 is applied to a local scratch database only, pending the owner\'s per-statement go on DDL.',
   },
   {
-    id: 'canonical_adaptation_deferrals.evidence',
+    id: 'plan_decision_ledger.provenance',
+    verdict: 'internal',
+    holds: "The named write site that made the decision -- 'adapt/apply', 'api/plan/workout PATCH', 'generate/persist'. The same vocabulary plan_mutation_rejections.source already carries, so the two audit surfaces join on a string that already exists rather than a second one invented beside it (Rule 16).",
+    reason: 'Read by lib/brain/ledger/decision-ledger.ts:loadRecentDecisions, rendered by app/api/admin/decision-ledger, and load-bearing in the write path: it is part of the partial unique index (user_uuid, provenance, idempotency_key) that makes a nightly pass idempotent instead of doubling Rule 21\'s census. Internal for the same reason as the row above.',
+  },
+  {
+    id: 'plan_decision_ledger.evidence',
+    verdict: 'internal',
+    holds: 'Whatever the calling engine held as the observations behind the decision, passed through verbatim. Empty for a mutation that rests on no evidence at all -- a runner tapping a day in the app -- which is an honest empty rather than a missing one.',
+    reason: 'Read by lib/brain/ledger/decision-ledger.ts:loadRecentDecisions and rendered by app/api/admin/decision-ledger. It exists because CLAUDE.md Rule 21 requires that "every adaptation writes what it did, in which direction, and on what evidence" -- a ledger row with no evidence cannot be judged later, which is precisely the ambiguity that let an engine with zero upward adaptations survive. Internal for the same reason as the two rows above.',
+  },
+
+  // -- the DURABLE REASSESSMENT SCHEDULER (migration 167) --------------------
+  // Migration 165's `canonical_adaptation_deferrals` was replaced 2026-09-05 by
+  // `reassessment_schedule`, which carries these rows as kind = 'DEFERRAL'
+  // alongside six other kinds of scheduled promise. `reason` became
+  // `reason_code`; nothing else about these two columns changed.
+  {
+    id: 'reassessment_schedule.reason_code',
+    verdict: 'internal',
+    holds: "The arbitration rule that deferred a progression, as a closed code -- WEEK_AT_DEMAND_CEILING, ONE_MATERIAL_LEVER_PER_CYCLE or ARBITRATED_AT_WEEKLY_BOUNDARY. The runner-facing SENTENCE lives beside it in reason_detail; this column is the machine-readable half.",
+    reason: 'Read by lib/adaptation/canonical-shadow/deferral-store.ts:loadLiveQueue, which reconstructs a QueuedDeferral so the next boundary can reconsider it, and by nothing else. Internal, never surfaced: a deferral is engine state the runner never asked about, and putting one in front of him is the "forced goal decision" failure mode CLAUDE.md already rules out for a neighbouring mechanism. It is also NOT yet written on production -- migration 167 is applied to a local scratch database only -- so the honest current reader count is one process-local one. Reclassify if a runner-facing surface for deferred progressions is ever decided on.',
+  },
+  {
+    id: 'reassessment_schedule.evidence',
     verdict: 'internal',
     holds: 'The IncludedEvidence list that justified the deferred proposal: the activity ids, dates and provenance the lever admitted when it made the change.',
     reason: 'Read by lib/adaptation/canonical-shadow/deferral-store.ts:loadLiveQueue and spent by lib/adaptation/canonical/deferral-queue.ts:reconsiderAtBoundary, which measures the newest observation against the evidence window to decide whether a queued item has gone stale. It exists because CLAUDE.md Rule 21 requires that "every adaptation writes what it did, in which direction, and on what evidence" -- a queued item with no evidence could not be judged when it came back, which is the whole reason the queue is a ledger rather than a set of reminders. Internal for the same reason as the row above.',

@@ -42,7 +42,9 @@ const WEB = path.resolve(HERE, '..', '..');
  *  listed INSERT, proven separately and more tightly by that directory's
  *  own `_never_mutates_plan.test.ts`. Argued exemption, not a widened
  *  hole: this scan only proves NO OTHER table is touched. */
-/* `canonical_adaptation_deferrals` (added 2026-09-04, migration 165) is the
+/* `reassessment_schedule` (migration 167, 2026-09-05 — it replaced the
+ * unapplied `reassessment_schedule` of migration 165 rather than
+ * sitting beside it, so the app has one durable queue and not three) is the
  * durable half of `canonical/deferral-queue.ts` — the ledger of progressions
  * arbitration DEFERRED, so one survives a process restart and is reconsidered
  * at the next boundary instead of evaporating. Argued exemption, on the same
@@ -57,13 +59,13 @@ const WEB = path.resolve(HERE, '..', '..');
  *     against exactly this table and refuses everything else before the wire.
  *   · UPDATE is authorized against it, which it is not against either shadow
  *     log, and the reason is structural: rows here are never deleted, so
- *     retiring an item is an UPDATE that stamps `expired_at` with a stated
- *     reason. A DELETE would lose the distinction between "retired because
+ *     retiring an item is an UPDATE that stamps a terminal `status` with a
+ *     stated reason. A DELETE would lose the distinction between "retired because
  *     the block ended" and "silently vanished", which is the whole point.
  *
  * This scan still proves NO OTHER TABLE is touched. */
 const OWNED_TABLES = new Set([
-  'adaptation_shadow_log', 'canonical_adaptation_shadow_log', 'canonical_adaptation_deferrals',
+  'adaptation_shadow_log', 'canonical_adaptation_shadow_log', 'reassessment_schedule',
 ]);
 
 /** Every function in this codebase that writes a plan row, or reaches one. */
@@ -234,16 +236,16 @@ describe('liveness · the scanner read real files', () => {
   it('ORACLE · the upsert neutraliser hides the phantom, and NOTHING else', () => {
     // An upsert reports ONE write, against the INSERT's own table — not a
     // second one against a phantom table called `SET`.
-    const upsert = 'const q = `INSERT INTO canonical_adaptation_deferrals (a) VALUES ($1)'
+    const upsert = 'const q = `INSERT INTO reassessment_schedule (a) VALUES ($1)'
       + ' ON CONFLICT (a) DO UPDATE SET a = 1`;';
     expect(writesIn(upsert)).toEqual([
-      { verb: 'INSERT INTO', table: 'canonical_adaptation_deferrals' },
+      { verb: 'INSERT INTO', table: 'reassessment_schedule' },
     ]);
 
     // FALSIFICATION, both directions. A REAL second statement smuggled after
     // an upsert is still caught, so the neutraliser has not opened a hole —
     // it rewrites exactly the four tokens `DO UPDATE SET` and nothing wider.
-    const smuggled = 'const q = `INSERT INTO canonical_adaptation_deferrals (a) VALUES ($1)'
+    const smuggled = 'const q = `INSERT INTO reassessment_schedule (a) VALUES ($1)'
       + ' ON CONFLICT (a) DO UPDATE SET a = 1; UPDATE plan_workouts SET distance_mi = 9`;';
     expect(writesIn(smuggled)).toContainEqual({ verb: 'UPDATE', table: 'plan_workouts' });
 

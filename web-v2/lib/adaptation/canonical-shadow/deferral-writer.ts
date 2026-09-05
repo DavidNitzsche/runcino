@@ -16,14 +16,30 @@
  * boundaries, and eventually stamped with an expiry. Rows are never deleted —
  * "retired because the block ended" and "silently vanished" are different
  * facts and only one survives a DELETE — so retiring an item is an UPDATE that
- * sets `expired_at`, `expiry_reason` and `expiry_detail`, and the database's
- * own CHECK constraint refuses a row that says "gone" without saying why.
+ * sets a terminal `status`, a `resulting_decision` and a
+ * `resulting_decision_detail`, and the database's own CHECK constraint refuses
+ * a row that says "gone" without saying why.
+ *
+ * ── 2026-09-05 · THE TABLE MOVED, THE FENCE DID NOT LOOSEN ─────────────────
+ *
+ * It was `canonical_adaptation_deferrals` (the unapplied migration 165). That
+ * table covered ONE of the seven kinds of promise this engine makes, and
+ * building the other six beside it would have meant a third durable queue. It
+ * is now `reassessment_schedule` (migration 167), which carries the deferrals
+ * as `kind = 'DEFERRAL'` with the same columns, the same partial-unique-on-live
+ * identity and the same never-delete posture.
+ *
+ * This fence is unchanged in every way that matters: still exactly two
+ * statement shapes, still exactly one table, still anchored, still falsified in
+ * both directions. `lib/ops/reassessment-scheduler.ts` is the writer for the
+ * OTHER six kinds and lives outside this directory, so this fence stays as
+ * narrow as it was rather than growing to serve them.
  *
  * So exactly two statement shapes are authorized, both against exactly
- * `canonical_adaptation_deferrals`:
+ * `reassessment_schedule`:
  *
- *   1 · INSERT INTO canonical_adaptation_deferrals (...)   — queue or refresh
- *   2 · UPDATE canonical_adaptation_deferrals SET ...      — stamp an expiry
+ *   1 · INSERT INTO reassessment_schedule (...)   — queue or refresh
+ *   2 · UPDATE reassessment_schedule SET ...      — stamp an expiry
  *
  * Anything else — any other table, a DELETE, a DROP, a second statement
  * smuggled past a semicolon, a CTE that touches a plan table — is refused
@@ -32,7 +48,7 @@
  * ── RULE 18 · THIS FENCE HAS BEEN FALSIFIED ────────────────────────────────
  *
  * `_deferral_store.test.ts` plants an `UPDATE plan_workouts` and a
- * `DELETE FROM canonical_adaptation_deferrals` through this function and
+ * `DELETE FROM reassessment_schedule` through this function and
  * asserts both are refused with the message quoted in the report, then asserts
  * the two real statement shapes are accepted. A fence that has never refused
  * anything is a hypothesis.
@@ -48,16 +64,16 @@
  */
 import { pool } from '@/lib/db/pool';
 
-const ALLOWED_TABLE = 'canonical_adaptation_deferrals';
+const ALLOWED_TABLE = 'reassessment_schedule';
 
-/** `INSERT INTO canonical_adaptation_deferrals (` — leading comments and
+/** `INSERT INTO reassessment_schedule (` — leading comments and
  *  whitespace tolerated, nothing else. */
 const ALLOWED_INSERT_RE = new RegExp(
   `^\\s*(?:--[^\\n]*\\n|\\s)*insert\\s+into\\s+"?${ALLOWED_TABLE}"?\\s*\\(`,
   'i',
 );
 
-/** `UPDATE canonical_adaptation_deferrals SET` — same tolerance. */
+/** `UPDATE reassessment_schedule SET` — same tolerance. */
 const ALLOWED_UPDATE_RE = new RegExp(
   `^\\s*(?:--[^\\n]*\\n|\\s)*update\\s+"?${ALLOWED_TABLE}"?\\s+set\\s`,
   'i',
@@ -126,4 +142,4 @@ export async function writeDeferral(sql: string, params: readonly unknown[]): Pr
 
 /** The table this writer may ever touch, exported so a test can assert the
  *  migration and this file agree on the name (Rule 16). */
-export const CANONICAL_ADAPTATION_DEFERRALS_TABLE = ALLOWED_TABLE;
+export const REASSESSMENT_SCHEDULE_TABLE = ALLOWED_TABLE;

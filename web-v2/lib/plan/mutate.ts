@@ -191,6 +191,40 @@
  *                    read as pre-existing. Passing false is conservative and
  *                    cannot manufacture a rejection.
  *
+ * ─── LEDGER-1 (2026-09-05) · EVERY EXIT LANDS IN THE DECISION LEDGER ────────
+ *
+ * `plan_mutation_rejections` (migration 150) records what this boundary
+ * REFUSED. It has never recorded what it PERMITTED. So the audit surface in
+ * front of the only door into `plan_workouts` could answer "what did we stop"
+ * and could not answer "what did we do" — which is CLAUDE.md Rule 21's
+ * question, and the reason its census of 309 production intents had to be
+ * reconstructed sideways out of `coach_intents`.
+ *
+ * `plan_decision_ledger` (migration 166) is now written on every exit of this
+ * function: the successes, the rejections, the bypass, the no-plan refusal, the
+ * authority refusal that throws before a connection is opened, and the crash.
+ * `scripts/check-decision-ledger.sh` guard 1 walks the exits and fails when one
+ * of them does not.
+ *
+ * Two properties are worth naming because they are what make it a ledger:
+ *
+ *   · DIRECTION IS MEASURED, NEVER DECLARED. No caller supplies it. It is
+ *     computed from the before/after snapshots this boundary already holds, on
+ *     prescribed distance and prescribed pace — the two axes the mission
+ *     statement names. `lib/brain/ledger/ledger-entry.ts` is where, and its own
+ *     header explains why declaring it is the failure mode.
+ *   · IT SURVIVES A REBUILD. `plan_lineage_id` is carried from the plan being
+ *     replaced onto the plan replacing it, which is why `replacedPlanId` is
+ *     read BEFORE `apply` archives the outgoing plan rather than reconstructed
+ *     afterwards.
+ *
+ * `training_plans.adaptation_log` is UNCHANGED and `applyAdaptations` keeps
+ * appending to it — `docs/OVERNIGHT-REPORT.md` records consumers deriving
+ * "last changed" as `max(adaptation_log.ts)`. What changes is its STATUS: it
+ * is a per-plan convenience index and this table is the record of truth, for
+ * the two reasons migration 166's header sets out (it lives inside the thing a
+ * rebuild discards, and its only writer is the nightly cron).
+ *
  * ─── ADDING A NEW WRITER ─────────────────────────────────────────────────────
  *
  * Do not issue `INSERT/UPDATE/DELETE ... plan_workouts` directly. Put the
@@ -199,7 +233,19 @@
  * build if a writer appears outside this door.
  */
 import { mutationIsPermitted, type AuthorityClass } from '@/lib/brain/mutation/authority';
+import { recordDecision, resolvePlanLineage } from '@/lib/brain/ledger/decision-ledger';
+import {
+  demandDelta,
+  directionOfDelta,
+  leverOfDelta,
+  scopeOfChange,
+  PLAN_MUTATION_BOUNDARY_MODEL_VERSION,
+  type LedgerDecision,
+  type LedgerRunnerResponse,
+  type LedgerSourceMode,
+} from '@/lib/brain/ledger/ledger-entry';
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import type { PoolClient } from 'pg';
 import { validateComposedPlan, PlanValidationError } from './validate';
 import type { ComposePlanResult, ComposedWeek, DayPlan } from './generate';
@@ -237,6 +283,17 @@ export interface PlanWorkoutRow {
   is_long: boolean | null;
   sub_label: string | null;
   notes: string | null;
+  /**
+   * LEDGER-1 (2026-09-05) · read by NOTHING in the validator, and deliberately
+   * absent from `structuralFingerprint`. It exists so the boundary can measure
+   * which way a `'derivations'` mutation moved the prescription — a re-anchor
+   * moves every pace and no distance, and a direction read off distance alone
+   * would call that NEUTRAL forever.
+   *
+   * Optional so every existing construction of this row shape still compiles;
+   * `snapshotPlan` always populates it.
+   */
+  pace_target_s_per_mi?: number | null;
 }
 
 /** Everything the validator can be run against, straight off the three tables. */
@@ -464,7 +521,8 @@ export async function snapshotPlan(tx: Queryable, planId: string): Promise<PlanS
     tx.query<PlanWorkoutRow>(
       `SELECT id::text AS id, week_id::text AS week_id, date_iso::text AS date_iso,
               dow, type, distance_mi::float8 AS distance_mi,
-              is_quality, is_long, sub_label, notes
+              is_quality, is_long, sub_label, notes,
+              pace_target_s_per_mi::float8 AS pace_target_s_per_mi
          FROM plan_workouts WHERE plan_id = $1`,
       [planId],
     ),
@@ -714,6 +772,34 @@ export interface MutatePlanOptions<T> {
    * Ignored otherwise.
    */
   hold?: { owner: string; blocker: string; expiresWhen: string };
+  /**
+   * WHAT THE DECISION RESTED ON. Optional, and everything a caller does NOT
+   * supply is either measured here or recorded as unknown — never guessed.
+   *
+   * Note what is absent: there is no `direction` and no `lever`. Those are
+   * MEASURED from the before/after snapshots this boundary already holds (see
+   * `lib/brain/ledger/ledger-entry.ts`), precisely so a caller cannot label its
+   * own downgrade an "adjustment". `lib/plan/adaptation-log.ts` names that
+   * hazard about its own log and can only partly answer it, because it sits
+   * outside the transaction and never sees the rows.
+   */
+  ledger?: {
+    /** The observations behind the decision, as the caller already holds them. */
+    evidence?: readonly unknown[];
+    /** How much to trust the estimate this rested on. Omit when there is none. */
+    sourceMode?: LedgerSourceMode;
+    /** The proposal this mutation applies, when it applies one. */
+    proposalId?: string;
+    proposal?: unknown;
+    /** PENDING when this row IS the proposal and the answer has not come yet. */
+    runnerResponse?: LedgerRunnerResponse;
+    /** One clause a person can read. Prefixed to the boundary's own account. */
+    explanation?: string;
+    /** The deciding engine's version, when the caller has one of its own. */
+    modelVersion?: string;
+    /** Makes a re-run of the same pass refresh its row rather than duplicate. */
+    idempotencyKey?: string;
+  };
   /** Extra context stored on the rejection record. */
   detail?: Record<string, unknown>;
   /** The writes. Runs inside the boundary's transaction; must not BEGIN,
@@ -734,6 +820,123 @@ export interface MutatePlanResult<T> {
   planId: string | null;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * LEDGER-1 (2026-09-05) · EVERY EXIT OF THIS DOOR LANDS IN THE LEDGER
+ *
+ * `plan_mutation_rejections` (migration 150) already records what this boundary
+ * REFUSED. It has never recorded what it PERMITTED, so the audit surface in
+ * front of the only door into `plan_workouts` could answer "what did we stop"
+ * and not "what did we do" — and the second question is CLAUDE.md Rule 21's:
+ * "the number of UPWARD adaptations is ZERO ... establishing the zero required
+ * querying `coach_intents` sideways."
+ *
+ * So the ledger row is written on EVERY exit, including the successful ones,
+ * including the refusal that throws before a connection is even opened, and
+ * including the crash. `check-decision-ledger.sh` guard 1 walks this function's
+ * exits and fails when one of them does not.
+ *
+ * It writes on its own connection (`decision-ledger.ts` never takes a client),
+ * because a rejected mutation rolls back and a row written inside that
+ * transaction would roll back with it — leaving a ledger that records every
+ * decision except the refusals.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+interface LedgerLanding {
+  userUuid: string;
+  source: string;
+  authority: AuthorityClass;
+  authorityVerdict: 'PERMITTED' | 'REFUSED' | 'HELD';
+  hold: { owner: string; blocker: string; expiresWhen: string } | null;
+  planId: string | null;
+  replacedPlanId: string | null;
+  planVersion: string | null;
+  /** Empty when there was no comparable before-state. Direction reads UNKNOWN. */
+  before: readonly PlanWorkoutRow[];
+  after: readonly PlanWorkoutRow[];
+  decision: LedgerDecision;
+  outcome: MutationOutcome | 'not_attempted';
+  violations: readonly string[];
+  /** The boundary's own sentence about what happened. Never empty. */
+  account: string;
+  ledger: MutatePlanOptions<unknown>['ledger'];
+}
+
+/**
+ * Land one decision. Never throws, and never masks the caller's own outcome —
+ * the gate on a plan mutation is the rollback, not the audit row, and a ledger
+ * outage must not be the thing that takes a runner's nightly cron down.
+ *
+ * A write that did NOT land is logged at `console.error` with which of the two
+ * non-written states it was, because "the decision was recorded" and "the
+ * decision happened and nothing recorded it" are the two facts this whole
+ * feature exists to keep apart (Rule 11).
+ */
+async function landDecisionInLedger(l: LedgerLanding): Promise<string | null> {
+  try {
+    const delta = demandDelta(l.before, l.after);
+    const { scope, fromISO, toISO } = scopeOfChange(l.after, delta.changedWorkoutIds);
+    const lineage = await resolvePlanLineage({
+      userUuid: l.userUuid,
+      planId: l.planId,
+      replacedPlanId: l.replacedPlanId,
+    });
+    const supplied = l.ledger?.explanation;
+    const written = await recordDecision({
+      userUuid: l.userUuid,
+      planId: l.planId,
+      planLineageId: lineage,
+      replacedPlanId: l.replacedPlanId,
+      planVersion: l.planVersion,
+      scope,
+      workoutIds: delta.changedWorkoutIds,
+      scopeFromISO: fromISO,
+      scopeToISO: toISO,
+      lever: leverOfDelta(delta),
+      direction: directionOfDelta(delta),
+      evidence: l.ledger?.evidence ?? [],
+      provenance: l.source,
+      sourceMode: l.ledger?.sourceMode ?? null,
+      // NOT `length > 0 ? … : null`. "No before-state was read" and "the
+      // before-state was read and held nothing" are different facts, and a null
+      // collapses them (Rule 11). `comparable` carries the distinction, so a
+      // reader can tell an authorship from a plan that was genuinely empty.
+      beforeState: {
+        comparable: delta.comparable,
+        workouts: l.before.length,
+        prescribedMi: totalMi(l.before),
+      },
+      afterState: { workouts: l.after.length, prescribedMi: totalMi(l.after), delta },
+      authority: l.authority,
+      authorityVerdict: l.authorityVerdict,
+      hold: l.hold,
+      decision: l.decision,
+      proposalId: l.ledger?.proposalId ?? null,
+      proposal: l.ledger?.proposal ?? null,
+      runnerResponse: l.ledger?.runnerResponse ?? null,
+      mutationOutcome: l.outcome,
+      mutationViolations: l.violations,
+      explanation: supplied ? `${supplied} · ${l.account}` : l.account,
+      modelVersion: l.ledger?.modelVersion ?? PLAN_MUTATION_BOUNDARY_MODEL_VERSION,
+      idempotencyKey: l.ledger?.idempotencyKey ?? null,
+    });
+    if (written.state === 'written') return written.id;
+    console.error(
+      `[plan/mutate] DECISION NOT RECORDED (${written.state}) · source=${l.source} · `
+      + `outcome=${l.outcome} · ${written.why}`,
+    );
+    return null;
+  } catch (e) {
+    console.error(
+      `[plan/mutate] ledger write threw and was contained · source=${l.source} ·`,
+      e instanceof Error ? e.message : e,
+    );
+    return null;
+  }
+}
+
+const totalMi = (rows: readonly PlanWorkoutRow[]): number =>
+  Math.round(rows.reduce((s, r) => s + (Number(r.distance_mi) || 0), 0) * 10) / 10;
+
 /**
  * Route a plan mutation through the boundary.
  *
@@ -753,6 +956,28 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
   if (!verdict.permitted) {
     const hold = opts.hold;
     if (hold === undefined) {
+      // LEDGER-1 · A REFUSAL IS A DECISION. This exit is the one the seam
+      // exists for — the engine wanted to change training and was not allowed —
+      // and it is exactly the row a reader needs to tell an engine that never
+      // pushes from a runner who never earned it. Recorded BEFORE the throw so
+      // the throw cannot skip it.
+      await landDecisionInLedger({
+        userUuid: opts.userUuid,
+        source: opts.source,
+        authority: opts.authority,
+        authorityVerdict: 'REFUSED',
+        hold: null,
+        planId: opts.planId ?? null,
+        replacedPlanId: null,
+        planVersion: null,
+        before: [],
+        after: [],
+        decision: 'REFUSE',
+        outcome: 'not_attempted',
+        violations: [verdict.because],
+        account: `${verdict.because}. ${verdict.insteadDo ?? ''}`.trim(),
+        ledger: opts.ledger,
+      });
       throw new Error(
         `[mutate] REFUSED · ${opts.source} declared ${opts.authority} and ${verdict.because}. `
         + `${verdict.insteadDo ?? ''}`,
@@ -789,17 +1014,65 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
    * without this) and the no-plan-id short-circuit at step 5 below (nothing
    * was written). Every other exit that COMMITs a write to an EXISTING plan
    * goes through this.
+   *
+   * LEDGER-1 (2026-09-05) · it now RETURNS the version it stamped, so the
+   * ledger row records the `planVersion` the mutation PRODUCED rather than a
+   * separate query's guess at it. Same shape `week-loader.ts` and
+   * `plan-snapshot.ts` already build (`${id}:${last_adapted_at}`) — Rule 16,
+   * one quantity, one definition.
    */
-  const stampAdapted = async (planIdToStamp: string | null) => {
-    if (!planIdToStamp) return;
-    await client.query(
-      `UPDATE training_plans SET last_adapted_at = NOW() WHERE id = $1`,
+  const stampAdapted = async (planIdToStamp: string | null): Promise<string | null> => {
+    if (!planIdToStamp) return null;
+    const r = await client.query<{ last_adapted_at: string | null }>(
+      `UPDATE training_plans SET last_adapted_at = NOW() WHERE id = $1
+        RETURNING last_adapted_at::text AS last_adapted_at`,
       [planIdToStamp],
     );
+    return `${planIdToStamp}:${r.rows[0]?.last_adapted_at ?? 'none'}`;
   };
 
   const fail = (outcome: MutationOutcome, violations: string[], preExisting: string[], planId: string | null): MutatePlanResult<T> => ({
     ok: false, outcome, value: null, violations, preExisting, resolved: [], planId,
+  });
+
+  /* LEDGER-1 · the plan this mutation REPLACED, resolved for an authorship
+   * BEFORE `apply` archives it. Read here rather than reconstructed afterwards,
+   * because after `clearActivePlansFor` runs there is no longer anything that
+   * distinguishes "the plan this one replaced" from "some plan this runner
+   * archived last March". Plan lineage is the column that makes the ledger
+   * survive a rebuild, so it may not rest on a guess. */
+  let replacedPlanId: string | null = null;
+
+  /* Set on every exit that commits a write to an existing plan. */
+  let producedPlanVersion: string | null = null;
+
+  /* The snapshots the ledger measures direction from. Kept in the function
+   * scope rather than passed down, so the catch-all exit can reach them too. */
+  let ledgerBefore: readonly PlanWorkoutRow[] = [];
+  let ledgerAfter: readonly PlanWorkoutRow[] = [];
+
+  const land = (
+    decision: LedgerDecision,
+    outcome: MutationOutcome | 'not_attempted',
+    violations: readonly string[],
+    account: string,
+    planIdForRow: string | null,
+  ): Promise<string | null> => landDecisionInLedger({
+    userUuid: opts.userUuid,
+    source: opts.source,
+    authority: opts.authority,
+    authorityVerdict: verdict.permitted ? 'PERMITTED' : 'HELD',
+    hold: verdict.permitted ? null : (opts.hold ?? null),
+    planId: planIdForRow,
+    replacedPlanId,
+    planVersion: producedPlanVersion,
+    before: ledgerBefore,
+    after: ledgerAfter,
+    decision,
+    outcome,
+    violations,
+    account,
+    ledger: opts.ledger,
   });
 
   try {
@@ -822,10 +1095,27 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
       ).catch(() => ({ rows: [] as Array<{ id: string }> }))).rows[0]?.id ?? null;
     }
 
+    /* LEDGER-1 · for an authorship, read the plan about to be replaced BEFORE
+     * `apply` archives it. See `replacedPlanId`'s declaration for why this
+     * cannot be reconstructed afterwards. `.catch` to an empty row set, the
+     * same posture the plan resolution above already takes: a lineage lookup
+     * must never be the thing that fails a rebuild. */
+    if (touches === 'authorship') {
+      replacedPlanId = (await rowOrNull<{ id: string }>(
+        'mutate/lineage-replaced-plan',
+        client.query<{ id: string }>(
+          `SELECT id::text AS id FROM training_plans
+            WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+            ORDER BY authored_iso DESC LIMIT 1`,
+          [opts.userUuid],
+        ),
+      ))?.id ?? null;
+    }
+
     // 2 · the marked bypass. Runs the writes, records the decision, commits.
     if (opts.bypass) {
       const value = await opts.apply(client, planId ?? '');
-      if (touches !== 'authorship') await stampAdapted(planId);
+      if (touches !== 'authorship') producedPlanVersion = await stampAdapted(planId);
       await client.query('COMMIT');
       console.warn(
         `[plan/mutate] BYPASS · source=${opts.source} plan=${planId ?? 'none'} · ${opts.bypass.reason}`,
@@ -835,6 +1125,17 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         outcome: 'bypassed', violations: [], preExisting: [],
         detail: { ...(opts.detail ?? {}), bypass_reason: opts.bypass.reason },
       });
+      // Direction is UNKNOWN here and that is the honest answer, not a gap: the
+      // bypass runs its writes before any snapshot is taken, deliberately —
+      // it is the escape hatch for a backfill that must not pay for
+      // validation — so there is no before-state to measure against. A ledger
+      // row that said NEUTRAL would be asserting a measurement nobody made.
+      await land(
+        'APPLY', 'bypassed', [],
+        `marked bypass · ${opts.bypass.reason} · validation skipped, so no before-state was `
+        + 'read and the direction of this change is unmeasured rather than neutral',
+        planId,
+      );
       return { ok: true, outcome: 'bypassed', value, violations: [], preExisting: [], resolved: [], planId };
     }
 
@@ -849,6 +1150,12 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         outcome: 'no_plan', violations: ['no active plan resolved for this mutation'],
         preExisting: [], detail: opts.detail ?? null,
       });
+      await land(
+        'REFUSE', 'no_plan', ['no active plan resolved for this mutation'],
+        'no active plan could be resolved for this write, so it was rolled back. This row is '
+        + 'owned by the runner and by no plan; its lineage is the orphan marker.',
+        null,
+      );
       return fail('no_plan', ['no active plan resolved for this mutation'], [], null);
     }
 
@@ -862,6 +1169,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         ctx = await loadMutationContext(client, opts.userUuid, planId, opts.todayISO);
       }
     }
+    ledgerBefore = before.workouts;
 
     // 5 · the writes.
     const value = await opts.apply(client, planId ?? '');
@@ -872,11 +1180,18 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
       // Authorship that produced no plan id — nothing was created. Commit
       // whatever ran (typically a no-op) and say so.
       await client.query('COMMIT');
+      await land(
+        'APPLY', 'applied', [],
+        'authorship ran and produced no plan id, so no plan was created. Nothing was '
+        + 'prescribed and nothing changed.',
+        null,
+      );
       return { ok: true, outcome: 'applied', value, violations: [], preExisting: [], resolved: [], planId: null };
     }
 
     // 6 · after-snapshot + verdict.
     const after = await snapshotPlan(client, afterPlanId);
+    ledgerAfter = after.workouts;
 
     if (touches === 'derivations') {
       // Prove the declaration rather than trusting it.
@@ -892,10 +1207,22 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
           outcome: 'undeclared_structural', violations: v, preExisting: [],
           detail: opts.detail ?? null,
         });
+        await land(
+          'REFUSE', 'undeclared_structural', v,
+          'the caller declared a derivations-only write and moved a structural field, so the '
+          + 'whole batch was rolled back',
+          afterPlanId,
+        );
         return fail('undeclared_structural', v, [], afterPlanId);
       }
-      await stampAdapted(afterPlanId);
+      producedPlanVersion = await stampAdapted(afterPlanId);
       await client.query('COMMIT');
+      await land(
+        'APPLY', 'applied', [],
+        'derivations-only write applied · paces, spec, labels and notes moved and the '
+        + 'structural fingerprint did not',
+        afterPlanId,
+      );
       return { ok: true, outcome: 'applied', value, violations: [], preExisting: [], resolved: [], planId: afterPlanId };
     }
 
@@ -932,6 +1259,26 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
           detail: { ...(opts.detail ?? {}), context_incomplete: authorCtx.contextIncomplete },
         });
       }
+      /* LEDGER-1 · THE ROW THAT MAKES A REBUILD PRESERVE THE LEDGER.
+       *
+       * `replacedPlanId` was read before `apply` archived it, and
+       * `resolvePlanLineage` carries the replaced plan's lineage onto this new
+       * plan — so every decision ever made against the old block stays
+       * queryable by `plan_lineage_id` after the rebuild that discarded the
+       * block itself. This is the whole reason the lineage column exists.
+       *
+       * Direction is UNKNOWN by construction: `ledgerBefore` is empty for an
+       * authorship, because a 14-week new block and four remaining weeks of an
+       * old one are not comparable quantities and calling their difference a
+       * coaching direction would put fiction into Rule 21's census. */
+      await land(
+        'APPLY', drift.length > 0 ? 'authorship_drift' : 'applied', drift,
+        replacedPlanId
+          ? `a new plan was authored, replacing ${replacedPlanId}, whose ledger lineage it `
+            + 'inherits. Direction is unmeasured: two different blocks are not comparable.'
+          : 'a new plan was authored and replaced nothing. This row opens its lineage.',
+        afterPlanId,
+      );
       return {
         ok: true, outcome: drift.length > 0 ? 'authorship_drift' : 'applied',
         value, violations: [], preExisting: drift, resolved: [], planId: afterPlanId,
@@ -956,11 +1303,24 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         outcome: 'rejected', violations: diff.introduced, preExisting: diff.preExisting,
         detail: { ...(opts.detail ?? {}), context_incomplete: useCtx.contextIncomplete },
       });
+      await land(
+        'REFUSE', 'rejected', diff.introduced,
+        `rolled back · this mutation introduced ${diff.introduced.length} doctrine violation(s) `
+        + 'the plan did not already carry',
+        afterPlanId,
+      );
       return fail('rejected', diff.introduced, diff.preExisting, afterPlanId);
     }
 
-    await stampAdapted(afterPlanId);
+    producedPlanVersion = await stampAdapted(afterPlanId);
     await client.query('COMMIT');
+    await land(
+      'APPLY', 'applied', [],
+      diff.resolved.length > 0
+        ? `applied · it also repaired ${diff.resolved.length} pre-existing violation(s)`
+        : 'applied · it introduced no doctrine violation the plan did not already carry',
+      afterPlanId,
+    );
     return {
       ok: true, outcome: 'applied', value,
       violations: [], preExisting: diff.preExisting, resolved: diff.resolved,
@@ -969,6 +1329,19 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
   } catch (e) {
     try { await client.query('ROLLBACK'); }
     catch (rbErr) { releaseErr = rbErr instanceof Error ? rbErr : new Error(String(rbErr)); }
+    /* LEDGER-1 · A CRASH IS A DECISION THAT DID NOT HAPPEN, AND THAT IS A FACT
+     * WORTH KEEPING. Without this row, the difference between "the engine
+     * considered this and declined" and "the engine tried and the statement
+     * blew up" is only visible in a log that has already rotated — Rule 11's
+     * exact shape. Contained in its own try so a ledger failure can never
+     * replace the caller's real error, which is the one that matters. */
+    try {
+      await land(
+        'REFUSE', 'not_attempted', [e instanceof Error ? e.message : String(e)],
+        'the mutation threw and was rolled back whole. Nothing was written to the plan.',
+        opts.planId ?? null,
+      );
+    } catch { /* the original error is the one that propagates */ }
     throw e;
   } finally {
     client.release(releaseErr);

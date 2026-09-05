@@ -35,7 +35,7 @@ import path from 'node:path';
 import { writesIn, writerNamesIn, stripComments } from '../canonical/_cannot_mutate.test';
 import { classifyStatement } from '@/lib/verify/production-barrier';
 import { insertShadowRecord, CANONICAL_ADAPTATION_SHADOW_LOG_TABLE, ShadowLogWriteRefused } from './shadow-log-writer';
-import { CANONICAL_ADAPTATION_DEFERRALS_TABLE } from './deferral-writer';
+import { REASSESSMENT_SCHEDULE_TABLE } from './deferral-writer';
 
 const HERE = __dirname;
 
@@ -67,11 +67,12 @@ describe('liveness · the scanner read this directory', () => {
  * `canonical_adaptation_shadow_log` is APPEND-ONLY: a record of what the
  * engine decided, so INSERT and nothing else.
  *
- * `canonical_adaptation_deferrals` (added 2026-09-04) is a LEDGER OF OPEN
+ * `reassessment_schedule` (migration 167, 2026-09-05 — it replaced the unapplied
+ * `canonical_adaptation_deferrals` of migration 165) is a LEDGER OF OPEN
  * ITEMS, and it takes UPDATE as well. That is not a loosening, it is the
  * consequence of a stricter rule: rows there are NEVER DELETED, so retiring a
- * queued progression is an UPDATE that stamps `expired_at` with a stated
- * reason. DELETE is authorized against neither, which is what actually matters
+ * queued progression is an UPDATE that stamps a terminal `status` with a
+ * stated `resulting_decision`. DELETE is authorized against neither, which is what actually matters
  * — the failure this feature exists to prevent is a deferred progression
  * vanishing without a record.
  *
@@ -81,7 +82,7 @@ describe('liveness · the scanner read this directory', () => {
  */
 const OWNED_WRITES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
   [CANONICAL_ADAPTATION_SHADOW_LOG_TABLE, new Set(['INSERT INTO'])],
-  [CANONICAL_ADAPTATION_DEFERRALS_TABLE, new Set(['INSERT INTO', 'UPDATE'])],
+  [REASSESSMENT_SCHEDULE_TABLE, new Set(['INSERT INTO', 'UPDATE'])],
 ]);
 
 describe('guard 1 · the only writes anywhere in this directory target the two tables it owns', () => {
@@ -104,7 +105,7 @@ describe('guard 1 · the only writes anywhere in this directory target the two t
     // authorized against neither, and UPDATE must be authorized against
     // exactly one of them.
     expect([...OWNED_WRITES.keys()].sort()).toEqual([
-      'canonical_adaptation_deferrals', 'canonical_adaptation_shadow_log',
+      'canonical_adaptation_shadow_log', 'reassessment_schedule',
     ]);
     for (const verbs of OWNED_WRITES.values()) expect(verbs.has('DELETE FROM')).toBe(false);
     expect([...OWNED_WRITES.values()].filter((v) => v.has('UPDATE'))).toHaveLength(1);

@@ -1,8 +1,45 @@
 -- 165_canonical_adaptation_deferrals.sql
 --
 -- ══════════════════════════════════════════════════════════════════════════
--- NOT APPLIED TO PRODUCTION. APPLIED AND EXERCISED ON A LOCAL SCRATCH DB.
+-- SUPERSEDED 2026-09-05 BY 167_reassessment_schedule.sql. DO NOT APPLY.
 -- ══════════════════════════════════════════════════════════════════════════
+--
+-- This migration was never applied to production — only to a local scratch
+-- database — so retiring it costs nothing, and retiring it is what stops the
+-- app growing a THIRD durable queue beside `plan_workout_proposals` and the
+-- deferral store.
+--
+-- `reassessment_schedule` (migration 167) is the one durable scheduler. It
+-- carries this table's deferral rows as `kind = 'DEFERRAL'`, with the same
+-- columns, the same partial-unique-on-live identity, the same never-delete
+-- posture and the same "an item that leaves states why" constraint —
+-- generalised from one kind of promise to seven.
+-- `lib/adaptation/canonical-shadow/deferral-store.ts` now reads and writes
+-- migration 167's table.
+--
+-- The DDL below is kept for archaeology and for the arguments in this header,
+-- which 167 inherits by reference rather than restating. It is guarded so it
+-- CANNOT be executed by accident: running this file now raises. That is
+-- deliberate — a file that says "do not apply" and still applies cleanly is a
+-- comment, not a control (Rule 20).
+--
+-- ══════════════════════════════════════════════════════════════════════════
+
+DO $$
+BEGIN
+  RAISE EXCEPTION USING
+    MESSAGE = '165_canonical_adaptation_deferrals.sql is SUPERSEDED and must not be applied.',
+    DETAIL  = 'Apply web-v2/db/migrations/167_reassessment_schedule.sql instead. It carries '
+              'these rows as kind = ''DEFERRAL'' and is the one durable scheduler.',
+    HINT    = 'If you are reading history rather than applying schema, read the header only.';
+END
+$$;
+
+-- ══════════════════════════════════════════════════════════════════════════
+-- ORIGINAL HEADER AND DDL FOLLOWS, UNCHANGED, FOR THE RECORD.
+-- ══════════════════════════════════════════════════════════════════════════
+--
+-- NOT APPLIED TO PRODUCTION. APPLIED AND EXERCISED ON A LOCAL SCRATCH DB.
 --
 -- Written 2026-09-04 alongside `lib/adaptation/canonical/deferral-queue.ts`.
 -- CLAUDE.md's operational boundary is explicit: code changes deploy on
