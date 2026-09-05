@@ -92,6 +92,13 @@ import {
   type DemandSubstrate, type RanRace,
 } from './demand-input';
 import { roQuery } from './read-only-db';
+import { loadSafetyInputs } from '@/lib/safety/load-safety';
+import { classifySafety } from '@/lib/safety/safety-verdict';
+import {
+  TRAINING_SAFETY_NOT_RESOLVED,
+  resolveTrainingSafety,
+  type TrainingSafety,
+} from '@/lib/safety/training-safety';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * SMALL HELPERS
@@ -749,6 +756,32 @@ export async function buildLiveCanonicalInput(
   const futureRaceWeek = weeks.find((w) => w.week_start_iso >= currentWeekStart && w.is_race_week);
   const isTaperPlan = (plan.mode ?? '').toLowerCase().includes('taper');
 
+  /* ── SAFETY · read, never derived ─────────────────────────────────────────
+   *
+   * `lib/safety` is the one owner (Constitution §2.E, §29 row "Is training
+   * safe?"). This loader calls it and carries the answer. It grades nothing.
+   *
+   * Over `roQuery`, so the read-only fence holds: `read-only-db.ts` classifies
+   * every statement before it reaches the wire and this path is no exception.
+   * The STATEMENTS are `load-safety.ts`'s own, passed a different connection,
+   * so there is no shadow-only copy of the safety SQL to drift (Rule 16).
+   *
+   * RULE 11 · a throw here becomes `TRAINING_SAFETY_NOT_RESOLVED`, whose
+   * posture is UNREADABLE. It is emphatically NOT caught into NORMAL, which is
+   * the exact failure this wiring closes. `resolveSafety` does not throw on a
+   * per-signal failure (each read is tagged), so this catch fires only when the
+   * connection itself is gone, and the answer for that is the same: we did not
+   * check, so we do not push. */
+  let safety: TrainingSafety;
+  try {
+    safety = resolveTrainingSafety(
+      classifySafety(await loadSafetyInputs(userUuid, { todayISO: asOf, query: roQuery })),
+    );
+  } catch {
+    safety = TRAINING_SAFETY_NOT_RESOLVED;
+  }
+  const safetyPosture = safety.posture;
+
   /* ── THE DEMAND CEILING · rule 1's only input ─────────────────────────────
    *
    * RULE 11 · the race read is wrapped on its own, because a failed read of
@@ -827,14 +860,26 @@ export async function buildLiveCanonicalInput(
        */
       limiter: 'UNKNOWN',
       /**
-       * The Safety owner has no persisted verdict this loader can read either,
-       * and NORMAL is the correct default here for one reason only: this engine
-       * proposes nothing that reaches a runner. It is shadow-only, its output is
-       * a record, and `run-live-shadow-evaluation.ts` writes no plan. If that
-       * ever changes, this field must be wired to Safety BEFORE it does, and
-       * this comment is the marker for whoever does it.
+       * SAFETY, WIRED 2026-09-05.
+       *
+       * This field used to be the literal `'NORMAL'`, with a comment saying
+       * NORMAL was correct "for one reason only: this engine proposes nothing
+       * that reaches a runner [...] If that ever changes, this field must be
+       * wired to Safety BEFORE it does, and this comment is the marker for
+       * whoever does it."
+       *
+       * This is that wiring, done before the engine proposes rather than after.
+       * The value comes from `resolveTrainingSafety`, which maps the Safety
+       * owner's own verdict onto the owner's five-rank precedence; it is read
+       * over the fenced read-only connection using the SAME statements
+       * `lib/safety/load-safety.ts` issues for the phone and the wrist, so the
+       * shadow evaluation and the screen cannot disagree about an open injury.
+       *
+       * Rule 11 · a failed safety read arrives here as `UNREADABLE`, never as
+       * NORMAL, and `_safety_wired_live.test.ts` is the ratchet that stops the
+       * literal growing back.
        */
-      safety: 'NORMAL',
+      safety: safetyPosture,
       phaseSource,
     },
     plan: {
@@ -934,7 +979,14 @@ function buildUnreadableInput(
       // The whole read failed, so the phase is UNKNOWN for the same reason
       // everything else is. Not BASE, not the plan's mode read as a phase.
       phaseContext: {
-        phase: 'UNKNOWN', limiter: 'UNKNOWN', safety: 'NORMAL',
+        phase: 'UNKNOWN', limiter: 'UNKNOWN',
+        /* The whole read failed, so safety is UNREADABLE for the same reason
+         * everything else is UNKNOWN. This used to say `'NORMAL'`, which meant
+         * the ONE path in this loader that exists because nothing could be read
+         * was also the path that asserted the runner was safe. Rule 11 in its
+         * purest form, and the fix is `TRAINING_SAFETY_NOT_RESOLVED`'s posture
+         * rather than a literal typed at a second site. */
+        safety: TRAINING_SAFETY_NOT_RESOLVED.posture,
         phaseSource: 'the training data for this athlete could not be read',
       },
       plan: {

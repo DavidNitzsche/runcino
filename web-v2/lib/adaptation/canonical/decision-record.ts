@@ -398,7 +398,33 @@ export type DeferralRule =
    * boundary this engine can schedule against, so queueing it would re-offer a
    * push on a date nobody chose.
    */
-  | 'SAFETY_HARD_STOP';
+  | 'SAFETY_HARD_STOP'
+  /**
+   * Safety permits training and forbids ADVANCING it: a complaint in
+   * `Research/05` §1.2's amber band, or a prescribed return window after a
+   * resolved injury or a break in running (`Research/22` §14).
+   *
+   * A SEPARATE code from `SAFETY_HARD_STOP` for the same reason
+   * `PHASE_PRESCRIBES_RECOVERY` is separate from `WEEK_AT_DEMAND_CEILING`:
+   * "you must not run" and "you may run and may not be pushed" are different
+   * facts with different citations and different lifts, and one code for two
+   * facts is the Rule 16 defect this enum exists to fix.
+   */
+  | 'SAFETY_CONSTRAINED'
+  /**
+   * THE SAFETY CHECK DID NOT RUN.
+   *
+   * Rule 11, and the code that did not exist before 2026-09-05. Until then the
+   * live loader supplied a literal `safety: 'NORMAL'` and this state was
+   * unreachable and unrepresentable, so a failed `runner_injuries` read and a
+   * runner with no injury produced identical records.
+   *
+   * Not queueable, and the reason is different from the hard stop's: a queued
+   * item is re-offered at a boundary, and re-offering a push because a clock
+   * advanced, on a runner whose safety was never read, is the exact assumption
+   * this code exists to record rather than make.
+   */
+  | 'SAFETY_UNREADABLE';
 
 export interface SuppressionNote {
   readonly by: CanonicalLever | 'PLAN_LOAD';

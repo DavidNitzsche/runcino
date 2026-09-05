@@ -121,6 +121,11 @@ import { anchorsFor, doctrinePhasesForWeek, renderPrescription } from '@/lib/pla
 import { WALK_RUN_LADDER } from '@/lib/plan/injury-protocols';
 import { MIN_SESSIONS_PER_STAGE } from '@/lib/plan/return-ladder';
 import {
+  DISRUPTION_MIN_GAP_DAYS,
+  DISRUPTION_SHORT_CONSTRAINT_DAYS,
+  NIGGLE_CAUTION_SEVERITY,
+} from '@/lib/safety/safety-verdict';
+import {
   VDOT_FULL_VALUE_DAYS,
   VDOT_EXPIRY_DAYS,
   FADE_TAIL_DAYS,
@@ -17132,6 +17137,114 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error(
           `MIN_SESSIONS_PER_STAGE is ${MIN_SESSIONS_PER_STAGE} · Research/05 §1.1 says "at least ` +
             `${doctrineMin} sessions at each stage before progressing"`,
+        );
+      }
+    },
+  },
+
+  {
+    id: 'SAFETY.niggle-amber-band-opens-at-three',
+    binds: ['lib/safety/safety-verdict.ts#NIGGLE_CAUTION_SEVERITY'],
+    doc: 'Research/05-injury-return-protocols.md',
+    anchor: '**Three-rule system (modified from Silbernagel 2007 and tendinopathy traffic-light frameworks)**',
+    claim:
+      'The runner-reported 0-10 pain scale HAS a doctrine band and the safety verdict must use it. ' +
+      'Research/05 §1.2 puts 0-2 in green ("Continue, progress next session"), 3-5 in amber ' +
+      '("Tolerable. Hold current load; do not progress") and 6+ in red. NIGGLE_CAUTION_SEVERITY is ' +
+      'the bottom of the amber band, read out of the passage at run time rather than hand-copied. ' +
+      'This claim exists because the constant sat at 5 with a header asserting no such band ' +
+      'existed, which is Rule 20 exactly: a sentence nothing verified, and it was false.',
+    check({ cite }) {
+      const text = cite.text();
+      // "3-5: amber" / "3–5: amber". Read BOTH edges so a doctrine edit that
+      // moves either one fails here rather than drifting silently.
+      const m = text.match(/(\d+)\s*[-–]\s*(\d+)\s*:\s*amber/i);
+      if (!m) {
+        throw new Error(
+          'Research/05 §1.2 no longer states an "N-M: amber" band on the 0-10 in-session pain ' +
+            'rule · re-read the section and re-anchor this claim',
+        );
+      }
+      const amberLow = Number(m[1]);
+      if (NIGGLE_CAUTION_SEVERITY !== amberLow) {
+        throw new Error(
+          `NIGGLE_CAUTION_SEVERITY is ${NIGGLE_CAUTION_SEVERITY} · Research/05 §1.2 opens the ` +
+            `amber band at ${amberLow} ("${m[0]}"), and amber is where doctrine says to hold ` +
+            'current load and not progress',
+        );
+      }
+      // and the green band must end immediately below it, or the two bands
+      // have drifted apart and the engine is reading a gap as safe.
+      const g = text.match(/(\d+)\s*[-–]\s*(\d+)\s*:\s*green/i);
+      if (!g) {
+        throw new Error('Research/05 §1.2 no longer states a green band · re-anchor this claim');
+      }
+      if (Number(g[2]) !== amberLow - 1) {
+        throw new Error(
+          `Research/05 §1.2's green band ends at ${g[2]} and its amber band opens at ${amberLow} · ` +
+            'the bands no longer abut, so there is a severity the engine would read as neither',
+        );
+      }
+    },
+  },
+
+  {
+    id: 'SAFETY.disruption-bands-are-the-comeback-table',
+    binds: [
+      'lib/safety/safety-verdict.ts#DISRUPTION_MIN_GAP_DAYS',
+      'lib/safety/safety-verdict.ts#DISRUPTION_SHORT_CONSTRAINT_DAYS',
+    ],
+    doc: 'Research/22-plan-templates.md',
+    anchor: '### Return from Short Layoff (1-2 weeks off)',
+    claim:
+      'A break in running becomes a SAFETY constraint at the day count where doctrine stops saying ' +
+      '"resume the full plan". Research/22 §14 gives two rows: 1-7 days resumes the plan, and ' +
+      '8-14 days restarts at 70% of pre-layoff volume for one week and 85% for the second, full in ' +
+      'the third. DISRUPTION_MIN_GAP_DAYS is the first day of the second row, and ' +
+      'DISRUPTION_SHORT_CONSTRAINT_DAYS is the two weeks of reduced load that row prescribes. Both ' +
+      'are read out of the table at run time.',
+    check({ cite }) {
+      const t = cite.table();
+      // The table has a "Days off" column whose second row is the reduced band.
+      const rows = t.rows.map((r) => String(r['Days off'] ?? '').trim()).filter(Boolean);
+      if (rows.length < 2) {
+        throw new Error(
+          `Research/22 §14's short-layoff table no longer has two "Days off" rows (found ` +
+            `${rows.length}) · re-read the section and re-anchor this claim`,
+        );
+      }
+      const second = rows[1].match(/(\d+)\s*[-–]\s*(\d+)/);
+      if (!second) {
+        throw new Error(
+          `Research/22 §14's second short-layoff row reads "${rows[1]}", which is not a day band · ` +
+            're-anchor this claim',
+        );
+      }
+      const bandLow = Number(second[1]);
+      if (DISRUPTION_MIN_GAP_DAYS !== bandLow) {
+        throw new Error(
+          `DISRUPTION_MIN_GAP_DAYS is ${DISRUPTION_MIN_GAP_DAYS} · Research/22 §14's reduced-load ` +
+            `row opens at ${bandLow} days off ("${rows[1]}"), and everything below it is "Resume ` +
+            'full plan"',
+        );
+      }
+      // The restart approach for that row names the weeks it stays reduced:
+      // "70% ... for 1 wk, 85% for wk 2, full for wk 3". Reduced load runs for
+      // the two weeks BEFORE the one doctrine calls full.
+      const approach = String(t.rows[1]['Restart approach'] ?? '');
+      const fullWeek = approach.match(/full\s+for\s+wk\s*(\d+)/i);
+      if (!fullWeek) {
+        throw new Error(
+          `Research/22 §14's reduced-load row no longer says which week returns to full ` +
+            `("${approach}") · re-anchor this claim`,
+        );
+      }
+      const reducedDays = (Number(fullWeek[1]) - 1) * 7;
+      if (DISRUPTION_SHORT_CONSTRAINT_DAYS !== reducedDays) {
+        throw new Error(
+          `DISRUPTION_SHORT_CONSTRAINT_DAYS is ${DISRUPTION_SHORT_CONSTRAINT_DAYS} · Research/22 ` +
+            `§14 returns to full volume in week ${fullWeek[1]}, so the reduced window is ` +
+            `${reducedDays} days`,
         );
       }
     },

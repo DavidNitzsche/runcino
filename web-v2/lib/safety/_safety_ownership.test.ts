@@ -262,7 +262,11 @@ describe('Safety ownership · one author for NORMAL/CAUTION/MODIFY/STOP', () => 
     // If the predicate stops matching, this gate reports clean while seeing
     // nothing — the worst outcome available, because it also reports
     // confidence. The owner is the probe.
-    expect(found.get('lib/safety/load-safety.ts|runner_injuries')).toBe(1);
+    // TWO as of 2026-09-05: the open-injury read, and the return-to-running
+    // read that asks whether an injury was RESOLVED inside the last 30 days.
+    // They are separate statements on purpose (different predicate, different
+    // rank in the precedence), and both belong to the owner.
+    expect(found.get('lib/safety/load-safety.ts|runner_injuries')).toBe(2);
     expect(found.get('lib/safety/load-safety.ts|sick_episodes')).toBe(1);
     expect(found.get('lib/safety/load-safety.ts|niggles')).toBe(1);
   });

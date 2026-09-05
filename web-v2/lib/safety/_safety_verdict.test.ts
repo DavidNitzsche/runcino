@@ -79,10 +79,14 @@ const niggle = (severity: number): SignalRead<NiggleSignal> => ({
   value: {
     id: 9, bodyPart: 'right achilles', severity, side: 'right',
     status: 'few_days', loggedAtISO: '2026-09-01T06:00:00.000Z', daysActive: 1,
+    previousSeverity: null, escalating: false,
   },
 });
 
-const clear: SafetyInputs = { injury: none(), illness: none(), niggle: none() };
+const clear: SafetyInputs = {
+  injury: none(), illness: none(), niggle: none(),
+  returnToRunning: none(), disruption: none(),
+};
 
 describe('the four known states', () => {
   it('NORMAL · nothing logged', () => {
@@ -97,8 +101,20 @@ describe('the four known states', () => {
   });
 
   it('NORMAL · a niggle below the caution threshold changes nothing', () => {
-    const r = classifySafety({ ...clear, niggle: niggle(3) });
+    // CHANGED 2026-09-05 with `NIGGLE_CAUTION_SEVERITY` 5 -> 3. This case used
+    // to pass a 3 and expect NORMAL. `Research/05-injury-return-protocols.md`
+    // §1.2 opens the amber band AT 3 ("3-5: amber. Tolerable. Hold current
+    // load; do not progress"), so a 3 is CAUTION and a 2 is not. The band is
+    // now bound by the doctrine claim `SAFETY.niggle-amber-band-opens-at-three`
+    // and read out of the cited passage at run time.
+    const r = classifySafety({ ...clear, niggle: niggle(2) });
     expect(r.known && r.state).toBe('NORMAL');
+  });
+
+  it('CAUTION · doctrine\'s amber band opens at 3, not at 5', () => {
+    const r = classifySafety({ ...clear, niggle: niggle(3) });
+    expect(r.known && r.state).toBe('CAUTION');
+    expect(r.known && r.reason).toBe('niggle');
   });
 
   it('CAUTION · a niggle at the threshold names itself but still prescribes', () => {
@@ -188,7 +204,7 @@ describe('the four known states', () => {
   it('PRECEDENCE · an open injury outranks a concurrent illness', () => {
     // The iPhone\'s own ordering, kept verbatim: the injury\'s load
     // restriction is the more specific fact.
-    const r = classifySafety({ injury: injury('minor'), illness: illness(true), niggle: niggle(9) });
+    const r = classifySafety({ ...clear, injury: injury('minor'), illness: illness(true), niggle: niggle(9) });
     if (!r.known) throw new Error('unreachable');
     expect(r.driver).toBe('injury');
     expect(r.state).toBe('MODIFY');
@@ -264,7 +280,7 @@ describe('a failed read that could not have changed the answer does not refuse',
   it('injury unreadable but an illness already STOPs · verdict stands', () => {
     // Refusing here would be false humility: the missing read could only have
     // agreed. `degradedSignals` records that we could not see everything.
-    const r = classifySafety({ injury: failed(), illness: illness(false), niggle: none() });
+    const r = classifySafety({ ...clear, injury: failed(), illness: illness(false) });
     expect(r.known).toBe(true);
     if (!r.known) throw new Error('unreachable');
     expect(r.state).toBe('STOP');

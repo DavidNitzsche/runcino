@@ -253,8 +253,22 @@ export function prescribedWindowsFrom(races: readonly RanRace[]): PrescribedWind
 export async function loadPrescribedWindows(
   userUuid: string,
   todayISO: string,
+  /**
+   * How to reach the database. Defaults to the app's shared writable pool,
+   * which is what every existing caller wants.
+   *
+   * It is a PARAMETER so `lib/safety/load-safety.ts` can run this exact
+   * statement over the canonical shadow evaluation's fenced read-only
+   * connection (`lib/adaptation/canonical-shadow/read-only-db.ts`). Rule 16:
+   * one statement, two connections, rather than a shadow-only copy of the
+   * race read that could drift from this one.
+   */
+  query?: <R>(sql: string, params: readonly unknown[]) => Promise<{ rows: R[] }>,
 ): Promise<PrescribedWindow[]> {
-  const rows = (await pool.query<{ slug: string; meta: unknown; priority: string | null }>(
+  const q = query
+    ?? (<R>(sql: string, params: readonly unknown[]) =>
+      pool.query(sql, params as unknown[]) as unknown as Promise<{ rows: R[] }>);
+  const rows = (await q<{ slug: string; meta: unknown; priority: string | null }>(
     `SELECT slug, meta, meta->>'priority' AS priority
        FROM races
       WHERE user_uuid = $1::uuid
