@@ -148,8 +148,25 @@ export async function loadPostRunDetailExtras(
    * from the log, from a supplemental run's own secondary card — so a
    * friend's unrelated easy run opened on a day the plan asked for hill
    * intervals would have been rep-graded as the interval session. Same
-   * defect class WORKOUT-EXECUTION-ID-1 fixed on Today/Watch/Recap, on the
-   * one remaining surface: post-run analysis.
+   * defect class WORKOUT-EXECUTION-ID-1 fixed on Today and Watch, on the
+   * surface those two left: post-run analysis.
+   *
+   * CORRECTION, 2026-09-05 · this comment used to say "Today/Watch/Recap".
+   * Recap was not fixed, and saying so stopped the next reader checking
+   * (Rule 20's corollary: a header asserting an invariant nothing verifies is
+   * worse than silence). `loadPostRunExperience` in `load.ts` still resolves
+   * the day's prescription with `WHERE tp.archived_iso IS NULL AND
+   * pw.date_iso = $2 ... ORDER BY pw.id ASC LIMIT 1` — by DATE, with no
+   * reference to which run is being described — and all three surfaces
+   * (Today, Recap, Run Detail) read their whole `postRun` block from it. So a
+   * supplemental run opened by id is still graded against that day's
+   * prescription there, and `_postrun_surface_parity.audit.test.ts` cannot see
+   * it, by its own header's admission: three surfaces agreeing on a wrong
+   * sentence passes that gate perfectly. Fixing it is a behaviour change on
+   * all three at once (what SHOULD a supplemental run's recap say?) and needs
+   * its own rendering pass, so it is named here rather than done silently.
+   * ANALYSIS on this page is already correct: it goes through the resolver
+   * below.
    *
    * No match → `planRow` stays null and `currentType` falls through to
    * `null`, never to `data.workoutType` — that field can carry a PASSIVE
