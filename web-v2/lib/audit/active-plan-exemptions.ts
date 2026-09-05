@@ -38,6 +38,20 @@ export interface ActivePlanExemption {
   file: string;
   /** Why reading across archived plans is correct HERE. Not "it is fine". */
   reason: string;
+  /**
+   * PER-STATEMENT SCOPE (2026-09-05). A distinctive substring of the
+   * normalised SQL this reason argues for. When present, ONLY the statement
+   * containing it is excused, and every other unguarded `plan_workouts` read
+   * in the same file still fails — which is what Rule 18 clause 3 asks of an
+   * exemption, and what the Rule 8 normal-window registry already does with
+   * its SQL fingerprints. Absent means file-wide, the original meaning, kept
+   * for every entry seeded before this field existed.
+   *
+   * It also tightens the ratchet rather than loosening it: a fingerprint that
+   * no longer appears makes the entry STALE and fails until deleted, so
+   * rewriting the argued query forces the argument to be made again.
+   */
+  statement?: string;
 }
 
 /**
@@ -116,6 +130,27 @@ export const ACTIVE_PLAN_EXEMPTIONS: readonly ActivePlanExemption[] = [
       'module refuses to run at all unless DATABASE_URL names its own local ' +
       'scratch database (lib/adaptation-harness/fence.ts), and it is excluded from ' +
       'the default vitest config so `npm test` cannot load it.',
+  },
+  {
+    file: 'lib/execution/day-resolver.ts',
+    statement:
+      "versions AS ( SELECT pw.date_iso, jsonb_agg(jsonb_build_object('id', pw.id, 'type', pw.type)) AS version_rows",
+    reason:
+      'PLAN-VERSION-ALIAS-1 · READING EVERY VERSION IS THE ANSWER, NOT THE ' +
+      'DEFECT, AND IT CANNOT INFLATE A COUNT. This CTE exists precisely because ' +
+      'a rebuild gives one prescription two row ids: it collects the ids of ' +
+      'every plan version\'s row for these dates so the EXACT tier can recognise ' +
+      'a run stamped against the superseded copy of the session it actually ran. ' +
+      'Constraining it to the active plan would delete the fact it is there to ' +
+      'find. The 47-versions failure mode is structurally absent: nothing here ' +
+      'is summed, averaged, counted or rendered — the rows become a SET MEMBERSHIP ' +
+      'TEST for one stamped id, and pass 1b additionally requires the matching ' +
+      'row to be the same normalised type and refuses outright on any date ' +
+      'carrying more than one prescription of that type. The prescriptions ' +
+      'themselves still come from `owned`, which is `ownedDaysSql` and is ' +
+      'reign-scoped to exactly one row per date, so the day the runner is shown ' +
+      'is unchanged. Scoped to THIS STATEMENT: any other unguarded plan_workouts ' +
+      'read added to day-resolver.ts still fails this gate.',
   },
   {
     file: 'scripts/vdot-tuneup-impact.analysis.ts',

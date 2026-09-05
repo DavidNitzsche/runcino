@@ -65,7 +65,15 @@ import { ACTIVE_PLAN_EXEMPTIONS } from './active-plan-exemptions';
 const ROOT = path.resolve(__dirname, '..', '..');
 const DIRS = ['lib', 'app', 'scripts'];
 
-interface Finding { file: string; sql: string; reach: 'joins-training-plans' | 'user-scoped' }
+interface Finding {
+  file: string;
+  sql: string;
+  /** The whole normalised statement. `sql` is truncated for the console line;
+   *  a per-STATEMENT exemption has to be matched against the full text or a
+   *  fingerprint could be satisfied by the first 160 characters alone. */
+  fullSql: string;
+  reach: 'joins-training-plans' | 'user-scoped';
+}
 
 /** Pins exactly one plan: `plan_id = $1`, `tp.id = $2`, `pw.plan_id = $1`. */
 function pinsOnePlan(sql: string): boolean {
@@ -113,6 +121,7 @@ function scan(): Finding[] {
         out.push({
           file: path.relative(ROOT, p),
           sql: sql.slice(0, 160),
+          fullSql: sql,
           reach: joined ? 'joins-training-plans' : 'user-scoped',
         });
       }
@@ -124,7 +133,17 @@ function scan(): Finding[] {
 
 describe('ACTIVEPLAN-1 · plan_workouts joins name their plan', () => {
   const findings = scan();
-  const exemptFiles = new Set(ACTIVE_PLAN_EXEMPTIONS.map((e) => e.file));
+  /**
+   * A finding is excused only by an exemption for its file, AND — when that
+   * exemption names a `statement` — only when this exact statement is the one
+   * argued for. Rule 18 clause 3: an exemption may not bypass the assertion,
+   * it may only excuse the case it was written about. A file-wide entry (every
+   * pre-2026-09-05 row) keeps its old meaning; a statement-scoped one leaves
+   * every OTHER query in the same file still failing.
+   */
+  const excused = (f: Finding): boolean => ACTIVE_PLAN_EXEMPTIONS.some(
+    (e) => e.file === f.file && (e.statement == null || f.fullSql.includes(e.statement)),
+  );
 
   it('the scanner still finds SQL at all — a silent zero would prove nothing', () => {
     // If extractStringLiterals or the directory layout changes underneath this,
@@ -141,7 +160,7 @@ describe('ACTIVEPLAN-1 · plan_workouts joins name their plan', () => {
   });
 
   it('no unguarded, unexempted join reads across every plan version', () => {
-    const unexcused = findings.filter((f) => !exemptFiles.has(f.file));
+    const unexcused = findings.filter((f) => !excused(f));
     for (const f of unexcused) {
       // eslint-disable-next-line no-console
       console.log(`  ACTIVEPLAN [${f.reach}]  ${f.file}\n     ${f.sql}`);
@@ -158,12 +177,15 @@ describe('ACTIVEPLAN-1 · plan_workouts joins name their plan', () => {
   });
 
   it('the allowlist is a ratchet — an exemption whose file is now clean must be deleted', () => {
-    const flagged = new Set(findings.map((f) => f.file));
-    const stale = ACTIVE_PLAN_EXEMPTIONS.filter((e) => !flagged.has(e.file));
+    const stale = ACTIVE_PLAN_EXEMPTIONS.filter((e) => !findings.some(
+      (f) => f.file === e.file && (e.statement == null || f.fullSql.includes(e.statement)),
+    ));
     expect(
       stale.map((e) => e.file),
       'These files no longer trip the scanner, so their exemptions are stale. ' +
-      'Delete them — the list may shrink, never grow.',
+      'Delete them — the list may shrink, never grow. A statement-scoped entry is ' +
+      'stale the moment its fingerprint stops appearing, which is what makes it ' +
+      'narrower than a file entry rather than a softer one.',
     ).toEqual([]);
   });
 

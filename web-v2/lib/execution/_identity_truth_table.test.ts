@@ -62,6 +62,14 @@
  *     a prescription's `matchedRun` and never seals it. What
  *     `lib/execution/interpret.ts` then writes about a matched run is that
  *     file's gate (`_interpret.test.ts`), not this one's.
+ *  7. WHICH VERSION `ownedDaysSql` PICKS. The SUPERSEDED-VERSION rows hand
+ *     the resolver both a live row and an archived sibling and assert what it
+ *     does with a stamp naming either. Nothing here checks that the reign
+ *     rule chose the right one of the two to call "owned" — that is
+ *     `_owned_days_reign.test.ts`'s question, and PLAN-VERSION-ALIAS-1 is
+ *     deliberately an identity fix that holds whichever way that answer goes.
+ *     `lib/postrun/_postrun_surface_parity.audit.test.ts` is the check that
+ *     the three real routes then agree, and it needs a database.
  *
  * ── FALSIFICATION PROTOCOL (Rule 18) ───────────────────────────────────────
  *
@@ -97,6 +105,11 @@ const DAY = '2026-08-31';
 interface Prescription {
   id: string; type: string; distance_mi: string | null; sub_label: string | null;
   is_quality: boolean; is_long: boolean;
+  /** PLAN-VERSION-ALIAS-1 · every plan version's row for this date, as the
+   *  real query's `versions` CTE returns it. Absent on every pre-existing row
+   *  below, which is the point: without it the resolver matches on the literal
+   *  id alone, exactly as it did before the alias tier existed. */
+  version_rows?: { id: string; type: string }[];
 }
 interface Run { id: string; data: Record<string, unknown> }
 
@@ -573,6 +586,84 @@ const TABLE: Row[] = [
       + 'all — the two sides must normalise identically or the tier is dead for that type.',
   },
 
+  /* ── A SUPERSEDED PLAN VERSION IS THE SAME PRESCRIPTION ───────────────── */
+  /* PLAN-VERSION-ALIAS-1, 2026-09-05. A `silent_rebuild` re-authors the block
+   * from its start, so a day already run exists twice — byte-identical type,
+   * sub-label and spec — under two ids, and `ownedDaysSql` hands the resolver
+   * the version the run is NOT stamped against. Live cost: David's 2026-09-01
+   * threshold session read `before_run` on Today, and his 2026-09-02 strides
+   * were drawn ungraded, while `/api/runs/[id]/recap` said the opposite about
+   * the same run. Every row below models the real shape: `pw_easy` is the
+   * owned (live) row, `pw_easy_v0` the archived copy of the same session. */
+  {
+    invariant: 'SUPERSEDED-VERSION-IS-THE-SAME-PRESCRIPTION',
+    name: 'a stamp naming the archived copy of THIS day\'s session completes it, at the EXACT tier',
+    prescriptions: [{ ...EASY, version_rows: [{ id: 'pw_easy', type: 'easy' }, { id: 'pw_easy_v0', type: 'easy' }] }],
+    // Deliberately carries NO `workoutType`/`workoutTypeSource`, so the LEGACY
+    // tier could not have produced this match even if pass 2 had been reached.
+    runs: [{ id: 'r_v0', data: { distanceMi: 4.5, source: 'watch', planWorkoutId: 'pw_easy_v0' } }],
+    matched: { pw_easy: { runId: 'r_v0', match: 'exact' } },
+    supplemental: [],
+    falsifiedBy: 'pass 1b in `classifyDay` · the `aliasIds` set built from `p.version_rows`. '
+      + 'Delete the pass and this row goes red exactly the way production did: the run keeps a '
+      + 'stamped id, pass 2 refuses it for having already declared what it executed, and the '
+      + 'session he ran reads as never run. Also falsified by dropping the `versions` CTE from '
+      + '`resolveDateRangeExecutions`, which leaves `version_rows` undefined.',
+  },
+  {
+    invariant: 'SUPERSEDED-VERSION-IS-THE-SAME-PRESCRIPTION',
+    name: 'a literal id outranks an alias — the richer aliased run does not steal the prescription',
+    prescriptions: [{ ...EASY, version_rows: [{ id: 'pw_easy', type: 'easy' }, { id: 'pw_easy_v0', type: 'easy' }] }],
+    runs: [
+      { id: 'r_alias', data: { distanceMi: 4.5, source: 'watch', planWorkoutId: 'pw_easy_v0', phases: [{}, {}, {}] } },
+      { id: 'r_literal', data: { distanceMi: 4.5, source: 'watch', planWorkoutId: 'pw_easy' } },
+    ],
+    matched: { pw_easy: { runId: 'r_literal', match: 'exact' } },
+    supplemental: ['r_alias'],
+    falsifiedBy: 'the SPLIT of pass 1 into 1a (literal, for every prescription) and 1b (alias, '
+      + 'only where 1a left a null). Merge them into one filter and `pickRichest` hands the day '
+      + 'to `r_alias` on its three phases — an older plan version\'s name beating the live one '
+      + 'purely on richness, which is ordering deciding association all over again.',
+  },
+  {
+    invariant: 'SUPERSEDED-VERSION-IS-THE-SAME-PRESCRIPTION',
+    name: 'a stamp naming a DIFFERENT type\'s row on the same date is refused — a replaced session is not a renamed one',
+    prescriptions: [{ ...EASY, version_rows: [{ id: 'pw_easy', type: 'easy' }, { id: 'pw_int_v0', type: 'intervals' }] }],
+    runs: [{ id: 'r_wrong_type', data: { distanceMi: 4.5, source: 'watch', planWorkoutId: 'pw_int_v0' } }],
+    matched: { pw_easy: null },
+    supplemental: ['r_wrong_type'],
+    falsifiedBy: 'pass 1b · `normType(v.type) === t` inside the `aliasIds` filter. Drop the type '
+      + 'check and a run stamped against an interval session the rebuild REPLACED with an easy '
+      + 'day would complete and grade that easy day — the alias would have become "any stamp for '
+      + 'this date", which is the date-coincidence rule David explicitly forbade.',
+  },
+  {
+    invariant: 'SUPERSEDED-VERSION-IS-THE-SAME-PRESCRIPTION',
+    name: 'two prescriptions of one type on the day refuse the alias — a tie is not a name',
+    prescriptions: [
+      { ...EASY, version_rows: [{ id: 'pw_easy', type: 'easy' }, { id: 'pw_easy_2', type: 'easy' }, { id: 'pw_easy_v0', type: 'easy' }] },
+      { ...EASY_2, version_rows: [{ id: 'pw_easy', type: 'easy' }, { id: 'pw_easy_2', type: 'easy' }, { id: 'pw_easy_v0', type: 'easy' }] },
+    ],
+    runs: [{ id: 'r_v0', data: { distanceMi: 4.5, source: 'watch', planWorkoutId: 'pw_easy_v0' } }],
+    matched: { pw_easy: null, pw_easy_2: null },
+    supplemental: ['r_v0'],
+    falsifiedBy: 'pass 1b · `if ((typeCounts.get(t) ?? 0) !== 1) continue`. Without it the alias '
+      + 'would hand the archived stamp to whichever same-type prescription the query happened to '
+      + 'return first, which is precisely the ambiguity the LEGACY tier already refuses.',
+  },
+  {
+    invariant: 'SUPERSEDED-VERSION-IS-THE-SAME-PRESCRIPTION',
+    name: 'an id in NO version of this day is still foreign, alias set or not',
+    prescriptions: [{ ...EASY, version_rows: [{ id: 'pw_easy', type: 'easy' }, { id: 'pw_easy_v0', type: 'easy' }] }],
+    runs: [{ id: 'r_foreign', data: { distanceMi: 4.5, source: 'watch', planWorkoutId: 'pw_someone_elses' } }],
+    matched: { pw_easy: null },
+    supplemental: ['r_foreign'],
+    falsifiedBy: 'pass 1b · `aliasIds.has(r.matchedWorkoutId)`. The alias set is built from THIS '
+      + 'date\'s rows only, and the `versions` CTE is scoped by `pw.user_uuid` and the date '
+      + 'window, so a foreign or another-date id is absent from it by construction. Replace the '
+      + 'membership test with a non-null check and every stale stamp completes something.',
+  },
+
   /* ── NOTHING PRESCRIBED ───────────────────────────────────────────────── */
   {
     invariant: 'NO-PRESCRIPTION-GRADES-NOTHING',
@@ -680,6 +771,7 @@ describe('EXECUTION-IDENTITY-TRUTH-1 · the truth table', () => {
       'OVERRUN-STILL-MATCHES',
       'PASSIVE-PATH-IS-APPLE-WATCH-ONLY',
       'RESOLVER-APPLIES-NO-DISTANCE-BOUND',
+      'SUPERSEDED-VERSION-IS-THE-SAME-PRESCRIPTION',
       'SUPPLEMENTAL-NEVER-COMPLETES',
       'TREADMILL-PLUS-DELAYED-COPY-IS-ONE-EXECUTION',
     ]);
