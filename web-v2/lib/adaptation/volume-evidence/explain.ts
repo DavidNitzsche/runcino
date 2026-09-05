@@ -35,6 +35,10 @@
  * what is mechanical about voice; whether a sentence reads as a coach or as
  * software is a reviewer's judgement and stays one.
  */
+// FORMAT LINT · one way to write a run down. `roundTo` is lib/format/run.ts's
+// own 0.1 rule; the first cut spelled `Math.round(n * 10) / 10` by hand and
+// `_format_lint.test.ts` caught it.
+import { roundTo } from '@/lib/format/run';
 import type { PhaseIntent } from './respond';
 import type { PreservationReason, SurplusAdmission } from './contract';
 
@@ -48,7 +52,7 @@ export interface ExplainInput {
   readonly phase: PhaseIntent;
 }
 
-const mi = (n: number): string => `${Math.round(n * 10) / 10} miles`;
+const mi = (n: number): string => `${roundTo(n)} miles`;
 
 /**
  * One sentence, or two. Never a paragraph, and never a list of every week.

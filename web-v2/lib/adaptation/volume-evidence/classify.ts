@@ -36,9 +36,9 @@
  *   `admit.ts`'s question and it is a different one.
  */
 import type { ExcludedEvidence } from '@/lib/adaptation/canonical/decision-record';
-import { absent, failed, measured, type Measured } from '@/lib/adaptation/canonical/input';
 import { roundTo } from '@/lib/format/run';
 import {
+  absent, failed, measured, type Measured,
   KINDS_THAT_COUNT_AS_VOLUME_EVIDENCE,
   type NonNormalReason,
   type ClassifiedRun,

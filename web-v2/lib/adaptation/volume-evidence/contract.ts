@@ -96,7 +96,57 @@
  *   happened and was never synced". Both arrive as an absent row.
  */
 import type { ExcludedEvidence, IncludedEvidence } from '@/lib/adaptation/canonical/decision-record';
-import type { Measured } from '@/lib/adaptation/canonical/input';
+import { absent, failed, measured, type Measured } from '@/lib/adaptation/canonical/input';
+import { GRADES_THAT_COUNT_AS_EVIDENCE } from '@/lib/adaptation/canonical/stimulus';
+import { reconsiderAtBoundary } from '@/lib/adaptation/canonical/deferral-queue';
+import {
+  CONTRACT_DOC,
+  VOLUME_MAX_STEP_FRAC,
+  VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE,
+  VOLUME_MIN_CONSECUTIVE_WEEKS,
+  VOLUME_WEEK_COMPLETION_MIN_FRAC,
+} from '@/lib/adaptation/canonical/contract-constants';
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * ONE DOOR INTO THE CANONICAL ENGINE'S VOCABULARY
+ *
+ * `lib/adaptation/canonical/_cannot_mutate.test.ts` guard 4 forbids any file
+ * outside that directory from importing a VALUE out of the engine except
+ * through enumerated (file, module, symbols) grants, and it is right to: the
+ * engine has almost no consumer inside the app at all, and that is the
+ * property worth keeping. It caught this directory on the first full-suite
+ * run, across five files.
+ *
+ * So this module takes ONE door rather than seven. Every other file here
+ * imports these from `./contract`, which means the whole of this directory's
+ * dependence on the engine is FOUR grants against ONE file, auditable in one
+ * place, and a reviewer can see the entire surface without walking the tree.
+ *
+ * Nothing behind this door can DECIDE anything:
+ *
+ *   measured / absent / failed      pure constructors for `Measured<T>`
+ *   GRADES_THAT_COUNT_AS_EVIDENCE   a frozen Set of two grade names
+ *   VOLUME_* / CONTRACT_DOC         doctrine constants and a citation string
+ *   reconsiderAtBoundary            a PURE ledger function: it takes a queue
+ *                                   and returns a queue, opens no connection
+ *                                   and writes nothing
+ *
+ * There is deliberately NO re-export of `evaluateAdaptation`, of any lever, or
+ * of `arbitrate`. This directory does not run the engine; it speaks the
+ * engine's vocabulary so that a second dialect of "measured / absent / failed"
+ * never has to exist (Rule 16).
+ * ════════════════════════════════════════════════════════════════════════ */
+export {
+  absent, failed, measured,
+  GRADES_THAT_COUNT_AS_EVIDENCE,
+  reconsiderAtBoundary,
+  CONTRACT_DOC,
+  VOLUME_MAX_STEP_FRAC,
+  VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE,
+  VOLUME_MIN_CONSECUTIVE_WEEKS,
+  VOLUME_WEEK_COMPLETION_MIN_FRAC,
+};
+export type { Measured };
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1 · WHAT THE EXTRA MILEAGE REPRESENTS

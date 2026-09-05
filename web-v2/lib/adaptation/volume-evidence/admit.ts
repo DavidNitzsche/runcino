@@ -69,8 +69,8 @@
  */
 import type { DeteriorationPattern } from '@/lib/adaptation/canonical/deterioration';
 import type { HrTraceVerdict } from '@/lib/adaptation/canonical/hr-trace-credibility';
-import type { Measured, Readability } from '@/lib/adaptation/canonical/input';
-import { GRADES_THAT_COUNT_AS_EVIDENCE, type StimulusGrade } from '@/lib/adaptation/canonical/stimulus';
+import type { Readability } from '@/lib/adaptation/canonical/input';
+import type { StimulusGrade } from '@/lib/adaptation/canonical/stimulus';
 // Rule 16 · "what counts as adding mileage" already has a name and a number in
 // this app, and it is the one the DOWNWARD path uses too. Imported rather than
 // re-typed so `RULE_21_THRESHOLD_LEDGER` row 2's claim of symmetry is a fact
@@ -78,6 +78,8 @@ import { GRADES_THAT_COUNT_AS_EVIDENCE, type StimulusGrade } from '@/lib/adaptat
 import { VOLUME_ADDITION_THRESHOLD } from '@/lib/plan/adjudication/adjudicate';
 import { roundTo } from '@/lib/format/run';
 import {
+  GRADES_THAT_COUNT_AS_EVIDENCE,
+  type Measured,
   type AdmissionCondition,
   type ConditionReading,
   type LowWeekCause,

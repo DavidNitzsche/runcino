@@ -62,14 +62,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
-import { absent, failed, measured, type Measured } from '@/lib/adaptation/canonical/input';
-import {
-  VOLUME_MAX_STEP_FRAC,
-  VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE,
-  VOLUME_MIN_CONSECUTIVE_WEEKS,
-  VOLUME_WEEK_COMPLETION_MIN_FRAC,
-} from '@/lib/adaptation/canonical/contract-constants';
-import { reconsiderAtBoundary, type QueuedDeferral } from '@/lib/adaptation/canonical/deferral-queue';
+import type { QueuedDeferral } from '@/lib/adaptation/canonical/deferral-queue';
 import { VOLUME_ADDITION_THRESHOLD } from '@/lib/plan/adjudication/adjudicate';
 import { AUTOMATIC_ADAPTATION_AUTHORITY } from '@/lib/plan/adaptation-authority';
 import { SUSTAINED_WEEK_RANK } from '@/lib/training/normal-window';
@@ -80,7 +73,16 @@ import {
 } from './belief';
 import { respondToVolumeEvidence, type PhaseIntent, type VolumeResponseInput } from './respond';
 import { allExplanations } from './explain';
+// ONE DOOR · the engine's vocabulary reaches this directory through
+// `./contract` and nowhere else. See that file's own section for the argument
+// and for the four grants in `canonical/_cannot_mutate.test.ts`'s ALLOWLIST.
 import {
+  absent, failed, measured, type Measured,
+  reconsiderAtBoundary,
+  VOLUME_MAX_STEP_FRAC,
+  VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE,
+  VOLUME_MIN_CONSECUTIVE_WEEKS,
+  VOLUME_WEEK_COMPLETION_MIN_FRAC,
   RULE_21_THRESHOLD_LEDGER,
   type DemonstratedVolumeBelief,
   type FutureWeek,

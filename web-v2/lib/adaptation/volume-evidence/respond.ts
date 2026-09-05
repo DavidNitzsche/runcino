@@ -89,13 +89,6 @@ import { roundTo } from '@/lib/format/run';
 import type { Magnitude } from '@/lib/adaptation/canonical/decision-record';
 import type { QueuedDeferral } from '@/lib/adaptation/canonical/deferral-queue';
 import {
-  VOLUME_MAX_STEP_FRAC,
-  VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE,
-  VOLUME_MIN_CONSECUTIVE_WEEKS,
-  VOLUME_WEEK_COMPLETION_MIN_FRAC,
-  CONTRACT_DOC,
-} from '@/lib/adaptation/canonical/contract-constants';
-import {
   detectSimultaneousStressAddition,
   type PlannedWeek,
   type SimultaneousStressAddition,
@@ -106,7 +99,12 @@ import {
 } from '@/lib/plan/load-progression-contract';
 import { asDemonstratedLoad } from './belief';
 import {
+  CONTRACT_DOC,
   MILEAGE_RESPONSIVE_LEVER,
+  VOLUME_MAX_STEP_FRAC,
+  VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE,
+  VOLUME_MIN_CONSECUTIVE_WEEKS,
+  VOLUME_WEEK_COMPLETION_MIN_FRAC,
   type DemonstratedVolumeBelief,
   type FutureWeek,
   type FutureWeekChange,

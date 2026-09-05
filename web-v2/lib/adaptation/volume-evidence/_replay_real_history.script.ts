@@ -79,17 +79,29 @@
 import { describe, it, expect } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { absent, failed, measured, type Measured } from '@/lib/adaptation/canonical/input';
-import { VOLUME_WEEK_COMPLETION_MIN_FRAC, VOLUME_MIN_CONSECUTIVE_WEEKS } from '@/lib/adaptation/canonical/contract-constants';
 import { VOLUME_ADDITION_THRESHOLD } from '@/lib/plan/adjudication/adjudicate';
 import { roQuery, readOnlyConnectionConfigured } from '@/lib/adaptation/canonical-shadow/read-only-db';
 import { prescribedWindowsFrom, isPrescribedNonNormal, SUSTAINED_WEEK_RANK, type RanRace } from '@/lib/training/normal-window';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
-import { runDaySql } from '@/lib/runs/run-shape';
+// FORMAT LINT · the shared 0.1 rule, not a hand-rolled one.
+import { roundTo } from '@/lib/format/run';
+// RUN-SHAPE LINT · the sanctioned fragments, never a hand-rolled literal. The
+// first cut spelled `data ? 'mergedIntoId'` and `data->>'distanceMi'` by hand
+// and `_run_shape_lint.test.ts` caught both, which is the whole point of that
+// gate: nothing checks that a hand-typed key names a real one.
+import { runDaySql, runDistanceMiSql, runMergedIntoIdSql } from '@/lib/runs/run-shape';
 import { classifyWeekSurplus } from './classify';
 import { admitSurplus, classifyLowWeek } from './admit';
 import { rankWeek, unmeasuredBelief, updateDemonstratedVolume } from './belief';
 import { respondToVolumeEvidence, type PhaseIntent } from './respond';
+// ONE DOOR · see `./contract`'s own section. The engine's vocabulary reaches
+// this directory through that file and nowhere else.
+import {
+  absent, failed, measured,
+  VOLUME_MIN_CONSECUTIVE_WEEKS,
+  VOLUME_WEEK_COMPLETION_MIN_FRAC,
+  type Measured,
+} from './contract';
 import type { DemonstratedVolumeBelief, FutureWeek, SurplusRun, WeekSurplusInput } from './contract';
 
 const OWNER = '0645f40c-951d-4ccc-b86e-9979cd26c795';
@@ -104,7 +116,7 @@ const mondayOf = (iso: string): string => {
   const d = new Date(`${iso}T00:00:00Z`);
   return addDays(iso, -(((d.getUTCDay() + 6) % 7)));
 };
-const r1 = (n: number): number => Math.round(n * 10) / 10;
+const r1 = (n: number): number => roundTo(n);
 
 interface DayRow { d: string; mi: number; merged: boolean; }
 interface WkoRow { plan_id: string; date_iso: string; type: string; distance_mi: string | null; is_quality: boolean; is_long: boolean; }
@@ -121,7 +133,7 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
     /* ── the population, named ────────────────────────────────────────── */
 
     const days = (await roQuery<{ d: string; mi: string; n: string }>(
-      `SELECT ${runDaySql()} AS d, SUM((data->>'distanceMi')::numeric) AS mi, COUNT(*) AS n
+      `SELECT ${runDaySql()} AS d, SUM(${runDistanceMiSql()}) AS mi, COUNT(*) AS n
          FROM runs
         WHERE user_uuid = $1::uuid AND ${CANONICAL_ROW_SQL}
           AND ${runDaySql()} >= $2 AND ${runDaySql()} <= $3
@@ -130,9 +142,9 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
     )).rows.map((r) => ({ d: r.d, mi: Number(r.mi), merged: false } as DayRow));
 
     const mergedDays = (await roQuery<{ d: string; mi: string; n: string }>(
-      `SELECT ${runDaySql()} AS d, SUM((data->>'distanceMi')::numeric) AS mi, COUNT(*) AS n
+      `SELECT ${runDaySql()} AS d, SUM(${runDistanceMiSql()}) AS mi, COUNT(*) AS n
          FROM runs
-        WHERE user_uuid = $1::uuid AND (data ? 'mergedIntoId')
+        WHERE user_uuid = $1::uuid AND ${runMergedIntoIdSql()} IS NOT NULL
           AND ${runDaySql()} >= $2 AND ${runDaySql()} <= $3
         GROUP BY 1 ORDER BY 1`,
       [OWNER, FROM, TO],
