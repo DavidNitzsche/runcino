@@ -14,7 +14,7 @@
  *   most stressors in a week      2
  *   week after the 18-miler       4.2 mi against 52 prescribed
  *
- * WHAT THIS CANNOT FAIL ON (Rule 22): `expectedAbsorbed` is a labelled
+ * WHAT THIS CANNOT FAIL ON (Rule 22): `heuristicRankScore` is a labelled
  * HEURISTIC, so this suite cannot tell whether 0.70 is the right number for an
  * ALLOWED prescription. It can only tell whether the comparison was MADE and
  * whether the ranking is coherent. Calibrating those four numbers needs
@@ -23,7 +23,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import {
-  athleteEvidenceFor, classifyStep, detectStackedStress, expectedAbsorbed,
+  athleteEvidenceFor, classifyStep, detectStackedStress, earningGateFor, heuristicRankScore,
   rankOptions, adjudicate, checkPromotion,
   type DemonstratedHistory, type PlannedWeek,
 } from './adjudicate';
@@ -35,6 +35,7 @@ const DAVID: DemonstratedHistory = {
   longestRunMi: 18.0,
   maxCompletedMpMi: 5,
   maxStressorsInAWeek: 2,
+  windowDescribed: 'all of 2026, canonical rows only',
   after: [{
     dateISO: '2026-07-25',
     what: '18.00 mi long run — his longest of 2026',
@@ -73,16 +74,19 @@ describe('ADJUDICATION-1 · supported-for-him is not permitted-by-a-table', () =
   it('a quantity he has never approached is CONDITIONAL and must be EARNED', () => {
     // The live preview's 11-22 proposal: 10 miles at marathon pace against a
     // demonstrated maximum of 5.
-    const e = athleteEvidenceFor('a 10-mile marathon-pace block', 10, DAVID.maxCompletedMpMi, []);
+    const e = athleteEvidenceFor({ what: 'a 10-mile marathon-pace block', asOfISO: '2026-10-26', prescribed: 10, demonstratedMaxToday: DAVID.maxCompletedMpMi, demonstratedMaxProjected: null, comparables: [], historyWindow: 'all of 2026' });
     expect(e.evidenceClass).toBe('CONDITIONAL');
-    expect(e.stepOverDemonstrated).toBeCloseTo(1.0, 2);       // +100%
-    expect(e.why).toMatch(/never approached/);
-    expect(e.why).toMatch(/EARNED/);
+    expect(e.stepOverDemonstratedToday).toBeCloseTo(1.0, 2);       // +100%
+    // The sentence changed shape when evidence became time-relative. What must
+    // survive is that it names the demonstrated number it is being judged
+    // against, so a reader can see the claim rather than trust the verdict.
+    expect(e.why).toMatch(/plus 100%/);
+    expect(e.why).toMatch(/demonstrated 5/);
   });
 
   it('UNKNOWN is an absence, never a pass (Rule 11)', () => {
     expect(classifyStep(20, null).cls).toBe('UNKNOWN');
-    expect(expectedAbsorbed('UNKNOWN')).toBeNull();
+    expect(heuristicRankScore('UNKNOWN')).toBeNull();
   });
 });
 
@@ -113,14 +117,14 @@ describe('ADJUDICATION-1 · stacked stress is detected automatically', () => {
 });
 
 describe('ADJUDICATION-1 · three options, and the default is to ADVANCE', () => {
-  const push = (cls: Parameters<typeof expectedAbsorbed>[0]): OptionAppraisal => ({
-    option: 'PUSH', describe: 'p', evidenceClass: cls, expectedAbsorbedFrac: expectedAbsorbed(cls), risk: '',
+  const push = (cls: Parameters<typeof heuristicRankScore>[0]): OptionAppraisal => ({
+    option: 'PUSH', describe: 'p', evidenceClass: cls, heuristicRankScore: heuristicRankScore(cls), risk: '',
   });
   const hold: OptionAppraisal = {
-    option: 'HOLD', describe: 'h', evidenceClass: 'SUPPORTED', expectedAbsorbedFrac: expectedAbsorbed('SUPPORTED'), risk: '',
+    option: 'HOLD', describe: 'h', evidenceClass: 'SUPPORTED', heuristicRankScore: heuristicRankScore('SUPPORTED'), risk: '',
   };
   const pull: OptionAppraisal = {
-    option: 'PULL_BACK', describe: 'b', evidenceClass: 'SUPPORTED', expectedAbsorbedFrac: expectedAbsorbed('SUPPORTED'), risk: '',
+    option: 'PULL_BACK', describe: 'b', evidenceClass: 'SUPPORTED', heuristicRankScore: heuristicRankScore('SUPPORTED'), risk: '',
   };
 
   it('A SUPPORTED PUSH WINS · the layer advances when the evidence is there', () => {
@@ -169,14 +173,16 @@ describe('ADJUDICATION-1 · doctrine conflicts are adjudicated, never cherry-pic
 function trace(over: Partial<DecisionTrace> = {}): DecisionTrace {
   return {
     decisionId: 'd1', dateISO: '2026-11-22', what: 'x', windowDays: 14,
-    athlete: athleteEvidenceFor('x', 5, 5, []),
+    athlete: athleteEvidenceFor({ what: 'x', asOfISO: '2026-10-26', prescribed: 5, demonstratedMaxToday: 5, demonstratedMaxProjected: null, comparables: [], historyWindow: 'all of 2026' }),
     stacked: null,
     options: [
-      { option: 'PUSH', describe: '', evidenceClass: 'SUPPORTED', expectedAbsorbedFrac: 0.95, risk: '' },
-      { option: 'HOLD', describe: '', evidenceClass: 'SUPPORTED', expectedAbsorbedFrac: 0.95, risk: '' },
-      { option: 'PULL_BACK', describe: '', evidenceClass: 'SUPPORTED', expectedAbsorbedFrac: 0.95, risk: '' },
+      { option: 'PUSH', describe: '', evidenceClass: 'SUPPORTED', heuristicRankScore: heuristicRankScore('SUPPORTED'), risk: '' },
+      { option: 'HOLD', describe: '', evidenceClass: 'SUPPORTED', heuristicRankScore: heuristicRankScore('SUPPORTED'), risk: '' },
+      { option: 'PULL_BACK', describe: '', evidenceClass: 'SUPPORTED', heuristicRankScore: heuristicRankScore('SUPPORTED'), risk: '' },
     ],
     chosen: 'PUSH', because: '', rejected: [], conflicts: [], citations: [],
+    demand: null,
+    earningGate: null,
     reassessOnISO: null,
     ...over,
   };
@@ -192,21 +198,73 @@ describe('ADJUDICATION-1 · the promotion gate BLOCKS, by name', () => {
   it('BLOCKS an unsupported decision that is not marked for reassessment', () => {
     const r = checkPromotion([trace({
       decisionId: '11-22 · 10 mi @ M',
-      athlete: athleteEvidenceFor('a 10-mile MP block', 10, 5, []),
+      athlete: athleteEvidenceFor({ what: 'a 10-mile MP block', asOfISO: '2026-10-26', prescribed: 10, demonstratedMaxToday: 5, demonstratedMaxProjected: null, comparables: [], historyWindow: 'all of 2026' }),
     })]);
     expect(r.mayPromote).toBe(false);
     expect(r.check.athleteSpecificSupport).toBe(false);
     expect(r.blockedBecause.join(' ')).toMatch(/11-22 · 10 mi @ M/);
   });
 
-  it('…and ALLOWS the same decision once it is conditional on evidence to come', () => {
+  it('BLOCKS a conditional decision marked for reassessment with no way to EARN it', () => {
+    // Defect 6. Marking a session for later review, while saying nothing about
+    // what would make it supported, leaves the runner nothing to aim at and
+    // leaves the reassessment nothing to test. It reads as caution and is
+    // actually a deferral of the reasoning.
+    const r = checkPromotion([trace({
+      athlete: athleteEvidenceFor({ what: 'a 10-mile MP block', asOfISO: '2026-10-26', prescribed: 10, demonstratedMaxToday: 5, demonstratedMaxProjected: null, comparables: [], historyWindow: 'all of 2026' }),
+      demand: null,
+      earningGate: null,
+      reassessOnISO: '2026-11-16',
+    })]);
+    expect(r.mayPromote).toBe(false);
+    expect(r.blockedBecause.join(' ')).toMatch(/say nothing about what would earn them/);
+  });
+
+  it('…and ALLOWS the same decision once it carries an earning gate', () => {
     // Conditionality is not the problem. FIXING a distant high-load session
     // today, on evidence that does not exist yet, is.
     const r = checkPromotion([trace({
-      athlete: athleteEvidenceFor('a 10-mile MP block', 10, 5, []),
+      athlete: athleteEvidenceFor({ what: 'a 10-mile MP block', asOfISO: '2026-10-26', prescribed: 10, demonstratedMaxToday: 5, demonstratedMaxProjected: null, comparables: [], historyWindow: 'all of 2026' }),
+      demand: null,
       reassessOnISO: '2026-11-16',
+      earningGate: earningGateFor({
+        decisionId: 'mp-dose', what: 'a 10-mile MP block', prescribed: 10,
+        demonstratedMaxToday: 5, assessOnISO: '2026-11-01',
+        requires: [{ what: 'an 8 mile M dose completed inside a long run', measurable: 'M miles >= 8 at grade FULL or SUBSTANTIAL', byISO: '2026-11-01' }],
+        ifUnmet: 'REDUCE', reduceTo: 8,
+      }),
     })]);
     expect(r.mayPromote).toBe(true);
+    expect(r.earningGates).toHaveLength(1);
+  });
+
+  it('BLOCKS a block that never advances anything (Rule 21)', () => {
+    // The first version set `progression: traces.length > 0`, which cannot fail.
+    // Rule 21 measured this engine at zero upward adaptations in 309 production
+    // intents, so a dimension named "progression" that passes on a plan which
+    // only ever holds is worse than no dimension at all.
+    const r = checkPromotion([trace({ chosen: 'HOLD' }), trace({ decisionId: 'b', chosen: 'PULL_BACK' })]);
+    expect(r.check.progression).toBe(false);
+    expect(r.blockedBecause.join(' ')).toMatch(/no decision in this block advances anything/);
+  });
+
+  it('BLOCKS a push inside a taper week', () => {
+    // Likewise `taperIntegrity: true`, hardcoded. It could not fail either.
+    const taperWeek = {
+      weekStartISO: '2026-11-23', weeklyMi: 36.0, longestMi: 10.0,
+      stressors: ['tempo'], mpMi: 0, isTaper: true, isRaceWeek: false,
+    };
+    const r = checkPromotion([trace({
+      decisionId: 'taper-push',
+      chosen: 'PUSH',
+      stacked: {
+        weekStartISO: '2026-11-23', stressors: ['tempo'], weeklyMi: 36.0, longestMi: 10.0,
+        volumeOverDemonstratedMax: null, longRunOverDemonstratedMax: null,
+        simultaneousPeak: false, why: 'taper week',
+      },
+    })], { weeks: [taperWeek] });
+    expect(r.check.taperIntegrity).toBe(false);
+    expect(r.blockedBecause.join(' ')).toMatch(/PUSH inside a taper or race week/);
   });
 
   it('BLOCKS a simultaneous-peak week that was pushed anyway', () => {
@@ -222,7 +280,7 @@ describe('ADJUDICATION-1 · the promotion gate BLOCKS, by name', () => {
 
   it('BLOCKS a decision that did not compare all three options', () => {
     const r = checkPromotion([trace({
-      options: [{ option: 'PUSH', describe: '', evidenceClass: 'SUPPORTED', expectedAbsorbedFrac: 0.95, risk: '' }],
+      options: [{ option: 'PUSH', describe: '', evidenceClass: 'SUPPORTED', heuristicRankScore: heuristicRankScore('SUPPORTED'), risk: '' }],
     })]);
     expect(r.mayPromote).toBe(false);
     expect(r.check.wholeBlockCoherence).toBe(false);

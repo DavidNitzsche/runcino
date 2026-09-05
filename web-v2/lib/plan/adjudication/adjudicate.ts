@@ -3,20 +3,37 @@
  *
  * Pure functions over already-loaded facts. It opens no database and reads no
  * plan: a caller hands it the runner's demonstrated history and the block's
- * weeks, and it returns traces plus a promotion verdict. That is deliberate —
- * the layer has to be testable against constructed sequences, and a function
- * that fetches cannot be.
+ * weeks, and it returns traces plus a promotion verdict. That is deliberate,
+ * because the layer has to be testable against constructed sequences and a
+ * function that fetches cannot be.
  *
  * See `contract.ts` for why this exists and what it optimises for. The one
  * sentence worth repeating here: **the target is the maximum productive load
  * this runner can ABSORB, and the default is to advance.**
+ *
+ * ── RULE 22 · WHAT THIS FILE'S GATES CANNOT FAIL ON ────────────────────────
+ *
+ * They cannot fail on the STEP BANDS being set wrong. `STEP_SUPPORTED_MAX` and
+ * `STEP_ALLOWED_MAX` are reading rules for the word "comparable", not
+ * physiology, and every test here constructs cases clearly inside or clearly
+ * outside them. Moving either band by a few points would pass this whole suite
+ * while changing which prescriptions reach a runner. The same is true of
+ * `MIN_COMPARABLES_FOR_CEILING_CLAIM`.
+ *
+ * They also cannot tell whether the HISTORY handed in is the right population.
+ * The first CIM trace was wrong for exactly that reason and every test here
+ * passed on it: the fixture said his longest run was 18.0 when it was 21.51,
+ * and a fixture agreeing with itself is Rule 18's warning verbatim. The
+ * population is the caller's problem, and `_cim_trace.test.ts` pins it against
+ * the queried production numbers so a regression there is visible.
  */
 import type {
-  AthleteEvidence, ComparableSession, DecisionTrace, DoctrineCitation,
-  DoctrineConflict, EvidenceClass, Option, OptionAppraisal, PlanAdjudication,
-  PromotionCheck, StackedStress,
+  AthleteEvidence, Attributed, CeilingClaim, ComparableSession, DecisionTrace,
+  DoctrineCitation, DoctrineConflict, EarningGate, EarningRequirement,
+  EvidenceClass, Option, OptionAppraisal, PlanAdjudication, PromotionCheck,
+  StackedStress,
 } from './contract';
-import { PROMOTION_DIMENSIONS } from './contract';
+import { MIN_COMPARABLES_FOR_CEILING_CLAIM, PROMOTION_DIMENSIONS } from './contract';
 
 /** What the runner has actually done, in the units decisions are made in. */
 export interface DemonstratedHistory {
@@ -28,15 +45,21 @@ export interface DemonstratedHistory {
   readonly maxCompletedMpMi: number | null;
   /** Most stressors he has carried in one completed week. */
   readonly maxStressorsInAWeek: number | null;
-  /** Miles run in the 7 days after his single biggest session, and what it was. */
+  /** Comparable sessions, with what the following 7 days looked like. */
   readonly after: readonly ComparableSession[];
+  /**
+   * The window these numbers were read over, stated so a reader can see it.
+   * The first version of this layer was wrong precisely because a caller reused
+   * a 90-day window to answer a whole-year question (Rule 14).
+   */
+  readonly windowDescribed: string;
 }
 
 export interface PlannedWeek {
   readonly weekStartISO: string;
   readonly weeklyMi: number;
   readonly longestMi: number;
-  /** Named stressors: 'threshold', 'intervals', 'fast-finish long', 'race'… */
+  /** Named stressors: 'threshold', 'intervals', 'fast-finish long', 'race'. */
   readonly stressors: readonly string[];
   /** Marathon-pace miles prescribed in this week, if any. */
   readonly mpMi: number;
@@ -52,11 +75,9 @@ export interface PlannedWeek {
  * How far a prescription steps past what he has demonstrated, and what that
  * makes it.
  *
- * The bands are not physiology and are not cited as such — they are a reading
- * rule for the word "comparable". A prescription at or under what he has done
- * is SUPPORTED; a modest step is still supported by the progression itself; a
- * large step is ALLOWED at best, whatever a table says; and a step past a
- * quantity he has never approached is CONDITIONAL on earning it first.
+ * The bands are not physiology and are not cited as such. They are a reading
+ * rule for the word "comparable", and they carry POLICY_ASSUMPTION provenance
+ * wherever they are reported.
  */
 export const STEP_SUPPORTED_MAX = 0.10;   // +10% · inside ordinary progression
 export const STEP_ALLOWED_MAX = 0.25;     // +25% · a real reach, not yet earned
@@ -69,32 +90,184 @@ export function classifyStep(
     return { cls: 'UNKNOWN', step: null };
   }
   const step = prescribed / demonstratedMax - 1;
-  if (step <= 0) return { cls: 'SUPPORTED', step };
   if (step <= STEP_SUPPORTED_MAX) return { cls: 'SUPPORTED', step };
   if (step <= STEP_ALLOWED_MAX) return { cls: 'ALLOWED', step };
   return { cls: 'CONDITIONAL', step };
 }
 
-export function athleteEvidenceFor(
-  what: string,
-  prescribed: number | null,
-  demonstratedMax: number | null,
+/**
+ * Read a capacity CEILING off a set of comparables, or refuse to.
+ *
+ * Defect 2 of David's list, in his words: "That is one comparison, not a
+ * demonstrated capacity limit."
+ *
+ * Two failures are guarded here, and the first one actually happened. The first
+ * CIM trace observed that he ran 11.01 miles seven days after one half marathon
+ * and concluded that a 16-mile run at that offset was unsupported. The set was
+ * {21.51, 17.21, 11.01} and the trace picked the MINIMUM. So:
+ *
+ *   1 · a ceiling is the MAXIMUM of the comparables, never a member of the set
+ *       chosen for being small, and
+ *   2 · below `MIN_COMPARABLES_FOR_CEILING_CLAIM` there is no ceiling claim at
+ *       all, only an observation.
+ */
+export function ceilingClaimFrom(
   comparables: readonly ComparableSession[],
-): AthleteEvidence {
-  const { cls, step } = classifyStep(prescribed, demonstratedMax);
-  const pct = step == null ? 0 : Math.round(step * 1000) / 10;
-  const why = cls === 'UNKNOWN'
-    ? `Nothing comparable in his history to size ${what} against. That is an absence, not a pass.`
-    : cls === 'SUPPORTED'
-      ? `${what} is ${pct <= 0 ? 'at or under' : `+${pct}% on`} his demonstrated ${demonstratedMax}. He has done this.`
-      : cls === 'ALLOWED'
-        ? `${what} is plus ${pct}% on his demonstrated ${demonstratedMax}. A research table permits it; his own history does not yet show it.`
-        : `${what} is plus ${pct}% on his demonstrated ${demonstratedMax}. That is a quantity he has never approached, so it has to be EARNED before it is prescribed.`;
-  return { evidenceClass: cls, comparables, demonstratedMax, prescribed, stepOverDemonstrated: step, why };
+  quantity: (c: ComparableSession) => number | null,
+): CeilingClaim | null {
+  const values = comparables.map(quantity).filter((v): v is number => v != null);
+  if (values.length === 0) return null;
+  const max = Math.max(...values);
+  const valid = values.length >= MIN_COMPARABLES_FOR_CEILING_CLAIM;
+  return {
+    value: max,
+    comparableCount: values.length,
+    valid,
+    why: valid
+      ? `${values.length} comparable sessions, the largest being ${max}. That is enough to describe a limit.`
+      : `${values.length} comparable session${values.length === 1 ? '' : 's'} `
+        + `(${values.join(', ')}). Fewer than ${MIN_COMPARABLES_FOR_CEILING_CLAIM}, so this is an `
+        + 'observation and not a demonstrated capacity limit. It may not be used to refuse anything.',
+  };
+}
+
+export interface AthleteEvidenceArgs {
+  readonly what: string;
+  readonly asOfISO: string;
+  readonly prescribed: number | null;
+  /** Demonstrated maximum from COMPLETED training, as of today. */
+  readonly demonstratedMaxToday: number | null;
+  /** What the plan builds him to before `asOfISO`, if he executes it. */
+  readonly demonstratedMaxProjected: number | null;
+  readonly comparables: readonly ComparableSession[];
+  /** Set when this evidence might be used to REFUSE, so a ceiling is claimed. */
+  readonly ceilingQuantity?: (c: ComparableSession) => number | null;
+  readonly historyWindow: string;
+}
+
+/**
+ * The athlete-specific case for or against one prescription, AT A DATE.
+ *
+ * Defect 1 of David's list: "Do not treat my current historical ceiling as a
+ * permanent future ceiling. October and November workouts must be evaluated
+ * against the training accumulated by then."
+ *
+ * So the classification is taken against the PROJECTED maximum where one
+ * exists, and the today-relative step is reported alongside it rather than
+ * instead of it. A prescription that is a reach today but an ordinary step
+ * against the body the plan builds by then is CONDITIONAL, not refused, and it
+ * leaves here carrying the evidence a caller needs to write its earning gate.
+ */
+export function athleteEvidenceFor(args: AthleteEvidenceArgs): AthleteEvidence {
+  const {
+    what, asOfISO, prescribed, demonstratedMaxToday, demonstratedMaxProjected,
+    comparables, ceilingQuantity, historyWindow,
+  } = args;
+
+  const today = classifyStep(prescribed, demonstratedMaxToday);
+  const projected = classifyStep(prescribed, demonstratedMaxProjected);
+
+  // The honest class for a future date is the projected one when a projection
+  // exists. Where it does not, fall back to today and say so.
+  const usingProjection = demonstratedMaxProjected != null;
+  const cls: EvidenceClass = usingProjection ? projected.cls : today.cls;
+
+  const ceilingClaim = ceilingQuantity ? ceilingClaimFrom(comparables, ceilingQuantity) : null;
+
+  // Defect 2 enforced rather than documented: an invalid ceiling claim may not
+  // produce a CONTRAINDICATED verdict.
+  const finalCls: EvidenceClass =
+    cls === 'CONTRAINDICATED' && (ceilingClaim === null || !ceilingClaim.valid) ? 'UNKNOWN' : cls;
+
+  const pctToday = today.step == null ? null : Math.round(today.step * 1000) / 10;
+  const pctProj = projected.step == null ? null : Math.round(projected.step * 1000) / 10;
+
+  const why = finalCls === 'UNKNOWN'
+    ? `Nothing comparable in his history to size ${what} against, over ${historyWindow}. `
+      + 'That is an absence, not a pass.'
+    : usingProjection
+      ? `${what} is ${fmtPct(pctProj)} on the ${demonstratedMaxProjected} the plan builds him to by `
+        + `${asOfISO}, and ${fmtPct(pctToday)} on the ${demonstratedMaxToday} he has demonstrated today. `
+        + 'The first number is the one that governs, because the second describes a runner who will '
+        + 'not be the one doing this session.'
+      : `${what} is ${fmtPct(pctToday)} on his demonstrated ${demonstratedMaxToday}, over `
+        + `${historyWindow}. No projection was available, so this is judged against today.`;
+
+  return {
+    evidenceClass: finalCls,
+    comparables,
+    asOfISO,
+    demonstratedMaxToday: {
+      value: demonstratedMaxToday,
+      provenance: 'ATHLETE_EVIDENCE',
+      basis: `Completed training, ${historyWindow}.`,
+    },
+    demonstratedMaxProjected: {
+      value: demonstratedMaxProjected,
+      provenance: 'POLICY_ASSUMPTION',
+      basis: demonstratedMaxProjected == null
+        ? 'No projection: the plan before this date does not build toward this quantity.'
+        : `Assumes the plan up to ${asOfISO} is executed. It is an assumption about the future, `
+          + 'not a measurement, and the earning gate on this decision is what checks it.',
+    },
+    prescribed,
+    stepOverDemonstratedToday: today.step,
+    stepOverProjected: projected.step,
+    ceilingClaim,
+    why,
+  };
+}
+
+function fmtPct(pct: number | null): string {
+  if (pct == null) return 'an unknown step';
+  if (pct <= 0) return `${pct === 0 ? 'level with' : `${-pct}% under`}`;
+  return `plus ${pct}%`;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 2 · STACKED STRESS  ·  what the components cost TOGETHER
+ * 2 · EARNING GATES  ·  a CONDITIONAL can be earned, defect 6
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * David: "A 60-mile week or 10-mile MP dose should be allowed to become
+ * supported through successful September and October training rather than being
+ * permanently accepted or rejected today."
+ *
+ * A CONDITIONAL prescription therefore leaves this layer with a gate attached:
+ * what would earn it, when that is checked, and what happens if it is not met.
+ * Neither waving it through nor deleting it is an answer.
+ */
+export function earningGateFor(args: {
+  readonly decisionId: string;
+  readonly what: string;
+  readonly prescribed: number;
+  readonly demonstratedMaxToday: number | null;
+  readonly assessOnISO: string;
+  readonly requires: readonly EarningRequirement[];
+  readonly ifUnmet: 'DEFER' | 'REDUCE' | 'DROP';
+  readonly reduceTo: number | null;
+}): EarningGate {
+  const { decisionId, what, prescribed, demonstratedMaxToday, assessOnISO, requires, ifUnmet, reduceTo } = args;
+  const unmet = ifUnmet === 'REDUCE' && reduceTo != null
+    ? `it is reduced to ${reduceTo}`
+    : ifUnmet === 'DEFER'
+      ? 'it is deferred to the next boundary and stays queued'
+      : 'it is dropped from the block';
+  return {
+    gateId: `earn:${decisionId}`,
+    forDecisionId: decisionId,
+    requires,
+    assessOnISO,
+    ifUnmet,
+    reduceTo,
+    explain: `${what} at ${prescribed} is not supported by the ${demonstratedMaxToday ?? 'unknown'} he `
+      + `has demonstrated today. It becomes supported if, by ${assessOnISO}, `
+      + `${requires.map((r) => r.what).join(' and ')}. If that has not happened, ${unmet}.`,
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3 · STACKED STRESS  ·  what the components cost TOGETHER
  * ═══════════════════════════════════════════════════════════════════════ */
 
 /** More than this many named stressors in one week is stacking worth costing. */
@@ -143,55 +316,74 @@ export function detectStackedStress(
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 3 · THE THREE OPTIONS  ·  push / hold / pull back, every time
+ * 4 · THE THREE OPTIONS  ·  push / hold / pull back, every time
  * ═══════════════════════════════════════════════════════════════════════ */
 
 /**
- * Expected absorbed fraction. Deliberately crude and deliberately explicit:
- * a SUPPORTED prescription is expected to be absorbed nearly whole; an ALLOWED
- * one carries real miss risk; a CONDITIONAL one is a coin-flip until the
- * evidence exists; a CONTRAINDICATED one is expected to cost more than it buys.
+ * A RANKING SCORE. Defect 4 of David's list, in his words:
  *
- * This is a HEURISTIC and is labelled one. Its job is to make the comparison
- * explicit and rankable, not to be precise — an adjudicator that cannot say why
- * it preferred one option is the thing being fixed.
+ *   "Stop describing expectedAbsorbed as an evidence-derived expectation while
+ *    it uses fixed heuristic weights. Rename it as a heuristic ranking score or
+ *    calibrate it from outcomes."
+ *
+ * He is right, and the honest fix is the rename plus the label, because the
+ * calibration data does not exist yet: grading only began producing FULL and
+ * SUBSTANTIAL verdicts for this runner in the last few weeks, and the canonical
+ * engine is still shadow-only. Calibrating on a handful of graded sessions
+ * would replace an admitted guess with a disguised one.
+ *
+ * So: these four numbers are POLICY_ASSUMPTION, they are ordinal, and their
+ * only job is to make the comparison between three options explicit and
+ * rankable. **They do not forecast absorption and must never be reported as a
+ * percentage the runner will absorb.**
+ *
+ * What would replace them: the fraction of prescribed work actually completed
+ * at grade FULL or SUBSTANTIAL, per evidence class, over a season of graded
+ * sessions. When that exists, this function should read it and its provenance
+ * becomes ATHLETE_EVIDENCE.
  */
-export function expectedAbsorbed(cls: EvidenceClass): number | null {
+export function heuristicRankScore(cls: EvidenceClass): Attributed<number> | null {
+  const basis = 'Ordinal ranking weight, chosen not measured. Not calibrated against any outcome. '
+    + 'Replace with completion-at-grade rates per evidence class once a season of graded sessions exists.';
   switch (cls) {
-    case 'SUPPORTED': return 0.95;
-    case 'ALLOWED': return 0.70;
-    case 'CONDITIONAL': return 0.50;
-    case 'CONTRAINDICATED': return 0.25;
+    case 'SUPPORTED': return { value: 0.95, provenance: 'POLICY_ASSUMPTION', basis };
+    case 'ALLOWED': return { value: 0.70, provenance: 'POLICY_ASSUMPTION', basis };
+    case 'CONDITIONAL': return { value: 0.50, provenance: 'POLICY_ASSUMPTION', basis };
+    case 'CONTRAINDICATED': return { value: 0.25, provenance: 'POLICY_ASSUMPTION', basis };
+    // Rule 11: ranking an unknown means inventing a number.
     case 'UNKNOWN': return null;
   }
 }
 
 /**
- * Rank three real options by expected ADAPTATION — stimulus × absorbed.
+ * Rank three real options by stimulus times ranking score.
  *
  * Note the direction this produces, and that it is the point: a bigger
- * prescription only wins when he is expected to absorb it. Pushing into
- * CONDITIONAL territory scores 1.0 × 0.50 = 0.50 against a supported hold's
- * 0.85 × 0.95 = 0.81, so the layer prefers the hold WITHOUT anyone writing "be
- * careful" anywhere. And when the push IS supported it scores 1.0 × 0.95 and
- * wins, which is equally the point — the default is to advance.
+ * prescription only wins when the evidence backs it. Pushing into CONDITIONAL
+ * territory scores 1.0 x 0.50 against a supported hold's 0.85 x 0.95, so the
+ * layer prefers the hold WITHOUT anyone writing "be careful" anywhere. And when
+ * the push IS supported it scores 1.0 x 0.95 and wins, which is equally the
+ * point, because the default is to advance.
+ *
+ * The product is a ranking, not a quantity with units. It is deliberately not
+ * exposed on the trace.
  */
 export function rankOptions(opts: readonly OptionAppraisal[]): OptionAppraisal[] {
   const stimulus: Record<Option, number> = { PUSH: 1.0, HOLD: 0.85, PULL_BACK: 0.6 };
   return [...opts].sort((a, b) => {
-    const av = (a.expectedAbsorbedFrac ?? 0) * stimulus[a.option];
-    const bv = (b.expectedAbsorbedFrac ?? 0) * stimulus[b.option];
+    const av = (a.heuristicRankScore?.value ?? 0) * stimulus[a.option];
+    const bv = (b.heuristicRankScore?.value ?? 0) * stimulus[b.option];
     return bv - av;
   });
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 4 · DOCTRINE CONFLICT  ·  adjudicated, never cherry-picked
+ * 5 · DOCTRINE CONFLICT  ·  adjudicated, never cherry-picked
  * ═══════════════════════════════════════════════════════════════════════ */
 
 /**
  * A hard constraint beats a guideline beats a heuristic. Two of equal force is
- * a REAL conflict and the caller must say which wins and why — this refuses to
+ * a REAL conflict and the caller must say which wins and why. This refuses to
  * invent a reason, because inventing one is the failure being fixed.
  */
 export function adjudicate(
@@ -219,18 +411,30 @@ export function adjudicate(
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 5 · THE PROMOTION GATE
+ * 6 · THE PROMOTION GATE
  * ═══════════════════════════════════════════════════════════════════════ */
 
-export function checkPromotion(traces: readonly DecisionTrace[]): PlanAdjudication {
+export interface PromotionContext {
+  /** The block's weeks, so taper integrity and progression are real checks. */
+  readonly weeks: readonly PlannedWeek[];
+}
+
+export function checkPromotion(
+  traces: readonly DecisionTrace[],
+  ctx?: PromotionContext,
+): PlanAdjudication {
   const blocked: string[] = [];
 
-  const unsupported = traces.filter((t) =>
+  const conditional = traces.filter((t) =>
     t.athlete.evidenceClass === 'CONDITIONAL' || t.athlete.evidenceClass === 'CONTRAINDICATED');
-  // A CONDITIONAL decision is fine — IF it is marked for reassessment. Fixing a
-  // distant high-load session today, on evidence that does not exist yet, is the
-  // thing being blocked, not the conditionality itself.
-  const unmarked = unsupported.filter((t) => t.reassessOnISO === null);
+
+  // Defect 6. A CONDITIONAL decision is fine, IF it carries a gate that says
+  // how it can be earned and when that is checked. Marking it for reassessment
+  // without saying what would earn it is what the first version accepted, and
+  // it leaves the runner nothing to aim at.
+  const ungated = conditional.filter((t) => t.earningGate === null && t.reassessOnISO === null);
+  const markedButUnexplained = conditional.filter((t) =>
+    t.earningGate === null && t.reassessOnISO !== null);
 
   const stackedUnaddressed = traces.filter((t) =>
     t.stacked?.simultaneousPeak === true && t.chosen === 'PUSH');
@@ -243,9 +447,35 @@ export function checkPromotion(traces: readonly DecisionTrace[]): PlanAdjudicati
   const unresolvedConflict = traces.filter((t) =>
     t.conflicts.some((c) => c.because.trim() === ''));
 
-  if (unmarked.length > 0) {
-    blocked.push(`athleteSpecificSupport · ${unmarked.length} decision(s) are not supported by his `
-      + `own history and are not marked for reassessment: ${unmarked.map((t) => t.decisionId).join(', ')}`);
+  // Defect 2 enforced at the gate as well as at the source: nothing may be
+  // refused on a ceiling claim that does not have the comparables behind it.
+  const badCeiling = traces.filter((t) =>
+    t.athlete.evidenceClass === 'CONTRAINDICATED'
+    && (t.athlete.ceilingClaim === null || !t.athlete.ceilingClaim.valid));
+
+  // Rule 21, as a real check rather than `traces.length > 0`. A block that
+  // never advances anywhere is not a training plan. This is the dimension the
+  // first version could not fail on.
+  const anyAdvance = traces.some((t) => t.chosen === 'PUSH');
+
+  // Taper integrity, likewise real. Nothing gets pushed inside a taper.
+  const taperWeeks = new Set((ctx?.weeks ?? []).filter((w) => w.isTaper || w.isRaceWeek)
+    .map((w) => w.weekStartISO));
+  const pushedInTaper = ctx == null ? [] : traces.filter((t) =>
+    t.chosen === 'PUSH' && t.stacked != null && taperWeeks.has(t.stacked.weekStartISO));
+
+  if (ungated.length > 0) {
+    blocked.push(`athleteSpecificSupport · ${ungated.length} decision(s) are not supported by his own `
+      + `history, carry no earning gate and are not marked for reassessment: ${ungated.map((t) => t.decisionId).join(', ')}`);
+  }
+  if (markedButUnexplained.length > 0) {
+    blocked.push(`athleteSpecificSupport · ${markedButUnexplained.length} decision(s) are marked for `
+      + `reassessment but say nothing about what would earn them: ${markedButUnexplained.map((t) => t.decisionId).join(', ')}`);
+  }
+  if (badCeiling.length > 0) {
+    blocked.push(`athleteSpecificSupport · ${badCeiling.length} decision(s) refuse a prescription on a `
+      + `ceiling claim with fewer than ${MIN_COMPARABLES_FOR_CEILING_CLAIM} comparables: `
+      + `${badCeiling.map((t) => t.decisionId).join(', ')}`);
   }
   if (stackedUnaddressed.length > 0) {
     blocked.push(`recoverability · ${stackedUnaddressed.length} week(s) peak in volume, long run AND `
@@ -261,13 +491,22 @@ export function checkPromotion(traces: readonly DecisionTrace[]): PlanAdjudicati
   if (traces.length === 0) {
     blocked.push('wholeBlockCoherence · nothing was adjudicated at all, which is not a pass (Rule 18)');
   }
+  if (traces.length > 0 && !anyAdvance) {
+    blocked.push('progression · no decision in this block advances anything. Rule 21: a plan that only '
+      + 'holds and pulls back is a safety system wearing a coach\'s clothes.');
+  }
+  if (pushedInTaper.length > 0) {
+    blocked.push(`taperIntegrity · ${pushedInTaper.length} decision(s) PUSH inside a taper or race week: `
+      + `${pushedInTaper.map((t) => t.decisionId).join(', ')}`);
+  }
 
   const check: PromotionCheck = {
-    athleteSpecificSupport: unmarked.length === 0 && traces.length > 0,
+    athleteSpecificSupport: ungated.length === 0 && markedButUnexplained.length === 0
+      && badCeiling.length === 0 && traces.length > 0,
     wholeBlockCoherence: missingOptions.length === 0 && traces.length > 0,
     recoverability: stackedUnaddressed.length === 0,
-    progression: traces.length > 0,
-    taperIntegrity: true,
+    progression: traces.length > 0 && anyAdvance,
+    taperIntegrity: pushedInTaper.length === 0,
     doctrineResolution: unresolvedConflict.length === 0,
   };
   // Belt and braces · a dimension added to the type but forgotten here would
@@ -276,5 +515,9 @@ export function checkPromotion(traces: readonly DecisionTrace[]): PlanAdjudicati
     if (check[d] === undefined) blocked.push(`${d} · not evaluated`);
   }
 
-  return { traces, check, mayPromote: blocked.length === 0, blockedBecause: blocked };
+  const earningGates = traces
+    .map((t) => t.earningGate)
+    .filter((g): g is EarningGate => g != null);
+
+  return { traces, check, mayPromote: blocked.length === 0, blockedBecause: blocked, earningGates };
 }
