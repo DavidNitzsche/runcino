@@ -94,6 +94,12 @@ import { classifyWeekSurplus } from './classify';
 import { admitSurplus, classifyLowWeek } from './admit';
 import { rankWeek, unmeasuredBelief, updateDemonstratedVolume } from './belief';
 import { respondToVolumeEvidence, type PhaseIntent } from './respond';
+// CONTINUOUS-EVIDENCE-1 · the two channels and the ledger.
+import {
+  accumulateCapacityEvidence, readFatigue, weighCapacity,
+  type CapacityEvidence, type FatigueContribution,
+} from './evidence';
+import { PROGRESSION_UNLOCK_FRAC } from './weight';
 // ONE DOOR · see `./contract`'s own section. The engine's vocabulary reaches
 // this directory through that file and nowhere else.
 import {
@@ -309,6 +315,18 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
     const beliefMoves: string[] = [];
     const futureChanges: string[] = [];
     let lowWeekCensus: Record<string, number> = {};
+    // CONTINUOUS-EVIDENCE-1 · every week's capacity reading, in order, so the
+    // ledger can be re-accumulated as of each week rather than only at the end.
+    const capacityReadings: CapacityEvidence[] = [];
+    interface ContinuousRow {
+      ws: string; prescribed: number; completed: number; surplusFrac: number | null;
+      units: number; confirmedUnits: number; weekFrac: number; confirmedFrac: number;
+      absorption: number; provisional: boolean; unreadable: boolean;
+      ledgerUnits: number; ledgerRecorded: number; ledgerFrac: number; unlocked: boolean;
+      fatigueExcessMi: number | null; fatigueNonNormal: boolean; artifactMi: number;
+      detail: string;
+    }
+    const continuousRows: ContinuousRow[] = [];
 
     for (let i = 0; i < built.length - 1; i += 1) {
       const b = built[i];
@@ -345,6 +363,56 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
         unplannedRecoveryTaken: measured(false),
         followingWeekCompletionFrac: followingFrac,
         absorptionCompletionBar: VOLUME_WEEK_COMPLETION_MIN_FRAC,
+      });
+
+      /* ── CONTINUOUS-EVIDENCE-1 · the two channels, on the real week ──
+       *
+       * `weighCapacity` is handed pass B's admission, for the same reason the
+       * whole replay reports two passes: pass A's conditions are REFUSALS this
+       * replay cannot read (no HR traces, no session thirds, no pain report),
+       * and a capacity reading over refusals is a statement about the replay
+       * rather than about the runner. The fatigue channel is unaffected either
+       * way, because it reads canonical distance and nothing else. */
+      const capacity: CapacityEvidence = weighCapacity(surplus, passB, {
+        identityResolved: measured(true),
+        telemetry: absent('this replay does not reconstruct heart-rate traces'),
+        deterioration: measured({
+          repeated: false, deterioratedCount: 0, unknownCount: 0, cleanCount: 0,
+          detail: 'ASSUMED CLEAN · not reconstructed by this replay',
+        }),
+        keySessionGrades: [],
+        painOrInjuryReported: measured(false),
+        unplannedRecoveryTaken: measured(false),
+        followingWeekCompletionFrac: followingFrac,
+        absorptionCompletionBar: VOLUME_WEEK_COMPLETION_MIN_FRAC,
+      });
+      const fatigue: FatigueContribution = readFatigue(b.input, surplus);
+      capacityReadings.push(capacity);
+      // The ledger as it stood the moment this week's evidence landed. Only
+      // weeks already run reach it, because `accumulateCapacityEvidence` drops
+      // anything dated after `asOfISO`.
+      const ledger = accumulateCapacityEvidence(capacityReadings, addDays(b.ws, 7));
+
+      continuousRows.push({
+        ws: b.ws,
+        prescribed: b.input.prescribedMi,
+        completed: b.completed,
+        surplusFrac: capacity.surplusFrac.ok ? capacity.surplusFrac.value : null,
+        units: capacity.units,
+        confirmedUnits: capacity.confirmedUnits,
+        weekFrac: capacity.fractionOfFullStep,
+        confirmedFrac: capacity.confirmedFractionOfFullStep,
+        absorption: capacity.confirmationWeight,
+        provisional: capacity.provisional,
+        unreadable: capacity.unreadable,
+        ledgerUnits: ledger.totalUnits,
+        ledgerRecorded: ledger.recordedUnits,
+        ledgerFrac: ledger.progressionFraction,
+        unlocked: ledger.fullStepUnlocked,
+        fatigueExcessMi: fatigue.excessMi.ok ? fatigue.excessMi.value : null,
+        fatigueNonNormal: fatigue.duringPrescribedNonNormal,
+        artifactMi: fatigue.artifactMiExcluded,
+        detail: capacity.detail,
       });
 
       const before = belief;
@@ -405,6 +473,10 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
         evidenceVersion: b.ws,
         week: surplus,
         admission: passB,
+        // CONTINUOUS-EVIDENCE-1 · the accumulated evidence as of this week,
+        // not a hardcoded 1. This is what makes the replay's proposals scale
+        // with what the runner actually demonstrated.
+        progressionFraction: ledger.progressionFraction,
         beliefBefore: before,
         beliefAfter: belief,
         futureWeeks: future,
@@ -506,6 +578,100 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
      * could, the bar is not a bar, it is a wall." Computed, not asserted. */
     const reachable = rows.filter((r) => r.gapMi != null).sort((a, b) => a.gapMi! - b.gapMi!);
     const cleared = reachable.filter((r) => r.gapMi! <= 0);
+    /* ══════════════════════════════════════════════════════════════════
+     * CONTINUOUS-EVIDENCE-1 · THE CLIFF, AND WHAT REPLACED IT
+     * ═══════════════════════════════════════════════════════════════ */
+    const contributing = continuousRows.filter((r) => r.units > 0);
+    const target = continuousRows.find((r) => r.ws === '2026-06-15');
+    md.push('## CONTINUOUS-EVIDENCE-1 · the week that used to contribute nothing');
+    md.push('');
+    md.push('The owner\'s finding: "The closest historical week completed 47.3 against 45.5');
+    md.push('prescribed but contributed zero evidence because it missed a 47.8 bar by 0.4 miles.');
+    md.push('That is another cliff." The bar is gone. Evidence is now credited continuously.');
+    md.push('');
+    if (target != null) {
+      md.push(`**2026-06-15** · ${target.completed} mi run against ${target.prescribed} mi prescribed.`);
+      md.push('');
+      md.push(`- surplus fraction: **${target.surplusFrac == null ? 'refused' : `${r1(target.surplusFrac * 100)} per cent`}** of prescription`);
+      md.push(`- evidence units contributed: **${target.units.toFixed(5)}** of the `
+        + `${PROGRESSION_UNLOCK_FRAC} a full step needs`);
+      md.push(`- **share of a full doctrinal volume step this one week is worth: `
+        + `${(target.weekFrac * 100).toFixed(1)} per cent** (it contributed ZERO before this change)`);
+      md.push(`- absorption factor from the following week: **${target.absorption.toFixed(3)}**`);
+      md.push(`- of that, CONFIRMED and spendable today: **${(target.confirmedFrac * 100).toFixed(1)} per cent**`);
+      md.push(`- provisional: ${target.provisional ? 'yes' : 'no'} · unreadable: ${target.unreadable ? 'yes' : 'no'}`);
+      md.push(`- ledger as of the following week: recorded **${target.ledgerRecorded.toFixed(5)}**, `
+        + `confirmed **${target.ledgerUnits.toFixed(5)}** `
+        + `(${(target.ledgerFrac * 100).toFixed(1)} per cent of a full step, `
+        + `${target.unlocked ? 'UNLOCKED' : 'not yet a full step'})`);
+      md.push('');
+      md.push(`> ${target.detail}`);
+      md.push('');
+      md.push('**Read that carefully, because the two halves are different facts (Rule 11).**');
+      md.push('The 0.4-mile cliff is gone: the week is now worth a real, non-zero share of a step,');
+      md.push('and the size of that share moves continuously with how far past prescription he ran.');
+      md.push('What holds its CONFIRMED share at zero is a separate and genuine fact about the');
+      md.push('following weeks, not a threshold he missed by a hair: 2026-06-22 completed 28 of 49.5');
+      md.push('mi and 2026-06-29 completed 0 of 40. He did not carry the load on. The engine records');
+      md.push('the evidence and declines to spend it, which is exactly what "evidence remains');
+      md.push('provisional until recovery indicates absorption" asks for.');
+    } else {
+      md.push('_2026-06-15 is not in the walked window._');
+    }
+    md.push('');
+    md.push('### Every week now worth something it was worth nothing before');
+    md.push('');
+    md.push('| week | prescribed | completed | surplus % | units | worth % of a step | absorption | confirmed % | ledger confirmed % |');
+    md.push('|---|---|---|---|---|---|---|---|---|');
+    for (const r of contributing) {
+      md.push(`| ${r.ws} | ${r.prescribed} | ${r.completed} | `
+        + `${r.surplusFrac == null ? '-' : r1(r.surplusFrac * 100)} | ${r.units.toFixed(5)} | `
+        + `**${(r.weekFrac * 100).toFixed(1)}** | ${r.absorption.toFixed(3)} | `
+        + `${(r.confirmedFrac * 100).toFixed(1)} | ${(r.ledgerFrac * 100).toFixed(1)} |`);
+    }
+    md.push('');
+    /* THE COUNTERFACTUAL, COMPUTED RATHER THAN REMEMBERED.
+     *
+     * Rule 18: a comparison that re-runs the NEW code and calls the answer
+     * "old" proves nothing. So the two clauses the old `admitSurplus` applied
+     * are re-derived here, literally, from the same rows: a surplus strictly
+     * above `prescribed × VOLUME_ADDITION_THRESHOLD`, AND a following week at
+     * or above `VOLUME_WEEK_COMPLETION_MIN_FRAC`. Anything else was zero. */
+    const oldBarAdmitted = continuousRows.filter((r) => {
+      const row = rows.find((x) => x.ws === r.ws);
+      if (row == null || r.surplusFrac == null) return false;
+      const surplusMi = r.completed - r.prescribed;
+      const clearsMagnitude = surplusMi > r.prescribed * VOLUME_ADDITION_THRESHOLD;
+      const clearsAbsorption = r.absorption >= 1;
+      return clearsMagnitude && clearsAbsorption;
+    });
+    md.push(`Weeks now carrying non-zero capacity evidence: **${contributing.length}**. `
+      + 'Weeks the OLD binary bar would have admitted, re-derived from the same rows rather '
+      + `than re-run through the new code: **${oldBarAdmitted.length}**.`);
+    md.push('');
+    md.push('The old bar admitted a week whole or not at all. Every week in the table above was');
+    md.push('worth exactly zero under it. That is the cliff, measured on the runner\'s own year.');
+    md.push('');
+    md.push('Note how FEW weeks carry any surplus at all: across the year the runner mostly ran');
+    md.push('UNDER prescription, which is why the volume lever has so little to spend. That is a');
+    md.push('fact about the year, not about the curve, and it is stated here rather than hidden');
+    md.push('behind a single headline number.');
+    md.push('');
+    md.push('### The two channels disagree, which is the point');
+    md.push('');
+    md.push('Rule 8 filters CAPABILITY and its corollary refuses to filter ABSORBED LOAD. A week the');
+    md.push('plan authored small contributes zero capacity and still contributes fatigue.');
+    md.push('');
+    md.push('| week | why non-normal | capacity units | fatigue excess mi | merged mi excluded |');
+    md.push('|---|---|---|---|---|');
+    for (const r of continuousRows.filter((x) => x.fatigueNonNormal && (x.fatigueExcessMi ?? 0) > 0)) {
+      const nn = rows.find((x) => x.ws === r.ws)?.nonNormal ?? '';
+      md.push(`| ${r.ws} | ${nn} | **${r.units.toFixed(5)}** | **${r.fatigueExcessMi}** | ${r.artifactMi} |`);
+    }
+    md.push('');
+    md.push(`Merged miles excluded from BOTH channels across the window: `
+      + `**${r1(continuousRows.reduce((a, r) => a + r.artifactMi, 0))} mi**.`);
+    md.push('');
     md.push('## Rule 21 · is the bar a bar, or a wall');
     md.push('');
     md.push('The bar to be read as "he ran more" is `VOLUME_ADDITION_THRESHOLD` '

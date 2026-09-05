@@ -101,6 +101,8 @@ import { GRADES_THAT_COUNT_AS_EVIDENCE } from '@/lib/adaptation/canonical/stimul
 import { reconsiderAtBoundary } from '@/lib/adaptation/canonical/deferral-queue';
 import {
   CONTRACT_DOC,
+  THRESHOLD_EVIDENCE_WINDOW_DAYS,
+  THRESHOLD_EVIDENCE_WINDOW_DAYS_TIGHT,
   VOLUME_MAX_STEP_FRAC,
   VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE,
   VOLUME_MIN_CONSECUTIVE_WEEKS,
@@ -126,7 +128,8 @@ import {
  *
  *   measured / absent / failed      pure constructors for `Measured<T>`
  *   GRADES_THAT_COUNT_AS_EVIDENCE   a frozen Set of two grade names
- *   VOLUME_* / CONTRACT_DOC         doctrine constants and a citation string
+ *   VOLUME_* / THRESHOLD_EVIDENCE_* doctrine constants
+ *   CONTRACT_DOC                    a citation string
  *   reconsiderAtBoundary            a PURE ledger function: it takes a queue
  *                                   and returns a queue, opens no connection
  *                                   and writes nothing
@@ -141,6 +144,8 @@ export {
   GRADES_THAT_COUNT_AS_EVIDENCE,
   reconsiderAtBoundary,
   CONTRACT_DOC,
+  THRESHOLD_EVIDENCE_WINDOW_DAYS,
+  THRESHOLD_EVIDENCE_WINDOW_DAYS_TIGHT,
   VOLUME_MAX_STEP_FRAC,
   VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE,
   VOLUME_MIN_CONSECUTIVE_WEEKS,
@@ -471,17 +476,73 @@ export const RULE_21_THRESHOLD_LEDGER: readonly ThresholdPair[] = [
   },
   {
     question: 'What counts as "he ran more" / "he ran less" than prescribed.',
-    up: 'surplus > VOLUME_ADDITION_THRESHOLD (0.05) of prescribed',
+    up: 'surplus > GPS_DISTANCE_ERROR_LO_FRAC (0.01) of prescribed, then credited '
+      + 'CONTINUOUSLY and saturating at VOLUME_ADDITION_THRESHOLD (0.05)',
     down: 'shortfall > VOLUME_ADDITION_THRESHOLD (0.05) of prescribed',
+    symmetric: false,
+    asymmetryJustification:
+      'CONTINUOUS-EVIDENCE-1, and it is asymmetric in the direction Rule 21 asks for: the bar '
+      + 'to go UP is now LOWER than the bar to come down, and the rule forbids only the '
+      + 'reverse. The owner found the old symmetry costing him a week he had actually run: '
+      + '"47.3 against 45.5 prescribed but contributed zero evidence because it missed a 47.8 '
+      + 'bar by 0.4 miles. That is another cliff." VOLUME_ADDITION_THRESHOLD did not change '
+      + 'value or doctrine, it changed ROLE: it was the floor a week had to clear to be '
+      + 'admitted at all and it is now the CEILING on what one week may contribute '
+      + '(PER_WEEK_CREDIT_CEILING_FRAC), so total upward exposure per week is unchanged while '
+      + 'the granularity below it went from binary to continuous. What remains as a hard NO '
+      + 'is Research/15 §"Pace and GPS Accuracy"\'s 1-3% GPS distance error: below its lower '
+      + 'edge a surplus is the receiver rather than the runner. The downward path is untouched '
+      + 'and lives where it always did: volume_overshoot in lib/plan/adapt.ts and the REGRESS '
+      + 'branch of lib/adaptation/canonical/levers/weekly-volume.ts.',
+  },
+  {
+    question: 'The largest single step a proposal may make to one week.',
+    up: 'VOLUME_MAX_STEP_FRAC (0.05) of the affected week, SCALED by '
+      + 'progressionFraction (0 to 1)',
+    down: 'VOLUME_MAX_STEP_FRAC = 0.05 of the affected week',
+    symmetric: false,
+    asymmetryJustification:
+      'CONTINUOUS-EVIDENCE-1. The upward CEILING is identical; what differs is that the '
+      + 'upward step is multiplied by how much evidence has actually accumulated, so it is '
+      + 'never LARGER than the downward step and is usually smaller. A bar that only ever '
+      + 'reduces the upward move cannot be the defect Rule 21 names. The owner\'s requirement '
+      + 'is the reason: "Crossing a threshold cannot suddenly transform zero evidence into '
+      + 'full evidence." Without this factor the accumulation bar would itself be a cliff, '
+      + 'with the full doctrinal step on one side of it and nothing on the other.',
+  },
+  {
+    question: 'How much evidence is needed for a FULL step, and how it accumulates.',
+    up: 'PROGRESSION_UNLOCK_FRAC (0.15) accumulated units, which is Research/00a '
+      + '§"Volume progression rules" upper edge (15% per training cycle); one week may '
+      + 'contribute at most 0.05, so at least VOLUME_MIN_CONSECUTIVE_WEEKS (3) weeks are '
+      + 'always required and a partial total buys a proportional step',
+    down: 'One week never lowers a belief. VOLUME_MIN_CONSECUTIVE_WEEKS (3) consecutive '
+      + 'representative low weeks with complete data and no declared cause are required '
+      + 'for GENUINE_CAPACITY_LOSS, and even then peakWeeklyMi does not move.',
     symmetric: true,
     asymmetryJustification: null,
   },
   {
-    question: 'The largest single step a proposal may make to one week.',
-    up: 'VOLUME_MAX_STEP_FRAC = 0.05 of the affected week',
-    down: 'VOLUME_MAX_STEP_FRAC = 0.05 of the affected week',
-    symmetric: true,
-    asymmetryJustification: null,
+    question: 'What the week AFTER the surplus has to show.',
+    up: 'Below ABSORPTION_FLOOR_FRAC (0.90, PROGRESSIVE_BASELINE_DOCTRINE.md Q9) '
+      + 'contributes nothing; from there to ABSORPTION_CONFIRMED_FRAC (0.95, the '
+      + 'contract\'s weekly-volume bar) it counts in proportion; unrun is PROVISIONAL '
+      + 'at PROVISIONAL_ABSORPTION_WEIGHT (0.5), never zero.',
+    down: 'A low following week does not lower any belief. Only classifyLowWeek\'s '
+      + 'GENUINE_CAPACITY_LOSS moves a number down, and it needs three weeks.',
+    symmetric: false,
+    asymmetryJustification:
+      'THE ONE PLACE THIS CHANGE IS MORE PERMISSIVE THAN WHAT IT REPLACED, said plainly '
+      + 'rather than buried: a following week at 94% used to contribute zero and now '
+      + 'contributes 80 per cent of the absorption factor. Three things bound it. (1) The '
+      + 'contract\'s 0.95 has not moved; it is still where absorption reads as CONFIRMED and '
+      + 'the ramp reaches 1 there exactly. (2) The categorical NO moved only as far as '
+      + 'doctrine\'s OTHER stated weekly-completion bar, Q9\'s 90%, so nothing below a bar '
+      + 'doctrine itself states is credited. (3) The per-week credit ceiling and '
+      + 'VOLUME_MAX_STEP_FRAC are unchanged, so the total mileage this can add is exactly '
+      + 'what it was; only the granularity between the two doctrine bars improved. The '
+      + 'downward path reads absorbed load, not capability, and is untouched per Rule 8\'s '
+      + 'corollary.',
   },
   {
     question: 'How often a step may be taken.',

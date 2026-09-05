@@ -98,6 +98,7 @@ import {
   type LoadProgressionContract,
 } from '@/lib/plan/load-progression-contract';
 import { asDemonstratedLoad } from './belief';
+import { clamp01 } from './weight';
 import {
   CONTRACT_DOC,
   MILEAGE_RESPONSIVE_LEVER,
@@ -153,6 +154,22 @@ export interface VolumeResponseInput {
   /** `TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0]`, passed not looked up. */
   readonly distanceFloorMi: number;
   readonly templatePeakBandMi: readonly [number, number] | null;
+  /**
+   * CONTINUOUS-EVIDENCE-1 · HOW MUCH OF A FULL DOCTRINAL STEP THE ACCUMULATED
+   * EVIDENCE HAS BOUGHT. `CapacityAccumulation.progressionFraction`, in [0, 1].
+   *
+   * This is what stops the accumulation bar from becoming the next cliff. The
+   * unlock is not a gate the proposal passes through, it is the SCALE the
+   * proposal is multiplied by, so a runner holding a third of the evidence
+   * gets a third of the step rather than nothing at all.
+   *
+   * REQUIRED, not defaulted. A caller that has not accumulated any evidence
+   * must say `0` rather than omit the field: Rule 11, and defaulting an absent
+   * measurement to the permissive value is the exact coercion that let a
+   * zero-quality-density week read as "no signal" and answer with full
+   * quality.
+   */
+  readonly progressionFraction: number;
   /** Upward steps already taken in this cutback cycle. */
   readonly stepsTakenThisCycle: number;
   /** Where a deferred proposal would be reconsidered. */
@@ -264,6 +281,7 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
         firstRaisedWeekISO: null,
         blockedBy: reason,
         phase: input.phase,
+        progressionFraction: clamp01(input.progressionFraction),
       }),
       totalAddedMi: 0,
     };
@@ -364,12 +382,20 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
       continue;
     }
 
-    // The step is bounded on BOTH sides, and by the smaller of them:
+    // The step is bounded on THREE sides, and by the smallest of them:
     //   · the doctrine step cap, the same constant the downward path uses;
-    //   · the envelope, which is what the fresher belief actually moved.
-    // Rule 9 · both are `min`/`max` of continuous quantities, so a hair more
-    // surplus produces a hair more mileage and never a different KIND of week.
-    const stepCap = w.prescribedMi * VOLUME_MAX_STEP_FRAC;
+    //   · the envelope, which is what the fresher belief actually moved;
+    //   · CONTINUOUS-EVIDENCE-1 · how much evidence has actually accumulated.
+    //
+    // The third factor is the one that makes this whole path continuous in the
+    // evidence rather than in the envelope alone. `VOLUME_MAX_STEP_FRAC` is
+    // what a runner gets for a FULL cycle's worth of demonstrated growth; a
+    // runner holding 28 per cent of that gets 28 per cent of the step. Rule 9:
+    // every one of the three is a `min` over a continuous quantity, so a hair
+    // more evidence produces a hair more mileage and never a different KIND of
+    // week, and there is no point anywhere on the path where zero evidence
+    // becomes full evidence.
+    const stepCap = w.prescribedMi * VOLUME_MAX_STEP_FRAC * clamp01(input.progressionFraction);
     const target = Math.min(w.prescribedMi + stepCap, ceiling);
     if (target <= w.prescribedMi + 1e-9) {
       changes.push(preserve(w, 'ALREADY_AT_OR_ABOVE_THE_ENVELOPE',
@@ -492,6 +518,7 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
         ? (finalChanges.find((c) => c.preserved != null)?.preserved ?? null)
         : null,
       phase: input.phase,
+      progressionFraction: clamp01(input.progressionFraction),
     }),
     totalAddedMi,
   };

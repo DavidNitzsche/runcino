@@ -34,6 +34,7 @@
     "test:goalsanity": "bash ../scripts/check-goal-sanity-removed.sh",
     "test:writebarrier": "bash ../scripts/check-write-barrier.sh",
     "falsify:mileage": "vitest run --config vitest.falsify-mileage.config.ts",
+    "falsify:continuity": "vitest run --config vitest.falsify-continuity.config.ts",
     "mileage-replay": "vitest run --config vitest.mileage-replay.config.ts",
     "counterfactual": "vitest run --config vitest.counterfactual.config.ts"
   },

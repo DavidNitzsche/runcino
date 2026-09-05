@@ -438,7 +438,12 @@ const ALLOWLIST: readonly AllowedImport[] = [
   { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/input', symbols: new Set(['measured', 'absent', 'failed']) },
   { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/stimulus', symbols: new Set(['GRADES_THAT_COUNT_AS_EVIDENCE']) },
   { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/deferral-queue', symbols: new Set(['reconsiderAtBoundary']) },
-  { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/contract-constants', symbols: new Set(['CONTRACT_DOC', 'VOLUME_MAX_STEP_FRAC', 'VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE', 'VOLUME_MIN_CONSECUTIVE_WEEKS', 'VOLUME_WEEK_COMPLETION_MIN_FRAC']) },
+  // CONTINUOUS-EVIDENCE-1 (2026-09-05) · two more constants through the SAME
+  // door, and they REMOVE a duplicate rather than adding a dependency:
+  // `weight.ts` had 21 and 28 as its own literals, which was a second
+  // definition of the contract's evidence window (Rule 16). Both are inert
+  // numbers on a frozen module and neither can decide anything.
+  { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/contract-constants', symbols: new Set(['CONTRACT_DOC', 'VOLUME_MAX_STEP_FRAC', 'VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE', 'VOLUME_MIN_CONSECUTIVE_WEEKS', 'VOLUME_WEEK_COMPLETION_MIN_FRAC', 'THRESHOLD_EVIDENCE_WINDOW_DAYS', 'THRESHOLD_EVIDENCE_WINDOW_DAYS_TIGHT']) },
 ];
 
 function violatesAllowlist(file: string, imp: { module: string; names: string[] }): boolean {

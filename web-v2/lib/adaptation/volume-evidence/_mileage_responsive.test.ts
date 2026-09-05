@@ -72,6 +72,7 @@ import {
   applyCapacityLoss, rankWeek, unmeasuredBelief, updateDemonstratedVolume,
 } from './belief';
 import { respondToVolumeEvidence, type PhaseIntent, type VolumeResponseInput } from './respond';
+import { GPS_DISTANCE_ERROR_LO_FRAC, PER_WEEK_CREDIT_CEILING_FRAC } from './weight';
 import { allExplanations } from './explain';
 // ONE DOOR · the engine's vocabulary reaches this directory through
 // `./contract` and nowhere else. See that file's own section for the argument
@@ -197,6 +198,10 @@ function responseInput(o: Partial<VolumeResponseInput> & {
     athleteId: 'athlete-1',
     planVersion: 'plan-1',
     evidenceVersion: '2026-09-06',
+    // CONTINUOUS-EVIDENCE-1 · these cases assert the DOCTRINAL CAP, so they are
+    // handed a full progression fraction. The cases that exercise the fraction
+    // itself live in `_continuous_evidence.test.ts` and pass their own.
+    progressionFraction: 1,
     beliefBefore: PRIOR_BELIEF,
     futureWeeks: FOUR_ORDINARY_WEEKS,
     weekBeforeFirstFuture: futureWeek({ weekStartISO: WEEK, prescribedMi: 40 }),
@@ -752,8 +757,16 @@ describe('RULE 21 · every upward threshold sits beside its downward opposite', 
     const quoted = (needle: string): number => {
       const row = RULE_21_THRESHOLD_LEDGER.find((r) => r.up.includes(needle) || r.down.includes(needle));
       expect(row, `no ledger row quotes ${needle}`).toBeTruthy();
-      const m = /=\s*([\d.]+)|\(([\d.]+)\)/.exec(`${row!.up} ${row!.down}`);
-      return Number(m![1] ?? m![2]);
+      // CONTINUOUS-EVIDENCE-1 · read the number that belongs to THIS needle,
+      // not the first number anywhere in the row. Rows now quote more than one
+      // constant (row 2 names the GPS noise floor as well as the addition
+      // threshold), and a helper that grabbed the first number would silently
+      // start checking the wrong constant against the wrong name, which is
+      // Rule 18's "a check that stops meaning anything" in miniature.
+      const text = `${row!.up} ${row!.down}`;
+      const m = new RegExp(`${needle}\\s*(?:=\\s*|\\()([\\d.]+)`).exec(text);
+      expect(m, `ledger row quotes ${needle} without a number beside it: ${text}`).toBeTruthy();
+      return Number(m![1]);
     };
     expect(quoted('VOLUME_MIN_CONSECUTIVE_WEEKS')).toBe(VOLUME_MIN_CONSECUTIVE_WEEKS);
     expect(quoted('VOLUME_ADDITION_THRESHOLD')).toBe(VOLUME_ADDITION_THRESHOLD);
@@ -763,10 +776,21 @@ describe('RULE 21 · every upward threshold sits beside its downward opposite', 
 
   it('the bar to go UP is the SAME constant as the bar to come down', () => {
     // The symmetry is a fact about the imports, not a claim in a comment: both
-    // directions read VOLUME_ADDITION_THRESHOLD from one module.
-    const src = readFileSync(path.join(__dirname, 'admit.ts'), 'utf8');
+    // directions read VOLUME_ADDITION_THRESHOLD from one module, and this
+    // directory never re-types it.
+    //
+    // CONTINUOUS-EVIDENCE-1 moved the import from `admit.ts` to `weight.ts`
+    // along with the ROLE of the constant, which went from being the floor a
+    // week had to clear to being the ceiling on what a week may contribute
+    // (`PER_WEEK_CREDIT_CEILING_FRAC`). The value and the doctrine are
+    // untouched, so the assertion follows the import rather than being
+    // relaxed.
+    const src = readFileSync(path.join(__dirname, 'weight.ts'), 'utf8');
     expect(src).toContain("import { VOLUME_ADDITION_THRESHOLD } from '@/lib/plan/adjudication/adjudicate'");
-    expect(src).not.toMatch(/const\s+VOLUME_ADDITION_THRESHOLD\s*=/);
+    for (const f of ['admit.ts', 'weight.ts', 'respond.ts', 'classify.ts', 'belief.ts']) {
+      expect(readFileSync(path.join(__dirname, f), 'utf8'))
+        .not.toMatch(/const\s+VOLUME_ADDITION_THRESHOLD\s*=/);
+    }
   });
 });
 
@@ -893,15 +917,35 @@ describe('RULE 9 · a hair more surplus never produces a different KIND of answe
     }
   });
 
-  it('the one discrete edge is the ADMISSION bar, and it is doctrine\'s own', () => {
-    // 40 mi prescribed · the bar is 5% = 2.0 mi. Either side of it the answer
-    // differs in KIND (admitted / not), which is legitimate: the bar is
-    // VOLUME_ADDITION_THRESHOLD, the same number the downward path uses, and
-    // the QUANTITY on each side moves continuously. Stated here rather than
-    // hidden, per Rule 9's instruction to ask what a threshold is answering.
-    expect(runPipeline({ week: overrunWeek(1.9) }).admission.admitted).toBe(false);
+  it('THE ADMISSION BAR IS GONE · this case asserted the cliff and now asserts its absence', () => {
+    /* CONTINUOUS-EVIDENCE-1 · THIS CASE USED TO ENCODE THE DEFECT.
+     *
+     * It read, verbatim: "the one discrete edge is the ADMISSION bar, and it
+     * is doctrine's own ... Either side of it the answer differs in KIND
+     * (admitted / not), which is legitimate." It asserted
+     * `overrunWeek(1.9).admitted === false` and `overrunWeek(2.1) === true` on
+     * a 40 mi week, and it passed for as long as the cliff existed.
+     *
+     * The owner disagreed, on his own history: "The closest historical week
+     * completed 47.3 against 45.5 prescribed but contributed zero evidence
+     * because it missed a 47.8 bar by 0.4 miles. That is another cliff." He is
+     * right, and CLAUDE.md Rule 9 says so in as many words.
+     *
+     * The case is kept rather than deleted, inverted rather than relaxed, so
+     * that the history is legible: this is what the gate believed, and this is
+     * what it believes now. `_continuity_walk.test.ts` is the general form.
+     */
+    // 40 mi prescribed. The old bar was 5 per cent = 2.0 mi.
+    expect(runPipeline({ week: overrunWeek(1.9) }).admission.admitted).toBe(true);
     expect(runPipeline({ week: overrunWeek(2.1) }).admission.admitted).toBe(true);
+    // The constant is unchanged and still doctrine's own. What changed is its
+    // ROLE: it is now the per-week credit CEILING, not the admission floor.
     expect(40 * VOLUME_ADDITION_THRESHOLD).toBe(2);
+    expect(PER_WEEK_CREDIT_CEILING_FRAC).toBe(VOLUME_ADDITION_THRESHOLD);
+    // What remains a hard NO is measurement noise, and nothing else.
+    expect(runPipeline({ week: overrunWeek(0.3) }).admission.admitted).toBe(false);
+    expect(runPipeline({ week: overrunWeek(0.5) }).admission.admitted).toBe(true);
+    expect(40 * GPS_DISTANCE_ERROR_LO_FRAC).toBeCloseTo(0.4, 10);
   });
 });
 

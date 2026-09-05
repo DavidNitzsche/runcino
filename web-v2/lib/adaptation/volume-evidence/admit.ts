@@ -54,10 +54,14 @@
  *   clause reads a verdict produced upstream and will spend a wrong one
  *   confidently. Whether the graders are right is their own files' question.
  * · It cannot fail on absorption evidence that has not happened yet. Condition
- *   5 needs the week AFTER the surplus week, so the most recent week can never
- *   be admitted on the day it ends. That is a real delay, it is stated in the
- *   refusal, and it is the correct posture: absorption is a fact about the
- *   future of the load, not about the run.
+ *   5 reads the week AFTER the surplus week, so the newest evidence is always
+ *   PROVISIONAL: it is admitted, recorded, and carries
+ *   `PROVISIONAL_ABSORPTION_WEIGHT` rather than full credit until the
+ *   following week is run. That delay is real and it is the correct posture,
+ *   because absorption is a fact about the future of the load rather than
+ *   about the run. Until CONTINUOUS-EVIDENCE-1 this branch was UNREADABLE and
+ *   the newest week counted for nothing at all, which collapsed "has not
+ *   happened yet" into "could not be read" (Rule 11).
  * · It cannot see pain the runner did not report. `painOrInjuryReported`
  *   arrives as `Measured<boolean>` and an absent report reads as ABSENT, never
  *   as "no pain".
@@ -71,11 +75,12 @@ import type { DeteriorationPattern } from '@/lib/adaptation/canonical/deteriorat
 import type { HrTraceVerdict } from '@/lib/adaptation/canonical/hr-trace-credibility';
 import type { Readability } from '@/lib/adaptation/canonical/input';
 import type { StimulusGrade } from '@/lib/adaptation/canonical/stimulus';
-// Rule 16 · "what counts as adding mileage" already has a name and a number in
-// this app, and it is the one the DOWNWARD path uses too. Imported rather than
-// re-typed so `RULE_21_THRESHOLD_LEDGER` row 2's claim of symmetry is a fact
-// about the code and not a sentence in a comment.
-import { VOLUME_ADDITION_THRESHOLD } from '@/lib/plan/adjudication/adjudicate';
+// CONTINUOUS-EVIDENCE-1 · the two gates that remain in this file, and both are
+// placed exactly where the continuous curve behind them already returns zero.
+// That placement is what lets a pipeline with hard gates in it still be
+// continuous end to end, and it is asserted in `_continuity_walk.test.ts`
+// rather than claimed here (Rule 20).
+import { ABSORPTION_FLOOR_FRAC, GPS_DISTANCE_ERROR_LO_FRAC } from './weight';
 import { roundTo } from '@/lib/format/run';
 import {
   GRADES_THAT_COUNT_AS_EVIDENCE,
@@ -185,19 +190,43 @@ export function admitSurplus(input: AdmissionInput): SurplusAdmission {
     };
   }
 
-  /* ── 0b · is the surplus large enough to be a fact about the runner ───
+  /* ── 0b · IS THERE A SURPLUS AT ALL, OR IS IT THE WATCH ───────────────
    *
-   * RULE 21, row 2 of the ledger, and the reason it is the SAME constant as
-   * the downward path: `VOLUME_ADDITION_THRESHOLD` is what
-   * `detectSimultaneousStressAddition` already calls "adding mileage", and a
-   * bar to go UP that is higher than the bar to come DOWN is the defect that
-   * rule exists to stop. Below it, a week is noise around its own
-   * prescription, and that is a MEASURED fact rather than an unreadable one,
-   * so it is NOT_SUPPORTED and never UNREADABLE (Rule 11).
+   * CONTINUOUS-EVIDENCE-1 · THIS IS WHERE THE CLIFF WAS.
+   *
+   * It used to compare `admissibleSurplusMi` against `prescribedMi ×
+   * VOLUME_ADDITION_THRESHOLD` and return NOT_SUPPORTED below it and the FULL
+   * surplus above it. The owner found what that does, on his own history:
+   *
+   *     "The closest historical week completed 47.3 against 45.5 prescribed
+   *      but contributed zero evidence because it missed a 47.8 bar by 0.4
+   *      miles. That is another cliff."
+   *
+   * Rule 9 exactly, with the signature that rule names: THE FITTER RUNNER GOT
+   * NOTHING. So the magnitude question left this gate entirely. It is now
+   * answered continuously, by `creditedSurplusFrac` in `./weight.ts`, and
+   * `VOLUME_ADDITION_THRESHOLD` kept its value and its doctrine while changing
+   * role — it was the FLOOR a week had to clear to be admitted, and it is now
+   * the CEILING on how much credit one week may claim
+   * (`PER_WEEK_CREDIT_CEILING_FRAC`).
+   *
+   * What remains here is the one question that is genuinely categorical: is
+   * any of this the runner rather than the receiver. `Research/15`
+   * §"Pace and GPS Accuracy" puts GPS distance error at 1-3%, and below the
+   * lower edge a surplus is measurement noise. It is a MEASURED fact rather
+   * than an unreadable one, so it is NOT_SUPPORTED and never UNREADABLE
+   * (Rule 11).
+   *
+   * WHY THIS GATE IS NOT ITSELF A CLIFF, and the property the whole pipeline
+   * rests on: the gate sits exactly where the curve behind it already equals
+   * zero. `gpsNoiseGate(GPS_DISTANCE_ERROR_LO_FRAC)` is 0, and its derivative
+   * there is 0 too, so a week a hair either side of this line delivers a hair
+   * of evidence either way. `_continuity_walk.test.ts` walks across it and
+   * asserts that rather than trusting this paragraph.
    */
 
-  const bar = week.prescribedMi * VOLUME_ADDITION_THRESHOLD;
-  if (week.admissibleSurplusMi.value <= bar) {
+  const noiseFloorMi = week.prescribedMi * GPS_DISTANCE_ERROR_LO_FRAC;
+  if (week.admissibleSurplusMi.value <= noiseFloorMi) {
     return {
       admitted: false,
       outcome: 'NOT_SUPPORTED',
@@ -206,8 +235,8 @@ export function admitSurplus(input: AdmissionInput): SurplusAdmission {
         'EXECUTION_IDENTITY_TRUSTWORTHY',
         `${roundTo(week.admissibleSurplusMi.value)} mi of admissible surplus against `
         + `${roundTo(week.prescribedMi)} mi prescribed is inside the `
-        + `${Math.round(VOLUME_ADDITION_THRESHOLD * 100)} per cent band that counts as running `
-        + 'to the plan rather than beyond it.',
+        + `${Math.round(GPS_DISTANCE_ERROR_LO_FRAC * 100)} per cent a GPS watch can misreport `
+        + 'on its own, so it says nothing about the runner.',
       )],
     };
   }
@@ -339,23 +368,80 @@ export function admitSurplus(input: AdmissionInput): SurplusAdmission {
 
   /* ── 5 · absorption ──────────────────────────────────────────────────── */
 
-  if (!input.followingWeekCompletionFrac.ok) {
-    conditions.push(unreadable(
-      'SUBSEQUENT_TRAINING_SHOWS_ABSORPTION',
-      input.followingWeekCompletionFrac.why.kind === 'ABSENT'
-        ? 'The week after this one has not been run yet, so absorption cannot be judged.'
-        : `The week after this one could not be read: ${whyText(input.followingWeekCompletionFrac.why)}`,
-    ));
-  } else if (input.followingWeekCompletionFrac.value + 1e-9 < input.absorptionCompletionBar) {
-    conditions.push(notMet(
-      'SUBSEQUENT_TRAINING_SHOWS_ABSORPTION',
-      `The following week completed at ${Math.round(input.followingWeekCompletionFrac.value * 100)}%, `
-      + `below the ${Math.round(input.absorptionCompletionBar * 100)}% bar.`,
-    ));
-  } else {
+  if (!input.followingWeekCompletionFrac.ok
+    && input.followingWeekCompletionFrac.why.kind === 'ABSENT') {
+    /* CONTINUOUS-EVIDENCE-1 · RULE 11, THREE WAYS, WHERE THERE WERE TWO.
+     *
+     * This branch used to be UNREADABLE, which meant the most recent week
+     * could never be admitted on the day it ended. That collapsed two facts
+     * the owner's specification keeps apart:
+     *
+     *   FAILED · we tried to read the following week and could not. A refusal.
+     *   ABSENT · the following week HAS NOT HAPPENED. Not a refusal, and not a
+     *            failure to absorb. It is the ordinary state of the newest
+     *            evidence in any ledger.
+     *
+     * "Evidence remains PROVISIONAL until recovery indicates absorption" is a
+     * sentence about the second, and provisional is not zero. So an unrun
+     * following week is MET here and carries `PROVISIONAL_ABSORPTION_WEIGHT`
+     * in `weighCapacity`, which is strictly between 0 and 1 by construction.
+     * A week that was read and came in low is a different branch below and
+     * confirms nothing.
+     */
     conditions.push(met(
       'SUBSEQUENT_TRAINING_SHOWS_ABSORPTION',
-      `The following week completed at ${Math.round(input.followingWeekCompletionFrac.value * 100)}%.`,
+      'The week after this one has not been run yet. The evidence is recorded and stays '
+      + 'provisional until it is.',
+    ));
+  } else if (!input.followingWeekCompletionFrac.ok) {
+    conditions.push(unreadable(
+      'SUBSEQUENT_TRAINING_SHOWS_ABSORPTION',
+      `The week after this one could not be read: ${whyText(input.followingWeekCompletionFrac.why)}`,
+    ));
+  } else {
+    /* CONTINUOUS-EVIDENCE-1 · THE SECOND CLIFF, and it was the same shape.
+     *
+     * This clause used to BLOCK at `absorptionCompletionBar` (0.95), so a
+     * following week at 94.9% erased the evidence and one at 95.1% spent all
+     * of it. That is Rule 9 again, and it also mis-read the owner's own
+     * specification, which is a sentence about CONFIRMATION and not about
+     * existence:
+     *
+     *     "Evidence remains PROVISIONAL until recovery indicates absorption."
+     *
+     * Provisional is not zero. So absorption stopped being a gate on whether
+     * the surplus happened and became the CONFIRMATION FACTOR on how much of
+     * it may be spent, and there is exactly one answer to that question:
+     * `absorptionWeight` in `./weight.ts`, called by `weighCapacity`. This
+     * clause no longer has an opinion about the DEGREE, because two opinions
+     * about one quantity is Rule 16.
+     *
+     * What it still does is READ, which is Rule 11's whole point: a following
+     * week nobody could read is a refusal (handled above), and a following
+     * week that came in at 56% is a MEASURED fact that the reading below
+     * carries at weight zero. Both are honest, and they are different.
+     *
+     * The bar itself has not moved and is not weakened: `absorptionWeight`
+     * still reaches 1 only at `VOLUME_WEEK_COMPLETION_MIN_FRAC` and is still
+     * exactly 0 at or below `ABSORPTION_FLOOR_FRAC`, so a week the runner did
+     * not carry on from buys nothing, as before. What changed is that it is
+     * no longer ERASED — it is recorded as provisional evidence that a later
+     * week's absorption can confirm.
+     */
+    const frac = input.followingWeekCompletionFrac.value;
+    const pct = Math.round(frac * 100);
+    conditions.push(met(
+      'SUBSEQUENT_TRAINING_SHOWS_ABSORPTION',
+      frac + 1e-9 < ABSORPTION_FLOOR_FRAC
+        ? `The following week completed at ${pct}%, below the `
+          + `${Math.round(ABSORPTION_FLOOR_FRAC * 100)}% at which a week counts as completed. `
+          + 'The surplus is recorded and confirms nothing.'
+        : frac + 1e-9 < input.absorptionCompletionBar
+          ? `The following week completed at ${pct}%, between the `
+            + `${Math.round(ABSORPTION_FLOOR_FRAC * 100)}% at which a week counts as completed `
+            + `and the ${Math.round(input.absorptionCompletionBar * 100)}% at which absorption `
+            + 'is confirmed. The evidence confirms in proportion.'
+          : `The following week completed at ${pct}%.`,
     ));
   }
 

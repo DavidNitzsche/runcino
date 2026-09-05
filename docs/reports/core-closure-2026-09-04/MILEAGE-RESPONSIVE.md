@@ -27,13 +27,70 @@ proposed. Nothing here changed a plan row.
 ## Headline
 
 - weeks where the surplus was ADMITTED as evidence, pass A (evidence as it is): **0**
-- weeks where it would be admitted, pass B (conditions permitting): **0**
+- weeks where it would be admitted, pass B (conditions permitting): **1**
 - weeks where a FUTURE week would have been made larger: **0**
 - total future mileage that would have been added across the year: **0 mi**
-- demonstrated peak belief, start to end: **unmeasured -> unmeasured mi/wk**
+- demonstrated peak belief, start to end: **47.4 -> 47.4 mi/wk**
 
 Compare against the measured baseline this work exists to correct: **zero** upward
 adaptations in 309 production `coach_intents` rows (CLAUDE.md Rule 21).
+
+## CONTINUOUS-EVIDENCE-1 · the week that used to contribute nothing
+
+The owner's finding: "The closest historical week completed 47.3 against 45.5
+prescribed but contributed zero evidence because it missed a 47.8 bar by 0.4 miles.
+That is another cliff." The bar is gone. Evidence is now credited continuously.
+
+**2026-06-15** · 47.3 mi run against 45.5 mi prescribed.
+
+- surplus fraction: **4.2 per cent** of prescription
+- evidence units contributed: **0.04176** of the 0.15 a full step needs
+- **share of a full doctrinal volume step this one week is worth: 27.8 per cent** (it contributed ZERO before this change)
+- absorption factor from the following week: **0.000**
+- of that, CONFIRMED and spendable today: **0.0 per cent**
+- provisional: no · unreadable: no
+- ledger as of the following week: recorded **0.04176**, confirmed **0.00000** (0.0 per cent of a full step, not yet a full step)
+
+> 1.9 mi over 45.5 mi prescribed is worth 28 per cent of a full volume step, of which 0 per cent is confirmed.
+
+**Read that carefully, because the two halves are different facts (Rule 11).**
+The 0.4-mile cliff is gone: the week is now worth a real, non-zero share of a step,
+and the size of that share moves continuously with how far past prescription he ran.
+What holds its CONFIRMED share at zero is a separate and genuine fact about the
+following weeks, not a threshold he missed by a hair: 2026-06-22 completed 28 of 49.5
+mi and 2026-06-29 completed 0 of 40. He did not carry the load on. The engine records
+the evidence and declines to spend it, which is exactly what "evidence remains
+provisional until recovery indicates absorption" asks for.
+
+### Every week now worth something it was worth nothing before
+
+| week | prescribed | completed | surplus % | units | worth % of a step | absorption | confirmed % | ledger confirmed % |
+|---|---|---|---|---|---|---|---|---|
+| 2026-06-15 | 45.5 | 47.3 | 4.2 | 0.04176 | **27.8** | 0.000 | 0.0 | 0.0 |
+
+Weeks now carrying non-zero capacity evidence: **1**. Weeks the OLD binary bar would have admitted, re-derived from the same rows rather than re-run through the new code: **0**.
+
+The old bar admitted a week whole or not at all. Every week in the table above was
+worth exactly zero under it. That is the cliff, measured on the runner's own year.
+
+Note how FEW weeks carry any surplus at all: across the year the runner mostly ran
+UNDER prescription, which is why the volume lever has so little to spend. That is a
+fact about the year, not about the curve, and it is stated here rather than hidden
+behind a single headline number.
+
+### The two channels disagree, which is the point
+
+Rule 8 filters CAPABILITY and its corollary refuses to filter ABSORBED LOAD. A week the
+plan authored small contributes zero capacity and still contributes fatigue.
+
+| week | why non-normal | capacity units | fatigue excess mi | merged mi excluded |
+|---|---|---|---|---|
+| 2026-05-18 | INSIDE_A_RACE_TAPER_OR_RECOVERY_WINDOW | **0.00000** | **0.1** | 57.7 |
+| 2026-06-01 | CUTBACK_WEEK | **0.00000** | **4.5** | 52.2 |
+| 2026-08-17 | AUTHORED_RECOVERY_BLOCK | **0.00000** | **11.4** | 31.1 |
+| 2026-08-24 | AUTHORED_RECOVERY_BLOCK | **0.00000** | **11.7** | 66.3 |
+
+Merged miles excluded from BOTH channels across the window: **886.1 mi**.
 
 ## Rule 21 · is the bar a bar, or a wall
 
@@ -64,7 +121,12 @@ guard doing exactly what it exists for:
 
 ## Which weeks would have moved the belief
 
-_None._
+| week | field | from | to | because |
+|---|---|---|---|---|
+| 2026-06-15 | `peakWeeklyMi` | unmeasured | **47.4** | The week was run, admitted as evidence, and is larger than any representative week before it. |
+| 2026-06-15 | `sustainedWeeklyMi` | unmeasured | **39.7** | The rank-3 representative week rose, so this volume has now been reached repeatedly. |
+| 2026-06-15 | `heldWeeklyMi` | unmeasured | **47.4** | This is what the runner is demonstrably carrying now. |
+| 2026-06-15 | `meanWeeklyMi` | unmeasured | **42.4** | The representative trailing mean rose. |
 
 ## Which future weeks would have changed
 
@@ -108,17 +170,17 @@ belief, and it may never lower the peak.
 | 2026-05-25 | 44 | 39.7 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
 | 2026-06-01 | 40.5 | 44.9 | 4.5 | refused | `CUTBACK_WEEK` | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
 | 2026-06-08 | 45.5 | 40.1 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-06-15 | 45.5 | 47.3 | 1.9 | 1.9 |  | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-06-22 | 49.5 | 28 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-06-29 | 40 | 0 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-07-06 | 45.5 | 43.2 | 0 | refused | `CUTBACK_WEEK` | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-07-13 | 59.5 | 39.8 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-07-20 | 64.5 | 47.5 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-07-27 | 55.5 | 4.2 | 0 | refused | `INSIDE_A_RACE_TAPER_OR_RECOVERY_WINDOW` | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-08-03 | 46 | 39.8 | 0 | refused | `INSIDE_A_RACE_TAPER_OR_RECOVERY_WINDOW` | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-08-10 | 31.6 | 23.2 | 0 | refused | `PLAN_MARKED_RACE_WEEK` | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-08-17 | 17 | 28.4 | 11.4 | refused | `AUTHORED_RECOVERY_BLOCK` | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
-| 2026-08-24 | 23 | 34.8 | 11.7 | refused | `AUTHORED_RECOVERY_BLOCK` | NOT_SUPPORTED | NOT_SUPPORTED |  |  |  |
+| 2026-06-15 | 45.5 | 47.3 | 1.9 | 1.9 |  | UNREADABLE (NO_MATERIAL_DETERIORATION, NO_PAIN_INJURY_OR_UNPLANNED_RECOVERY) | ADMITTED 1.9 mi | 47.4 |  |  |
+| 2026-06-22 | 49.5 | 28 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
+| 2026-06-29 | 40 | 0 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
+| 2026-07-06 | 45.5 | 43.2 | 0 | refused | `CUTBACK_WEEK` | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
+| 2026-07-13 | 59.5 | 39.8 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
+| 2026-07-20 | 64.5 | 47.5 | 0 | 0 |  | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
+| 2026-07-27 | 55.5 | 4.2 | 0 | refused | `INSIDE_A_RACE_TAPER_OR_RECOVERY_WINDOW` | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
+| 2026-08-03 | 46 | 39.8 | 0 | refused | `INSIDE_A_RACE_TAPER_OR_RECOVERY_WINDOW` | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
+| 2026-08-10 | 31.6 | 23.2 | 0 | refused | `PLAN_MARKED_RACE_WEEK` | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
+| 2026-08-17 | 17 | 28.4 | 11.4 | refused | `AUTHORED_RECOVERY_BLOCK` | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
+| 2026-08-24 | 23 | 34.8 | 11.7 | refused | `AUTHORED_RECOVERY_BLOCK` | NOT_SUPPORTED | NOT_SUPPORTED | 47.4 |  |  |
 
 ## What this says, and the two decisions it surfaces
 
