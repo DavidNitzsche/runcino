@@ -21,6 +21,15 @@ import { predictRaceTime } from '@/lib/training/vdot';
 import { matrix, isUltra, arcStr, simInputsForArc, type Arc } from './sim-matrix';
 import { REACH_BRANCHES, HISTORY_SHAPES, QUALITY_INFLATION_ENV, type ReachBranch } from './history-shapes';
 import { SHORT_LAYOFF_WEEKS } from './generate';
+// CORPUS-ADJ-1 (2026-09-04) · the adjudication layer, reached from THIS corpus.
+// The owner: "The adjudicator being unreachable from the primary plan corpus is
+// not acceptable." `adjudication-corpus.ts` is the translation — it authors no
+// verdict of its own; every one below comes out of `adjudication/adjudicate.ts`.
+import {
+  ADJ_REACH_BRANCHES, adjReachOf, adjudicateComposedBlock,
+  type AdjReachBranch, type CorpusAdjudication,
+} from './adjudication-corpus';
+import { PROMOTION_DIMENSIONS } from './adjudication/contract';
 
 const catOfMi = (mi: number) => distanceCategoryOf(mi);
 
@@ -80,6 +89,82 @@ interface ProbeRow {
   rampNote: string;
 }
 const PROBES = new Map<string, ProbeRow[]>();
+
+// ── CORPUS-ADJ-1 · the adjudication ledger ─────────────────────────────────
+//
+// Same discipline as `REACHED` above and for the same reason one level up: the
+// whole `lib/plan/adjudication/` layer was unreachable from this corpus, so
+// 11,598 archetypes said nothing about whether the blocks they compose can be
+// JUSTIFIED — only whether each week is individually legal, which is precisely
+// the check `contract.ts` says every other gate in this engine already is.
+//
+// WHAT THIS LEDGER CANNOT FAIL ON (Rule 22), and it is a short list because the
+// bridge's own header carries the long one:
+//   · A DIMENSION'S FAILING DIRECTION. The bridge is a correct caller by
+//     construction — it holds inside a taper, it gates every CONDITIONAL — so
+//     `taperIntegrity` and `athleteSpecificSupport` are REACHED here and cannot
+//     be made to fail here. `_promotion_dimensions.test.ts` owns that half, one
+//     constructed case per dimension with the other nine asserted still true.
+//   · WHETHER A BLOCK THAT PROMOTES IS A GOOD BLOCK. Adjudicable is not the
+//     same as well-coached, and this ledger only ever says the first.
+const ADJ_REACHED = new Map<AdjReachBranch, number>();
+/** Per promotion dimension: how many archetypes it BLOCKED. Rule 22 §2 asks for
+ *  the distribution, not the count, and a dimension that blocks nothing across
+ *  the whole corpus is a finding whether or not it is a defect. */
+const ADJ_BLOCKED_BY = new Map<string, number>();
+/** Rule 22 · the PUSH / HOLD balance, printed. An engine that only ever holds
+ *  is the Rule 21 disposition, and it must be visible as a number rather than
+ *  hidden behind a green tick. */
+const ADJ_CHOSEN = new Map<string, number>();
+let ADJ_BLOCKS = 0;
+let ADJ_PROMOTED = 0;
+/** One worked example per blocking dimension, so the log is actionable. */
+const ADJ_EXAMPLE: Record<string, string> = {};
+/**
+ * ADJ-STACK-1 · THE OPEN FINDING, AS A RATCHET (CLAUDE.md Rule 18 §4).
+ *
+ * Four archetypes compose a week that peaks in VOLUME, LONGEST RUN and STRESSOR
+ * COUNT simultaneously against that runner's own rendered history, and push it.
+ * `contract.ts` calls that "the week nothing in this repository was checking",
+ * and `checkPromotion` blocks on it by name.
+ *
+ * They are all the same runner: `fromNothing` — two weeks of training, three
+ * short runs a week, nothing before them. For a runner with almost no history
+ * every week is a peak in all three quantities at once, so this is arguably the
+ * detector meeting a runner it cannot say anything useful about rather than the
+ * composer misbehaving. It is NOT waved away on that argument, because deciding
+ * it needs `generate.ts`, which this file does not own, and because the same
+ * shape on a runner WITH a history would be a real defect.
+ *
+ * Asserted EXACTLY, in both directions, so it cannot drift either way:
+ *   · an archetype JOINING it  → a block that used to be adjudicable stopped
+ *                                being one. Fails.
+ *   · an archetype LEAVING it  → it was fixed, and the entry must be deleted
+ *                                rather than left as a stale exemption.
+ */
+const ADJ_STACKED_PEAK_OPEN = [
+  '10k/beginner/f5/m0/L0-3/goal/hist:fromNothing',
+  '5k/beginner/f5/m0/L0-3/goal/hist:fromNothing',
+  'half/beginner/f5/m0/L0-3/goal/hist:fromNothing',
+  'marathon/beginner/f5/m0/L0-3/goal/hist:fromNothing',
+];
+const ADJ_STACKED_PEAK_SEEN: string[] = [];
+
+function recordAdjudication(a: Arc, adj: CorpusAdjudication) {
+  ADJ_BLOCKS++;
+  for (const b of adjReachOf(adj)) ADJ_REACHED.set(b, (ADJ_REACHED.get(b) ?? 0) + 1);
+  for (const t of adj.result.traces) ADJ_CHOSEN.set(t.chosen, (ADJ_CHOSEN.get(t.chosen) ?? 0) + 1);
+  if (adj.result.mayPromote) { ADJ_PROMOTED++; return; }
+  if (!adj.result.check.stackedStress) ADJ_STACKED_PEAK_SEEN.push(arcStr(a));
+  for (const d of PROMOTION_DIMENSIONS) {
+    if (adj.result.check[d]) continue;
+    ADJ_BLOCKED_BY.set(d, (ADJ_BLOCKED_BY.get(d) ?? 0) + 1);
+    if (!ADJ_EXAMPLE[d]) {
+      const line = adj.result.blockedBecause.find((s) => s.startsWith(`${d} ·`)) ?? '(no message)';
+      ADJ_EXAMPLE[d] = `${arcStr(a)} :: ${line.slice(0, 200)}`;
+    }
+  }
+}
 
 /** How many opening weeks the ramp walk averages over. Three, so per-day
  *  rounding in any one of them cannot dominate the comparison. */
@@ -190,6 +275,24 @@ function grade(a: Arc) {
   // ── HIST-1 · the coverage ledger ─────────────────────────────────────────
   if (a.history) { recordReach(a, built); currentShape = null; }
   if (a.probe) recordProbe(a, built);
+
+  // ── CORPUS-ADJ-1 · the ADJUDICATOR, on this archetype's real block ───────
+  //
+  // Every history-bearing arc, not a sample of them. The layer is pure and
+  // costs a few hundred microseconds a block, and sampling would reintroduce
+  // the thing being fixed: a mechanism most of the corpus cannot reach.
+  if (a.history) {
+    const adj = adjudicateComposedBlock({
+      rendered: a.history,
+      weeks: built.composed.weeks as any,
+      blockStartISO: simInputsForArc(a).startDateISO,
+      windowDescribed: `${a.history.shapeId} · 16 rendered weeks`,
+    });
+    // Null here means "no history", which this branch has already excluded, so
+    // a null is a real defect in the bridge rather than a quiet skip (Rule 11).
+    if (adj == null) firm('ADJ_BRIDGE_RETURNED_NULL_FOR_A_RUNNER_WITH_A_PAST', a);
+    else recordAdjudication(a, adj);
+  }
 
   // Grade BOTH connection states a new runner can be in: a COLD-START signup (no Strava → prod sets
   // trailingAvgWeeklyMi null, the peak-vs-trailing ramp check is skipped) AND a STRAVA-CONNECTED
@@ -532,6 +635,63 @@ describe('ALL-USER conformance sweep', () => {
       if (gaps.length) shapeGaps.push(`${spec.id} claims but never reaches: ${gaps.join(', ')}`);
     }
     expect(shapeGaps, `a history shape no longer exercises what it says it does:\n  ${shapeGaps.join('\n  ')}`).toEqual([]);
+
+    // ── CORPUS-ADJ-1 · THE ADJUDICATOR'S COVERAGE, STATED THE SAME WAY ─────
+    console.log(`\n=== ADJUDICATION · ${ADJ_BLOCKS} blocks adjudicated · ${ADJ_PROMOTED} promoted, `
+      + `${ADJ_BLOCKS - ADJ_PROMOTED} blocked ===`);
+    for (const b of ADJ_REACH_BRANCHES) console.log(`  [${String(ADJ_REACHED.get(b) ?? 0).padStart(5)}] ${b}`);
+    console.log('  --- promotion dimensions, by how many blocks each one STOPPED ---');
+    for (const d of PROMOTION_DIMENSIONS) {
+      const n = ADJ_BLOCKED_BY.get(d) ?? 0;
+      console.log(`  [${String(n).padStart(5)}] ${d}${n > 0 ? `  e.g. ${ADJ_EXAMPLE[d]}` : ''}`);
+    }
+    // Rule 22 §2 · the DISTRIBUTION of what the layer chose, not just that it
+    // chose something. An adjudicator that only ever holds is the disposition
+    // Rule 21 measured at zero upward adaptations, and it would pass every
+    // per-week check in this file.
+    console.log(`  --- options chosen across every adjudicated week ---`);
+    for (const [k, v] of [...ADJ_CHOSEN].sort((x, y) => y[1] - x[1])) console.log(`  [${String(v).padStart(5)}] ${k}`);
+
+    // Rule 18 §2 · LIVENESS. The bridge running over zero blocks would report
+    // clean, which is the worst outcome available because it also reports
+    // confidence. This is the assertion that makes the ledger mean anything.
+    expect(ADJ_BLOCKS, 'the adjudicator was reached by ZERO archetypes, which is the state '
+      + 'CORPUS-ADJ-1 exists to end (Rule 15)').toBeGreaterThan(0);
+
+    const adjMissing = ADJ_REACH_BRANCHES.filter((b) => !(ADJ_REACHED.get(b) ?? 0));
+    expect(
+      adjMissing,
+      'adjudication branches the corpus can no longer REACH. Per Rule 15 the corpus needs the '
+      + `input, not more rows: ${adjMissing.join(', ')}`,
+    ).toEqual([]);
+
+    // Rule 21, pointed at the layer itself. `rankOptions` prefers a SUPPORTED
+    // push over a supported hold by construction, so a corpus in which no
+    // archetype's block ever advances anywhere means either every archetype is
+    // being handed a plan that never pushes, or the ranking stopped working.
+    // Either is the finding this project can least afford.
+    expect(ADJ_CHOSEN.get('PUSH') ?? 0, 'the adjudicator chose PUSH on ZERO of the weeks in the '
+      + 'whole corpus. Rule 21: a plan whose only lever is "do less" is a safety system wearing '
+      + 'a coach\'s clothes.').toBeGreaterThan(0);
+
+    // ADJ-STACK-1 · the one open finding, asserted exactly. See the constant.
+    expect(
+      [...ADJ_STACKED_PEAK_SEEN].sort(),
+      'archetypes whose block peaks in volume, longest run AND stressor count in one week and is '
+      + 'pushed anyway. MORE than the list = a block that used to be adjudicable stopped being one. '
+      + 'FEWER = it was fixed, so delete the entry rather than leaving a stale exemption.',
+    ).toEqual([...ADJ_STACKED_PEAK_OPEN].sort());
+
+    // And every OTHER dimension is asserted at zero, so a new class of failure
+    // cannot hide behind the one that is known-open. This is the assertion that
+    // makes the ledger a gate rather than a log.
+    const unexpectedAdjBlocks = PROMOTION_DIMENSIONS
+      .filter((d) => d !== 'stackedStress' && (ADJ_BLOCKED_BY.get(d) ?? 0) > 0)
+      .map((d) => `${d} × ${ADJ_BLOCKED_BY.get(d)}  e.g. ${ADJ_EXAMPLE[d]}`);
+    expect(
+      unexpectedAdjBlocks,
+      `the adjudicator refused to promote archetype blocks on a dimension with no open finding:\n  ${unexpectedAdjBlocks.join('\n  ')}`,
+    ).toEqual([]);
 
     // THE GATE · every archetype must be research-conformant. If this fails, an engine change
     // regressed some user segment — read the FIRM list above for the exact archetypes + violations.

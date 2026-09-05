@@ -317,14 +317,60 @@ export interface WeeklyDemandSummary {
   readonly explain: string;
 }
 
-/** The six dimensions that must all hold before a plan may reach production. */
+/**
+ * The dimensions that must all hold before a plan may reach production.
+ *
+ * ── WHY THERE ARE TEN AND NOT SIX (CORPUS-ADJ-1, 2026-09-04) ───────────────
+ *
+ * The owner's standard for this gate: "No literal true, nonempty-array proxy
+ * or structurally impossible failure", and the final gate must be able to
+ * evaluate athlete-specific support, whole-block coherence, recoverability,
+ * progression, taper integrity, doctrine resolution, STACKED STRESS,
+ * TIME-RELATIVE EARNING GATES, VALID EXECUTION IDENTITY and EVIDENCE
+ * PROVENANCE.
+ *
+ * The last four were not dimensions. Three of them were not checked at all,
+ * and stacked stress was folded into `recoverability` alongside the
+ * one-stressor-at-a-time walk — so neither of those two could be failed on
+ * its own, and a test that made one false could not tell which. Rule 16: one
+ * quantity, one name.
+ */
 export interface PromotionCheck {
   readonly athleteSpecificSupport: boolean;
   readonly wholeBlockCoherence: boolean;
+  /** The one-stressor-at-a-time walk across the SEQUENCE. */
   readonly recoverability: boolean;
   readonly progression: boolean;
   readonly taperIntegrity: boolean;
   readonly doctrineResolution: boolean;
+  /**
+   * Volume, longest run and stressor count peaking in ONE week. Split out of
+   * `recoverability` so the two can fail independently — they are different
+   * facts with different citations, and one name for two quantities is a
+   * Rule 16 violation.
+   */
+  readonly stackedStress: boolean;
+  /**
+   * An earning gate must be assessable. It is checked BEFORE the prescription
+   * it guards lands, and it may not ask whether a week that has not yet run
+   * has been completed. A gate assessed on or after the day it guards cannot
+   * change anything, which makes it decoration.
+   */
+  readonly earningGateTiming: boolean;
+  /**
+   * A race is not a training long run, and a training long run is not a race.
+   * The goal race's 26.2 miles must never be read as a reach over the longest
+   * training run — that is the same quantity carrying two identities, and it
+   * would either flag the whole race week as a spike or, worse, count the race
+   * as demonstrated training capacity.
+   */
+  readonly executionIdentity: boolean;
+  /**
+   * Every `Attributed` number on every trace says where it came from, in the
+   * right voice, with a real basis. Defect 4 of David's list: "a weight
+   * somebody chose must never be printed in the same voice as a measurement."
+   */
+  readonly evidenceProvenance: boolean;
 }
 
 export interface PlanAdjudication {
@@ -341,4 +387,5 @@ export interface PlanAdjudication {
 export const PROMOTION_DIMENSIONS = [
   'athleteSpecificSupport', 'wholeBlockCoherence', 'recoverability',
   'progression', 'taperIntegrity', 'doctrineResolution',
+  'stackedStress', 'earningGateTiming', 'executionIdentity', 'evidenceProvenance',
 ] as const satisfies readonly (keyof PromotionCheck)[];

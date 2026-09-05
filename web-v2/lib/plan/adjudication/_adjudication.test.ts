@@ -274,7 +274,14 @@ describe('ADJUDICATION-1 · the promotion gate BLOCKS, by name', () => {
       chosen: 'PUSH',
     })]);
     expect(r.mayPromote).toBe(false);
-    expect(r.check.recoverability).toBe(false);
+    // CORPUS-ADJ-1 · stacked stress is its own dimension now. It used to share
+    // `recoverability` with the one-stressor-at-a-time sequence walk, so a test
+    // that made one false could not say which, and neither could be failed
+    // alone. Rule 16. The assertion is strictly stronger than the one it
+    // replaces: the named dimension fails AND the one it was conflated with is
+    // asserted NOT to, which is what independence means.
+    expect(r.check.stackedStress).toBe(false);
+    expect(r.check.recoverability).toBe(true);
     expect(r.blockedBecause.join(' ')).toMatch(/peak in volume, long run AND stressor count/);
   });
 
