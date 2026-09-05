@@ -96,6 +96,7 @@ import {
   arbitrate,
   type ArbitrationReading, type ArbitratedVerdict, type DemandCeilingPosture,
 } from './arbitration';
+import { resolveArbitrationPriority } from './phase-priority';
 import { enqueueDeferrals, reconsiderAtBoundary, type QueuedDeferral } from './deferral-queue';
 import type { AthleteWeeklyDemandCeiling } from './demand-ceiling';
 import {
@@ -395,6 +396,18 @@ function walkWorld(world: World, boundaries: readonly string[]): WorldResult {
     const records = evaluateAdaptation(input).records;
     const result = arbitrate({
       verdicts: records.map(verdictOf),
+      // The counterfactual compares two READINGS of rule 1, not two lever
+      // orderings, so both sides get the priority the live engine resolved for
+      // this same input. `arbitrate` uses the phase-neutral order for
+      // LEGACY_HOLD_PRESENCE regardless, which is what the pre-2026-09-04
+      // engine had.
+      priority: resolveArbitrationPriority({
+        phase: input.phaseContext.phase,
+        raceDistance: input.race.raceDistance,
+        limiter: input.phaseContext.limiter,
+        safety: input.phaseContext.safety,
+        stepsTakenThisCycle: input.plan.stepsTakenThisCycle,
+      }),
       baseWeekStartISO: input.plan.nextWeekStartISO,
       baseWeeklyMi: input.plan.nextWeekPrescribedMi,
       baseLongRunMi: input.plan.nextWeekLongRunMi,

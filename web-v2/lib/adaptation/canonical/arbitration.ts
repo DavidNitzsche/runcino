@@ -127,20 +127,51 @@
  *   · `DEMAND_CEILING_EPSILON` handles representation only, so a week stated as
  *     sitting exactly AT its ceiling is at it rather than over it.
  *
- * ── PRIORITY, AND ITS CITATION ─────────────────────────────────────────────
+ * ── PRIORITY · PHASE-AWARE SINCE 2026-09-05, AND WHY THE CONSTANT WENT ─────
  *
- * When two material proposals compete, workload moves before pace:
+ * This header used to justify a STATIC global constant,
+ * `ARBITRATION_PRIORITY = ['WEEKLY_VOLUME', 'LONG_RUN', 'THRESHOLD_PACE']`,
+ * citing PROGRESSIVE_BASELINE_DOCTRINE.md Q8's "Duration is the primary early
+ * lever. Pace moves in smaller increments."
  *
- *     "Progress strong capacities mainly through workload before moving their
- *      pace."          — PROGRESSIVE_BASELINE_DOCTRINE.md, governing principles
- *     "Duration is the primary early lever. Pace moves in smaller increments."
- *                      — Q8
+ * Q8's heading is "Marathon-effort progression in the baseline" and that
+ * sentence sits under the row "Early marathon-specific work". It is a claim
+ * about the EARLY part of a block, and the constant applied it to every phase
+ * including the TAPER, where the same document says the opposite: "Taper by
+ * removing fatigue, not by completing unfinished development."
  *
- * Weekly volume precedes the long run because Q22 makes the long run's validity
- * DEPEND on weekly volume ("Coherent with weekly volume"), and a dependency
- * settles the order: the quantity that constrains the other moves first. The
- * order also decides which proposal is priced against a week that already
- * carries the others, since rule 1 projects CUMULATIVELY.
+ * The order now comes from `phase-priority.ts`, which resolves it from the
+ * authored phase, the goal event, the current limiter, the safety posture and
+ * the steps already taken this cycle — every one of them an enum or an integer
+ * count, so there is no continuous quantity left in the ordering for Rule 9's
+ * hair to move. `ArbitrationInput.priority` is that resolution, and this file
+ * reads it rather than deriving one.
+ *
+ * The old order survives as the PHASE-NEUTRAL one, on the citation that
+ * actually is phase-neutral: "Progress strong capacities mainly through
+ * workload before moving their pace" (governing principles), with weekly volume
+ * before the long run because the contract makes the long run's validity DEPEND
+ * on weekly volume ("Coherent with weekly volume") and a dependency settles the
+ * order. It is used for BASE, MAINTENANCE, and — labelled as such — for an
+ * UNKNOWN phase.
+ *
+ * The order decides which proposal is priced against a week that already
+ * carries the others, since rule 1 projects CUMULATIVELY. So the loser of an
+ * ordering is DEFERRED AND QUEUED, never lost.
+ *
+ * ── RULE 5 (2026-09-05) · A PHASE MAY DECLINE, AND THE OBJECTIVE SAYS SO ───
+ *
+ * A taper or a recovery block declines every proposal that raises the week's
+ * demand, and a taper additionally freezes the threshold anchor in BOTH
+ * directions ("preserve the most recently supported effort; no large new pace
+ * jump"). A safety hard stop declines everything.
+ *
+ * This is NOT a second rule invented here. `lib/brain/objective.ts` already
+ * ranks `PRESCRIBED_RECOVERY` and `HARD_STOP` above a SUPPORTED push, and
+ * `phaseDeclineFor` returns exactly one of those two bases. `rule5Suppresses`
+ * runs the justification back through `phaseDeclineObjection`, which is
+ * `objectionToChoice` — so the admissibility of the decline is decided by the
+ * objective's own function and not by this file agreeing with itself.
  *
  * ── RULE 22 · WHAT THIS FILE'S GATE CANNOT FAIL ON ─────────────────────────
  *
@@ -159,6 +190,12 @@
  *   here constructs proposals that are clearly above or clearly below the bar.
  * · It cannot fail on the plan-load coefficients. Only ordering and sign are
  *   read, so any monotonic set passes.
+ * · It cannot fail on the PHASE ORDER being the wrong coaching answer. Every
+ *   row of `PHASE_POLICY` is quoted from a research table or labelled
+ *   POLICY_ASSUMPTION, and a gate can check that the quote resolves and that
+ *   the label is there. Nothing can check that the order coaches better.
+ * · It cannot fail on the PHASE BEING MISLABELLED upstream. The phase is read
+ *   off the authored plan; a race-specific block stamped BASE is invisible here.
  */
 import {
   DEMAND_CEILING_EPSILON,
@@ -169,7 +206,9 @@ import {
   LONG_RUN_MAX_STEP_MI,
 } from './contract-constants';
 import type { CanonicalLever, Measured } from './input';
-import type { SuppressionNote } from './decision-record';
+import type {
+  DecisionLedger, LedgerOption, LedgerOptionEntry, SuppressionNote,
+} from './decision-record';
 import { NON_MOVING_DECISIONS } from './decision-record';
 import type { LeverVerdict } from './levers/shared';
 import { demandDeltaShare, type ProjectedPlanLoad } from './plan-load';
@@ -179,12 +218,25 @@ import {
   type AthleteWeeklyDemandCeiling,
   type CeilingBasis,
 } from './demand-ceiling';
+import { phaseDeclineFor, phaseDeclineObjection, type ResolvedPriority } from './phase-priority';
+/* The codebase's ONE owner of how a distance is written down. */
+import { miText } from './levers/shared';
 
 /**
- * Workload before pace. Volume before the long run that sits inside it.
- * Cited in the header; the order is not a preference.
+ * The PHASE-NEUTRAL order, and the only one this file still names.
+ *
+ * It is not a priority any more: `phase-priority.ts` resolves the live order
+ * and this is simply the sequence used to break a tie deterministically when
+ * two levers are otherwise equal, and to keep `LEGACY_HOLD_PRESENCE`'s
+ * counterfactual reproducing the pre-2026-09-04 rule exactly.
+ *
+ * Cited to the phase-neutral sentence rather than to Q8's early-block one:
+ * "Progress strong capacities mainly through workload before moving their
+ * pace" (PROGRESSIVE_BASELINE_DOCTRINE.md, governing principles), with weekly
+ * volume before the long run because the long run's validity DEPENDS on weekly
+ * volume ("Coherent with weekly volume").
  */
-export const ARBITRATION_PRIORITY: readonly CanonicalLever[] = [
+export const PHASE_NEUTRAL_ORDER: readonly CanonicalLever[] = [
   'WEEKLY_VOLUME',
   'LONG_RUN',
   'THRESHOLD_PACE',
@@ -269,6 +321,11 @@ export interface ArbitrationInput {
   readonly athleteCeilingWeeklyDemand: Measured<AthleteWeeklyDemandCeiling>;
   /** Where a deferred proposal would next be reconsidered. */
   readonly nextBoundaryISO: string | null;
+  /**
+   * The phase-aware lever order and posture for THIS evaluation, resolved by
+   * `phase-priority.ts`. Owned there, read here.
+   */
+  readonly priority: ResolvedPriority;
   /** Defaults to the live reading. See `ArbitrationReading`. */
   readonly reading?: ArbitrationReading;
 }
@@ -280,6 +337,8 @@ export interface ArbitratedVerdict {
   /** Share of projected weekly demand this proposal moves. */
   readonly demandShare: number;
   readonly material: boolean;
+  /** The three options, costed. See `DecisionLedger`. */
+  readonly ledger: DecisionLedger;
 }
 
 export interface ArbitrationResult {
@@ -474,48 +533,92 @@ export function arbitrate(input: ArbitrationInput): ArbitrationResult {
       && (s.verdict.decision === 'HOLD' || s.verdict.decision === 'REGRESS'),
   );
   const heldLever: CanonicalLever | 'PLAN_LOAD' = held?.verdict.lever ?? 'PLAN_LOAD';
-  const heldRank = held ? ARBITRATION_PRIORITY.indexOf(held.verdict.lever) : Infinity;
+  const heldRank = held ? PHASE_NEUTRAL_ORDER.indexOf(held.verdict.lever) : Infinity;
 
   const out: ArbitratedVerdict[] = [];
   let materialAccepted = 0;
 
-  // Priority order, so which proposal survives is deterministic and cited, and
-  // so the cumulative projection prices workload before pace.
-  const ordered = [...scored].sort(
-    (a, b) =>
-      ARBITRATION_PRIORITY.indexOf(a.verdict.lever) - ARBITRATION_PRIORITY.indexOf(b.verdict.lever),
-  );
+  /**
+   * The live priority. PHASE-AWARE, and resolved by `phase-priority.ts` rather
+   * than by a constant here.
+   *
+   * `LEGACY_HOLD_PRESENCE` deliberately keeps the phase-neutral order, because
+   * its only job is to reproduce the pre-2026-09-04 engine for the
+   * counterfactual, and that engine had no phase.
+   */
+  const order = reading === 'LEGACY_HOLD_PRESENCE'
+    ? PHASE_NEUTRAL_ORDER
+    : input.priority.order;
+
+  // Ties broken by the phase-neutral order so the sort is total and stable even
+  // if a future resolver ever returned a partial one.
+  const rank = (l: CanonicalLever): number => {
+    const i = order.indexOf(l);
+    return i >= 0 ? i : order.length + PHASE_NEUTRAL_ORDER.indexOf(l);
+  };
+  const ordered = [...scored].sort((a, b) => rank(a.verdict.lever) - rank(b.verdict.lever));
 
   /** Everything accepted so far. Rule 1 projects the week including these. */
   const accepted: LeverVerdict[] = [];
 
   for (const s of ordered) {
     const moves = !NON_MOVING_DECISIONS.has(s.verdict.decision);
+    const increasesDemand = s.demandShare > 0;
+
+    /* ── Rule 5 · the PHASE may decline, before anything else is asked ─────
+     *
+     * First, because a taper declining a push is not a load arbitration and
+     * should not be reported as one. `phaseDeclineFor` returns the
+     * justification and `phaseDeclineObjection` — which is the objective's own
+     * `objectionToChoice` — decides whether the objective permits it. A
+     * justification the objective rejects is NOT applied: this engine may not
+     * invent a decline the governing objective does not allow.
+     */
+    const phaseDecline = phaseDeclineFor({
+      priority: input.priority,
+      lever: s.verdict.lever,
+      increasesDemand,
+      moves,
+    });
+    const declineAdmissible = phaseDecline !== null
+      && phaseDeclineObjection(phaseDecline) === null;
+
+    if (phaseDecline !== null && declineAdmissible) {
+      const note: SuppressionNote = {
+        by: 'PLAN_LOAD',
+        rule: phaseDecline.basis === 'HARD_STOP' ? 'SAFETY_HARD_STOP' : 'PHASE_PRESCRIBES_RECOVERY',
+        detail:
+          `The ${label(s.verdict.lever)} evidence supports this change, but ${phaseDecline.because}. `
+          + `${phaseDecline.wouldAdvanceIf}`,
+        // A hard stop lifts when Safety says so, not at a boundary this engine
+        // can schedule against. Rule 11: "no scheduled reconsideration" is a
+        // fact, and a date invented here would be a worse one.
+        reconsiderAtISO: phaseDecline.basis === 'HARD_STOP' ? null : input.nextBoundaryISO,
+      };
+      out.push({ ...s, suppressedBy: note, ledger: buildLedger({ input, price, s, accepted, ceiling, suppressedBy: note }) });
+      continue;
+    }
 
     // A verdict that proposes nothing cannot be suppressed. It is already the
     // engine's answer, and recording it as "suppressed" would be a lie.
     if (!moves) {
-      out.push({ ...s, suppressedBy: null });
+      out.push({ ...s, suppressedBy: null, ledger: buildLedger({ input, price, s, accepted, ceiling, suppressedBy: null }) });
       continue;
     }
 
-    const increasesDemand = s.demandShare > 0;
-
     /* ── Rule 1 · is the COMPLETE PROJECTED WEEK at the athlete's ceiling ── */
 
-    if (rule1Suppresses({ price, reading, ceiling, s, accepted, increasesDemand, heldLever, heldRank })) {
-      out.push({
-        ...s,
-        suppressedBy: {
-          by: heldLever,
-          rule: 'WEEK_AT_DEMAND_CEILING',
-          detail:
-            `The ${label(s.verdict.lever)} evidence supports this change, but this week already `
-            + 'contains enough total demand, so the change is deferred until the next '
-            + 'appropriate boundary.',
-          reconsiderAtISO: input.nextBoundaryISO,
-        },
-      });
+    if (rule1Suppresses({ price, reading, ceiling, s, accepted, increasesDemand, heldLever, heldRank, order })) {
+      const note: SuppressionNote = {
+        by: heldLever,
+        rule: 'WEEK_AT_DEMAND_CEILING',
+        detail:
+          `The ${label(s.verdict.lever)} evidence supports this change, but this week already `
+          + 'contains enough total demand, so the change is deferred until the next '
+          + 'appropriate boundary.',
+        reconsiderAtISO: input.nextBoundaryISO,
+      };
+      out.push({ ...s, suppressedBy: note, ledger: buildLedger({ input, price, s, accepted, ceiling, suppressedBy: note }) });
       continue;
     }
 
@@ -527,25 +630,27 @@ export function arbitrate(input: ArbitrationInput): ArbitrationResult {
      */
     if (s.material) {
       if (materialAccepted >= MAX_MATERIAL_LEVERS_PER_CYCLE) {
-        out.push({
-          ...s,
-          suppressedBy: {
-            by: 'PLAN_LOAD',
-            rule: 'ONE_MATERIAL_LEVER_PER_CYCLE',
-            detail:
-              'Another lever is already making a material change this cycle. Making both at '
-              + 'once would leave the response impossible to attribute, so this one is '
-              + 'deferred until the next appropriate boundary.',
-            reconsiderAtISO: input.nextBoundaryISO,
-          },
-        });
+        const note: SuppressionNote = {
+          by: 'PLAN_LOAD',
+          rule: 'ONE_MATERIAL_LEVER_PER_CYCLE',
+          detail:
+            'Another lever is already making a material change this cycle. Making both at '
+            + 'once would leave the response impossible to attribute, so this one is '
+            + 'deferred until the next appropriate boundary.',
+          reconsiderAtISO: input.nextBoundaryISO,
+        };
+        out.push({ ...s, suppressedBy: note, ledger: buildLedger({ input, price, s, accepted, ceiling, suppressedBy: note }) });
         continue;
       }
       materialAccepted += 1;
     }
 
+    // The ledger is priced BEFORE this verdict joins `accepted`, so its
+    // whole-sequence cost describes the week with everything already accepted
+    // PLUS this option — the same projection rule 1 used.
+    const ledger = buildLedger({ input, price, s, accepted, ceiling, suppressedBy: null });
     accepted.push(s.verdict);
-    out.push({ ...s, suppressedBy: null });
+    out.push({ ...s, suppressedBy: null, ledger });
   }
 
   /* ── The combined projection of everything that survived ───────────────── */
@@ -601,11 +706,17 @@ function rule1Suppresses(args: {
   increasesDemand: boolean;
   heldLever: CanonicalLever | 'PLAN_LOAD';
   heldRank: number;
+  /** The live order. The legacy reading deliberately uses the phase-neutral one. */
+  order: readonly CanonicalLever[];
 }): boolean {
   const { price, reading, ceiling, s, accepted, increasesDemand, heldLever, heldRank } = args;
 
   if (reading === 'LEGACY_HOLD_PRESENCE') {
-    const rank = ARBITRATION_PRIORITY.indexOf(s.verdict.lever);
+    // The pre-2026-09-04 engine had no phase, so its rank is read off the
+    // phase-neutral order and never off the live one. A counterfactual that
+    // fed the new ordering into the old rule would be comparing two changes
+    // at once and could not attribute either.
+    const rank = PHASE_NEUTRAL_ORDER.indexOf(s.verdict.lever);
     return heldLever !== 'PLAN_LOAD'
       && increasesDemand
       && s.material
@@ -627,4 +738,221 @@ function label(l: CanonicalLever): string {
   if (l === 'THRESHOLD_PACE') return 'threshold';
   if (l === 'WEEKLY_VOLUME') return 'weekly volume';
   return 'long run';
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE OPTION LEDGER
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The units a lever's ordinary doctrine step is written in, and the bound.
+ *
+ * Read from `contract-constants.ts` rather than restated, so a PULL_BACK is
+ * costed at exactly the step size the lever itself would move (Rule 16).
+ */
+function ordinaryStepOf(lever: CanonicalLever, input: ArbitrationInput): {
+  readonly step: number;
+  readonly unit: string;
+  readonly constant: string;
+} {
+  if (lever === 'THRESHOLD_PACE') {
+    return {
+      step: THRESHOLD_ORDINARY_STEP_SEC_PER_MI,
+      unit: 's/mi',
+      constant: 'THRESHOLD_ORDINARY_STEP_SEC_PER_MI',
+    };
+  }
+  if (lever === 'WEEKLY_VOLUME') {
+    return {
+      // NOT rounded here. `lib/format/run.ts` is this codebase's one owner of
+      // how a distance is written down, and a second rounding rule spelled in
+      // this file is the Rule 16 defect `_format_lint.test.ts` exists to catch.
+      // The number stays exact for the arithmetic below and is FORMATTED where
+      // it is printed.
+      step: input.baseWeeklyMi * VOLUME_MAX_STEP_FRAC,
+      unit: 'mi/week',
+      constant: 'VOLUME_MAX_STEP_FRAC',
+    };
+  }
+  return { step: LONG_RUN_MAX_STEP_MI, unit: 'mi', constant: 'LONG_RUN_MAX_STEP_MI' };
+}
+
+/**
+ * A hypothetical verdict, for costing an option the levers did not propose.
+ *
+ * The PULL_BACK option has to be priced even when no lever proposed one, or
+ * the ledger would only ever cost the options the engine already liked — which
+ * is the shape Rule 22 warns about: a comparison that cannot fail on the side
+ * nobody wrote it for. Only `lever`, `beforeValue` and `proposedAfterValue` are
+ * read by `weekWithMany`, so the rest is filled from the real verdict.
+ */
+function hypothetical(v: LeverVerdict, after: number): LeverVerdict {
+  return { ...v, proposedAfterValue: after };
+}
+
+/**
+ * THE THREE OPTIONS, COSTED · every material decision's working, persisted.
+ *
+ * PUSH is the lever's own proposal where it made one, and its ordinary
+ * doctrine step where it did not — because "what would pushing have cost" is
+ * exactly the question a HOLD record has to be able to answer, and a ledger
+ * that left PUSH blank on every HOLD would reproduce the ambiguity Rule 21
+ * measured (an engine that never pushes, indistinguishable from a runner who
+ * never earned it).
+ *
+ * HOLD is the week as authored. PULL_BACK is one ordinary step the other way.
+ * All three are priced through the SAME `price` closure the rules use, on the
+ * ceiling's own basis, so the three numbers are comparable with each other and
+ * with the ceiling (Rule 16).
+ */
+function buildLedger(args: {
+  input: ArbitrationInput;
+  price: (verdicts: readonly LeverVerdict[]) => ProjectedPlanLoad;
+  s: { verdict: LeverVerdict; demandShare: number; material: boolean };
+  accepted: readonly LeverVerdict[];
+  ceiling: DemandCeilingPosture;
+  suppressedBy: SuppressionNote | null;
+}): DecisionLedger {
+  const { input, price, s, accepted, ceiling, suppressedBy } = args;
+  const v = s.verdict;
+  const p = input.priority;
+  const step = ordinaryStepOf(v.lever, input);
+  const faster = v.lever === 'THRESHOLD_PACE';
+
+  /**
+   * Rule 11 · a week the model refuses to price is not a week that costs
+   * nothing. `price` throws in that case, and a ledger entry is not worth
+   * aborting an evaluation for, so the refusal is CAUGHT and RECORDED as a
+   * null with its reason rather than swallowed as a zero.
+   */
+  const cost = (verdicts: readonly LeverVerdict[]): { value: number | null; basis: string } => {
+    try {
+      const priced = price(verdicts);
+      return {
+        value: priced.demandIndex,
+        basis: ceiling.kind === 'READ'
+          ? `Priced on ${ceiling.basis} against a ceiling of ${ceiling.value}.`
+          : `Priced on BASE_ONLY. ${ceiling.detail}`,
+      };
+    } catch (e) {
+      return {
+        value: null,
+        basis: `The demand model refused to price this week: ${e instanceof Error ? e.message : String(e)}. `
+          + 'That is not a week that costs nothing.',
+      };
+    }
+  };
+
+  const pushAfter = v.proposedAfterValue !== null && v.decision === 'PROGRESS'
+    ? v.proposedAfterValue
+    : faster ? v.beforeValue - step.step : v.beforeValue + step.step;
+  const pullAfter = faster ? v.beforeValue + step.step : Math.max(0, v.beforeValue - step.step);
+
+  const pushCost = cost([...accepted, hypothetical(v, pushAfter)]);
+  const holdCost = cost(accepted);
+  const pullCost = cost([...accepted, hypothetical(v, pullAfter)]);
+
+  const athleteEvidence = `${v.confidence.sentence} `
+    + `${v.confidence.supportingCount} supporting and ${v.confidence.contradictingCount} `
+    + `contradicting observations over ${v.confidence.windowDays} days`
+    + `${v.confidence.limitation === null ? '' : `. ${v.confidence.limitation}`}`;
+
+  const researchAllowance = v.magnitude === null
+    ? `${step.constant} allows an ordinary step of ${step.step} ${step.unit} for this lever. `
+      + 'No proposal was made, so no bound was spent.'
+    : `${v.magnitude.limitConstant} bounds this lever at ${v.magnitude.limit} `
+      + `${v.magnitude.unit}. ${v.magnitude.limitCitation}`;
+
+  const policyAssumptions: readonly string[] = [
+    ...p.policyAssumptions,
+    'No predicted-adaptation number is computed anywhere in this ledger. The expected '
+    + 'benefit of each option is a sentence in the lever\'s own doctrine units, because no '
+    + 'calibration data exists and a second uncalibrated score printed beside a measurement '
+    + 'is exactly the defect the ranking-score rename was written for.',
+  ];
+
+  const unknowns: readonly string[] = [
+    ...p.unknowns,
+    ...(ceiling.kind === 'READ'
+      ? ceiling.unknownComponents.map(
+        (c) => `The demand model could not price the "${c}" component of the projected week.`)
+      : [`The athlete's weekly demand ceiling is ${ceiling.kind}. ${ceiling.detail}`]),
+  ];
+
+  const entry = (
+    option: LedgerOption,
+    describe: string,
+    expectedBenefit: string,
+    c: { value: number | null; basis: string },
+  ): LedgerOptionEntry => ({
+    option,
+    describe,
+    wholeSequenceCost: c.value,
+    wholeSequenceCostBasis: c.basis,
+    expectedBenefit,
+    athleteEvidence,
+    researchAllowance,
+    policyAssumptions,
+    unknowns,
+  });
+
+  const options: readonly LedgerOptionEntry[] = [
+    entry(
+      'PUSH',
+      `move ${label(v.lever)} from ${v.beforeValue} to ${pushAfter}`,
+      faster
+        ? `A threshold anchor ${Math.abs(pushAfter - v.beforeValue)} s/mi faster, repricing `
+          + `${input.priority.phase === 'TAPER' ? 'the rehearsal sessions' : 'every future session of that type'}.`
+        : `${miText(Math.abs(pushAfter - v.beforeValue))} more than the week as authored.`,
+      pushCost,
+    ),
+    entry(
+      'HOLD',
+      `leave ${label(v.lever)} at ${v.beforeValue}`,
+      'The week is run as authored. Holding is a real, frequent and correct state '
+      + '(ADAPTATION_PROGRESSION_DOCTRINE.md), and where something else proposed to reduce '
+      + 'the week, holding it is itself an advance.',
+      holdCost,
+    ),
+    entry(
+      'PULL_BACK',
+      `move ${label(v.lever)} from ${v.beforeValue} to ${pullAfter}`,
+      faster
+        ? `A threshold anchor ${Math.abs(pullAfter - v.beforeValue)} s/mi slower, which buys `
+          + 'recovery at the cost of the stimulus the sessions were written for.'
+        : `${miText(Math.abs(pullAfter - v.beforeValue))} less than the week as authored.`,
+      pullCost,
+    ),
+  ];
+
+  const selected: LedgerOption =
+    v.decision === 'PROGRESS' && suppressedBy === null ? 'PUSH'
+      : v.decision === 'REGRESS' && suppressedBy === null ? 'PULL_BACK'
+        : 'HOLD';
+
+  const selectedBecause = suppressedBy === null
+    ? v.reason
+    : `${v.reason} ${suppressedBy.detail}`;
+
+  return {
+    options,
+    selected,
+    selectedBecause,
+    reassessmentTrigger: {
+      whenISO: suppressedBy === null ? input.nextBoundaryISO : suppressedBy.reconsiderAtISO,
+      what: suppressedBy === null
+        ? v.whatWouldChangeIt.join(' ') || 'The next weekly boundary, once the week\'s evidence has settled.'
+        : suppressedBy.detail,
+    },
+    priority: {
+      phase: p.phase,
+      posture: p.posture,
+      order: p.order,
+      citations: p.citations.map((c) =>
+        c.provenance === 'POLICY_ASSUMPTION'
+          ? `POLICY_ASSUMPTION · ${c.says}`
+          : `${c.doc} · "${c.anchor}" · ${c.says}`),
+      why: p.why,
+    },
+  };
 }

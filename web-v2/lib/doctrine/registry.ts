@@ -19850,6 +19850,112 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       );
     },
   },
+
+  /* ══════════════════════════════════════════════════════════════════════
+   * COLD START · what may be prescribed to a runner this app has never seen
+   * run. Rule 7 · every one of these constants asserts physiology, so every
+   * one of them is read out of the cited table at run time.
+   * ═══════════════════════════════════════════════════════════════════ */
+
+  {
+    id: 'COLDSTART.opening-volume-band-is-the-beginner-column',
+    binds: ['lib/plan/adjudication/cold-start.ts#COLD_START_WEEKLY_BAND_MI'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume table — miles per week (km in parentheses)',
+    claim:
+      'A runner with no completed training has no demonstrated maximum to size a week ' +
+      'against, so the opening prescription is bounded by what research permits for a ' +
+      'beginner at that distance. The band is the doc\'s own "Beginner (just finishing)" ' +
+      'column, read row by row, and it is a CEILING on an opening prescription rather than ' +
+      'a target: a plan authored below it is unaffected.',
+    check({ cite }) {
+      const t = cite.table();
+      const rows: Record<string, string> = {
+        '5k': '5K', '10k': '10K', half: 'Half-marathon', marathon: 'Marathon',
+        '50k': '50K', '100k': '100K',
+      };
+      const src = sourceOf('web-v2/lib/plan/adjudication/cold-start.ts');
+      for (const [key, label] of Object.entries(rows)) {
+        const [lo, hi] = parseBand(t.cell(label, 'Beginner (just finishing)'));
+        // The engine's own literal for that key, read out of the source rather
+        // than imported, so the claim cannot be satisfied by a rename.
+        const quoted = key === 'half' || key === 'marathon' ? key : `'${key}'`;
+        const m = src.match(new RegExp(`${quoted}:\\s*\\[(\\d+(?:\\.\\d+)?),\\s*(\\d+(?:\\.\\d+)?)\\]`));
+        if (!m) {
+          throw new Error(`COLD_START_WEEKLY_BAND_MI no longer declares a band for ${key}`);
+        }
+        if (Number(m[1]) !== lo || Number(m[2]) !== hi) {
+          throw new Error(
+            `COLD_START_WEEKLY_BAND_MI['${key}'] is [${m[1]}, ${m[2]}], doctrine's beginner ` +
+              `column for ${label} is [${lo}, ${hi}]`,
+          );
+        }
+      }
+    },
+  },
+
+  {
+    id: 'COLDSTART.opening-long-run-share-is-the-long-run-cap',
+    binds: ['lib/plan/adjudication/cold-start.ts#COLD_START_LONG_RUN_SHARE_OF_WEEK'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'The opening long run for a runner with no record is DERIVED from two cited numbers ' +
+      'rather than chosen: the beginner weekly band above, times doctrine\'s own long-run ' +
+      'cap. The UPPER edge of the cap is used, because this bounds an opening prescription ' +
+      'and taking the lower edge would be an unstated extra margin.',
+    check({ cite }) {
+      const [, hi] = parseBand(cite.table().cell('Long-run cap', 'Specification'));
+      const src = sourceOf('web-v2/lib/plan/adjudication/cold-start.ts');
+      const m = src.match(/COLD_START_LONG_RUN_SHARE_OF_WEEK = (\d*\.?\d+)/);
+      if (!m) throw new Error('cold-start.ts no longer declares COLD_START_LONG_RUN_SHARE_OF_WEEK');
+      if (Number(m[1]) !== hi / 100) {
+        throw new Error(
+          `COLD_START_LONG_RUN_SHARE_OF_WEEK is ${m[1]}, doctrine's long-run cap tops out at ` +
+            `${hi}% of weekly volume`,
+        );
+      }
+    },
+  },
+
+  {
+    id: 'COLDSTART.accelerated-ramp-is-the-novice-trial-figure',
+    binds: ['lib/plan/adjudication/cold-start.ts#COLD_START_ACCELERATED_STEP_MAX'],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'Faster progression for a runner with strong early evidence SPENDS HEADROOM DOCTRINE ' +
+      'ALREADY ALLOWS rather than weakening a guard (CLAUDE.md Rule 21). The doc reports ' +
+      'from trial data that novices ramping +20-25% over 8 weeks did not show higher injury ' +
+      'rates than +10% over 12, and the accelerated band is that upper figure. The ' +
+      'ESTABLISHED runner\'s band is untouched: the posture only exists while the quantity ' +
+      'is genuinely absent.',
+    check({ cite }) {
+      const cell = cite.table().cell('Year-on-year base growth', 'Specification');
+      const novice = cell.replace(/[–—−]/g, '-').match(/novices safely \+(\d+)-(\d+)%/);
+      if (!novice) {
+        throw new Error('doctrine no longer states a novice ramp band in the base-growth row');
+      }
+      const src = sourceOf('web-v2/lib/plan/adjudication/cold-start.ts');
+      const m = src.match(/COLD_START_ACCELERATED_STEP_MAX = (\d*\.?\d+)/);
+      if (!m) throw new Error('cold-start.ts no longer declares COLD_START_ACCELERATED_STEP_MAX');
+      if (Number(m[1]) !== Number(novice[2]) / 100) {
+        throw new Error(
+          `COLD_START_ACCELERATED_STEP_MAX is ${m[1]}, doctrine's novice trial figure tops out ` +
+            `at ${novice[2]}%`,
+        );
+      }
+      // And it must be a REAL widening against the general band, or the whole
+      // "faster progression" clause is decoration.
+      const [genLo] = parseBand(cell.replace(/novices[\s\S]*$/, ''));
+      if (Number(m[1]) <= genLo / 100) {
+        throw new Error(
+          `COLD_START_ACCELERATED_STEP_MAX (${m[1]}) does not widen anything against the ` +
+            `general ${genLo}% band`,
+        );
+      }
+    },
+  },
 ];
 
 /** The four race-week templates in Research/08 section 9.3, by their own

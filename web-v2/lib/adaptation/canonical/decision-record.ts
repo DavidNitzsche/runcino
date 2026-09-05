@@ -198,6 +198,104 @@ export interface RollbackInfo {
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * THE OPTION LEDGER  ·  what was weighed, for every material decision
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The three options every material decision must compare.
+ *
+ * Deliberately the SAME three words `lib/plan/adjudication/contract.ts` uses
+ * (`Option`), because they are the same three options and Rule 16 does not
+ * permit two names. The type is restated rather than imported so this engine's
+ * record shape does not acquire a runtime edge into the plan layer; the
+ * identity is asserted by the gate rather than by this comment (Rule 20).
+ */
+export type LedgerOption = 'PUSH' | 'HOLD' | 'PULL_BACK';
+
+export const LEDGER_OPTIONS: readonly LedgerOption[] = ['PUSH', 'HOLD', 'PULL_BACK'];
+
+/** One option, costed and argued. */
+export interface LedgerOptionEntry {
+  readonly option: LedgerOption;
+  readonly describe: string;
+  /**
+   * WHOLE-SEQUENCE COST · the complete projected week with this option applied
+   * ON TOP of everything already accepted this cycle, priced by the demand
+   * model's own function on the ceiling's own basis.
+   *
+   * Rule 11 · null when the model refused to price it, with the reason in
+   * `wholeSequenceCostBasis`. A week nobody could price is not a week that
+   * costs nothing.
+   */
+  readonly wholeSequenceCost: number | null;
+  readonly wholeSequenceCostBasis: string;
+  /**
+   * EXPECTED BENEFIT · what this option would achieve, in the lever's OWN
+   * doctrine units.
+   *
+   * A SENTENCE, and deliberately not a number. The adjudication layer already
+   * carries one ordinal ranking weight (`heuristicRankScore`), it is labelled
+   * POLICY_ASSUMPTION and uncalibrated, and adding a second uncalibrated number
+   * here — under a name like "expected adaptation" — is precisely defect 4 of
+   * the owner's own list ("stop describing expectedAbsorbed as an
+   * evidence-derived expectation while it uses fixed heuristic weights"). There
+   * is no calibration data, so there is no honest number, so there is no number.
+   */
+  readonly expectedBenefit: string;
+  /** What THIS runner's own completed training says. Never a research table. */
+  readonly athleteEvidence: string;
+  /** What a research table permits. Says nothing about this runner. */
+  readonly researchAllowance: string;
+  /** Numbers and orderings somebody chose. Named, never printed as physiology. */
+  readonly policyAssumptions: readonly string[];
+  /** Rule 11 · what could not be read, named rather than absorbed. */
+  readonly unknowns: readonly string[];
+}
+
+/** When and on what this decision is re-taken. */
+export interface ReassessmentTrigger {
+  /** Null when nothing schedules it, which is itself a fact worth carrying. */
+  readonly whenISO: string | null;
+  readonly what: string;
+}
+
+/**
+ * The phase-aware priority this decision was arbitrated under, flattened onto
+ * the record so a reader does not have to re-run the resolver to know why one
+ * lever went first.
+ */
+export interface LedgerPriority {
+  readonly phase: string;
+  readonly posture: string;
+  readonly order: readonly CanonicalLever[];
+  readonly citations: readonly string[];
+  readonly why: string;
+}
+
+/**
+ * EVERY MATERIAL DECISION'S WORKING, PERSISTED.
+ *
+ * The owner's list, in order, and each field is one item of it: PUSH, HOLD and
+ * PULL_BACK (`options`), whole-sequence cost, expected benefit, athlete
+ * evidence, research allowance, policy assumptions and unknowns (per option),
+ * the selected option, and the reassessment trigger.
+ *
+ * It exists because Rule 21's finding was not that the engine never pushed —
+ * it was that nobody could TELL: `training_plans.adaptation_log` stored
+ * `{"n": 1, "ts": "..."}`, so "an engine that never pushes" and "a runner who
+ * never earned it" were indistinguishable. A ledger that records the options
+ * NOT taken, and their cost, is what makes that answerable.
+ */
+export interface DecisionLedger {
+  /** Exactly three, always, in PUSH / HOLD / PULL_BACK order. */
+  readonly options: readonly LedgerOptionEntry[];
+  readonly selected: LedgerOption;
+  readonly selectedBecause: string;
+  readonly reassessmentTrigger: ReassessmentTrigger;
+  readonly priority: LedgerPriority;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
  * THE RECORD
  * ═══════════════════════════════════════════════════════════════════════ */
 
@@ -246,6 +344,13 @@ export interface CanonicalDecisionRecord {
   /** Contract: what future evidence could change this decision. */
   readonly whatWouldChangeIt: readonly string[];
   readonly rollback: RollbackInfo | null;
+  /**
+   * The three options, costed, with the selection and its reassessment trigger.
+   * Present on EVERY record, including refusals: an option ledger that only
+   * appeared when the engine moved would be unable to answer the one question
+   * Rule 21 needed answered, which is what the engine did NOT do and why.
+   */
+  readonly ledger: DecisionLedger;
 
   /**
    * Set when arbitration deferred an otherwise valid proposal. The contract
@@ -273,7 +378,27 @@ export type DeferralRule =
   /** Cadence · evidence at a session boundary, arbitrated at the weekly one. */
   | 'ARBITRATED_AT_WEEKLY_BOUNDARY'
   /** Idempotency · this exact evidence has already raised this proposal. */
-  | 'ALREADY_RAISED_ON_THIS_EVIDENCE';
+  | 'ALREADY_RAISED_ON_THIS_EVIDENCE'
+  /**
+   * The authored phase is prescribed to remove fatigue or to restore, so it
+   * does not complete unfinished development. Taper and recovery blocks.
+   *
+   * Added 2026-09-05 with phase-aware arbitration. It is a SEPARATE code from
+   * `WEEK_AT_DEMAND_CEILING` on purpose: "this week is already full" and "this
+   * block is a taper" are different facts with different citations and
+   * different reconsideration points, and one code for two facts is the Rule 16
+   * defect this enum was created to fix.
+   */
+  | 'PHASE_PRESCRIBES_RECOVERY'
+  /**
+   * The Safety owner has raised a hard stop. Never overridden by the objective
+   * (`lib/brain/objective.ts` · `OBJECTIVE_NEVER_OVERRIDES_A_HARD_STOP`).
+   *
+   * Deliberately NOT queueable: a hard stop lifts when Safety says so, not at a
+   * boundary this engine can schedule against, so queueing it would re-offer a
+   * push on a date nobody chose.
+   */
+  | 'SAFETY_HARD_STOP';
 
 export interface SuppressionNote {
   readonly by: CanonicalLever | 'PLAN_LOAD';

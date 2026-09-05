@@ -1198,6 +1198,34 @@ export function buildInputAt(args: BuildArgs, snapshot?: SealedHistory): BuiltIn
     belief: args.belief,
     race: RACE,
     goal: GOAL,
+    /**
+     * PHASE · UNKNOWN, and that is a REFUSAL rather than a default.
+     *
+     * The extracted snapshot carries `training_plans` and `plan_workouts`; it
+     * does not carry `plan_phases`, so no authored phase label exists to read
+     * for any date in this replay. Rule 11 · an unread phase is not a base
+     * phase and is not a taper, and `phase-priority.ts` maps UNKNOWN to the
+     * phase-neutral order with the unknown recorded on every decision.
+     *
+     * DERIVING one from `plan.mode` was considered and rejected: the mode is
+     * the whole PLAN's intent ('race-prep', 'maintenance', 'recovery') and the
+     * phase is the WEEK's, so reading one as the other would be a second answer
+     * to a question `plan_phases` already answers — and it would silently make
+     * every week of a race-prep block "race specific", including its base.
+     *
+     * CONSEQUENCE, STATED: this replay exercises the phase-neutral ordering
+     * only. That is the right property for the counterfactual it feeds, which
+     * compares two readings of rule 1 and would be confounded by a second
+     * change; it is a gap for anything that wants to see phase-aware ordering
+     * on real history, and `_phase_arbitration.test.ts` covers that instead.
+     */
+    phaseContext: {
+      phase: 'UNKNOWN',
+      limiter: 'UNKNOWN',
+      safety: 'NORMAL',
+      phaseSource: 'the replay snapshot does not extract plan_phases, so no authored phase '
+        + 'label exists for this date',
+    },
     plan: {
       planVersion: currentPlan?.planId ?? 'no-plan-in-force',
       nextWeekStartISO: nextWeekStart,

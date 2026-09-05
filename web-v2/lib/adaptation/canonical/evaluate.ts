@@ -67,6 +67,7 @@ import {
   type RollbackInfo,
   type SuppressionNote,
 } from './decision-record';
+import { LEDGER_OPTIONS } from './decision-record';
 import type { CanonicalAdaptationInput, CanonicalLever } from './input';
 import { CANONICAL_LEVERS } from './input';
 import { evaluateThresholdPace } from './levers/threshold-pace';
@@ -74,6 +75,7 @@ import { evaluateWeeklyVolume } from './levers/weekly-volume';
 import { evaluateLongRun } from './levers/long-run';
 import type { LeverVerdict } from './levers/shared';
 import { arbitrate, type ArbitratedVerdict, type DemandCeilingPosture } from './arbitration';
+import { resolveArbitrationPriority, type ResolvedPriority } from './phase-priority';
 import { miText, paceText } from './levers/shared';
 
 export interface CanonicalEvaluation {
@@ -90,6 +92,28 @@ export interface CanonicalEvaluation {
    * missing input must never silently disable a mechanism.
    */
   readonly demandCeiling: DemandCeilingPosture;
+  /**
+   * The phase-aware priority this evaluation was arbitrated under.
+   *
+   * Surfaced for the same reason `demandCeiling` is: a caller is entitled to
+   * know that a taper deferred every upward proposal, and to see the citation
+   * for the order without re-running the resolver.
+   */
+  readonly priority: ResolvedPriority;
+}
+
+/**
+ * The priority for one evaluation. ONE call site, so no branch below can
+ * resolve a second order (Rule 16).
+ */
+function priorityFor(input: CanonicalAdaptationInput): ResolvedPriority {
+  return resolveArbitrationPriority({
+    phase: input.phaseContext.phase,
+    raceDistance: input.race.raceDistance,
+    limiter: input.phaseContext.limiter,
+    safety: input.phaseContext.safety,
+    stepsTakenThisCycle: input.plan.stepsTakenThisCycle,
+  });
 }
 
 /**
@@ -108,12 +132,14 @@ export function evaluateAdaptation(
   /* ── Rule 11 · a failed read is not a runner without evidence ──────────── */
 
   if (!input.readable) {
+    const priority = priorityFor(input);
     return {
       contractVersion: CANONICAL_ADAPTATION_CONTRACT_VERSION,
       evaluatedAtISO: input.evaluatedAtISO,
       records: CANONICAL_LEVERS.map((lever) =>
         refusalRecord(
           input,
+          priority,
           lever,
           'The training data for this evaluation could not be read. That is not the same as '
           + 'a quiet training block, and it is not evidence for or against any change.',
@@ -122,6 +148,7 @@ export function evaluateAdaptation(
         ),
       ),
       combinedDemandShare: 0,
+      priority,
       // Nothing was arbitrated, so nothing was measured against a ceiling. The
       // posture is still stated, because "the evaluation refused" and "the
       // ceiling test silently did not run" are two facts and a caller reading
@@ -169,8 +196,10 @@ export function evaluateAdaptation(
 
   /* ── Plan-level arbitration ────────────────────────────────────────────── */
 
+  const priority = priorityFor(input);
   const result = arbitrate({
     verdicts,
+    priority,
     baseWeekStartISO: input.plan.nextWeekStartISO,
     baseWeeklyMi: input.plan.nextWeekPrescribedMi,
     baseLongRunMi: input.plan.nextWeekLongRunMi,
@@ -188,6 +217,7 @@ export function evaluateAdaptation(
     records,
     combinedDemandShare: result.combinedShare,
     demandCeiling: result.demandCeiling,
+    priority,
   };
 }
 
@@ -294,12 +324,32 @@ function toRecord(
     // measured zero, and a reader should not have to work out which it is.
     rollback: proposesAnEdit(planDiff) ? buildRollback(v, planDiff) : null,
 
+    /**
+     * The three options, costed by arbitration on the ceiling's own basis.
+     *
+     * The RECORD's suppression is strictly wider than arbitration's — the
+     * cadence rule and the idempotency key both suppress here, after
+     * `arbitrate` returned — so the reassessment trigger is reconciled with the
+     * suppression that actually emptied the diff. Same fix, same reason, as
+     * `arbitratedForInvariants` above: one fact, one name.
+     */
+    ledger: suppressedBy === a.suppressedBy ? a.ledger : {
+      ...a.ledger,
+      selected: 'HOLD',
+      selectedBecause: `${a.ledger.selectedBecause} ${suppressedBy?.detail ?? ''}`.trim(),
+      reassessmentTrigger: {
+        whenISO: suppressedBy?.reconsiderAtISO ?? null,
+        what: suppressedBy?.detail ?? a.ledger.reassessmentTrigger.what,
+      },
+    },
+
     suppressedBy,
   };
 }
 
 function refusalRecord(
   input: CanonicalAdaptationInput,
+  priority: ResolvedPriority,
   lever: CanonicalLever,
   reason: string,
   whatWouldChangeIt: readonly string[],
@@ -354,6 +404,55 @@ function refusalRecord(
     reason,
     whatWouldChangeIt,
     rollback: null,
+    /**
+     * A refusal carries a ledger too, and its three options carry NO cost.
+     *
+     * That is the honest shape and not a shortcut: the data could not be read,
+     * so no week could be projected, so no option HAS a whole-sequence cost.
+     * Rule 11 — a week nobody could price is not a week that costs nothing, and
+     * a zero here would be exactly the collapse this engine exists to prevent.
+     */
+    ledger: {
+      options: LEDGER_OPTIONS.map((option) => ({
+        option,
+        describe: `${option.toLowerCase().replace('_', ' ')} ${lever.toLowerCase().replace(/_/g, ' ')}`,
+        wholeSequenceCost: null,
+        wholeSequenceCostBasis:
+          'The training data for this evaluation could not be read, so no week was projected '
+          + 'and no option could be priced.',
+        expectedBenefit: 'Not assessable: the evidence for this evaluation could not be read.',
+        athleteEvidence: 'None readable. A failed read is not an absence of training.',
+        researchAllowance:
+          'Not spent. No proposal was made, so no doctrine bound applied to this evaluation.',
+        policyAssumptions: [
+          ...priority.policyAssumptions,
+          // The same sentence the arbitrated ledger carries. Stated on a
+          // refusal too, because a reader of a refusal is entitled to know
+          // that no number here forecasts anything either.
+          'No predicted-adaptation number is computed anywhere in this ledger.',
+        ],
+        unknowns: [
+          'The training data for this evaluation could not be read at all.',
+          ...priority.unknowns,
+        ],
+      })),
+      selected: 'HOLD',
+      selectedBecause: reason,
+      reassessmentTrigger: {
+        whenISO: input.plan.nextWeekStartISO,
+        what: whatWouldChangeIt.join(' '),
+      },
+      priority: {
+        phase: priority.phase,
+        posture: priority.posture,
+        order: priority.order,
+        citations: priority.citations.map((c) =>
+          c.provenance === 'POLICY_ASSUMPTION'
+            ? `POLICY_ASSUMPTION · ${c.says}`
+            : `${c.doc} · "${c.anchor}" · ${c.says}`),
+        why: priority.why,
+      },
+    },
     suppressedBy: null,
   };
 }
