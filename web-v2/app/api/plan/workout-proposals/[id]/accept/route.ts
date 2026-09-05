@@ -16,7 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserId } from '@/lib/auth/session';
-import { acceptProposal } from '@/lib/plan/workout-proposals';
+import { acceptProposal, reopenProposal } from '@/lib/plan/workout-proposals';
 import { asRepricePayload } from '@/lib/plan/reprice-payload';
 import { applyAdaptations } from '@/lib/plan/adapt';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
@@ -231,15 +231,82 @@ export async function POST(
    */
   let applied: number;
   try {
-    applied = await applyAdaptations(userId, [adaptation], 'RUNNER_ACCEPTED');
+    // LEDGERANSWER-1 · the legacy lane records the runner's answer too. These
+    // are the pre-2026-09-05 rows that carry no stored action; the tap that
+    // accepts one is exactly as much a consent as any other.
+    applied = await applyAdaptations(userId, [adaptation], 'RUNNER_ACCEPTED', {
+      proposalId: String(proposalId),
+      runnerResponse: 'ACCEPTED',
+      explanation: adaptation.why,
+    });
   } catch (err) {
     console.error('[proposal/accept] apply failed', { proposalId, err });
+    // ZEROACCEPT-1 · the card is not consumed by a write that did not happen.
+    // `acceptProposal` stamped it accepted BEFORE the apply ran, so a throw
+    // here left a decision marked answered whose change never landed, and the
+    // runner had no way to ask for it again.
+    await sayIfTheCardCouldNotBePutBack(userId, proposalId);
     return NextResponse.json({ ok: false, error: 'apply_failed' }, { status: 500 });
   }
 
-  if (applied > 0) {
-    await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});
+  /* ── ZEROACCEPT-1 (2026-09-05) · ZERO ROWS IS A FAILURE ON THIS LANE TOO ──
+   *
+   * `applyBrainAction` has had `zeroIsNotSuccess` since it was written, and
+   * this lane — the one every row from before 2026-09-05 still takes — did
+   * not. So the two lanes gave opposite answers to the same event.
+   *
+   * Measured on a scratch database, by writing a proposal whose `action_kind`
+   * is a word nothing has been taught (`teleport_workout`) and accepting it:
+   *
+   *   POST /api/plan/workout-proposals/12/accept   200  {"ok":true,"applied":0}
+   *   proposal 12 → accepted
+   *   plan row    → unchanged
+   *
+   * The runner taps a button, the plan does not move, the card disappears, and
+   * the response says it worked — which is the exact lie this route's own
+   * header two paragraphs up says it had removed for FAILED applies, surviving
+   * in the case where the apply does not fail but does nothing.
+   *
+   * A kind this engine cannot apply is also a kind nobody should be able to
+   * consume, so the row goes back to pending rather than being spent.
+   */
+  if (applied === 0) {
+    console.error(
+      `[proposal/accept] ${proposal.actionKind} on proposal ${proposalId} touched no row; `
+      + 'the plan did not move and the card has been put back',
+    );
+    await sayIfTheCardCouldNotBePutBack(userId, proposalId);
+    return NextResponse.json({
+      ok: false,
+      error: 'apply_failed',
+      detail: `the ${proposal.actionKind} was accepted and touched no row; the plan did not move`,
+    }, { status: 500 });
   }
 
+  await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});
+
   return NextResponse.json({ ok: true, applied });
+}
+
+/**
+ * Put the card back, and SAY SO when that itself fails.
+ *
+ * Rule 11 on the recovery path. A reopen that fails leaves a decision marked
+ * accepted whose change never landed — the worst state this route can produce,
+ * because the runner has no card to try again with and nothing anywhere says
+ * why. It is logged rather than surfaced: the response is already a failure and
+ * the runner does not need two.
+ */
+async function sayIfTheCardCouldNotBePutBack(userId: string, proposalId: number): Promise<void> {
+  const back = await reopenProposal(userId, proposalId);
+  if (!back.ok) {
+    console.error(
+      `[proposal/accept] proposal ${proposalId} is marked accepted, its change did not land, `
+      + 'and the reopen ALSO failed. The runner has no card to retry with.',
+    );
+  } else if (!back.reopened) {
+    console.error(
+      `[proposal/accept] proposal ${proposalId} was not in the accepted state to reopen`,
+    );
+  }
 }

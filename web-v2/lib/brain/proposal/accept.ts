@@ -180,7 +180,19 @@ export async function applyBrainAction(
       }
       const { applyAdaptations } = await import('@/lib/plan/adapt');
       try {
-        const applied = await applyAdaptations(ctx.userUuid, [adaptation], 'RUNNER_ACCEPTED');
+        /* LEDGERANSWER-1 · the runner's answer travels with the write.
+         *
+         * Without this the pipeline lane wrote a ledger row with
+         * `proposal_id` and `runner_response` null — on the lane that carries
+         * EVERY kind a runner can currently accept. The direct lane below
+         * already passed the same three fields; the two lanes now record the
+         * same facts about the same tap. */
+        const applied = await applyAdaptations(ctx.userUuid, [adaptation], 'RUNNER_ACCEPTED', {
+          ...(ctx.proposalId == null ? {} : { proposalId: String(ctx.proposalId) }),
+          proposal: { action, facet: ledgerFacetsOf(action) },
+          runnerResponse: 'ACCEPTED',
+          explanation: ctx.why,
+        });
         return applied > 0
           ? { ok: true, applied, recordedOnly: false, watch, undo }
           : zeroIsNotSuccess(action.kind);

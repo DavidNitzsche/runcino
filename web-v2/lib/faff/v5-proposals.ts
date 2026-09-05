@@ -48,6 +48,7 @@ import type {
 import { fmtMi } from '@/lib/format/run';
 import type { PendingProposal } from '@/lib/plan/workout-proposals';
 import { actionFromPending, actionShapeOfEngineKind } from '@/lib/brain/proposal/staleness';
+import { deserializeAction } from '@/lib/brain/proposal/serialize';
 import { phoneDirectionOf, actionHeadline } from '@/lib/faff/v5-action-render';
 
 /**
@@ -71,6 +72,34 @@ export function directionOf(
   kind: string,
   payload?: PendingProposal['actionPayload'],
 ): V5ProposalDirection | null {
+  /* ── V5DIR-1 (2026-09-05) · READ THE DECISION, THEN THE ENGINE WORD ───────
+   *
+   * This used to ask `actionShapeOfEngineKind` FIRST and only ever — a switch
+   * over the five words the legacy `action_kind` column can hold — while its
+   * sibling `headlineFor` asked `actionFromPending`, which prefers the DECISION
+   * the row states in `action_payload.action`. One card, two sources, for one
+   * quantity (Rule 16).
+   *
+   * The cost was not theoretical and it was not visible: a row that states a
+   * kind outside those five got its headline from the decision and its
+   * direction from nothing, and `toWire` WITHHELD the card. Proven by seeding a
+   * HOLD and a SAFETY_STOP against a scratch plan — both rows written, both
+   * readable, both rendered by `actionHeadline`, and neither one reaching the
+   * phone. Which is the exact failure `v5-action-render.ts`'s header says it
+   * closed: "the brain raises a pace change, the phone shows nothing, and
+   * everything reports success". The total renderer was real; nothing outside
+   * five engine words could reach it.
+   *
+   * So the order is now the same one `actionFromPending` uses, for the same
+   * reason: a row that STATES its action is answered from that action, and the
+   * engine-word table is the fallback for the rows written before there was one
+   * to state. It is not deleted — the seven production rows that predate
+   * ACTIONCOMPLETE-1 carry no action at all, and treating their absence as a
+   * failure would blank every card those runners can see (Rule 11).
+   */
+  const stored = deserializeAction(payload?.action);
+  if (stored != null) return phoneDirectionOf(stored);
+
   const shape = actionShapeOfEngineKind(kind, payload ?? {});
   // Rule 11: a kind this bridge has not been taught is not a pull-back. It is
   // a kind nobody decided how to draw, and a guessed direction on a card the

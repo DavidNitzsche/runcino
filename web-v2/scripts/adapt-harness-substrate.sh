@@ -131,15 +131,45 @@ for t in $TABLES; do
   HAS_UUID=$(psql "$RO_URL" -At -c "
     select 1 from information_schema.columns
      where table_schema='public' and table_name='$t' and column_name='user_uuid'" || true)
+  HAS_PLAN_ID=$(psql "$RO_URL" -At -c "
+    select 1 from information_schema.columns
+     where table_schema='public' and table_name='$t' and column_name='plan_id'" || true)
 
   # Rule 14 · every query states the population it reads. Never `user_id='me'`
   # — that sentinel is shared and returns other accounts' rows.
+  #
+  # ── SUBSTRATE-1 (2026-09-05) · A PLAN CHILD IS SCOPED BY ITS PLAN ──────────
+  #
+  # `user_uuid` alone was not the runner's population for a plan child table,
+  # and the gap was silent. `plan_weeks` HAS a `user_uuid` column, so it took
+  # the third branch — and 88 of production's 672 rows carry NULL there,
+  # INCLUDING ALL FIFTEEN WEEKS OF THE OWNER'S ACTIVE PLAN. So the copy took
+  # 558 week rows belonging to older plans and none belonging to the block the
+  # phone actually renders.
+  #
+  # What that produced, measured: a scratch database with 220 `plan_workouts`
+  # rows whose `week_id` names no `plan_weeks` row. The FK is restored NOT
+  # VALID, so the load succeeds and the reads all look right — and then the
+  # first adaptation that re-derives a workout fails with
+  # `plan_workouts_week_id_fkey`, because a NOT VALID constraint still checks
+  # rows it UPDATES. Accepting a proposal on the active plan therefore 500'd on
+  # a substrate whose entire purpose is Rule 13 verification, and the failure
+  # named a foreign key rather than the copy that caused it.
+  #
+  # So a table with BOTH columns is scoped by either: the runner's own rows, or
+  # the rows belonging to a plan of his. That is a superset of what the third
+  # branch took, never a subset, so nothing that copied before stops copying.
   if [ "$t" = "users" ]; then
     WHERE="WHERE id = '$OWNER'::uuid"
   elif [ "$t" = "coach_intents" ]; then
     WHERE="WHERE user_uuid = '$OWNER'::uuid OR (user_uuid IS NULL AND user_id = '$OWNER'::uuid)"
+  elif [ "$HAS_UUID" = "1" ] && [ "$HAS_PLAN_ID" = "1" ]; then
+    WHERE="WHERE user_uuid = '$OWNER'::uuid
+             OR plan_id IN (SELECT id FROM training_plans WHERE user_uuid = '$OWNER'::uuid)"
   elif [ "$HAS_UUID" = "1" ]; then
     WHERE="WHERE user_uuid = '$OWNER'::uuid"
+  elif [ "$HAS_PLAN_ID" = "1" ]; then
+    WHERE="WHERE plan_id IN (SELECT id FROM training_plans WHERE user_uuid = '$OWNER'::uuid)"
   elif echo "$GLOBAL_TABLES" | grep -qw "$t"; then
     WHERE=""
   else
@@ -168,6 +198,31 @@ RUNS=$(psql -At "$LOCAL" -c "select count(*) from runs")
 PW=$(psql -At "$LOCAL" -c "select count(*) from plan_workouts")
 [ "$RUNS" -gt 50 ] || { echo "REFUSING: $RUNS runs copied — expected the owner's real history."; exit 1; }
 [ "$PW" -gt 200 ] || { echo "REFUSING: $PW plan_workouts copied — expected the owner's real plans."; exit 1; }
+
+# SUBSTRATE-1 · guard 3 · THE COPY IS REFERENTIALLY WHOLE, not merely large.
+#
+# The counts above all passed on the substrate that was missing every week row
+# of the active plan: 4,124 workouts and 280 runs is a real-looking database.
+# What was wrong was not the SIZE of the copy but its SHAPE, and no count can
+# see that. This asks the one question the counts cannot: does every workout
+# still know which week it belongs to?
+#
+# It is stated as a refusal rather than a warning because a substrate with
+# dangling week ids passes every read and fails the first WRITE — which is the
+# half Rule 13 exists to exercise, and the half a screenshot cannot check.
+#
+# Falsified by running the builder with the pre-fix `user_uuid`-only scope:
+#   REFUSING: 220 plan_workouts point at a plan_weeks row that was not copied.
+DANGLING=$(psql -At "$LOCAL" -c "
+  select count(*) from plan_workouts pw
+   left join plan_weeks w on w.id = pw.week_id
+   where pw.week_id is not null and w.id is null")
+[ "$DANGLING" = "0" ] || {
+  echo "REFUSING: $DANGLING plan_workouts point at a plan_weeks row that was not copied."
+  echo "  Reads will look correct and the first adaptation will fail on"
+  echo "  plan_workouts_week_id_fkey. See SUBSTRATE-1 in the copy loop above."
+  exit 1
+}
 
 # Sequences: the copy carries ids but not sequence state, so the first local
 # insert would collide. Advance every serial past its table's max.

@@ -2362,6 +2362,38 @@ async function loadV5Proposals(
     const items = read.proposals
       .map((r) => toWire(r, today))
       .filter((w): w is V5ProposalWire => w !== null);
+    /* ── WITHHOLDLOG-1 (2026-09-05) · A CARD WITHHELD IS SAID OUT LOUD ───────
+     *
+     * `toWire` answers null for a row it cannot draw — a kind nobody has
+     * decided how to render, or a decision with no stated reason — and
+     * withholding is the right call: a guessed direction on a card the runner
+     * may act on is worse than no card.
+     *
+     * What was wrong is that it happened in SILENCE. Proven on a scratch
+     * database by writing a proposal whose `action_kind` is a word nothing has
+     * been taught: the row was written, the read succeeded, the card never
+     * appeared, and every layer reported success. That is this codebase's
+     * signature failure arriving on the one surface where the runner would
+     * never know to look for it, and Rule 11 says a withheld read is a third
+     * fact rather than an absence.
+     *
+     * It is a LOG and not a wire field on purpose: the runner is owed a
+     * correct screen, not an engine console, and there is nothing he can do
+     * about a lever his phone build predates. The person who can do something
+     * is whoever added the kind, and this is what tells them.
+     */
+    const withheld = read.proposals.length - items.length;
+    if (withheld > 0) {
+      const kinds = read.proposals
+        .filter((r) => toWire(r, today) === null)
+        .map((r) => `${r.id}:${r.actionKind}`)
+        .join(', ');
+      console.log(
+        `[v5/today] ${withheld} pending proposal(s) WITHHELD from the phone because nothing `
+        + `here knows how to draw them · ${kinds} · the runner sees no card and the rows stay `
+        + 'pending; this is not the same fact as having none',
+      );
+    }
     return { items, read: 'ok' };
   } catch (err) {
     console.log('[v5/today] proposal read THREW, showing none · '

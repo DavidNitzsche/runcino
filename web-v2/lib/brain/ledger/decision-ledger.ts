@@ -234,7 +234,26 @@ export async function recordDecision(entry: LedgerEntry): Promise<LedgerWrite> {
          $12::jsonb, $13, $14,
          $15::jsonb, $16::jsonb,
          $17, $18, $19::jsonb,
-         $20, $21, $22::jsonb, $23, NULL,
+         $20, $21, $22::jsonb, $23,
+         -- LEDGERTIMED-1 (2026-09-05) · responded_at WAS HARD-CODED NULL.
+         --
+         -- plan_decision_ledger_response_is_timed says, in the migration's own
+         -- words, that a runner response and its timestamp arrive together:
+         --
+         --   CHECK ((COALESCE(runner_response,'PENDING') IN
+         --           ('ACCEPTED','DECLINED','EXPIRED')) = (responded_at IS NOT NULL))
+         --
+         -- so ANY insert carrying a terminal response was rejected outright.
+         -- accept.ts's DIRECT_PLAN_WRITE lane has passed runnerResponse
+         -- 'ACCEPTED' since it was written, and every one of those writes would
+         -- have failed this constraint. It had simply never run, because none of
+         -- the five kinds routed to that lane can be raised as a proposal yet.
+         -- Wired, tested and inert; the defect surfaced the moment a live accept
+         -- reached it on a scratch database.
+         --
+         -- Stamped in SQL rather than by the caller, so the response and its
+         -- time cannot be supplied separately and disagree (Rule 16).
+         CASE WHEN $23 IN ('ACCEPTED', 'DECLINED', 'EXPIRED') THEN now() ELSE NULL END,
          $24, $25::jsonb,
          $26, $27, $28
        )

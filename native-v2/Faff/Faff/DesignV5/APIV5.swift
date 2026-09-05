@@ -1882,7 +1882,35 @@ extension API {
     /// provenance chip, and duplicating it for V5 would be a second owner for
     /// one decision. Returns true when the server accepted the answer.
     static func answerProposal(id: String, accept: Bool) async throws -> Bool {
-        let path = "api/plan/workout-proposals/\(id)/\(accept ? "accept" : "dismiss")"
+        /* ── V5ACCEPTURL-1 (2026-09-05) · THE LEADING SLASH ──────────────────
+         *
+         * This read `"api/plan/..."` with no separator, concatenated onto
+         * `baseURL.absoluteString`, which carries none either. So the string
+         * built here was
+         *
+         *     http://127.0.0.1:3111api/plan/workout-proposals/6/accept
+         *     https://www.faff.runapi/plan/workout-proposals/6/accept
+         *
+         * — an unparseable authority on the first (so `URL(string:)` answers
+         * nil and this returned `false` having sent NOTHING) and a valid URL
+         * naming a
+         * host that does not exist on the second (so the POST left the phone
+         * addressed to `www.faff.runapi`, failed DNS, and threw into the
+         * caller's `_ = try? await`).
+         *
+         * Either way the runner tapped "Do it", the card refreshed, the
+         * proposal was still pending, and the card came back. THE ACCEPT AND
+         * LEAVE-IT BUTTONS HAD NEVER SENT A REQUEST. Found by rendering the
+         * card against a scratch database and watching the server log stay
+         * empty through three taps.
+         *
+         * `v5`'s own doc comment already states the convention — "every path
+         * it is given carries its own separator" — and every other path in
+         * this file honours it. These were the two that did not, and they were
+         * the two the surface was built on. `scripts/check-v5-url-join.sh`
+         * is what stops the third.
+         */
+        let path = "/api/plan/workout-proposals/\(id)/\(accept ? "accept" : "dismiss")"
         guard let url = URL(string: API.baseURL.absoluteString + path) else { return false }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -1892,6 +1920,30 @@ extension API {
         return (200...299).contains(http.statusCode)
     }
 
+    /// V5UNDO-1 · take one accepted decision back.
+    ///
+    /// `id` is the DECISION-HISTORY id (`w6`), not the row id, because that is
+    /// what the screen holds. The `w` prefix is stripped here rather than at
+    /// the call site so the wire shape is decided in one place: a
+    /// `plan_workout_proposals` row is what the route can reverse, and a `p`
+    /// row belongs to `/api/plan/undo`, which the caller gates on.
+    ///
+    /// Returns the server's own answer rather than a bare Bool would: a 409
+    /// means something else has moved the session since and the undo would
+    /// write over it, and the runner is owed that sentence rather than a
+    /// silent no-op.
+    static func undoProposal(id: String) async throws -> (ok: Bool, status: Int) {
+        let rowId = id.hasPrefix("w") ? String(id.dropFirst()) : id
+        let path = "/api/plan/workout-proposals/\(rowId)/undo"
+        guard let url = URL(string: API.baseURL.absoluteString + path) else { return (false, 0) }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{}".utf8)
+        let (_, http) = try await API.authedSend(req)
+        return ((200...299).contains(http.statusCode), http.statusCode)
+    }
+
     /// V5PROPOSALSURFACE-1 · `GET /api/v5/decisions` · the decision history.
     ///
     /// Deliberately NOT cached. It is reached on purpose by a runner who wants
@@ -1899,7 +1951,11 @@ extension API {
     /// question is worse than a spinner: the whole point of the screen is that
     /// it is the record.
     static func fetchDecisions() async throws -> V5Fetch<V5DecisionsEnvelope> {
-        try await v5("api/v5/decisions", cache: nil, as: V5DecisionsEnvelope.self)
+        // V5ACCEPTURL-1 · leading slash. Without it this concatenated to
+        // `https://www.faff.runapi/v5/decisions`, so the decision history
+        // never loaded once — it drew the outage state on every open, which
+        // reads as "we went blind" about a screen that was never asked.
+        try await v5("/api/v5/decisions", cache: nil, as: V5DecisionsEnvelope.self)
     }
 
     enum V5Fetch<T> {
