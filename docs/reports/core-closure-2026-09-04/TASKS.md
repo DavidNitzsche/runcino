@@ -69,6 +69,9 @@ Checked rather than assumed — the one item that looked web-shaped is not:
 
 | # | Surface | Item | Owner | Blocker |
 |---|---|---|---|---|
+| 0 | shared → iPhone + Watch | **MOVE-A-RUN** — the runner picks a session and a day; the coach ranks valid options, explains the cost, previews, confirms, and can undo. Weekend-away long run is the acceptance case. One of the two remaining breaks in the loop | next session | none |
+| 0 | shared | **Wire `checkPromotion` into plan authoring and adaptation promotion** so the adjudication layer blocks in production, not only in tests | next session | none |
+| 0 | shared | **DOSE-RESPONSIVE-TAPER** — nothing re-SIZES a taper dose from Malibu execution, recovery, HR behaviour or recent load. Every reader exists; no writer uses them | next session | none |
 | 1 | iPhone + Watch | **Ship the integrated build** — everything below the line is merged and unshipped | next session | none |
 | 2 | iPhone + Watch | **Physical device pass** — SMOKE (6 min) then the rest of PHYSICAL-TESTS.md | **David** | a device |
 | 3 | shared | Adaptation promotion — shadow period on production + retire the 3 legacy mutators in ONE change | **David** (live authority) | calendar time, then a decision |
