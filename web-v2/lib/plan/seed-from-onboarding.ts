@@ -863,6 +863,8 @@ export async function seedMaintenancePlanFromOnboarding(
   // It also gives archive + create + every insert a single transaction; they
   // were unbatched `pool.query` calls before.
   const seedBoundary = await mutatePlan<string>({
+    // AUTHORITY (2026-09-05) · the first plan, seeded at onboarding
+    authority: 'AUTHORSHIP',
     userUuid: userId,
     source: 'seed-from-onboarding',
     todayISO: today,

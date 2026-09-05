@@ -21,7 +21,8 @@
 import { describesEvidence } from '@/lib/brain/objective';
 import { PROPOSABLE_KINDS } from '@/lib/plan/adaptation-authority';
 import { pool } from '@/lib/db/pool';
-import { rowOrNull } from '@/lib/db/read';
+import { attempt, rowOrNull } from '@/lib/db/read';
+import { expireStaleWorkoutProposals } from './proposal-expiry';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import type { AdaptationAction, AdaptationTrigger } from './adapt';
 import { stripResearchCitations } from './strip-citations';
@@ -204,48 +205,150 @@ export async function writeWorkoutProposals(
 }
 
 /**
- * Load pending proposals for the runner's upcoming workouts. Used
- * by the seed envelope to render the Today-view banner.
+ * A read of the proposal table that says which of the three things happened.
  *
- * Auto-marks expired proposals (workout date passed) as 'expired' on
- * read · keeps the table clean without a separate cleanup cron.
+ * Rule 11: "don't know", "measured zero" and "the read failed" are three
+ * facts. The failure branch carries NO `proposals` field, so a caller cannot
+ * spend an empty list it never actually read — the same enforcement posture as
+ * `NormalReading<T>` in `lib/training/normal-window.ts`.
+ *
+ * This was `Promise<PendingProposal[]>` with `.catch(() => ({ rows: [] }))`
+ * behind it, which answered a database outage with the sentence "you have no
+ * pending decisions". On the ONE surface whose entire job is to carry a
+ * decision to the runner, that is the worst available failure: it does not
+ * look broken, it looks like the coach has nothing to say.
+ */
+export type ProposalRead =
+  | { readonly ok: true; readonly proposals: PendingProposal[] }
+  | { readonly ok: false; readonly error: Error };
+
+/**
+ * Load pending proposals for the runner's upcoming workouts.
+ *
+ * ENSURES ITS OWN PRECONDITION (Rule 23) rather than assuming the nightly
+ * sweep ran: `expireStaleWorkoutProposals` is idempotent and cheap, so calling
+ * it here costs nothing when the cron already did the work and saves the read
+ * from serving a past-dated row when it did not. What changed is that a FAILED
+ * expiry is now reported instead of vanishing into `.catch(() => {})` — the
+ * ambiguity that left production row 6 pending for eleven days with no way to
+ * tell "nobody called" from "the write failed".
+ *
+ * An expiry failure does not fail the read. The SELECT below filters
+ * past-dated rows itself, so the runner still sees the right list; what the
+ * failure costs is the row's status in the table, and that is a log line, not
+ * a blank screen.
  */
 export async function loadPendingProposals(
   userUuid: string,
-): Promise<PendingProposal[]> {
-  // Auto-expire stale rows first · cheap, runs per request.
-  await pool.query(
-    `UPDATE plan_workout_proposals
-        SET status = 'expired', resolved_at = NOW()
-      WHERE user_uuid = $1::uuid
-        AND status = 'pending'
-        AND workout_date_iso < CURRENT_DATE::text`,
-    [userUuid],
-  ).catch(() => {});
+): Promise<ProposalRead> {
+  const swept = await expireStaleWorkoutProposals(userUuid);
+  if (!swept.ok) {
+    console.error(
+      '[workout-proposals] expiry sweep FAILED · pending rows may outlive their '
+      + 'workout date and block the dedupe that stops a duplicate card · '
+      + swept.error.message,
+    );
+  }
 
-  const rows = (await pool.query<{
-    id: number;
-    user_uuid: string;
-    plan_workout_id: string;
-    workout_date_iso: string;
-    action_kind: string;
-    action_payload: PendingProposal['actionPayload'];
-    reason: string;
-    evidence: Record<string, unknown>;
-    created_at: Date;
-  }>(
-    `SELECT id, user_uuid::text AS user_uuid, plan_workout_id,
-            workout_date_iso, action_kind, action_payload, reason,
-            evidence, created_at
-       FROM plan_workout_proposals
-      WHERE user_uuid = $1::uuid
-        AND status = 'pending'
-        AND workout_date_iso >= CURRENT_DATE::text
-      ORDER BY workout_date_iso ASC, created_at ASC`,
-    [userUuid],
-  ).catch(() => ({ rows: [] }))).rows;
+  // The runner's day, not the server's. `CURRENT_DATE` is server-clock UTC and
+  // rolls over at 5pm for a Pacific runner, which hid TODAY'S proposal from
+  // him for the last seven hours of every day. See `lib/runtime/runner-tz.ts`.
+  const today = await runnerToday(userUuid);
 
-  return rows.map((r) => ({
+  const read = await attempt(
+    'plan/workout-proposals · pending list',
+    pool.query<{
+      id: number;
+      user_uuid: string;
+      plan_workout_id: string;
+      workout_date_iso: string;
+      action_kind: string;
+      action_payload: PendingProposal['actionPayload'];
+      reason: string;
+      evidence: Record<string, unknown>;
+      created_at: Date;
+    }>(
+      `SELECT id, user_uuid::text AS user_uuid, plan_workout_id,
+              workout_date_iso, action_kind, action_payload, reason,
+              evidence, created_at
+         FROM plan_workout_proposals
+        WHERE user_uuid = $1::uuid
+          AND status = 'pending'
+          AND workout_date_iso >= $2
+        ORDER BY workout_date_iso ASC, created_at ASC`,
+      [userUuid, today],
+    ),
+  );
+  if (!read.ok) return { ok: false, error: read.error };
+
+  return { ok: true, proposals: read.value.rows.map(toPending) };
+}
+
+/**
+ * Every proposal this runner has ever been raised, newest first, whatever
+ * became of it.
+ *
+ * The decision-history surface's only source for the per-workout lane. Kept
+ * beside the pending read so the two cannot grow different ideas of what a row
+ * means (Rule 16), and sharing `toPending` for exactly that reason.
+ */
+export async function loadProposalHistory(
+  userUuid: string,
+  limit = 50,
+): Promise<
+  | { readonly ok: true; readonly rows: readonly (PendingProposal & { storedStatus: string; resolvedAtISO: string | null })[] }
+  | { readonly ok: false; readonly error: Error }
+> {
+  const read = await attempt(
+    'plan/workout-proposals · history',
+    pool.query<{
+      id: number;
+      user_uuid: string;
+      plan_workout_id: string;
+      workout_date_iso: string;
+      action_kind: string;
+      action_payload: PendingProposal['actionPayload'];
+      reason: string;
+      evidence: Record<string, unknown>;
+      created_at: Date;
+      status: string;
+      resolved_at: Date | null;
+    }>(
+      `SELECT id, user_uuid::text AS user_uuid, plan_workout_id,
+              workout_date_iso, action_kind, action_payload, reason,
+              evidence, created_at, status, resolved_at
+         FROM plan_workout_proposals
+        WHERE user_uuid = $1::uuid
+        ORDER BY created_at DESC, id DESC
+        LIMIT $2`,
+      [userUuid, Math.max(1, Math.min(200, limit))],
+    ),
+  );
+  if (!read.ok) return { ok: false, error: read.error };
+
+  return {
+    ok: true,
+    rows: read.value.rows.map((r) => ({
+      ...toPending(r),
+      storedStatus: r.status,
+      resolvedAtISO: r.resolved_at ? r.resolved_at.toISOString() : null,
+    })),
+  };
+}
+
+/** One row shape, one translation. Both reads above use it. */
+function toPending(r: {
+  id: number;
+  user_uuid: string;
+  plan_workout_id: string;
+  workout_date_iso: string;
+  action_kind: string;
+  action_payload: PendingProposal['actionPayload'];
+  reason: string;
+  evidence: Record<string, unknown>;
+  created_at: Date;
+}): PendingProposal {
+  return {
     id: r.id,
     userUuid: r.user_uuid,
     planWorkoutId: r.plan_workout_id,
@@ -256,7 +359,7 @@ export async function loadPendingProposals(
     evidence: r.evidence ?? {},
     status: 'pending',
     createdAt: r.created_at.toISOString(),
-  }));
+  };
 }
 
 /**

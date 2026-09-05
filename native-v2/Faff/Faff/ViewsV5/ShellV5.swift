@@ -113,6 +113,11 @@ enum V5Route: Hashable {
     case runDetail(id: String)
     case settings
     case shoes
+    /// V5PROPOSALSURFACE-1 · what the coach has decided, and what became of
+    /// it. Reached from Settings, deliberately: a history changes nothing the
+    /// runner does next, so it earns no permanent position on Today or in the
+    /// bar. See `DecisionHistoryV5.swift`.
+    case decisions
     /// The paces-moved screen. Reached from a coach line, not from the bar.
     case pacesMoved
     /// The eight-stage walk-run ladder, once a flare has cleared to return.

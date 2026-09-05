@@ -105,6 +105,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     | { kind: 'abort'; error: string; status: number }
     | { kind: 'ok'; applied: { type: string; distance_mi: number | null; date_iso: string } }
   >({
+    // AUTHORITY (2026-09-05) · he accepted a standing change
+    authority: 'RUNNER_ACCEPTED',
     userUuid: userId,
     source: 'api/plan/workout accept-standing',
     todayISO: await runnerToday(userId),

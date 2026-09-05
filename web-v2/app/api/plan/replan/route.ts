@@ -172,6 +172,8 @@ export async function POST(req: NextRequest) {
       // plan_mutation_rejections where it can be adjudicated. Silently applying
       // it and silently refusing it are both worse than a visible refusal.
       const ladderBoundary = await mutatePlan<number>({
+    // AUTHORITY (2026-09-05) · he asked for a replan
+    authority: 'RUNNER_INITIATED',
         userUuid: userId,
         source: 'api/plan/replan sick-ladder',
         todayISO: fromISO,

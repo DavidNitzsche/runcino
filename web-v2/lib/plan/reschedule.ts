@@ -2485,6 +2485,8 @@ export async function applyReschedule(input: ApplyInput): Promise<ApplyOutcome> 
 
   let recordMissing = false;
   const res = await mutatePlan<RescheduleDecision>({
+    // AUTHORITY (2026-09-05) · a move the runner asked for and confirmed
+    authority: 'RUNNER_INITIATED',
     userUuid: input.userUuid,
     source: 'plan/reschedule apply',
     todayISO: input.todayISO,
@@ -2710,6 +2712,8 @@ export async function undoReschedule(opts: {
   if (block) return { ok: false, code: 'sealed', reason: block };
 
   const res = await mutatePlan<number>({
+    // AUTHORITY (2026-09-05) · a move the runner asked for and confirmed
+    authority: 'RUNNER_INITIATED',
     userUuid: opts.userUuid,
     source: 'plan/reschedule undo',
     todayISO: opts.todayISO,

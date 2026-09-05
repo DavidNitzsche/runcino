@@ -401,6 +401,15 @@ struct V5OutageCopy {
         reassurance: "Nothing is counted from this screen. It reads again when the connection does."
     )
 
+    /// V5PROPOSALSURFACE-1 · the decision history. The reassurance is doing
+    /// real work here: this is the one screen whose emptiness would otherwise
+    /// read as "the coach has never decided anything about me", which is the
+    /// exact false fact the screen was built to disprove.
+    static let decisions = V5OutageCopy(
+        note: "Your decision history did not load. Every decision is still on record, we just cannot see it.",
+        reassurance: "Nothing is decided from this screen. Anything still waiting on you is on Today."
+    )
+
     static let tomorrow = V5OutageCopy(
         note: "Tomorrow did not load. We just cannot see it from here.",
         reassurance: "Whatever the niggle turns into, the day is decided in the morning, not now."

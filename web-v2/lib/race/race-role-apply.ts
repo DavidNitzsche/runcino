@@ -116,6 +116,8 @@ export async function applyRaceRole(opts: {
   const cat: TuneUpCategory = opts.category === '10k' || opts.category === '5k' ? opts.category : 'hm';
 
   const boundary = await mutatePlan<number>({
+    // AUTHORITY (2026-09-05) · stamps the role the runner already chose for a race
+    authority: 'LIFECYCLE',
     userUuid: userId,
     source: 'api/plan/proposal · race_role accept',
     todayISO,

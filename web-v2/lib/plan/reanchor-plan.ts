@@ -406,6 +406,16 @@ async function reanchorOffCanonicalPrior(
   const sourceMode = anchors.basis.threshold.sourceMode;
 
   const boundary = await mutatePlan<{ workoutsUpdated: number; workoutsSealed: number } | null>({
+    // AUTHORITY (2026-09-05) · this IS a coaching adaptation: it rewrites
+    // prescribed paces on a live plan from the engine's own judgement, and it
+    // is called from an unattended cron. Held, not exempted: the hold is
+    // logged on every run and the gate fails when any field is missing.
+    authority: 'COACHING_ADAPTATION',
+    hold: {
+      owner: 'David',
+      blocker: 'the refusal has nowhere to go until reanchor raises a proposal instead of writing',
+      expiresWhen: 'reanchorActivePlan creates a proposal and applies it under RUNNER_ACCEPTED',
+    },
     userUuid: userId,
     source: 'reanchor-plan/canonical-prior',
     todayISO: today,
@@ -663,6 +673,16 @@ async function reanchorRacePrep(
   // and rolls back if the claim turns out to be false, so the declaration is
   // proven rather than trusted.
   const boundary = await mutatePlan<{ workoutsUpdated: number; workoutsSealed: number } | null>({
+    // AUTHORITY (2026-09-05) · this IS a coaching adaptation: it rewrites
+    // prescribed paces on a live plan from the engine's own judgement, and it
+    // is called from an unattended cron. Held, not exempted: the hold is
+    // logged on every run and the gate fails when any field is missing.
+    authority: 'COACHING_ADAPTATION',
+    hold: {
+      owner: 'David',
+      blocker: 'the refusal has nowhere to go until reanchor raises a proposal instead of writing',
+      expiresWhen: 'reanchorActivePlan creates a proposal and applies it under RUNNER_ACCEPTED',
+    },
     userUuid: userId,
     source: 'reanchor-plan/race-prep',
     todayISO: today,
@@ -837,6 +857,16 @@ async function reanchorMaintenance(
   let updated = 0;
   let sealedCount = 0;
   const boundary = await mutatePlan<void>({
+    // AUTHORITY (2026-09-05) · this IS a coaching adaptation: it rewrites
+    // prescribed paces on a live plan from the engine's own judgement, and it
+    // is called from an unattended cron. Held, not exempted: the hold is
+    // logged on every run and the gate fails when any field is missing.
+    authority: 'COACHING_ADAPTATION',
+    hold: {
+      owner: 'David',
+      blocker: 'the refusal has nowhere to go until reanchor raises a proposal instead of writing',
+      expiresWhen: 'reanchorActivePlan creates a proposal and applies it under RUNNER_ACCEPTED',
+    },
     userUuid: userId,
     source: 'reanchor-plan/maintenance',
     todayISO: today,

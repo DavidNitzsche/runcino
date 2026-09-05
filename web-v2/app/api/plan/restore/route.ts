@@ -72,6 +72,8 @@ export async function POST(req: NextRequest) {
     | { kind: 'ok'; restored: Record<string, unknown> }
   >({
     userUuid: userId,
+    // AUTHORITY (2026-09-05) · he asked to restore a plan version.
+    authority: 'RUNNER_INITIATED',
     source: 'api/plan/restore',
     todayISO: await runnerToday(userId),
     workoutId,

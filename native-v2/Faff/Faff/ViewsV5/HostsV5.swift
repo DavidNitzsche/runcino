@@ -2485,6 +2485,10 @@ struct ShoesHostV5: View {
 }
 
 struct SettingsHostV5: View {
+    /// V5PROPOSALSURFACE-1 · so Settings can push the decision history. Every
+    /// other pushed destination in this app is reached the same way, through
+    /// the shell's own stack rather than a nested navigation.
+    @Binding var path: [V5Route]
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var runGate: PhoneRunGate
     @State private var stravaConnecting = false
@@ -2510,6 +2514,7 @@ struct SettingsHostV5: View {
                                onToggleStrava: { Task { await connectStrava() } },
                                onSetPhoneRun: { v in Task { await patch(["phone_run_enabled": v]) } },
                                onOpenTravel: { travelOpen = true },
+                               onOpenDecisions: { path.append(.decisions) },
                                onBack: { dismiss() })
                 } else {
                     ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
@@ -2666,7 +2671,8 @@ struct FaffV5Root<LiveContent: View>: View {
                 case .raceDetail(let slug): RaceDetailHostV5(slug: slug)
                 case .runLog:               RunLogHostV5(path: path)
                 case .runDetail(let id):    RunDetailHostV5(id: id)
-                case .settings:             SettingsHostV5()
+                case .settings:             SettingsHostV5(path: path)
+                case .decisions:            DecisionHistoryHostV5()
                 case .shoes:                ShoesHostV5()
                 case .addRace:              AddRaceHostV5(path: path)
                 case .courseImport(let slug, let name, let mi):
@@ -3373,6 +3379,41 @@ struct RunLogHostV5: View {
         outage = false
         let fetched = try? await API.fetchLog(limit: 120)
         if let fetched { log = fetched } else { outage = true }
+    }
+}
+
+// MARK: - Decision history
+//
+// V5PROPOSALSURFACE-1. `GET /api/v5/decisions` speaks the v5 refusal shape, so
+// this reads `V5Fetch` and keeps all three states apart end to end: `.ok` is
+// the record (which may honestly be empty), `.failed` is the outage, and
+// `.absent` cannot happen here because the route never refuses — a history has
+// nothing to decline. It is mapped to the outage anyway rather than to an
+// empty list, because a refusal this screen did not expect is a fact we do not
+// understand, and Rule 11 says do not spend it as "nothing".
+
+struct DecisionHistoryHostV5: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var state: DecisionHistoryV5.State = .loading
+
+    var body: some View {
+        DecisionHistoryV5(state: state,
+                          onBack: { dismiss() },
+                          onRetry: { Task { await load() } })
+            .task { await load() }
+            .navigationBarBackButtonHidden(true)
+    }
+
+    private func load() async {
+        state = .loading
+        guard let fetched = try? await API.fetchDecisions() else {
+            state = .failed
+            return
+        }
+        switch fetched {
+        case .ok(let env): state = .ready(env.decisions)
+        case .absent, .failed: state = .failed
+        }
     }
 }
 

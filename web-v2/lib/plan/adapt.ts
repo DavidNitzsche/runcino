@@ -94,6 +94,7 @@ import { distanceMiOfMeta } from '@/lib/race/distance';
 import { distanceCategoryOrNull, type DistanceCategory } from '@/lib/race/distance-category';
 import { logSealSkip } from './seal';
 import { resolveDateRangeExecutions } from '@/lib/execution/day-resolver';
+import type { AuthorityClass } from '@/lib/brain/mutation/authority';
 import { mutatePlan } from './mutate';
 import { preserveProgressionSql } from './progression-spec';
 import { stripResearchCitations } from './strip-citations';
@@ -1607,7 +1608,19 @@ async function hasRecentGapIntent(userId: string, days: number): Promise<boolean
  *  reads pending intents (acknowledged_at IS NULL) so the coach can
  *  acknowledge the change once and move on.
  */
-export async function applyAdaptations(userId: string, actions: AdaptationAction[]): Promise<number> {
+/**
+ * AUTHORITY (2026-09-05) · this function is reached by TWO authorities and it
+ * cannot guess which. `/api/plan/workout-proposals/[id]/accept` calls it after
+ * the runner said yes; `run-adaptations` calls it unattended. Before the
+ * boundary existed those were the same call, which is precisely how an
+ * automatic coaching change and a runner-consented one became
+ * indistinguishable at the write.
+ */
+export async function applyAdaptations(
+  userId: string,
+  actions: AdaptationAction[],
+  authority: AuthorityClass,
+): Promise<number> {
   if (actions.length === 0) return 0;
   // 2026-08-17 · citation scrub at the WRITE site. `why` is the one
   // string the runner reads (coach_intents.value.why → adaptation-info
@@ -1649,6 +1662,8 @@ export async function applyAdaptations(userId: string, actions: AdaptationAction
   // empty a QUALITY-phase week of quality entirely. Both are now caught.
   const todayForBoundary = await runnerToday(userId);
   const boundary = await mutatePlan<number>({
+    // AUTHORITY · threaded from the caller, never assumed here.
+    authority,
     userUuid: userId,
     source: 'adapt/applyAdaptations',
     todayISO: todayForBoundary,
@@ -3312,11 +3327,23 @@ async function detectFieldTestDue(userId: string): Promise<AdaptationTrigger | n
     // "No race in six weeks" is false and reads as a mistake when the runner
     // raced a fortnight ago; what is true in that case is that the race could
     // not measure their threshold heart rate.
+    //
+    // V5PROPOSALSURFACE-1 (2026-09-05) · THE ACTION CLAUSE WAS REMOVED, and it
+    // was removed because the card was RENDERED for the first time.
+    //
+    // This sentence is a proposal's `reason`, which the phone draws as `why`
+    // directly under a headline that already says what would change ("Make
+    // Wednesday a field test"). So the trailing "Convert <date>'s quality
+    // session to a 30-minute threshold field test" restated the headline
+    // underneath itself, and printed a raw ISO date at a runner while doing
+    // it. Rule 17: the runner reads a sentence once, and the split
+    // `lib/faff/v5-proposals.ts` documents is reason = the evidence, headline
+    // = the change. The conversion itself is still described by the action and
+    // still applied by `applyAdaptations`; nothing about the behaviour moved.
     const reason = lthrStale.stale
-      ? `Threshold HR was last set ${lthrStale.ageDays ?? 'over 12 weeks'} days ago and no race since could re-derive it. `
-        + `Convert ${slot.date}'s quality session to a 30-minute threshold field test to re-anchor your zones.`
-      : `No race or field test in the last 6 weeks. Pace anchors are going stale. `
-        + `Convert ${slot.date}'s quality session to a 30-minute threshold field test to lock in current fitness.`;
+      ? `Threshold HR was last set ${lthrStale.ageDays ?? 'over 12 weeks'} days ago `
+        + 'and no race since could re-derive it.'
+      : 'No race or field test in the last 6 weeks. Pace anchors are going stale.';
 
     return {
       kind: 'field_test_due',

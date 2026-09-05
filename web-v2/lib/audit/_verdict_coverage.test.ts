@@ -249,7 +249,13 @@ const PAIRS: readonly Pair[] = [
     // added push-side coverage to this pair, so the measured imbalance came
     // DOWN and a pin left at the old number would have been a gate that had
     // quietly stopped holding.
-    measuredRatio: 3.78,
+    //
+    // TIGHTENED AGAIN 3.78 -> 3.27, same day, V5PROPOSALSURFACE-1. The
+    // proposal surface's own suites carry `mark_upgrade` on the push side, and
+    // `_v5_proposals.test.ts` now asserts the upward direction reaches the wire
+    // as `push` rather than as a word this app invented. The imbalance is still
+    // over three to one and still a defect; it is one notch less of one.
+    measuredRatio: 3.27,
   },
 ];
 

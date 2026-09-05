@@ -96,6 +96,10 @@ struct SettingsV5: View {
     /// control — the host owns the presentation, this view only reports the
     /// tap. Nil hides the row (previews without a host still render).
     var onOpenTravel: (() -> Void)? = nil
+    /// V5PROPOSALSURFACE-1 · opens the decision history. Same posture as
+    /// `onOpenTravel`: routed out, and nil hides the row so a bare preview
+    /// never draws a dead entry.
+    var onOpenDecisions: (() -> Void)? = nil
     var onBack: (() -> Void)? = nil
 
     @State private var longRunDay: String
@@ -119,6 +123,7 @@ struct SettingsV5: View {
          onToggleStrava: @escaping () -> Void,
          onSetPhoneRun: ((Bool) -> Void)? = nil,
          onOpenTravel: (() -> Void)? = nil,
+         onOpenDecisions: (() -> Void)? = nil,
          onBack: (() -> Void)? = nil) {
         self.model = model
         self.onSetLongRunDay = onSetLongRunDay
@@ -129,6 +134,7 @@ struct SettingsV5: View {
         self.onToggleStrava = onToggleStrava
         self.onSetPhoneRun = onSetPhoneRun
         self.onOpenTravel = onOpenTravel
+        self.onOpenDecisions = onOpenDecisions
         self.onBack = onBack
         _longRunDay = State(initialValue: model.longRunDay)
         _daysPerWeek = State(initialValue: model.daysPerWeek)
@@ -307,6 +313,13 @@ struct SettingsV5: View {
     private var coachSection: some View {
         ListGroup(header: "Coach") {
             ListRow(label: "Coach voice", value: .measured("Honest, no cheerleading"))
+            // V5PROPOSALSURFACE-1 · the record. Seven proposals had been
+            // raised against this runner's plan and he had never seen one.
+            if let onOpenDecisions {
+                ListRow(label: "Decisions",
+                        sub: "Every change the coach has proposed, and what became of it",
+                        onTap: onOpenDecisions)
+            }
         }
     }
 

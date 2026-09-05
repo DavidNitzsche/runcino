@@ -85,6 +85,8 @@ export async function POST(req: NextRequest) {
   // out of a QUALITY-phase week).
   const boundary = await mutatePlan<{ rowCount: number; row: Record<string, unknown> | undefined }>({
     userUuid: userId,
+    // AUTHORITY (2026-09-05) · he accepted a coach proposal.
+    authority: 'RUNNER_ACCEPTED',
     source: 'api/coach/proposal accept',
     todayISO: today,
     planId: plan.id,

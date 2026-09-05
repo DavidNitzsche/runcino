@@ -1,0 +1,306 @@
+{
+  "proposals": [
+    {
+      "id": "7",
+      "dateISO": "2026-09-09",
+      "direction": "push",
+      "standing": "proposal",
+      "headline": "Make Wednesday a field test",
+      "why": "No race or field test in the last 6 weeks. Pace anchors are going stale. Convert 2026-09-09's quality session to a 30-minute threshold field test to lock in current fitness.",
+      "detail": {
+        "evidenceUsed": [
+          "Threshold HR anchor stale: no",
+          "Session type: intervals",
+          "Session distance: 2.5 mi"
+        ],
+        "missingEvidence": [
+          "Threshold HR anchor age, days"
+        ],
+        "optionsConsidered": null,
+        "earningConditions": null,
+        "reassessOnISO": null,
+        "affectedWorkouts": [
+          {
+            "dateISO": "2026-09-09",
+            "what": "intervals · 2.5 mi"
+          }
+        ],
+        "policyAssumptions": null
+      }
+    },
+    {
+      "id": "101",
+      "dateISO": "2026-09-10",
+      "direction": "push",
+      "standing": "proposal",
+      "headline": "Thursday goes to 9 mi",
+      "why": "You absorbed 47.3 miles against 45.5 prescribed, and the last three long runs held their pace into the final third.",
+      "detail": {
+        "evidenceUsed": [
+          "Session type: long run",
+          "Session distance: 8 mi",
+          "Week volume, miles: 47.3",
+          "Longest run, miles: 16"
+        ],
+        "missingEvidence": [],
+        "optionsConsidered": [
+          {
+            "what": "Leave Thursday at 8 mi",
+            "why": "a fourth week at the same load produces no new evidence either way"
+          },
+          {
+            "what": "Add the mile to Saturday instead",
+            "why": "it would put the step on the week's longest run, which is the one doctrine caps hardest"
+          }
+        ],
+        "earningConditions": null,
+        "reassessOnISO": null,
+        "affectedWorkouts": [
+          {
+            "dateISO": "2026-09-10",
+            "what": "long run · 8 mi"
+          }
+        ],
+        "policyAssumptions": [
+          "Three comparable sessions before this engine claims a capacity ceiling"
+        ]
+      }
+    },
+    {
+      "id": "102",
+      "dateISO": "2026-09-11",
+      "direction": "pull_back",
+      "standing": "proposal",
+      "headline": "Take 17% off Friday",
+      "why": "Your last two long runs lost 22 and 19 seconds a mile across the final third.",
+      "detail": {
+        "evidenceUsed": [
+          "Session type: long run",
+          "Session distance: 18 mi"
+        ],
+        "missingEvidence": [
+          "Heart rate on the second of the two long runs"
+        ],
+        "optionsConsidered": null,
+        "earningConditions": null,
+        "reassessOnISO": null,
+        "affectedWorkouts": [
+          {
+            "dateISO": "2026-09-11",
+            "what": "long run · 18 mi"
+          }
+        ],
+        "policyAssumptions": null
+      }
+    },
+    {
+      "id": "103",
+      "dateISO": "2026-09-12",
+      "direction": "recovery",
+      "standing": "proposal",
+      "headline": "Saturday becomes a rest day",
+      "why": "Three quality sessions land inside five days this week, and the last one sits on the day after your long run.",
+      "detail": {
+        "evidenceUsed": [
+          "Session type: intervals",
+          "Session distance: 7 mi"
+        ],
+        "missingEvidence": [],
+        "optionsConsidered": null,
+        "earningConditions": null,
+        "reassessOnISO": null,
+        "affectedWorkouts": [
+          {
+            "dateISO": "2026-09-12",
+            "what": "intervals · 7 mi"
+          }
+        ],
+        "policyAssumptions": null
+      }
+    },
+    {
+      "id": "104",
+      "dateISO": "2026-09-13",
+      "direction": "move",
+      "standing": "proposal",
+      "headline": "Move Sunday to Tuesday",
+      "why": "This session and Monday's threshold sit one day apart, which leaves neither a recovery day.",
+      "detail": {
+        "evidenceUsed": [
+          "Session type: tempo",
+          "Session distance: 8 mi"
+        ],
+        "missingEvidence": [],
+        "optionsConsidered": null,
+        "earningConditions": null,
+        "reassessOnISO": null,
+        "affectedWorkouts": [
+          {
+            "dateISO": "2026-09-13",
+            "what": "tempo · 8 mi"
+          },
+          {
+            "dateISO": "2026-09-15",
+            "what": "Where it would move to"
+          }
+        ],
+        "policyAssumptions": null
+      }
+    },
+    {
+      "id": "105",
+      "dateISO": "2026-10-08",
+      "direction": "push",
+      "standing": "condition",
+      "headline": "Thursday goes to 20 mi",
+      "why": "Week 9 opens at 55 miles, which is 6 more than you have run in a week.",
+      "detail": {
+        "evidenceUsed": [
+          "Session type: long run",
+          "Session distance: 18 mi"
+        ],
+        "missingEvidence": [],
+        "optionsConsidered": null,
+        "earningConditions": [
+          "A 50 mile week, completed.",
+          "An 18 mile long run that holds its pace to the end."
+        ],
+        "reassessOnISO": "2026-09-28",
+        "affectedWorkouts": [
+          {
+            "dateISO": "2026-10-08",
+            "what": "long run · 18 mi"
+          }
+        ],
+        "policyAssumptions": null
+      }
+    },
+    {
+      "id": "106",
+      "dateISO": "2026-09-24",
+      "direction": "pull_back",
+      "standing": "deferral",
+      "headline": "Take 10% off Thursday",
+      "why": "Two of the last three weeks ended above your usual resting heart rate, and the third has not finished.",
+      "detail": {
+        "evidenceUsed": [
+          "Session type: threshold",
+          "Session distance: 9 mi"
+        ],
+        "missingEvidence": [],
+        "optionsConsidered": null,
+        "earningConditions": null,
+        "reassessOnISO": "2026-09-19",
+        "affectedWorkouts": [
+          {
+            "dateISO": "2026-09-24",
+            "what": "threshold · 9 mi"
+          }
+        ],
+        "policyAssumptions": null
+      }
+    }
+  ],
+  "proposalsRead": "ok",
+  "decisions": [
+    {
+      "id": "w105",
+      "dateISO": "2026-10-08",
+      "decidedISO": "2026-10-08",
+      "direction": "push",
+      "outcome": "pending",
+      "headline": "Thursday goes to 20 mi",
+      "why": "Week 9 opens at 55 miles, which is 6 more than you have run in a week."
+    },
+    {
+      "id": "w106",
+      "dateISO": "2026-09-24",
+      "decidedISO": "2026-09-24",
+      "direction": "pull_back",
+      "outcome": "deferred",
+      "headline": "Take 10% off Thursday",
+      "why": "Two of the last three weeks ended above your usual resting heart rate, and the third has not finished."
+    },
+    {
+      "id": "w104",
+      "dateISO": "2026-09-13",
+      "decidedISO": "2026-09-13",
+      "direction": "move",
+      "outcome": "pending",
+      "headline": "Move Sunday to Tuesday",
+      "why": "This session and Monday's threshold sit one day apart, which leaves neither a recovery day."
+    },
+    {
+      "id": "w103",
+      "dateISO": "2026-09-12",
+      "decidedISO": "2026-09-12",
+      "direction": "recovery",
+      "outcome": "pending",
+      "headline": "Saturday becomes a rest day",
+      "why": "Three quality sessions land inside five days this week, and the last one sits on the day after your long run."
+    },
+    {
+      "id": "w102",
+      "dateISO": "2026-09-11",
+      "decidedISO": "2026-09-11",
+      "direction": "pull_back",
+      "outcome": "pending",
+      "headline": "Take 17% off Friday",
+      "why": "Your last two long runs lost 22 and 19 seconds a mile across the final third."
+    },
+    {
+      "id": "w101",
+      "dateISO": "2026-09-10",
+      "decidedISO": "2026-09-10",
+      "direction": "push",
+      "outcome": "pending",
+      "headline": "Thursday goes to 9 mi",
+      "why": "You absorbed 47.3 miles against 45.5 prescribed, and the last three long runs held their pace into the final third."
+    },
+    {
+      "id": "p9",
+      "dateISO": null,
+      "decidedISO": "2026-09-03",
+      "direction": null,
+      "outcome": "applied",
+      "headline": "The engine rebuilt your block",
+      "why": "Your threshold pace was re-anchored and the block was re-authored around it."
+    },
+    {
+      "id": "w7",
+      "dateISO": "2026-09-09",
+      "decidedISO": "2026-09-02",
+      "direction": "push",
+      "outcome": "pending",
+      "headline": "Make Wednesday a field test",
+      "why": "No race or field test in the last 6 weeks. Pace anchors are going stale. Convert 2026-09-09's quality session to a 30-minute threshold field test to lock in current fitness."
+    },
+    {
+      "id": "p8",
+      "dateISO": null,
+      "decidedISO": "2026-08-30",
+      "direction": null,
+      "outcome": "superseded",
+      "headline": "Where this build projects",
+      "why": "A newer read of the same gap replaced this one before you answered it."
+    },
+    {
+      "id": "w6",
+      "dateISO": "2026-08-25",
+      "decidedISO": "2026-08-23",
+      "direction": "push",
+      "outcome": "expired",
+      "headline": "Make Tuesday a field test",
+      "why": "No race or field test in the last 6 weeks. Pace anchors are going stale. Convert 2026-08-25's quality session to a 30-minute threshold field test to lock in current fitness."
+    },
+    {
+      "id": "w5",
+      "dateISO": "2026-08-06",
+      "decidedISO": "2026-08-07",
+      "direction": "pull_back",
+      "outcome": "expired",
+      "headline": "Thursday becomes an easy run",
+      "why": "Readiness pullback · HRV below 5 days running."
+    }
+  ]
+}

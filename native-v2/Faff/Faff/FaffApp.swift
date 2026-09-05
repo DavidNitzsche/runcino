@@ -166,6 +166,68 @@ struct FaffApp: App {
         #endif
     }
 
+    /// DEBUG-only proposal-surface render harness, the fourth sibling of
+    /// `-faffToken`, `-faffHost` and `-faffRunDetail`.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHY IT EXISTS
+    ///
+    /// CLAUDE.md Rule 13: a change to something the runner sees is verified by
+    /// RENDERING it. The proposal surface has a problem `-faffRunDetail` did
+    /// not: there is nothing to render. Production has SEVEN
+    /// `plan_workout_proposals` rows in the life of the product, two of them
+    /// pending, and both are `field_test`. So signing the simulator in and
+    /// opening Today would exercise ONE of the six directions and none of the
+    /// four standings, and seeding the other five would mean writing rows into
+    /// the production table, which is exactly what
+    /// `lib/verify/install-barrier` exists to prevent.
+    ///
+    /// This resolves it the way `-faffRunDetail` resolved the run-detail case,
+    /// one step further out: the file is the SERVER'S OWN `V5ProposalWire`
+    /// SHAPE, decoded by the REAL decoder and drawn by the REAL views:
+    ///
+    ///     xcrun simctl launch <udid> run.faff.app -faffProposals props.json
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// WHAT IT DOES AND DOES NOT PROVE
+    ///
+    /// It proves the decode and the drawing, over every direction and standing
+    /// the engine can emit — which no account's real data can currently reach.
+    /// It does NOT exercise the network hop, the auth layer, `toWire`'s
+    /// mapping from a database row, or the accept and dismiss writes. Anything
+    /// verified this way should say so. That is a smaller claim than "I opened
+    /// the app against my own account", and a much larger one than "it
+    /// compiled".
+    ///
+    /// Never compiled into a release build. It renders; it cannot mutate
+    /// anything, here or upstream.
+    private static func proposalFixtureIfAsked() -> ProposalHarnessFixture? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffProposals"), i + 1 < args.count else { return nil }
+        let name = args[i + 1]
+        guard let dir = FileManager.default.urls(for: .documentDirectory,
+                                                 in: .userDomainMask).first else { return nil }
+        let url = dir.appendingPathComponent(name)
+        guard let data = try? Data(contentsOf: url) else {
+            NSLog("[faffProposals] no file at \(url.path)")
+            return nil
+        }
+        do {
+            return try JSONDecoder().decode(ProposalHarnessFixture.self, from: data)
+        } catch {
+            // LOUD, for the same reason `-faffRunDetail` is: a harness that
+            // silently fell through to the normal app would produce a
+            // screenshot of the sign-in screen and an agent reporting that it
+            // had rendered the feature.
+            NSLog("[faffProposals] decode failed: \(error)")
+            return nil
+        }
+        #else
+        return nil
+        #endif
+    }
+
     private static func rescheduleDateIfAsked() -> String? {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-faffReschedule"), i + 1 < args.count else { return nil }
@@ -190,6 +252,11 @@ struct FaffApp: App {
                 // One run, drawn from a real server payload. See
                 // `runDetailFixtureIfAsked` for why this road exists.
                 RunDetailV5(detail: fixture)
+                    .preferredColorScheme(.dark)
+            } else if let fixture = FaffApp.proposalFixtureIfAsked() {
+                // The proposal surface, drawn from a server-shaped payload.
+                // See `proposalFixtureIfAsked` for why this road exists.
+                ProposalHarnessV5(fixture: fixture)
                     .preferredColorScheme(.dark)
             } else if let date = FaffApp.rescheduleDateIfAsked() {
                 // The rescheduling decision, opened straight onto one date, so

@@ -509,6 +509,8 @@ async function buildInjuryPlanBody(input: InjuryBuildInput): Promise<InjuryBuild
   // half-written plan with the prior one already archived), and the result is
   // read back rather than assumed.
   const boundary = await mutatePlan<string>({
+    // AUTHORITY (2026-09-05) · builds a replacement block; sealed since 2026-09-02 and unreachable
+    authority: 'AUTHORSHIP',
     userUuid: userId,
     source: 'injury-builder',
     todayISO: today,

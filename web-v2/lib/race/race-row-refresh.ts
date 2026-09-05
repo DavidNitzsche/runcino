@@ -517,6 +517,8 @@ export async function refreshRaceRowsForPlan(
   // rewrite, the same declaration recompute-paces makes.
   const { mutatePlan } = await import('@/lib/plan/mutate');
   const boundary = await mutatePlan<RaceRowRefreshResult | null>({
+    // AUTHORITY (2026-09-05) · refreshes a race row's own metadata, prescribing nothing
+    authority: 'LIFECYCLE',
     userUuid,
     source: `race-row-refresh/${opts?.source ?? 'standalone'}`,
     todayISO: today,

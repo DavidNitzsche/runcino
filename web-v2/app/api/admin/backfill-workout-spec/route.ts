@@ -295,6 +295,8 @@ export async function POST(req: NextRequest) {
       }
 
       const boundary = await mutatePlan<number>({
+    // AUTHORITY (2026-09-05) · an admin backfill of a derived spec, changing no prescribed demand
+    authority: 'LIFECYCLE',
         userUuid: userId,
         source: 'admin/backfill-workout-spec',
         todayISO: await runnerToday(userId),

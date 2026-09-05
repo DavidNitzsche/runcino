@@ -1072,7 +1072,7 @@ export async function tryAdaptiveBump(
     kind: 'mark_upgrade',
     bumps: action.bumps,
     why: action.why,
-  }]);
+  }], 'COACHING_ADAPTATION');
   if (touched <= 0) {
     console.warn(
       `[adaptive-ramp] bump did NOT land · user=${userId.slice(0, 8)} · `

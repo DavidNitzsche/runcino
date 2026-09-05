@@ -77,6 +77,8 @@ export async function PATCH(req: NextRequest) {
     // the boundary rehydrates the plan before and after and refuses the edit if
     // it introduced a doctrine violation the plan did not already carry.
     const boundary = await mutatePlan<{ rowCount: number; row: unknown }>({
+    // AUTHORITY (2026-09-05) · he edited this workout in the app
+    authority: 'RUNNER_INITIATED',
       userUuid: userId,
       source: 'api/plan/workout PATCH',
       todayISO: await runnerToday(userId),

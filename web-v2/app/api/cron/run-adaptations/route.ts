@@ -306,7 +306,7 @@ export async function POST(req: NextRequest) {
           ? await moved.snapshotSession(uid, movedTarget.dateIso).catch(() => undefined)
           : undefined;
 
-        applied = await applyAdaptations(uid, applyNow);
+        applied = await applyAdaptations(uid, applyNow, 'COACHING_ADAPTATION');
 
         if (movedTarget && movedBefore !== undefined) {
           try {

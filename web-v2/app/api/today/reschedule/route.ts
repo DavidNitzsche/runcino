@@ -180,6 +180,8 @@ export async function POST(req: NextRequest) {
     swapped: { type: string; distance_mi: number; to_date: string } | null;
   }>({
     userUuid: userId,
+    // AUTHORITY (2026-09-05) · he moved a run on Today.
+    authority: 'RUNNER_INITIATED',
     source: 'api/today/reschedule',
     todayISO: fromDate,
     planId: plan.id,

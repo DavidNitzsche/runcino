@@ -198,6 +198,7 @@
  * touches. `_mutation_boundary.test.ts` scans the source tree and fails the
  * build if a writer appears outside this door.
  */
+import { mutationIsPermitted, type AuthorityClass } from '@/lib/brain/mutation/authority';
 import { pool } from '@/lib/db/pool';
 import type { PoolClient } from 'pg';
 import { validateComposedPlan, PlanValidationError } from './validate';
@@ -684,6 +685,35 @@ export interface MutatePlanOptions<T> {
    * `app/api/admin/backfill-workout-spec/route.ts`.
    */
   bypass?: { reason: string };
+  /**
+   * WHO IS KNOCKING. Required, and that is the whole point.
+   *
+   * `mutate.ts` has been the transactional door in front of `plan_workouts`
+   * since it was written, and its own header calls itself "the single door".
+   * What it never asked was whether the caller was ALLOWED to change training,
+   * only whether the result was well formed. So
+   * `AUTOMATIC_ADAPTATION_AUTHORITY = false` could be true at the same moment
+   * an unattended cron rewrote 76 workouts through `reanchorActivePlan`.
+   *
+   * Making this REQUIRED is the consolidation: a caller cannot inherit a
+   * default, it has to say what kind of change this is, and a
+   * COACHING_ADAPTATION is refused while the seam is closed.
+   */
+  authority: AuthorityClass;
+  /**
+   * A NAMED, EXPIRING HOLD for a caller that is a coaching adaptation today and
+   * has nowhere else to go yet.
+   *
+   * David listed this as an acceptable disposition and set its terms: "name its
+   * exact scope, reason and ledger behavior", and "temporarily hold it with a
+   * named owner, blocker and expiry condition". So a hold is not a bypass: it
+   * is recorded, it carries all three fields, and the gate fails when one is
+   * missing or when the blocker is gone.
+   *
+   * Required when `authority` is COACHING_ADAPTATION and the seam is closed.
+   * Ignored otherwise.
+   */
+  hold?: { owner: string; blocker: string; expiresWhen: string };
   /** Extra context stored on the rejection record. */
   detail?: Record<string, unknown>;
   /** The writes. Runs inside the boundary's transaction; must not BEGIN,
@@ -713,6 +743,28 @@ export interface MutatePlanResult<T> {
  * must not be mistaken for a doctrine rejection.
  */
 export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutatePlanResult<T>> {
+  /* ── THE AUTHORITY BOUNDARY (2026-09-05) ──────────────────────────────────
+   *
+   * One question, asked once, in front of every plan mutation in the app.
+   * Before this, the seam governed exactly one caller (`tryAdaptiveBump`) and
+   * every other automatic writer went around it without meaning to.
+   */
+  const verdict = mutationIsPermitted(opts.authority);
+  if (!verdict.permitted) {
+    const hold = opts.hold;
+    if (hold === undefined) {
+      throw new Error(
+        `[mutate] REFUSED · ${opts.source} declared ${opts.authority} and ${verdict.because}. `
+        + `${verdict.insteadDo ?? ''}`,
+      );
+    }
+    // A hold is permitted, LOUDLY. It is recorded on every run so it cannot
+    // become invisible, which is the difference between a hold and a bypass.
+    console.log(
+      `[mutate] HELD · ${opts.source} is a coaching adaptation running under a named hold · `
+      + `owner=${hold.owner} · blocker=${hold.blocker} · expires when ${hold.expiresWhen}`,
+    );
+  }
   const touches = opts.touches ?? 'structural';
   const client = await pool.connect();
   let releaseErr: Error | undefined;

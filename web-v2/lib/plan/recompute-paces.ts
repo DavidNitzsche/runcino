@@ -651,6 +651,16 @@ export async function recomputePacesForPlan(
   } else {
     const { mutatePlan } = await import('./mutate');
     const boundary = await mutatePlan<void>({
+    // AUTHORITY (2026-09-05) · this IS a coaching adaptation: it rewrites
+    // prescribed paces on a live plan from the engine's own judgement, and it
+    // is called from an unattended cron. Held, not exempted: the hold is
+    // logged on every run and the gate fails when any field is missing.
+    authority: 'COACHING_ADAPTATION',
+    hold: {
+      owner: 'David',
+      blocker: 'called by reanchor and plan-drift, so it inherits reanchor own blocker',
+      expiresWhen: 'its callers stop writing directly and go through a proposal',
+    },
       userUuid: plan.user_uuid,
       source: `recompute-paces/${opts?.source ?? 'standalone'}`,
       todayISO: today,

@@ -120,5 +120,5 @@ export async function loadProgression() {
 /** Apply an action list through the canonical path, with the mutation boundary. */
 export async function apply(actions: Awaited<ReturnType<typeof detect>>['actions']) {
   const { applyAdaptations } = await import('@/lib/plan/adapt');
-  return applyAdaptations(OWNER_UUID, actions);
+  return applyAdaptations(OWNER_UUID, actions, 'COACHING_ADAPTATION');
 }

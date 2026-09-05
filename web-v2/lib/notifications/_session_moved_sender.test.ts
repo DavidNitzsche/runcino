@@ -60,7 +60,13 @@ describe('session moved · the template has a sender at all', () => {
   it('the gate is wired around the apply · a before AND an after snapshot', () => {
     const src = fs.readFileSync(CRON, 'utf8');
     const before = src.indexOf('snapshotSession');
-    const apply = src.indexOf('applyAdaptations(uid, applyNow)');
+    // AUTHORITY (2026-09-05) · matched on the CALL, not its full argument
+    // list. This pinned `applyAdaptations(uid, applyNow)` exactly, so adding
+    // the required `authority` parameter turned the marker into -1 and the
+    // ordering assertion compared against a not-found. The intent is that one
+    // snapshot sits either side of the mutation, and that intent survives a
+    // signature change; the literal did not.
+    const apply = src.indexOf('applyAdaptations(uid,');
     const after = src.lastIndexOf('snapshotSession');
     expect(before).toBeGreaterThan(-1);
     expect(after).toBeGreaterThan(before);

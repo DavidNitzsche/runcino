@@ -54,7 +54,7 @@ export async function POST(
     why: proposal.actionPayload.why ?? proposal.reason,
   };
 
-  const applied = await applyAdaptations(userId, [action]).catch(() => 0);
+  const applied = await applyAdaptations(userId, [action], 'RUNNER_ACCEPTED').catch(() => 0);
   if (applied > 0) {
     await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});
   }

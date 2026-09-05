@@ -206,25 +206,144 @@ export type V5TodayStateWire =
   | 'week_off' | 'off_season' | 'race_day' | 'not_on_phone_yet';
 
 /**
+ * WHICH WAY THE DECISION POINTS, in the engine's own vocabulary.
+ *
+ * This is `lib/brain/objective.ts`'s `Option` — PUSH / HOLD / PULL_BACK — plus
+ * the three things a per-workout decision can be that are not a load verdict
+ * at all: it MOVES the same work, it inserts RECOVERY, or it STOPS running.
+ *
+ * ── WHY IT IS NOT `more | less | move | test` ANY MORE ─────────────────────
+ *
+ * The first cut of this field invented a fourth vocabulary for a question the
+ * engine already had three names for, which is Rule 16 in its most ordinary
+ * shape: the objective ranks PUSH against HOLD against PULL_BACK, the
+ * adjudication contract types those exact three, and the card the runner reads
+ * said "MORE" and "EASIER". Two vocabularies for one axis means the surface
+ * and the reasoning can drift without anything noticing, and the surface is
+ * the half nobody can grep.
+ *
+ * HOLD and STOP have no writer today. They are here because the card must be
+ * able to DRAW the whole vocabulary the engine reasons in — `PRESERVATION` is
+ * an advance the objective explicitly counts, and a hard stop is the one thing
+ * that outranks a supported push. A direction the surface cannot render is a
+ * direction the engine cannot ship.
+ */
+export type V5ProposalDirection =
+  | 'push' | 'hold' | 'pull_back' | 'move' | 'recovery' | 'stop';
+
+/**
+ * WHAT KIND OF THING THIS IS, which is a different question from which way it
+ * points and must never be collapsed into it.
+ *
+ * A runner reading "PULL BACK · Take 17% off Thursday" needs to know whether
+ * he is being ASKED, TOLD WHAT WOULD EARN IT, TOLD IT WILL BE RE-TAKEN LATER,
+ * or TOLD IT ALREADY HAPPENED. Those are four different obligations and only
+ * the first one has an answer he owes.
+ *
+ *   proposal  · open, and waiting on him. Two buttons mean something.
+ *   condition · CONDITIONAL in `EvidenceClass` terms: it carries an earning
+ *               gate, so the honest thing to show is what would earn it.
+ *   deferral  · the decision was explicitly put off to a reassessment date.
+ *               Not a question yet, and pretending it is one asks him to
+ *               answer something the engine has not finished asking.
+ *   applied   · already accepted and in the plan. Historical, not actionable.
+ */
+export type V5ProposalStanding = 'proposal' | 'condition' | 'deferral' | 'applied';
+
+/** One option the engine weighed and did not take. */
+export interface V5ProposalOptionWire {
+  /** The option in the runner's words. "Leave Thursday as it is." */
+  what: string;
+  /** Why it lost. Never empty. */
+  why: string;
+}
+
+/** One session this decision would change. */
+export interface V5ProposalWorkoutWire {
+  dateISO: string;
+  /** What that day currently holds, in the runner's words. */
+  what: string;
+}
+
+/**
+ * THE DEPTH, which lives behind a tap and never on the card.
+ *
+ * `PRODUCT_UX_SIMPLIFICATION_DOCTRINE`'s three layers: the card is Layer 1 and
+ * this is Layer 2. Everything the engine reasoned with belongs here, and
+ * nothing here is allowed to climb onto the card.
+ *
+ * ── EVERY FIELD IS NULLABLE, AND NULL IS NOT EMPTY (Rule 11) ───────────────
+ *
+ * `null` means WE HAVE NO RECORD of this. `[]` means we looked and there were
+ * none. They are opposite facts about the engine, and a sheet that renders
+ * both as a blank space is telling the runner the coach considered no
+ * alternatives when the truth may be that nobody wrote them down. The phone
+ * draws a different line for each, which is the whole reason these are not
+ * plain arrays.
+ */
+export interface V5ProposalDetailWire {
+  /** What the engine measured, one short line each. */
+  evidenceUsed: string[] | null;
+  /** What it wanted and did not have. An honest absence, named. */
+  missingEvidence: string[] | null;
+  optionsConsidered: V5ProposalOptionWire[] | null;
+  /** What would turn a CONDITIONAL into a SUPPORTED. `EarningRequirement.what`. */
+  earningConditions: string[] | null;
+  /** When this gets re-taken. Null when it does not. */
+  reassessOnISO: string | null;
+  affectedWorkouts: V5ProposalWorkoutWire[] | null;
+  /**
+   * Numbers somebody CHOSE, as against measured or cited.
+   * `Provenance.POLICY_ASSUMPTION`, and the reason that type exists: a weight
+   * somebody chose must never be printed in the same voice as a measurement.
+   */
+  policyAssumptions: string[] | null;
+}
+
+/**
  * One pending adaptation, as the runner reads it.
  *
  * DIRECTION IS FIRST because it is what he needs before anything else: is the
  * app asking me to do more, less, or the same work on a different day. The
  * engine's `action_kind` is not that question (`shave` and `downgrade` are
- * both "less"), so the mapping happens once, on the server, and the phone
+ * both a pull-back), so the mapping happens once, on the server, and the phone
  * never has to know an engine word.
  */
 export interface V5ProposalWire {
   id: string;
-  /** The day the affected session sits on. */
+  /**
+   * THE EFFECTIVE DATE. The day the change lands, which is the day the
+   * affected session currently sits on.
+   *
+   * One date, one name (Rule 16). A move's destination is not a second
+   * effective date: the week changes shape the moment the runner accepts, and
+   * the day that changes first is this one. Where the destination matters it
+   * is in `headline` and in `detail.affectedWorkouts`, which is where a second
+   * date belongs.
+   */
   dateISO: string;
-  /** What the runner is being asked to change. */
-  direction: 'more' | 'less' | 'move' | 'test';
+  direction: V5ProposalDirection;
+  standing: V5ProposalStanding;
   /** Six to ten words. What would change. */
   headline: string;
   /** One sentence. Why, in evidence terms. Never a disposition. */
   why: string;
+  detail: V5ProposalDetailWire;
 }
+
+/**
+ * Whether the proposal read SUCCEEDED, which is not answerable from the list.
+ *
+ * Rule 11, on the wire. `proposals: []` is used for both "you have no pending
+ * decisions" and, before this field existed, "the database did not answer" —
+ * and on the one surface whose entire job is carrying a decision to the
+ * runner, presenting the second as the first is the worst available failure.
+ * It does not look broken; it looks like the coach has nothing to say.
+ *
+ * Absent means `ok`: a server that predates this field also predates the
+ * failure path, and its empty list was an honest empty list.
+ */
+export type V5ProposalReadWire = 'ok' | 'failed';
 
 export interface V5Today {
   dateISO: string;
@@ -293,6 +412,12 @@ export interface V5Today {
    * `thesis?` and `race?` above.
    */
   proposals?: V5ProposalWire[];
+  /**
+   * See `V5ProposalReadWire`. `'failed'` means the list above is empty because
+   * we could not read, not because there is nothing. The phone draws the
+   * fault treatment rather than silence.
+   */
+  proposalsRead?: V5ProposalReadWire;
 
   askedVsRan: V5Row[];
   verdict: string | null;
@@ -1039,6 +1164,8 @@ export interface V5TodayContext {
   blockNote?: { title: string; body: string } | null;
   /** V5PROPOSAL-1 · pending adaptations awaiting the runner's answer. */
   proposals?: V5ProposalWire[];
+  /** See `V5Today.proposalsRead`. Absent is `'ok'`. */
+  proposalsRead?: V5ProposalReadWire;
 
   raceDay: boolean;
   /// See `V5Today.race`. Resolved by the route (needs DB access this pure
@@ -1686,6 +1813,7 @@ const EMPTY_TODAY = (
   paceNote: null,
   blockNote: null,
   proposals: [],
+  proposalsRead: 'ok',
   askedVsRan: [],
   verdict: null,
   facts: [],
@@ -1872,6 +2000,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   // adaptation is a thing to answer, so it belongs on the states that
   // prescribe and not on off-season, week-off or not-on-phone-yet.
   t.proposals = ctx.proposals ?? [];
+  t.proposalsRead = ctx.proposalsRead ?? 'ok';
     t.askedVsRan = built.askedVsRan;
     t.verdict = ctx.recentRun.verdict;
     // QUOTED, NEVER RE-WRITTEN. One voice, one composer — the same rule
@@ -2003,6 +2132,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   // adaptation is a thing to answer, so it belongs on the states that
   // prescribe and not on off-season, week-off or not-on-phone-yet.
   t.proposals = ctx.proposals ?? [];
+  t.proposalsRead = ctx.proposalsRead ?? 'ok';
   // DECISION-2 · race content on Today. `ctx.raceOnToday` is already fully
   // resolved (see `lib/faff/race-on-today.ts`'s header) — this line
   // threads it through, it does not compute anything.

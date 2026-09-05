@@ -616,6 +616,14 @@ struct V5Today: Decodable, Equatable {
     /// accepted, none dismissed. Empty on older servers, which decodes as
     /// empty rather than nil so a view never has to ask which nothing it has.
     let proposals: [V5Proposal]?
+    /// V5PROPOSALSURFACE-1 · "ok" or "failed", and absent means "ok".
+    ///
+    /// Rule 11 on the wire. An empty `proposals` used to mean both "you have
+    /// no pending decisions" and "the database did not answer", and on the one
+    /// surface whose job is carrying a decision to the runner the second
+    /// wearing the first is the worst failure available: it does not look
+    /// broken, it looks like the coach has nothing to say.
+    let proposalsRead: String?
 
     // ── after a run ──
     /// The asked-vs-ran table. Effort is the only tappable row.
@@ -751,20 +759,180 @@ struct V5BlockNote: Decodable, Equatable {
 /// V5PROPOSAL-1 · one adaptation the runner has not answered yet.
 ///
 /// Every field is a straight decode of `web-v2/lib/faff/v5-proposals.ts`.
-/// `direction` is deliberately a String rather than an enum: an older phone
-/// meeting a direction a newer server invented must render the card, not drop
-/// it, and a Swift enum would fail the whole decode. `DirectionV5` below is
-/// where the phone decides what it can DRAW, which is a different question.
+/// `direction` and `standing` are deliberately Strings rather than enums: an
+/// older phone meeting a value a newer server invented must render the card,
+/// not drop it, and a Swift enum would fail the whole decode.
+/// `ProposalDirectionV5` and `ProposalStandingV5` below are where the phone
+/// decides what it can DRAW, which is a different question.
 struct V5Proposal: Decodable, Equatable, Identifiable {
     let id: String
+    /// THE EFFECTIVE DATE. The day the change lands. One date, one name — a
+    /// move's destination lives in `headline` and in `detail.affectedWorkouts`.
     let dateISO: String
-    /// "more" · "less" · "move" · "test". Mapped on the server so the phone
-    /// never learns an engine word.
+    /// "push" · "hold" · "pull_back" · "move" · "recovery" · "stop". The
+    /// objective's own vocabulary (`lib/brain/objective.ts`), mapped on the
+    /// server so the phone never learns an engine word.
     let direction: String
+    /// "proposal" · "condition" · "deferral" · "applied". WHAT KIND OF THING
+    /// this is, which is a different question from which way it points.
+    let standing: String
     /// Six to ten words. What would change.
     let headline: String
     /// One sentence. Why, in evidence terms.
     let why: String
+    /// The depth behind a tap. Absent on a server that predates it, which is
+    /// not the same as a server that recorded nothing — see `V5ProposalDetail`.
+    let detail: V5ProposalDetail?
+
+    init(id: String, dateISO: String, direction: String, standing: String = "proposal",
+         headline: String, why: String, detail: V5ProposalDetail? = nil) {
+        self.id = id; self.dateISO = dateISO; self.direction = direction
+        self.standing = standing; self.headline = headline; self.why = why
+        self.detail = detail
+    }
+
+    enum K: String, CodingKey {
+        case id, dateISO, direction, standing, headline, why, detail
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        id = c.text(.id)
+        dateISO = c.text(.dateISO)
+        direction = c.text(.direction)
+        // A server that predates `standing` only ever wrote open questions, so
+        // "proposal" is correct by construction there rather than a guess.
+        standing = c.text(.standing, default: "proposal")
+        headline = c.text(.headline)
+        why = c.text(.why)
+        detail = c.opt(.detail)
+    }
+}
+
+/// V5PROPOSALSURFACE-1 · the depth behind the card, and never on it.
+///
+/// EVERY ARRAY IS OPTIONAL AND THAT IS THE POINT (Rule 11). `nil` means the
+/// engine recorded NOTHING about this; `[]` means it looked and there were
+/// none. The sheet draws a different line for each, because "the coach
+/// considered no alternatives" and "nobody wrote down which alternatives the
+/// coach considered" are opposite facts about this engine and a blank space
+/// tells the runner the first when the truth may be the second.
+struct V5ProposalDetail: Decodable, Equatable {
+    let evidenceUsed: [String]?
+    let missingEvidence: [String]?
+    let optionsConsidered: [V5ProposalOption]?
+    let earningConditions: [String]?
+    let reassessOnISO: String?
+    let affectedWorkouts: [V5ProposalWorkout]?
+    let policyAssumptions: [String]?
+
+    init(evidenceUsed: [String]? = nil, missingEvidence: [String]? = nil,
+         optionsConsidered: [V5ProposalOption]? = nil, earningConditions: [String]? = nil,
+         reassessOnISO: String? = nil, affectedWorkouts: [V5ProposalWorkout]? = nil,
+         policyAssumptions: [String]? = nil) {
+        self.evidenceUsed = evidenceUsed; self.missingEvidence = missingEvidence
+        self.optionsConsidered = optionsConsidered; self.earningConditions = earningConditions
+        self.reassessOnISO = reassessOnISO; self.affectedWorkouts = affectedWorkouts
+        self.policyAssumptions = policyAssumptions
+    }
+
+    enum K: String, CodingKey {
+        case evidenceUsed, missingEvidence, optionsConsidered, earningConditions
+        case reassessOnISO, affectedWorkouts, policyAssumptions
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        // `opt`, never `list`. `list` collapses a missing key to `[]`, which is
+        // exactly the distinction this whole type exists to keep.
+        evidenceUsed = c.opt(.evidenceUsed)
+        missingEvidence = c.opt(.missingEvidence)
+        optionsConsidered = c.opt(.optionsConsidered)
+        earningConditions = c.opt(.earningConditions)
+        reassessOnISO = c.opt(.reassessOnISO)
+        affectedWorkouts = c.opt(.affectedWorkouts)
+        policyAssumptions = c.opt(.policyAssumptions)
+    }
+}
+
+/// One option the engine weighed and did not take.
+struct V5ProposalOption: Decodable, Equatable, Identifiable {
+    let what: String
+    let why: String
+    var id: String { what + why }
+
+    init(what: String, why: String) { self.what = what; self.why = why }
+
+    enum K: String, CodingKey { case what, why }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        what = c.text(.what)
+        why = c.text(.why)
+    }
+}
+
+/// One session this decision would change.
+struct V5ProposalWorkout: Decodable, Equatable, Identifiable {
+    let dateISO: String
+    let what: String
+    var id: String { dateISO + what }
+
+    init(dateISO: String, what: String) { self.dateISO = dateISO; self.what = what }
+
+    enum K: String, CodingKey { case dateISO, what }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        dateISO = c.text(.dateISO)
+        what = c.text(.what)
+    }
+}
+
+/// V5PROPOSALSURFACE-1 · one settled (or open) decision, for the history.
+///
+/// `dateISO` is null for a block-level decision, which is about the whole plan
+/// and has no single day. `direction` is null for the same rows: a rebuild is
+/// not a load verdict.
+struct V5Decision: Decodable, Equatable, Identifiable {
+    let id: String
+    let dateISO: String?
+    /// When it was settled, or when it was raised while it is still open.
+    let decidedISO: String
+    let direction: String?
+    /// "pending" · "accepted" · "declined" · "deferred" · "expired" ·
+    /// "applied" · "superseded" · "undone".
+    let outcome: String
+    let headline: String
+    let why: String
+
+    init(id: String, dateISO: String?, decidedISO: String, direction: String?,
+         outcome: String, headline: String, why: String) {
+        self.id = id; self.dateISO = dateISO; self.decidedISO = decidedISO
+        self.direction = direction; self.outcome = outcome
+        self.headline = headline; self.why = why
+    }
+
+    enum K: String, CodingKey {
+        case id, dateISO, decidedISO, direction, outcome, headline, why
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        id = c.text(.id)
+        dateISO = c.opt(.dateISO)
+        decidedISO = c.text(.decidedISO)
+        direction = c.opt(.direction)
+        outcome = c.text(.outcome)
+        headline = c.text(.headline)
+        why = c.text(.why)
+    }
+}
+
+/// The envelope `GET /api/v5/decisions` answers with.
+struct V5DecisionsEnvelope: Decodable, Equatable {
+    let decisions: [V5Decision]
+
+    enum K: String, CodingKey { case decisions }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        decisions = c.list(.decisions)
+    }
 }
 
 /// DECISION-2 (2026-09-03) · race content on Today, not only in the pre-run
@@ -1724,6 +1892,16 @@ extension API {
         return (200...299).contains(http.statusCode)
     }
 
+    /// V5PROPOSALSURFACE-1 · `GET /api/v5/decisions` · the decision history.
+    ///
+    /// Deliberately NOT cached. It is reached on purpose by a runner who wants
+    /// to know what the coach has been doing, and a stale answer to that
+    /// question is worse than a spinner: the whole point of the screen is that
+    /// it is the record.
+    static func fetchDecisions() async throws -> V5Fetch<V5DecisionsEnvelope> {
+        try await v5("api/v5/decisions", cache: nil, as: V5DecisionsEnvelope.self)
+    }
+
     enum V5Fetch<T> {
         case ok(T)
         /// The engine answered, and the answer is that this does not apply.
@@ -2089,7 +2267,7 @@ extension V5Today {
         case routeSplits, routePhases, workoutPhases, hrZones, paceBand, elevGainMeasured
         case shoesWorn, whatThisDidToTheWeek, runId, postRun, supplementalRuns
         case injury, weekOff, offSeason, notOnPhoneYet
-        case paceNote, blockNote, sick, race, proposals
+        case paceNote, blockNote, sick, race, proposals, proposalsRead
         case facts, win, conditionsNote, coachTip
         case hrAvg, hrMax, cadenceAvg, tempF, workoutType
         case hrAvgWork, cadenceAvgWork, paceWork
@@ -2146,6 +2324,7 @@ extension V5Today {
         paceNote = c.opt(.paceNote)
         blockNote = c.opt(.blockNote)
         proposals = c.opt(.proposals)
+        proposalsRead = c.opt(.proposalsRead)
         sick = c.opt(.sick)
         race = c.opt(.race)
     }

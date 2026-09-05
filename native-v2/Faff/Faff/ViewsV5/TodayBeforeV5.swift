@@ -223,6 +223,11 @@ struct TodayBeforeV5: View {
     @State private var accountOpen = false
     @State private var expandedBeforeRowID: String? = nil
     @State private var readinessExpanded = false
+    /// V5PROPOSALSURFACE-1 · which decision's reasoning is open. The proposal
+    /// itself, not an id, because the sheet draws from the payload it was
+    /// handed and never re-reads: a "Details" that could disagree with the
+    /// card it opened from would be Rule 16 inside one interaction.
+    @State private var openProposalDetail: V5Proposal? = nil
 
 
     /// The strip's plate — which of the seven cells wears the "you are here"
@@ -319,6 +324,18 @@ struct TodayBeforeV5: View {
                 accountSheetBody
             }
             .zIndex(5)
+
+            // V5PROPOSALSURFACE-1 · Layer 2, one tap from Layer 1.
+            V5SheetHost(
+                isPresented: Binding(
+                    get: { openProposalDetail != nil },
+                    set: { if !$0 { openProposalDetail = nil } }),
+                title: "The reasoning",
+                tall: true,
+            ) {
+                if let p = openProposalDetail { ProposalDetailV5(proposal: p) }
+            }
+            .zIndex(7)
         }
     }
 
@@ -503,13 +520,31 @@ struct TodayBeforeV5: View {
     @ViewBuilder
     private var proposalsSection: some View {
         let pending = model.proposals ?? []
-        if !pending.isEmpty {
+        // Rule 11 · three states, not two. `proposalsRead == "failed"` means
+        // the list is empty because the server could not read, which is the
+        // opposite fact from having nothing pending. Silence would tell the
+        // runner his coach has nothing to say.
+        let readFailed = model.proposalsRead == "failed"
+        if !pending.isEmpty || readFailed {
             VStack(alignment: .leading, spacing: V5.S.s10) {
-                V5SectionLabel(text: "YOUR CALL", color: V5.textSecondary)
+                // NOT "YOUR CALL". Only an open proposal is the runner's call;
+                // a condition, a deferral and an applied decision are not, and
+                // each card says which it is. A header that asserted otherwise
+                // would contradict the cards under it, which Rule 17 counts as
+                // a correctness bug rather than mere repetition.
+                V5SectionLabel(text: "DECISIONS", color: V5.textSecondary)
+                if readFailed {
+                    ErrorNote(text: "Any decision waiting on you did not load. "
+                              + "Nothing has been applied, we just cannot see it.")
+                }
                 ForEach(pending) { p in
-                    ProposalCardV5(proposal: p) { accept in
-                        Task { await answerProposal(p, accept: accept) }
-                    }
+                    ProposalCardV5(
+                        proposal: p,
+                        onAnswer: { accept in
+                            Task { await answerProposal(p, accept: accept) }
+                        },
+                        onDetails: { openProposalDetail = p },
+                    )
                 }
             }
         }

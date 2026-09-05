@@ -1707,6 +1707,8 @@ export async function applyChange(
   }
 
   const boundary = await mutatePlan<number>({
+    // AUTHORITY (2026-09-05) · he chose a replan scenario
+    authority: 'RUNNER_INITIATED',
     userUuid,
     source: `api/plan/change ${req.scenario}`,
     todayISO,

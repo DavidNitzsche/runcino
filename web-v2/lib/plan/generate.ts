@@ -16956,6 +16956,8 @@ async function persistComposedPlan(
     console.error(`[persistComposedPlan] race seed REFUSED · plan for ${userId} race=${raceSlug} · ${raceSeed.reason}${raceSeed.detail ? ` · ${raceSeed.detail}` : ''} · the race row is authored with no prescribed target and refreshRaceRowsForPlan will report the same refusal`);
   }
   const boundary = await mutatePlan<string | undefined>({
+    // AUTHORITY (2026-09-05) · a plan is being created, there is no prior training to change
+    authority: 'AUTHORSHIP',
     userUuid: userId,
     source: 'generate/persistComposedPlan',
     todayISO,
