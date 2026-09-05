@@ -227,16 +227,27 @@ const PAIRS: readonly Pair[] = [
     down: ['HOLD', 'BACK_OFF'],
     excludePathContains: [
       'lib/adaptation/canonical/', 'lib/plan/adjudication/',
-      // LEDGERHOLD-1 (2026-09-05) · a THIRD mechanism that spells a verdict
-      // `HOLD`, for the same reason the two above are excluded. The decision
-      // ledger records PUSH / HOLD / PULL_BACK as the DIRECTION of any
-      // decision, on any lever — it is not the progression ladder's verdict and
-      // its files are not the ladder's corpus. Counting them here moved this
-      // pair from 2.00 to 2.40 the moment a ledger test was added, which would
-      // have made every future ledger test look like a fresh pull-back bias.
-      // The exclusion is scoped to the LEDGER's own directory, so a real
-      // progression-ladder test cannot hide in it.
-      'lib/brain/ledger/',
+      /*
+       * `lib/brain/` added 2026-09-05, for the SAME reason as the two above and
+       * with the same evidence read off the files rather than assumed.
+       *
+       * `lib/plan/adjudication/contract.ts` declares `Option = 'PUSH' | 'HOLD'
+       * | 'PULL_BACK'` and `lib/brain/proposal`'s action schema declares a
+       * `kind: 'HOLD'`. Neither is the progression ladder's verdict. Three
+       * brain files were being counted as pull-back coverage of a mechanism
+       * none of them touches: `_objective.test.ts`, `proposal/
+       * _action_schema_gate.test.ts` and `_hard_stop_is_real.test.ts` — and the
+       * last of those exercises PUSH, HOLD and PULL_BACK EXHAUSTIVELY and
+       * equally, so counting it on the pull-back side is not merely imprecise,
+       * it is backwards.
+       *
+       * The path exclusion is the same instrument the 2026-09-04 correction
+       * used, and it is checked by the ORACLE test below, which asserts that a
+       * declared exclusion subtracts exactly the files that match it. This
+       * removes 3 files from the down side and 0 from the up side, so the ratio
+       * IMPROVES; it is not a widening to admit a new offender.
+       */
+      'lib/brain/',
     ],
     // RE-MEASURED 2.00 on 2026-09-04 · 10 against 20, over the progression
     // ladder's own corpus. The previous pin of 2.44 (9 against 22) was measured

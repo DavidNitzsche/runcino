@@ -121,6 +121,7 @@
 import type { CanonicalLever, RaceCalendar } from './input';
 import type { DeclineBasis, DeclineJustification } from '@/lib/brain/objective';
 import { objectionToChoice } from '@/lib/brain/objective';
+import type { TrainingSafetyPosture } from '@/lib/safety/training-safety';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * THE VOCABULARY
@@ -168,12 +169,28 @@ export const TRAINING_PHASES: readonly TrainingPhase[] = [
  * systems may not override Safety." `lib/brain/objective.ts` says the same in
  * `OBJECTIVE_NEVER_OVERRIDES_A_HARD_STOP`.
  *
- * Two members only. There is no 'CAUTION' here on purpose: a graded safety
+ * ── RE-POINTED 2026-09-05 · THIS FILE NO LONGER DECLARES THE VOCABULARY ────
+ *
+ * It used to read `export type SafetyPosture = 'NORMAL' | 'HARD_STOP';` right
+ * here, which made this the SECOND file declaring a type of that name (the
+ * first being `lib/safety/safety-verdict.ts`, whose `SafetyPosture` is the
+ * phone's four-value union) and put safety vocabulary outside the Safety owner.
+ * Rule 16, and Constitution §2.E. The union now lives in
+ * `lib/safety/training-safety.ts`, is imported here, and is the same value the
+ * Safety owner emits.
+ *
+ * The old header's argument is PRESERVED and is worth restating, because the
+ * union grew and the argument is what kept the growth honest: "a graded safety
  * signal that this engine interpreted would be it making a safety judgement,
- * which is the ownership violation. Either ordinary training logic may proceed
- * or it may not.
+ * which is the ownership violation." Exactly so. `CONSTRAINED` is not this
+ * engine's grading of a niggle; it is the Safety owner's own answer to a
+ * different question, resolved in `resolveTrainingSafety` off a state
+ * `classifySafety` decided. This engine still interprets nothing. What it can
+ * now do that it could not before is tell "Safety says fine" from "Safety could
+ * not be read", which the two-member union made impossible and which is the
+ * whole of Rule 11.
  */
-export type SafetyPosture = 'NORMAL' | 'HARD_STOP';
+export type { TrainingSafetyPosture as SafetyPosture } from '@/lib/safety/training-safety';
 
 /**
  * What the Coaching Thesis says is currently holding this runner back.
@@ -467,7 +484,7 @@ export interface PriorityContext {
   readonly phase: TrainingPhase;
   readonly raceDistance: RaceCalendar['raceDistance'];
   readonly limiter: CurrentLimiter;
-  readonly safety: SafetyPosture;
+  readonly safety: TrainingSafetyPosture;
   /** Upward steps already taken this cutback cycle, per lever. */
   readonly stepsTakenThisCycle: Readonly<Record<CanonicalLever, number>>;
 }
@@ -590,7 +607,7 @@ export function resolveArbitrationPriority(ctx: PriorityContext): ResolvedPriori
    * engine from advancing at all, and the resolution says so rather than
    * producing an ordering nobody will use.
    */
-  if (ctx.safety === 'HARD_STOP') {
+  if (ctx.safety !== 'NORMAL') {
     const cite: PriorityCitation = {
       provenance: 'DOCTRINE',
       doc: 'docs/BRAIN_CONSTITUTION.md',
@@ -598,22 +615,48 @@ export function resolveArbitrationPriority(ctx: PriorityContext): ResolvedPriori
       says: 'Safety may override other systems. Other systems may not override Safety. '
         + 'lib/brain/objective.ts states the same as OBJECTIVE_NEVER_OVERRIDES_A_HARD_STOP.',
     };
+    /* THREE FACTS, NEVER ONE (Rule 11). All three stop this engine advancing,
+     * and each names a different remedy on the record, because a reader who
+     * finds "nothing was proposed" is entitled to know whether that was an
+     * injury, a prescribed return, or a query that timed out. Collapsing them
+     * into one code is the defect this branch was widened to fix: before
+     * 2026-09-05 the only non-NORMAL value was HARD_STOP, so an unread safety
+     * check could not be expressed and arrived as NORMAL. */
+    const basis: DeclineBasis = ctx.safety === 'HARD_STOP'
+      ? 'HARD_STOP'
+      : ctx.safety === 'CONSTRAINED'
+        ? 'PRESCRIBED_RECOVERY'
+        : 'SAFETY_UNREADABLE';
+    const why = ctx.safety === 'HARD_STOP'
+      ? 'The Safety owner has raised a hard stop. Nothing this engine could propose '
+        + 'outranks it, so every lever is deferred and none is applied. The evidence is '
+        + 'recorded and waits for Safety to lift the stop, which is Safety\'s call and not '
+        + 'a date this engine can schedule.'
+      : ctx.safety === 'CONSTRAINED'
+        ? 'The Safety owner permits training and does not permit advancing it. This runner is '
+          + 'carrying a complaint in doctrine\'s amber band, or is inside a return window '
+          + 'prescribed to rebuild below their previous load. Every lever is deferred, the '
+          + 'evidence is recorded, and the constraint lifts on its own schedule.'
+        : 'The safety check did not complete, so this engine does not know whether ordinary '
+          + 'training logic may proceed. Nothing is proposed. This is not a finding about the '
+          + 'runner and nothing about them is being asserted: the read is retried on the next '
+          + 'evaluation, and a missing gate is not an open one.';
     return {
       order: PHASE_POLICY.UNKNOWN.order,
       phase: ctx.phase,
       posture: 'STOP',
       defersDemandIncrease: true,
       freezesThresholdAnchor: true,
-      declineBasis: 'HARD_STOP',
+      declineBasis: basis,
       citations: [cite],
       policyAssumptions: [],
-      unknowns: [],
+      unknowns: ctx.safety === 'UNREADABLE'
+        ? ['The Safety owner could not be read for this runner. No proposal is made on a '
+          + 'partial or absent safety picture.']
+        : [],
       notRead,
       readThrough,
-      why: 'The Safety owner has raised a hard stop. Nothing this engine could propose '
-        + 'outranks it, so every lever is deferred and none is applied. The evidence is '
-        + 'recorded and waits for Safety to lift the stop, which is Safety\'s call and not '
-        + 'a date this engine can schedule.',
+      why,
     };
   }
 
@@ -720,6 +763,29 @@ export function phaseDeclineFor(args: {
   if (priority.declineBasis === null) return null;
 
   if (priority.posture === 'STOP') {
+    /* The basis was resolved once, in `resolvePriority`, and is carried here
+     * rather than re-derived. Rule 16: the same fact under one name. Deriving
+     * it a second time from `priority.phase` or from anything else is how two
+     * answers to one question start. */
+    if (priority.declineBasis === 'SAFETY_UNREADABLE') {
+      return {
+        basis: 'SAFETY_UNREADABLE',
+        because: 'the safety check for this runner did not complete, so this engine cannot '
+          + 'tell whether ordinary training logic is permitted to proceed at all',
+        wouldAdvanceIf: 'the safety read succeeds. Nothing about this runner is being asserted '
+          + 'and no clinical judgement is implied.',
+      };
+    }
+    if (priority.declineBasis === 'PRESCRIBED_RECOVERY') {
+      return {
+        basis: 'PRESCRIBED_RECOVERY',
+        because: 'the Safety owner reports this runner inside a constraint that permits '
+          + 'training and forbids advancing it, either an amber-band complaint or a '
+          + 'prescribed return window',
+        wouldAdvanceIf: 'the constraint clears. That is Safety\'s judgement, and the evidence '
+          + 'is recorded rather than dropped.',
+      };
+    }
     return {
       basis: 'HARD_STOP',
       because: 'the Safety owner has raised a hard stop on this runner, and a hard stop '

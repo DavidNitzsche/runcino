@@ -92,7 +92,8 @@ const REFUSED: AcwrResult = {
 };
 const SAFETY_CLEAR: SafetyResolution = {
   known: true, state: 'NORMAL', posture: 'PRESCRIBE', reason: 'clear', driver: null,
-  injury: null, illness: null, niggle: null, degradedSignals: [],
+  injury: null, illness: null, niggle: null, returnToRunning: null, disruption: null,
+  degradedSignals: [],
   explain: 'safety NORMAL · nothing open',
 };
 const SAFETY_UNREADABLE: SafetyResolution = {
@@ -107,7 +108,7 @@ const SAFETY_INJURED: SafetyResolution = {
     id: 1, site: 'left achilles', severity: 'moderate', startDateISO: '2026-10-01',
     expectedReturnDateISO: null, returnProtocol: null, notes: null,
   },
-  illness: null, niggle: null, degradedSignals: [],
+  illness: null, niggle: null, returnToRunning: null, disruption: null, degradedSignals: [],
   explain: 'safety MODIFY · injury_moderate',
 };
 

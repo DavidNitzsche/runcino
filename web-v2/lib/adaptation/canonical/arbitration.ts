@@ -586,14 +586,33 @@ export function arbitrate(input: ArbitrationInput): ArbitrationResult {
     if (phaseDecline !== null && declineAdmissible) {
       const note: SuppressionNote = {
         by: 'PLAN_LOAD',
-        rule: phaseDecline.basis === 'HARD_STOP' ? 'SAFETY_HARD_STOP' : 'PHASE_PRESCRIBES_RECOVERY',
+        /* THE FOUR BASES, EACH WITH ITS OWN CODE (Rule 11, Rule 16).
+         *
+         * `PRESCRIBED_RECOVERY` is ambiguous on its own. It is what a taper
+         * raises AND what a Safety recovery constraint raises, so the code is
+         * resolved from where the decline came from, which is what
+         * `priority.posture === 'STOP'` records. A taper never sets posture
+         * STOP; only Safety does. */
+        rule: phaseDecline.basis === 'HARD_STOP'
+          ? 'SAFETY_HARD_STOP'
+          : phaseDecline.basis === 'SAFETY_UNREADABLE'
+            ? 'SAFETY_UNREADABLE'
+            : input.priority.posture === 'STOP'
+              ? 'SAFETY_CONSTRAINED'
+              : 'PHASE_PRESCRIBES_RECOVERY',
         detail:
           `The ${label(s.verdict.lever)} evidence supports this change, but ${phaseDecline.because}. `
           + `${phaseDecline.wouldAdvanceIf}`,
-        // A hard stop lifts when Safety says so, not at a boundary this engine
-        // can schedule against. Rule 11: "no scheduled reconsideration" is a
-        // fact, and a date invented here would be a worse one.
-        reconsiderAtISO: phaseDecline.basis === 'HARD_STOP' ? null : input.nextBoundaryISO,
+        // A SAFETY decline lifts when Safety says so, not at a boundary this
+        // engine can schedule against. Rule 11: "no scheduled reconsideration"
+        // is a fact, and a date invented here would be a worse one.
+        //
+        // All three safety bases get null, and the unreadable one most of all:
+        // a queued item is re-offered when a clock advances, and re-offering a
+        // push on a runner whose safety was never read is the assumption this
+        // whole wiring exists to stop. A phase decline still gets its boundary,
+        // because a taper is a phase that ENDS on a date the engine knows.
+        reconsiderAtISO: input.priority.posture === 'STOP' ? null : input.nextBoundaryISO,
       };
       out.push({ ...s, suppressedBy: note, ledger: buildLedger({ input, price, s, accepted, ceiling, suppressedBy: note }) });
       continue;

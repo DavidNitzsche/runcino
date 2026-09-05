@@ -48,6 +48,7 @@
  * ones needs that spelled out.
  */
 import type { EvidenceClass, Option, OptionAppraisal } from '@/lib/plan/adjudication/contract';
+import type { TrainingSafetyPosture } from '@/lib/safety/training-safety';
 
 /** The statement itself, so nothing has to paraphrase it. */
 export const THE_OBJECTIVE =
@@ -93,6 +94,24 @@ export type DeclineBasis =
   | 'PRESCRIBED_RECOVERY'
   /** A safety hard stop. Never overridden by the objective. */
   | 'HARD_STOP'
+  /**
+   * THE SAFETY CHECK ITSELF DID NOT RUN, or ran incompletely.
+   *
+   * Added 2026-09-05, and it is deliberately NOT `EVIDENCE_ABSENT`, which is
+   * the distinction this basis exists to make.
+   *
+   * `EVIDENCE_ABSENT` is about CAPACITY evidence, and `objectionToChoice`
+   * rejects it as a reason to decline a supported push, correctly: absent
+   * evidence that a runner can go faster cannot outrank present evidence that
+   * they can. Absent SAFETY evidence is not capacity evidence at all. It is
+   * the check that gates whether capacity evidence may be SPENT, and a missing
+   * gate is not an open one. Collapsing the two would have made a failed
+   * `runner_injuries` read into a licence to push, which is precisely the
+   * Rule 11 defect the safety wiring exists to close.
+   *
+   * Rule 16: two questions, two names.
+   */
+  | 'SAFETY_UNREADABLE'
   /** Rule 11: the read failed or the evidence is absent. An honest refusal. */
   | 'EVIDENCE_ABSENT';
 
@@ -188,8 +207,15 @@ export function objectionToChoice(args: {
       return 'The push is SUPPORTED by this runner\'s own history and was not taken, '
         + 'with no justification for declining. That is the disposition the objective forbids.';
     }
-    if (j.basis === 'HARD_STOP' || j.basis === 'PRESCRIBED_RECOVERY' || j.basis === 'DOCTRINE_LIMIT') {
-      return null; // these outrank a supported push, and each names itself
+    if (j.basis === 'HARD_STOP' || j.basis === 'PRESCRIBED_RECOVERY'
+      || j.basis === 'DOCTRINE_LIMIT' || j.basis === 'SAFETY_UNREADABLE') {
+      // These outrank a supported push, and each names itself.
+      //
+      // `SAFETY_UNREADABLE` sits here and not with `EVIDENCE_ABSENT` below for
+      // the reason spelled out at its declaration: it is not a missing piece of
+      // capacity evidence, it is a missing GATE. See `objectiveYieldsTo`, which
+      // is the one place that ordering is written down as data.
+      return null;
     }
     if (j.basis === 'EVIDENCE_ABSENT') {
       return 'The push is SUPPORTED and was declined for absent evidence. Absent evidence '
@@ -209,13 +235,98 @@ export function objectionToChoice(args: {
   return null;
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * THE FLOOR UNDER "ALWAYS PUSH" · EXECUTABLE, NOT A CONSTANT
+ * ══════════════════════════════════════════════════════════════════════════ */
+
 /**
  * A safety hard stop is never overridden by the objective.
  *
- * Stated as its own exported constant so a reader looking for the exception
- * finds it, and so no future mechanism has to rediscover that "always push" has
- * a floor. Suspected bone stress, systemic illness and an escalating pain
- * signal stop running recommendations outright, and no amount of positive
- * capacity evidence outranks them.
+ * ── WHAT THIS USED TO BE, AND WHY IT WAS NOT ENOUGH ────────────────────────
+ *
+ * `export const OBJECTIVE_NEVER_OVERRIDES_A_HARD_STOP = true as const;`
+ *
+ * A boolean that is always true, that nothing branched on, and that no test
+ * could make fail. Rule 20 in one line: a product rule with no gate is a
+ * hypothesis, and this was the hypothesis. It was imported nowhere; the phrase
+ * appeared in two comments and in nothing that ran.
+ *
+ * The constant is KEPT, because `phase-priority.ts` cites it by name in a
+ * runner-visible citation and a dangling citation is its own defect. What has
+ * changed is that it is now the flag on top of machinery rather than the whole
+ * of it: `objectiveYieldsTo` is the data, `hardStopObjection` is the predicate,
+ * and `lib/brain/_hard_stop_is_real.test.ts` falsifies both.
  */
 export const OBJECTIVE_NEVER_OVERRIDES_A_HARD_STOP = true as const;
+
+/**
+ * The bases the objective YIELDS TO, as data.
+ *
+ * `objectionToChoice` branches on exactly this set, and the gate reads this
+ * array rather than restating it, so "the objective yields to a hard stop" is
+ * checked against the thing the code uses. A check that hardcodes both sides
+ * only proves the test agrees with itself (Rule 18).
+ */
+export const OBJECTIVE_YIELDS_TO: readonly DeclineBasis[] = [
+  'HARD_STOP',
+  'PRESCRIBED_RECOVERY',
+  'DOCTRINE_LIMIT',
+  'SAFETY_UNREADABLE',
+];
+
+/** Does the objective stand down for this basis? */
+export const objectiveYieldsTo = (b: DeclineBasis): boolean =>
+  OBJECTIVE_YIELDS_TO.includes(b);
+
+/**
+ * THE PREDICATE THE CONSTANT ONLY CLAIMED.
+ *
+ * Given what Safety said and what the engine chose, is the choice permitted?
+ * Returns null when it is, and a sentence naming the violation when it is not.
+ *
+ * This is the one function a caller needs in order to satisfy the owner's
+ * clause: "the optimization target must never override an injury or illness
+ * hard stop". It is deliberately total over the posture union, so a future
+ * posture cannot slip through as permitted by omission.
+ *
+ * NOTE what it does NOT ask about: the strength of the capacity evidence. That
+ * is the point. Suspected bone stress, systemic illness and an unread safety
+ * check are not weighed against a VDOT gain; they end the weighing.
+ */
+export function hardStopObjection(args: {
+  /**
+   * The Safety owner's verdict for an engine that proposes changes.
+   *
+   * The TYPE is imported rather than re-spelled as a union here. Rule 16, and
+   * a practical reason as well: a hand-written copy of the union would fall
+   * out of date the moment Safety gained a posture, and this function would
+   * then answer `null` for it by falling off the end of the switch, which is
+   * the "permitted by omission" failure the whole file is about.
+   */
+  readonly safety: TrainingSafetyPosture;
+  /** What the engine chose to do. */
+  readonly chosen: Option;
+  /** True when the chosen option actually raises this runner's load. */
+  readonly advances: boolean;
+}): string | null {
+  const { safety, chosen, advances } = args;
+  if (safety === 'NORMAL') return null;
+  if (!advances && chosen !== 'PUSH') return null;
+
+  switch (safety) {
+    case 'HARD_STOP':
+      return 'The Safety owner has raised a hard stop and this decision advances training '
+        + 'anyway. SAFETY > TRAINING OPTIMIZATION (docs/BRAIN_CONSTITUTION.md §2.E): the '
+        + 'objective does not get a vote here, however strong the capacity evidence is.';
+    case 'CONSTRAINED':
+      return 'Safety permits training and forbids advancing it, and this decision advances it. '
+        + 'A recovery constraint is a prescribed reduction, and the objective is the maximum '
+        + 'load this runner can ABSORB, which during a prescribed return is less than before it.';
+    case 'UNREADABLE':
+      return 'The safety check did not run, and this decision advances training on the '
+        + 'assumption that it would have said NORMAL. Rule 11: absent, unreadable and '
+        + 'measured-normal are three facts, and a missing gate is not an open one.';
+    default:
+      return null;
+  }
+}

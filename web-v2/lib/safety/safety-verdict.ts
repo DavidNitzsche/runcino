@@ -140,8 +140,18 @@ export type SafetyPosture =
   /** Emit no runnable session BECAUSE THE CHECK DID NOT RUN. Retryable. */
   | 'WITHHOLD_PENDING_CHECK';
 
-/** Which input could not be read, or which one drove the verdict. */
-export type SafetySignalName = 'injury' | 'illness' | 'niggle';
+/**
+ * Which input could not be read, or which one drove the verdict.
+ *
+ * FIVE signals as of 2026-09-05. The two additions close the two states the
+ * owner named that nothing in this app supplied: a runner inside a
+ * return-to-running window, and a runner who has recently had a break in
+ * training long enough that doctrine restarts them below their previous
+ * volume. Both are Constitution §2.E's own words ("return-to-running
+ * restrictions"), and both were previously invisible to every consumer.
+ */
+export type SafetySignalName =
+  | 'injury' | 'illness' | 'niggle' | 'returnToRunning' | 'disruption';
 
 /** Why a read produced nothing. Two facts, not one. */
 export type SignalFailure =
@@ -192,12 +202,117 @@ export interface NiggleSignal {
   readonly status: string;
   readonly loggedAtISO: string;
   readonly daysActive: number;
+  /**
+   * ESCALATION · is this the same complaint, reported WORSE than last time?
+   *
+   * `Research/05-injury-return-protocols.md` §1.6 lists "Symptoms worsening
+   * rather than improving" among the universal red flags. A single reading
+   * cannot see that; two readings of the same body part can, and this is the
+   * comparison.
+   *
+   * Rule 11 · `null` is "we have only one reading", which is a different fact
+   * from "the previous reading was the same or milder". The two must not
+   * collapse: an escalating complaint whose history could not be read would
+   * otherwise present as a stable one.
+   */
+  readonly previousSeverity: number | null;
+  /** True only when `previousSeverity` exists AND this reading is higher. */
+  readonly escalating: boolean;
 }
+
+/**
+ * The runner is inside the window after an injury was RESOLVED.
+ *
+ * Not the same signal as `InjurySignal`, which is the open row. An open injury
+ * is rank 1 and stops everything; this is rank 4, the window afterwards, which
+ * doctrine treats as a reduced load rather than as no load.
+ */
+export interface ReturnToRunningSignal {
+  readonly injuryId: number;
+  readonly site: string;
+  readonly resolvedDateISO: string;
+  readonly daysSinceResolved: number;
+  /** Rows in the check-in ladder, if the runner is actually climbing one. */
+  readonly checkinCount: number;
+  readonly returnProtocol: string | null;
+}
+
+/**
+ * A BREAK IN RUNNING long enough that doctrine restarts the runner below their
+ * previous volume, and recent enough that the restart is still in progress.
+ *
+ * ── THE DOCTRINE, AND WHY THE BANDS ARE WHERE THEY ARE ─────────────────────
+ *
+ * `Research/22-plan-templates.md` §14 "Comeback Plans":
+ *
+ *     | 1-7 days   | Resume full plan; one easy day instead of first quality |
+ *     | 8-14 days  | 70% of pre-layoff volume for 1 wk, 85% for wk 2, full for wk 3 |
+ *
+ * A break of up to a week resumes the plan. A break of 8 days or more does
+ * NOT, and is not back to full until the third week. `Research/05` §1 says the
+ * walk-run scaffold applies "after any injury that has required a layoff
+ * longer than ~2 weeks", which is where the second band begins.
+ *
+ * ── RULE 9 · WHY 7 VERSUS 8 IS NOT A CLIFF ─────────────────────────────────
+ *
+ * Rule 9 forbids a categorically different outcome from a hair's difference of
+ * input. The input here is a COUNT OF WHOLE DAYS WITH NO RUN, which is an
+ * integer and has no hair: 7 and 8 are one day apart, not a tenth of a mile.
+ * That is the same answer `_phase_arbitration.test.ts` already gives for the
+ * lever order ("every input to the ORDER is an enum or an integer count"), and
+ * the walk in `_safety_precedence.test.ts` asserts the remaining property that
+ * matters, which is MONOTONICITY: a longer break never buys a more permissive
+ * answer.
+ *
+ * ── RULE 8 · A PRESCRIBED DIP IS NOT A DISRUPTION ──────────────────────────
+ *
+ * A gap inside a taper, a race week or a post-race recovery block was
+ * PRESCRIBED, and reading it as an unplanned break would be the exact defect
+ * Rule 8 names, pointed at a new reader. `load-safety.ts` excludes those days
+ * through `lib/training/normal-window.ts`, which is the one filter, and
+ * refuses rather than guessing when the race history cannot be read.
+ */
+export interface DisruptionSignal {
+  /** Consecutive days with no run, ending at `returnedOnISO`. */
+  readonly gapDays: number;
+  /** The last day of the break. */
+  readonly gapEndedISO: string;
+  /** The first run after it, or null when the runner has not resumed. */
+  readonly returnedOnISO: string | null;
+  /** Days elapsed since the break ended. */
+  readonly daysSinceReturn: number;
+  /** How long doctrine keeps the reduced load, from `Research/22` §14. */
+  readonly constraintWindowDays: number;
+}
+
+/**
+ * `Research/22-plan-templates.md` §14 · "Return from Short Layoff (1-2 weeks
+ * off)". A break of 1 to 7 days resumes the full plan. 8 is where the table's
+ * second row begins and the restart drops below previous volume.
+ */
+export const DISRUPTION_MIN_GAP_DAYS = 8;
+
+/**
+ * `Research/05-injury-return-protocols.md` §1 · "a layoff longer than ~2
+ * weeks". Above this, the short-layoff table no longer applies and the
+ * moderate-layoff ramp does.
+ */
+export const DISRUPTION_LONG_GAP_DAYS = 15;
+
+/** `Research/22` §14 short-layoff row: 70% wk 1, 85% wk 2, full wk 3. The
+ *  reduced load runs for the first two weeks after the return. */
+export const DISRUPTION_SHORT_CONSTRAINT_DAYS = 14;
+
+/** `Research/22` §14 moderate-layoff table: weeks 1 to 6 are the ramp, "7+ |
+ *  Full". Six weeks of reduced load after the return. */
+export const DISRUPTION_LONG_CONSTRAINT_DAYS = 42;
 
 export interface SafetyInputs {
   readonly injury: SignalRead<InjurySignal>;
   readonly illness: SignalRead<IllnessSignal>;
   readonly niggle: SignalRead<NiggleSignal>;
+  readonly returnToRunning: SignalRead<ReturnToRunningSignal>;
+  readonly disruption: SignalRead<DisruptionSignal>;
 }
 
 /**
@@ -211,21 +326,60 @@ const WORST_CASE: Readonly<Record<SafetySignalName, SafetyState>> = {
   injury: 'STOP',   // moderate / major
   illness: 'STOP',  // any uncleared episode
   niggle: 'CAUTION',
+  /* CAUTION, not MODIFY, and the choice is argued rather than convenient.
+   *
+   * Both of these are RANK 4 in `training-safety.ts`'s precedence, below the
+   * niggle at rank 3, and the precedence has to stay monotone in restriction
+   * or a runner carrying two of them is told the milder thing. They therefore
+   * cannot emit a state stronger than the rank above them.
+   *
+   * The consequence is deliberate and is the safe direction for a screen: a
+   * failed read of either signal adds its name to `degradedSignals` and does
+   * NOT blank the runner's day. It still refuses every upward proposal,
+   * because `resolveTrainingSafety` treats ANY degraded signal as UNREADABLE.
+   * Not proposing costs nothing; withholding a runner's morning over a
+   * `coach_intents` timeout costs something real. */
+  returnToRunning: 'CAUTION',
+  disruption: 'CAUTION',
 };
 
 /**
  * A niggle at or above this severity is CAUTION. Below it, the runner logged
  * something they are aware of and it does not change today.
  *
- * DOCTRINE POSTURE, stated rather than implied (Rule 20): this threshold is
- * NOT research-cited. `lib/adaptation/adaptation-model.ts` uses its own
- * `NIGGLE_VETO_SEVERITY` for a different question (may progression step up),
- * and no `Research/` table gives a runner-reported 1-10 pain scale a band.
- * It is set at the midpoint so that it can only ever ADD a sentence, never
- * remove a session — the lowest-consequence place to be wrong. If a doctrine
- * source is ever found, this constant is the one to bind with a Rule 7 claim.
+ * ── CORRECTED 2026-09-05 · 5 BECAME 3, AND THE OLD HEADER WAS WRONG ────────
+ *
+ * This constant used to read 5, and its own header said, in as many words:
+ * "this threshold is NOT research-cited [...] no `Research/` table gives a
+ * runner-reported 1-10 pain scale a band."
+ *
+ * `Research/05-injury-return-protocols.md` §1.2 "Pain Monitoring Rules" gives
+ * exactly that scale exactly that band, and always did:
+ *
+ *     - 0-2: green. Continue, progress next session.
+ *     - 3-5: amber. Tolerable. Hold current load; do not progress.
+ *     - 6+: red. Stop the session. Drop a stage next attempt.
+ *
+ * Amber opens at 3. The old value put a 4/10 complaint in the same bucket as a
+ * 0/10 one, which doctrine does not, and the sentence that justified it was a
+ * claim nothing verified. Rule 20's corollary: a header comment asserting an
+ * invariant is documentation, not enforcement, and this one was false. It is
+ * now bound by the Rule 7 claim `SAFETY.niggle-amber-band-opens-at-three`,
+ * which parses the band out of the cited passage at run time.
+ *
+ * The one thing the old header got right is preserved: this constant can only
+ * ADD a sentence and block an upward proposal. It never removes a session.
+ *
+ * WHAT IS STILL OPEN, stated rather than quietly closed: doctrine's RED band
+ * ("6+ ... Stop the session") is NOT implemented. Making it a STOP would
+ * remove a session from a runner's day and would raise `WORST_CASE.niggle` to
+ * STOP, which in turn would blank the whole day on any failed niggle read.
+ * That is a product decision about what the runner sees, it needs the Rule 13
+ * render check, and production has never held a single `niggles` row for
+ * anybody, so there is nothing to render it against. It is reported as an open
+ * finding rather than shipped unverified.
  */
-export const NIGGLE_CAUTION_SEVERITY = 5;
+export const NIGGLE_CAUTION_SEVERITY = 3;
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * THE VERDICT
@@ -239,7 +393,13 @@ export type SafetyReason =
   | 'injury_major'
   | 'illness_fever'
   | 'illness'
-  | 'niggle';
+  | 'niggle'
+  /** The same complaint, reported worse than last time. `Research/05` §1.6. */
+  | 'niggle_escalating'
+  /** Inside the window after a resolved injury. `Research/05` §1, `Research/22` §14. */
+  | 'return_to_running'
+  /** Inside the restart window after an unplanned break. `Research/22` §14. */
+  | 'training_disruption';
 
 /**
  * THE CANONICAL SAFETY VERDICT.
@@ -259,6 +419,8 @@ export type SafetyResolution =
       readonly injury: InjurySignal | null;
       readonly illness: IllnessSignal | null;
       readonly niggle: NiggleSignal | null;
+      readonly returnToRunning: ReturnToRunningSignal | null;
+      readonly disruption: DisruptionSignal | null;
       /**
        * Signals we could not read whose worst case could NOT have outranked
        * the state above. The verdict stands; this is the honest footnote.
@@ -333,12 +495,31 @@ export function classifySafety(inputs: SafetyInputs): SafetyResolution {
   if (!inputs.injury.ok) unreadable.push({ signal: 'injury', failure: inputs.injury.failure });
   if (!inputs.illness.ok) unreadable.push({ signal: 'illness', failure: inputs.illness.failure });
   if (!inputs.niggle.ok) unreadable.push({ signal: 'niggle', failure: inputs.niggle.failure });
+  if (!inputs.returnToRunning.ok) {
+    unreadable.push({ signal: 'returnToRunning', failure: inputs.returnToRunning.failure });
+  }
+  if (!inputs.disruption.ok) {
+    unreadable.push({ signal: 'disruption', failure: inputs.disruption.failure });
+  }
 
   const injury = inputs.injury.ok ? inputs.injury.value : null;
   const illness = inputs.illness.ok ? inputs.illness.value : null;
   const niggle = inputs.niggle.ok ? inputs.niggle.value : null;
+  const returnToRunning = inputs.returnToRunning.ok ? inputs.returnToRunning.value : null;
+  const disruption = inputs.disruption.ok ? inputs.disruption.value : null;
 
-  // ── the state the READABLE signals alone support ────────────────────────
+  /* ── the state the READABLE signals alone support ─────────────────────────
+   *
+   * THE PRECEDENCE, and it is the owner's own list rather than this file's
+   * preference (see `training-safety.ts`'s `SAFETY_PRECEDENCE`, which is the
+   * same order as DATA and which `_safety_precedence.test.ts` reads):
+   *
+   *   1 injury  >  2 illness  >  3 niggle  >  4 recovery constraint  >  5 clear
+   *
+   * Return-to-running and recent disruption share rank 4, and within it the
+   * return window is checked first: a runner who is both coming back from an
+   * injury and coming back from the break that injury caused is described by
+   * the injury, which is the more specific fact and the one with a site. */
   let state: SafetyState = 'NORMAL';
   let reason: SafetyReason = 'clear';
   let driver: SafetySignalName | null = null;
@@ -352,10 +533,21 @@ export function classifySafety(inputs: SafetyInputs): SafetyResolution {
     state = 'STOP';
     reason = illness.hasFever ? 'illness_fever' : 'illness';
     driver = 'illness';
-  } else if (niggle && niggle.severity >= NIGGLE_CAUTION_SEVERITY) {
+  } else if (niggle && (niggle.severity >= NIGGLE_CAUTION_SEVERITY || niggle.escalating)) {
+    // Escalation fires BELOW the amber band as well. `Research/05` §1.6 lists
+    // "Symptoms worsening rather than improving" as a red flag in its own
+    // right, and a 1/10 that was a 0/10 yesterday is a trend, not a reading.
     state = 'CAUTION';
-    reason = 'niggle';
+    reason = niggle.escalating ? 'niggle_escalating' : 'niggle';
     driver = 'niggle';
+  } else if (returnToRunning) {
+    state = 'CAUTION';
+    reason = 'return_to_running';
+    driver = 'returnToRunning';
+  } else if (disruption) {
+    state = 'CAUTION';
+    reason = 'training_disruption';
+    driver = 'disruption';
   }
 
   /* ── could anything we failed to read have changed WHAT WE MAY PRESCRIBE?
@@ -396,6 +588,8 @@ export function classifySafety(inputs: SafetyInputs): SafetyResolution {
     injury,
     illness,
     niggle,
+    returnToRunning,
+    disruption,
     degradedSignals,
     explain:
       `safety ${state} · reason=${reason} · driver=${driver ?? 'none'}`
@@ -418,6 +612,9 @@ export const SAFETY_NOT_RESOLVED: SafetyResolution = {
   unreadable: [
     { signal: 'injury', failure: 'READ_FAILED' },
     { signal: 'illness', failure: 'READ_FAILED' },
+    { signal: 'niggle', failure: 'READ_FAILED' },
+    { signal: 'returnToRunning', failure: 'READ_FAILED' },
+    { signal: 'disruption', failure: 'READ_FAILED' },
   ],
   floor: 'NORMAL',
   explain: 'safety UNKNOWN · the resolver did not run for this caller',
@@ -498,6 +695,18 @@ export function safetyVerdictLine(res: SafetyResolution): string {
       return res.niggle
         ? `The ${res.niggle.bodyPart} is logged and still there. Run it easy and stop if it changes how you move.`
         : 'Something is logged and still there. Run it easy and stop if it changes how you move.';
+    case 'niggle_escalating':
+      return res.niggle
+        ? `The ${res.niggle.bodyPart} is worse than last time you logged it. Hold the load where it is and stop if it changes how you move.`
+        : 'What you logged is worse than last time. Hold the load where it is and stop if it changes how you move.';
+    case 'return_to_running':
+      return res.returnToRunning
+        ? `The ${res.returnToRunning.site} is cleared and the load comes back below where it was. Nothing gets harder yet.`
+        : 'You are coming back from something. The load comes back below where it was, and nothing gets harder yet.';
+    case 'training_disruption':
+      return res.disruption
+        ? `${res.disruption.gapDays} days without a run. The volume comes back before the intensity does.`
+        : 'There was a break in the running. The volume comes back before the intensity does.';
     case 'clear':
     default:
       // NORMAL has nothing to say. Rule 17: a coach does not announce the
@@ -530,6 +739,14 @@ export function safetyTitle(res: SafetyResolution): string {
     case 'MODIFY':
       return 'Easy only';
     case 'CAUTION':
+      /* RULE 17 AGAIN, the same trap the "Not today" over a minor injury fell
+       * into. "Carrying something" is true of a niggle and false of a runner
+       * whose injury is cleared and who is simply building back, and a title
+       * that contradicts the sentence under it is a correctness bug rather
+       * than redundancy. The title follows the REASON in the two rank-4 cases
+       * and the state everywhere else. */
+      if (res.reason === 'return_to_running') return 'Building back';
+      if (res.reason === 'training_disruption') return 'Building back';
       return 'Carrying something';
     default:
       return '';

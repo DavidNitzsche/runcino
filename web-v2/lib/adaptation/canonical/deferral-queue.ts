@@ -244,6 +244,13 @@ const QUEUEABLE_REASONS: ReadonlySet<DeferralRule> = new Set<DeferralRule>([
    * and a queued item carries a `nextBoundaryISO` it would be re-offered at.
    * Queueing one would mean re-proposing a push on a date nobody chose, which
    * is the opposite of "Safety may override other systems".
+   *
+   * `SAFETY_CONSTRAINED` and `SAFETY_UNREADABLE` are absent for the same
+   * reason, and the second is the sharpest case of it: a queued deferral is
+   * re-offered because a clock advanced, and a clock advancing tells you
+   * nothing whatsoever about whether the safety read that failed would now
+   * succeed. Queueing it would convert "we did not know" into "we assumed it
+   * was fine, later", which is Rule 11 with a delay on it.
    */
 ]);
 
