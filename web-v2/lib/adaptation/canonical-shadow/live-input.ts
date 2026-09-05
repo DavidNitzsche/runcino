@@ -181,15 +181,44 @@ interface RaceRow {
  * SELECT before it reaches the wire (`read-only-db.ts`).
  * ═══════════════════════════════════════════════════════════════════════ */
 
-async function readActivePlan(userUuid: string): Promise<ActivePlanRow | null> {
-  const r = await roQuery<ActivePlanRow>(
-    `SELECT id::text AS id, mode, race_id, authored_iso::text AS authored_iso, authored_state
-       FROM training_plans
-      WHERE user_uuid = $1::uuid AND archived_iso IS NULL
-      ORDER BY authored_iso DESC
-      LIMIT 1`,
-    [userUuid],
-  );
+/**
+ * Which plan a build is about. Rule 14 · the population is stated, never
+ * inferred from a date argument.
+ *
+ * `ACTIVE` is the live posture and the default: the one unarchived plan, which
+ * is the only plan a live evaluation may ever propose against.
+ *
+ * `AS_AUTHORED_AT` is for HISTORICAL REPLAY ONLY. It selects the most recently
+ * authored plan on or before the as-of date, INCLUDING archived ones, because
+ * the plan that was live in July has since been archived and a replay that
+ * priced July's evidence against September's plan is not a replay. Nothing on
+ * any live path may pass it: `_counterfactual.script.ts` is the only caller,
+ * and it is a script.
+ */
+export type PlanSelection = 'ACTIVE' | 'AS_AUTHORED_AT';
+
+async function readPlan(
+  userUuid: string,
+  asOfISO: string,
+  selection: PlanSelection,
+): Promise<ActivePlanRow | null> {
+  const r = selection === 'ACTIVE'
+    ? await roQuery<ActivePlanRow>(
+      `SELECT id::text AS id, mode, race_id, authored_iso::text AS authored_iso, authored_state
+         FROM training_plans
+        WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+        ORDER BY authored_iso DESC
+        LIMIT 1`,
+      [userUuid],
+    )
+    : await roQuery<ActivePlanRow>(
+      `SELECT id::text AS id, mode, race_id, authored_iso::text AS authored_iso, authored_state
+         FROM training_plans
+        WHERE user_uuid = $1::uuid AND authored_iso::date <= $2::date
+        ORDER BY authored_iso DESC
+        LIMIT 1`,
+      [userUuid, asOfISO],
+    );
   return r.rows[0] ?? null;
 }
 
@@ -215,15 +244,32 @@ async function readPlanWorkouts(planId: string): Promise<PlanWorkoutRow[]> {
 
 /** Every canonical (non-absorbed) run for this user on or after `sinceISO`.
  *  Rule 14: the ONE canonical predicate, imported rather than re-typed. */
-async function readRecentRuns(userUuid: string, sinceISO: string): Promise<RunRow[]> {
+/**
+ * Runs in `[sinceISO, untilISO)`.
+ *
+ * The upper bound was added 2026-09-04 and is a no-op for the live cron, which
+ * passes today. It matters for any caller that passes a PAST `nowISO`: without
+ * it this query returns runs the athlete had not yet done at that date, and
+ * while every downstream consumer here already filters per-use, `evidenceVersion`
+ * and `belief.oldestSupportingDateISO` were both read straight off this list.
+ * A loader that claims to build an input AS OF a date must not be able to see
+ * past it at all, which is cheaper to guarantee here than to remember at four
+ * call sites (Rule 16).
+ */
+async function readRecentRuns(
+  userUuid: string,
+  sinceISO: string,
+  untilISO: string,
+): Promise<RunRow[]> {
   const r = await roQuery<RunRow>(
     `SELECT id::text AS id, data
        FROM runs
       WHERE user_uuid = $1::uuid
         AND ${runDaySql()} >= $2
+        AND ${runDaySql()} < $3
         AND ${runNotMergedSql()}
       ORDER BY ${runDaySql()} ASC`,
-    [userUuid, sinceISO],
+    [userUuid, sinceISO, untilISO],
   );
   return r.rows;
 }
@@ -454,16 +500,24 @@ export interface LiveInputResult {
 export async function buildLiveCanonicalInput(
   userUuid: string,
   nowISO: string = new Date().toISOString(),
+  planSelection: PlanSelection = 'ACTIVE',
 ): Promise<LiveInputResult> {
   const asOf = day(nowISO);
 
   let plan: ActivePlanRow | null;
   try {
-    plan = await readActivePlan(userUuid);
+    plan = await readPlan(userUuid, asOf, planSelection);
   } catch (e) {
     return { input: null, refusal: `Could not read the active plan: ${e instanceof Error ? e.message : String(e)}` };
   }
-  if (!plan) return { input: null, refusal: 'No active plan for this athlete.' };
+  if (!plan) {
+    return {
+      input: null,
+      refusal: planSelection === 'ACTIVE'
+        ? 'No active plan for this athlete.'
+        : `No plan had been authored for this athlete on or before ${asOf}.`,
+    };
+  }
 
   let race: RaceRow | null = null;
   if (plan.race_id) {
@@ -495,7 +549,7 @@ export async function buildLiveCanonicalInput(
 
   let runs: RunRow[];
   try {
-    runs = await readRecentRuns(userUuid, sinceISO);
+    runs = await readRecentRuns(userUuid, sinceISO, asOf);
   } catch (e) {
     // Rule 11 · the read FAILED, which is not the same as "no runs". Feed
     // `readable: false` through rather than an empty history, so
@@ -657,6 +711,25 @@ export async function buildLiveCanonicalInput(
     qualitySessions,
     weeks: weekObservations,
     longRuns: longRunObservations,
+    // Rule 11, stated rather than guessed. "How much total weekly demand can
+    // this athlete absorb" belongs to the demand model
+    // (`docs/BRAIN_CONSTITUTION.md` · one question, one canonical owner), and
+    // no such model is wired into this app yet. So this is ABSENT, not a
+    // number this loader invented from the athlete's peak week.
+    //
+    // CONSEQUENCE, STATED PLAINLY, in the same posture as the two refusals
+    // named in this file's header: arbitration's rule 1 (the week-level demand
+    // test) CANNOT FIRE on any live evaluation until a ceiling is supplied.
+    // That is not silent. `arbitrate` carries the posture out on
+    // `ArbitrationResult.demandCeiling`, `evaluateAdaptation` puts it on
+    // `CanonicalEvaluation.demandCeiling`, and every decision record carries
+    // `INV_DEMAND_CEILING_POSTURE_STATED` naming it. A reader of a live shadow
+    // record can therefore tell "the week had room" apart from "nobody knew
+    // what the week's ceiling was", which is the whole of Rule 11.
+    athleteCeilingWeeklyDemand: absent(
+      'no weekly demand model is wired into this app yet, so no ceiling has been supplied '
+      + 'for this athlete',
+    ),
     readable: true,
   };
 
@@ -704,6 +777,10 @@ function buildUnreadableInput(
         anchorMovedTodayForLever: { THRESHOLD_PACE: false, WEEKLY_VOLUME: false, LONG_RUN: false },
       },
       qualitySessions: [], weeks: [], longRuns: [],
+      athleteCeilingWeeklyDemand: failed(
+        'the training data for this athlete could not be read, so no week could be priced '
+        + 'against a ceiling',
+      ),
       readable: false,
     },
     refusal: null,

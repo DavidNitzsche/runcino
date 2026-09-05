@@ -683,7 +683,37 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     // threshold session in the last 28 days" had qualifying sessions all along.
     // REGRESS is UNCHANGED at 4: nothing about the downward path moved, which
     // is the check that this was a readability fix and not a loosened bar.
-    expect(dist).toEqual({ PROGRESS: 14, HOLD: 64, REGRESS: 4, REFUSE: 38 });
+    //
+    // ── 2026-09-04, SECOND PASS · ARBITRATION READING C ────────────────────
+    //
+    // Previous pin: `{ PROGRESS: 14, HOLD: 64, REGRESS: 4, REFUSE: 38 }`.
+    //
+    // `lib/adaptation/canonical/arbitration.ts` rule 1 was changed from "a load
+    // HOLD suppresses a material increase" to "the complete projected week must
+    // not exceed the athlete's own demand ceiling", per the owner's ruling in
+    // `docs/reports/core-closure-2026-09-04/ARBITRATION-CHOICE.md`. Rule 2's
+    // materiality-keyed exception was DELETED rather than widened.
+    //
+    //   PROGRESS  14 ->   9
+    //   HOLD      64 ->  67
+    //   REGRESS    4 ->   6
+    //   REFUSE    38 ->  38
+    //
+    // PROGRESS FALLING IS THE CHANGE WORKING, and it is worth reading twice
+    // because the arrow points the wrong way at a glance. Under the old rule
+    // the same 3 s/mi pace proposal was RE-MADE and RE-SUPPRESSED at four
+    // successive boundaries, because the anchor never moved: four PROGRESS
+    // records, one applied change. Under reading C the proposal is APPLIED, so
+    // the next boundary sees a moved anchor and correctly HOLDs. Fewer records,
+    // more movement. `docs/reports/core-closure-2026-09-04/COUNTERFACTUAL.md`
+    // measures the same season through both readings and reports it directly:
+    // the threshold anchor walks 7:22 -> 7:10 rather than 7:22 -> 7:19, which
+    // is 12 s/mi against 3 across two months of his real training.
+    //
+    // REGRESS 4 -> 6 is the same mechanism in the other direction and is the
+    // check that this was not a one-way loosening: a downward pace correction
+    // that used to be suppressed alongside everything else now also lands.
+    expect(dist).toEqual({ PROGRESS: 9, HOLD: 67, REGRESS: 6, REFUSE: 38 });
   });
 
   it('the belief no longer walks below the volume he demonstrably ran', () => {
@@ -752,10 +782,38 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
   });
 
   it('and no REGRESS on his real history proposes an increase', () => {
-    const upward = RUN.rows.filter(
-      (r) => r.decision === 'REGRESS' && r.magnitude.startsWith('+'),
-    ).map((r) => `${r.decisionDate} ${r.lever} ${r.magnitude} · ${r.reason}`);
+    /* THE UNIT MATTERS, AND THIS TEST USED TO IGNORE IT (fixed 2026-09-04).
+     *
+     * It read `magnitude.startsWith('+')`, which is right for `weekly_mi` and
+     * `long_run_mi` and WRONG for `sec_per_mi`: a faster threshold pace is a
+     * SMALLER number of seconds, so a pace REGRESS is correctly `+2.4` and a
+     * pace PROGRESS is correctly `-3`. The engine has owned that distinction
+     * since `evaluate.ts`'s `directionOf` was written, and the assertion above
+     * this one (`no record ships with a failed invariant`) already proves every
+     * record agrees with it through `INV_DIRECTION_MATCHES_DECISION`.
+     *
+     * It never fired before because no pace REGRESS reached the ledger; the
+     * arbitration change that let pace proposals land surfaced two, and this
+     * assertion called them upward. A gate that is wrong in a way nothing has
+     * yet reached is exactly the shape Rule 15 is about, so the fix is stated
+     * rather than quietly applied.
+     *
+     * "An increase" is now asked in each unit's own terms. */
+    const increasesDemand = (row: { lever: string; magnitude: string }): boolean =>
+      row.magnitude.includes('sec_per_mi')
+        ? row.magnitude.startsWith('-')   // faster is a smaller number
+        : row.magnitude.startsWith('+');  // further is a larger number
+    const upward = RUN.rows
+      .filter((r) => r.decision === 'REGRESS' && increasesDemand(r))
+      .map((r) => `${r.decisionDate} ${r.lever} ${r.magnitude} · ${r.reason}`);
     expect(upward).toEqual([]);
+
+    // Rule 18 · the predicate is falsified here rather than only being trusted,
+    // because it is the whole content of this test.
+    expect(increasesDemand({ lever: 'THRESHOLD_PACE', magnitude: '-3 sec_per_mi' })).toBe(true);
+    expect(increasesDemand({ lever: 'THRESHOLD_PACE', magnitude: '+2.4 sec_per_mi' })).toBe(false);
+    expect(increasesDemand({ lever: 'WEEKLY_VOLUME', magnitude: '+2 weekly_mi' })).toBe(true);
+    expect(increasesDemand({ lever: 'WEEKLY_VOLUME', magnitude: '-2 weekly_mi' })).toBe(false);
   });
 
   // Rule 17, and the coach-voice half of finding 8. `miText(0)` renders "no

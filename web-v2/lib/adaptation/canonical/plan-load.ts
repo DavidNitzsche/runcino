@@ -114,6 +114,29 @@ export function projectPlanLoad(input: PlanLoadInputs): ProjectedPlanLoad {
   };
 }
 
+/**
+ * A demand CEILING, stated as the week that sits exactly at it.
+ *
+ * `demandIndex` is deliberately unitless, which makes it a poor thing to ask an
+ * outside workstream to supply directly. This is how a caller says "the most
+ * this athlete should be asked to carry in one week is 52 miles with an 18-mile
+ * long run and 70 quality minutes" and gets back the one number arbitration
+ * compares against. The ceiling is priced with the anchor UNMOVED, because a
+ * ceiling is a property of the athlete rather than of any proposal.
+ *
+ * One function so the two sides of the comparison are built by the same
+ * arithmetic (Rule 16). A caller that hand-rolled the index would be a second
+ * opinion about what a week costs, and it would drift the first time a
+ * coefficient here changed.
+ */
+export function demandCeilingForWeek(week: {
+  readonly weeklyMi: number;
+  readonly longRunMi: number;
+  readonly qualityMinutes: number;
+}): number {
+  return projectPlanLoad({ ...week, thresholdAnchorDeltaSecPerMi: 0 }).demandIndex;
+}
+
 /** The change one projection represents against another. */
 export function demandDelta(base: ProjectedPlanLoad, next: ProjectedPlanLoad): number {
   return Math.round((next.demandIndex - base.demandIndex) * 1000) / 1000;

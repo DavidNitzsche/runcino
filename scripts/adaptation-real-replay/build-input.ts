@@ -1130,6 +1130,17 @@ export function buildInputAt(args: BuildArgs, snapshot?: SealedHistory): BuiltIn
     qualitySessions,
     weeks,
     longRuns,
+    // Rule 11 · the athlete's weekly demand ceiling belongs to a demand model
+    // (`docs/BRAIN_CONSTITUTION.md` · one question, one canonical owner) and no
+    // such model exists, in production or in this snapshot. ABSENT, never a
+    // number invented here from his peak week: arbitration's rule 1 then
+    // reports that it could not run rather than silently passing everything, and
+    // `CanonicalEvaluation.demandCeiling` carries the reason out to the ledger.
+    // A counterfactual that wants to probe a plausible ceiling substitutes its
+    // own and says so; it does not get one smuggled in through the loader.
+    athleteCeilingWeeklyDemand: absent(
+      'no weekly demand model exists for this athlete, in production or in this snapshot',
+    ),
     readable: args.readable ?? true,
   };
 

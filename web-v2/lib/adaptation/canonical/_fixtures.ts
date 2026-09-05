@@ -40,6 +40,7 @@ import type {
   WeekObservation,
 } from './input';
 import { measured, absent } from './input';
+import { demandCeilingForWeek } from './plan-load';
 import type { StimulusGrade } from './stimulus';
 
 /** 7:10/mi, the demonstrated threshold anchor. */
@@ -191,9 +192,49 @@ export const baseInput = (
   qualitySessions: [],
   weeks: [],
   longRuns: [],
+  /**
+   * ABSENT by default, and that default is a statement rather than a
+   * convenience: no demand model is wired anywhere in this app yet, so an
+   * absent ceiling is the state every live evaluation is actually in. A
+   * fixture that quietly supplied one would make the corpus test a world that
+   * does not exist, which is CLAUDE.md Rule 15's failure ("a mechanism the
+   * test corpus cannot REACH is untested") pointed the other way round.
+   *
+   * A test about rule 1 must therefore say so, by passing
+   * `athleteCeilingWeeklyDemand: ceilingOf(...)`. That is deliberate friction.
+   */
+  athleteCeilingWeeklyDemand: absent('no demand model is wired yet'),
   readable: true,
   ...opts,
 });
+
+/**
+ * A demand ceiling stated as the week that sits exactly at it, priced by the
+ * engine's own `demandCeilingForWeek` so both sides of the comparison come from
+ * one piece of arithmetic (Rule 16).
+ */
+export const ceilingOf = (week: {
+  weeklyMi: number;
+  longRunMi: number;
+  qualityMinutes: number;
+}) => measured(demandCeilingForWeek(week));
+
+/**
+ * The base fixture's own next week, as a ceiling: 48 mi, a 16-mile long run and
+ * 60 quality minutes. A week exactly AT this is at its ceiling, so any proposal
+ * that raises demand at all pushes past it. This is the "full week" every
+ * rule-1 test uses.
+ */
+export const baseWeekAtCeiling = () =>
+  ceilingOf({ weeklyMi: 48, longRunMi: 16, qualityMinutes: 60 });
+
+/**
+ * The same week with real headroom: priced as if the athlete could carry 60
+ * miles with a 20-mile long run. Nothing any single lever can propose reaches
+ * it, so rule 1 never fires and rule 3 is the only thing left arbitrating.
+ */
+export const baseWeekWithHeadroom = () =>
+  ceilingOf({ weeklyMi: 60, longRunMi: 20, qualityMinutes: 90 });
 
 /** Three consecutive weeks completed at or above the 95% bar. */
 export const threeGoodWeeks = (): WeekObservation[] => [

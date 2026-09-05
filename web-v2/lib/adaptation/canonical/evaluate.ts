@@ -73,7 +73,7 @@ import { evaluateThresholdPace } from './levers/threshold-pace';
 import { evaluateWeeklyVolume } from './levers/weekly-volume';
 import { evaluateLongRun } from './levers/long-run';
 import type { LeverVerdict } from './levers/shared';
-import { arbitrate, type ArbitratedVerdict } from './arbitration';
+import { arbitrate, type ArbitratedVerdict, type DemandCeilingPosture } from './arbitration';
 import { miText, paceText } from './levers/shared';
 
 export interface CanonicalEvaluation {
@@ -83,6 +83,13 @@ export interface CanonicalEvaluation {
   readonly records: readonly CanonicalDecisionRecord[];
   /** Present so a reader can see the arbitration, not just its result. */
   readonly combinedDemandShare: number;
+  /**
+   * Rule 11, surfaced rather than buried. Whether arbitration's week-level
+   * demand test could run at all on this evaluation, and why not when it could
+   * not. A caller that ignores this is choosing to, which is the point: a
+   * missing input must never silently disable a mechanism.
+   */
+  readonly demandCeiling: DemandCeilingPosture;
 }
 
 /**
@@ -115,6 +122,17 @@ export function evaluateAdaptation(
         ),
       ),
       combinedDemandShare: 0,
+      // Nothing was arbitrated, so nothing was measured against a ceiling. The
+      // posture is still stated, because "the evaluation refused" and "the
+      // ceiling test silently did not run" are two facts and a caller reading
+      // this field is entitled to both.
+      demandCeiling: {
+        kind: 'ABSENT',
+        rule1CanFire: false,
+        detail:
+          'The training data could not be read, so no week was projected and no demand '
+          + 'ceiling was consulted.',
+      },
     };
   }
 
@@ -156,16 +174,19 @@ export function evaluateAdaptation(
     baseWeeklyMi: input.plan.nextWeekPrescribedMi,
     baseLongRunMi: input.plan.nextWeekLongRunMi,
     baseQualityMinutes: input.plan.nextWeekQualityMinutes,
+    athleteCeilingWeeklyDemand: input.athleteCeilingWeeklyDemand,
     nextBoundaryISO: nextBoundary(input),
   });
 
-  const records = result.arbitrated.map((a) => toRecord(input, a, previouslyEmittedKeys));
+  const records = result.arbitrated.map((a) =>
+    toRecord(input, a, previouslyEmittedKeys, result.demandCeiling));
 
   return {
     contractVersion: CANONICAL_ADAPTATION_CONTRACT_VERSION,
     evaluatedAtISO: input.evaluatedAtISO,
     records,
     combinedDemandShare: result.combinedShare,
+    demandCeiling: result.demandCeiling,
   };
 }
 
@@ -177,6 +198,7 @@ function toRecord(
   input: CanonicalAdaptationInput,
   a: ArbitratedVerdict,
   previouslyEmittedKeys: ReadonlySet<string>,
+  ceiling: DemandCeilingPosture,
 ): CanonicalDecisionRecord {
   const v = a.verdict;
   const key = idempotencyKeyFor({
@@ -195,6 +217,7 @@ function toRecord(
   if (moves && suppressedBy === null && input.boundary !== 'WEEKLY_BOUNDARY') {
     suppressedBy = {
       by: 'PLAN_LOAD',
+      rule: 'ARBITRATED_AT_WEEKLY_BOUNDARY',
       detail:
         'The evidence is recorded. Changes to the plan are arbitrated at the weekly '
         + 'boundary, once the evidence for the week has settled.',
@@ -206,6 +229,7 @@ function toRecord(
   if (moves && suppressedBy === null && previouslyEmittedKeys.has(key)) {
     suppressedBy = {
       by: 'PLAN_LOAD',
+      rule: 'ALREADY_RAISED_ON_THIS_EVIDENCE',
       detail:
         'This proposal has already been raised on exactly this evidence. Re-reading the '
         + 'same training does not make it a new finding.',
@@ -256,7 +280,7 @@ function toRecord(
     magnitude: v.magnitude,
     affectedWorkoutIds: planDiff.entries.map((e) => e.workoutId),
     planDiff,
-    invariants: checkInvariants(input, arbitratedForInvariants, planDiff),
+    invariants: checkInvariants(input, arbitratedForInvariants, planDiff, ceiling),
 
     reason: v.reason,
     whatWouldChangeIt: v.whatWouldChangeIt,
@@ -454,6 +478,7 @@ function checkInvariants(
   input: CanonicalAdaptationInput,
   a: ArbitratedVerdict,
   diff: PlanDiff,
+  ceiling: DemandCeilingPosture,
 ): InvariantResult[] {
   const v = a.verdict;
   const out: InvariantResult[] = [];
@@ -536,6 +561,29 @@ function checkInvariants(
     detail: a.suppressedBy
       ? `Deferred · ${a.suppressedBy.detail}`
       : 'Not suppressed.',
+  });
+
+  // ── RULE 11 · THE MISSING INPUT IS RECORDED, NOT ABSORBED ──────────────
+  //
+  // `athleteCeilingWeeklyDemand` is owned by a demand model this engine does
+  // not contain, so it is frequently absent, and an absent safety input that
+  // nobody records is exactly the shape CLAUDE.md Rule 11 was written about:
+  // "a missing input must never silently disable a safety mechanism; if a
+  // guard cannot run, that is a refusal worth surfacing."
+  //
+  // This invariant is written so it CAN fail (Rule 18): it asserts that a
+  // week-ceiling deferral is only ever emitted when a ceiling was actually
+  // read. Regress `rule1Suppresses` to fire on an unknown ceiling and every
+  // affected record reports it. It is not an `x || true` that reports clean
+  // whatever happens.
+  const deferredOnCeiling = a.suppressedBy !== null
+    && a.suppressedBy.rule === 'WEEK_AT_DEMAND_CEILING';
+  out.push({
+    id: 'INV_DEMAND_CEILING_POSTURE_STATED',
+    passed: ceiling.rule1CanFire || !deferredOnCeiling,
+    detail: deferredOnCeiling && !ceiling.rule1CanFire
+      ? `A change was deferred for total weekly demand with no ceiling to measure it against. ${ceiling.detail}`
+      : ceiling.detail,
   });
 
   return out;

@@ -11,13 +11,26 @@
  *      the next appropriate boundary."
  *
  * The first block below is that sentence, asserted. Its counterpart is the
- * second block, which proves an unrelated hold does NOT freeze the engine,
- * because rule 1 without rule 2 produces exactly the engine Rule 21 measured.
+ * second block, which proves an unrelated hold does NOT freeze the engine.
+ *
+ * ── WHAT MAKES THE SENTENCE TRUE, AS OF READING C (2026-09-04) ─────────────
+ *
+ * The sentence says "this week already contains enough TOTAL DEMAND", so the
+ * fixture that makes it true is a week AT THE ATHLETE'S DEMAND CEILING, not a
+ * week in which some other lever happened to hold. Until 2026-09-04 the engine
+ * said it on the strength of a HOLD, which is why the two blocks below used to
+ * pull against each other and why rule 2's exception had to exist at all. Both
+ * fixtures now differ in exactly one input — the ceiling — and nothing else,
+ * which is the property that proves the two sentences stopped competing.
  *
  * ── RULE 22 · WHAT THIS FILE CANNOT FAIL ON ────────────────────────────────
  *
  * · The plan-load coefficients. Only the ORDERING and the SIGN of the demand
  *   delta are read, so any monotonic set of weights passes everything here.
+ * · THE CEILING BEING RIGHT. Every ceiling here is supplied by the fixture. A
+ *   demand model that returned a number 20% too generous for a real athlete
+ *   would pass this entire file while letting through weeks nobody should be
+ *   asked to run. That number is owned elsewhere and nothing here can check it.
  * · Whether the arbitration priority is the right one. It asserts the order is
  *   applied, not that workload-before-pace is correct coaching.
  * · A plan diff that names the right workouts with wrong numbers.
@@ -29,9 +42,13 @@ import { measured } from './input';
 import {
   baseInput, session, week, longRun, decayingThirds,
   threeGoodWeeks, twoGoodLongRuns, twoFasterThresholdSessions,
+  baseWeekAtCeiling, baseWeekWithHeadroom,
 } from './_fixtures';
 
-/** A runner whose volume must hold but whose threshold evidence is strong. */
+/**
+ * A runner whose volume must hold, whose threshold evidence is strong, and
+ * whose next week is already at his own demand ceiling.
+ */
 const volumeHoldsPaceProgresses = () =>
   baseInput({
     // One week under the bar, so WEEKLY_VOLUME holds.
@@ -47,6 +64,8 @@ const volumeHoldsPaceProgresses = () =>
     ],
     // Threshold evidence is clean and corroborated.
     qualitySessions: twoFasterThresholdSessions(),
+    // And the week is full. This is what makes the acceptance sentence TRUE.
+    athleteCeilingWeeklyDemand: baseWeekAtCeiling(),
   });
 
 describe('THE ACCEPTANCE TEST · independent evidence, coherent arbitration', () => {
@@ -63,10 +82,19 @@ describe('THE ACCEPTANCE TEST · independent evidence, coherent arbitration', ()
     // And the plan-level arbitration deferred it.
     expect(volume.decision).toBe('HOLD');
     expect(pace.suppressedBy).not.toBeNull();
+    expect(pace.suppressedBy!.rule).toBe('WEEK_AT_DEMAND_CEILING');
     expect(pace.suppressedBy!.detail).toMatch(
       /already contains enough total demand, so the change is deferred until the next appropriate boundary/,
     );
     expect(pace.suppressedBy!.reconsiderAtISO).not.toBeNull();
+
+    // And the ceiling that made it true was actually READ. Without this, the
+    // sentence could be said off an absent input, which is the Rule 11 defect
+    // this reading was introduced to close.
+    expect(out.demandCeiling.kind).toBe('READ');
+    expect(
+      pace.invariants.find((i) => i.id === 'INV_DEMAND_CEILING_POSTURE_STATED')!.passed,
+    ).toBe(true);
 
     // A deferred proposal carries no diff and no rollback, because nothing is
     // being proposed to the plan.
@@ -88,28 +116,100 @@ describe('THE ACCEPTANCE TEST · independent evidence, coherent arbitration', ()
 });
 
 describe('one unrelated HOLD must NOT freeze the engine', () => {
-  it('a sub-material pace correction proceeds alongside a volume hold', () => {
-    // Rule 2. The pace evidence supports a 1 s/mi correction, which is below
-    // half the ordinary doctrine step and therefore not material.
-    const input = baseInput({
+  /**
+   * The same runner as the acceptance test above, with the week's ceiling
+   * moved up and NOTHING else changed. A volume hold and a long-run hold are
+   * both still present.
+   *
+   * Rule 15 · this is the case that REACHES the mechanism. Before reading C
+   * there was no such case for a MATERIAL pace correction, because every
+   * threshold proposal the engine can make is material by construction (the
+   * ordinary step is 3 s/mi against a 1.5 s/mi bar) and rule 1 keyed on
+   * materiality. The old test could only reach it with a 1 s/mi proposal, a
+   * step the engine had never once produced on real history.
+   */
+  const sameRunnerWithHeadroom = () =>
+    baseInput({
+      weeks: [
+        week('2026-08-17', 47, 47.2),
+        week('2026-08-24', 48, 43),
+        week('2026-08-31', 48, 47.9),
+      ],
+      longRuns: [
+        longRun('lr-1', '2026-08-23', 16, 16),
+        longRun('lr-2', '2026-08-30', 16, 16, { thirds: decayingThirds() }),
+      ],
+      qualitySessions: twoFasterThresholdSessions(),
+      athleteCeilingWeeklyDemand: baseWeekWithHeadroom(),
+    });
+
+  it('an ORDINARY pace correction proceeds alongside a volume hold when the week has room', () => {
+    const out = evaluateAdaptation(sameRunnerWithHeadroom());
+    const pace = out.records.find((r) => r.lever === 'THRESHOLD_PACE')!;
+    expect(out.records.find((r) => r.lever === 'WEEKLY_VOLUME')!.decision).toBe('HOLD');
+    expect(out.records.find((r) => r.lever === 'LONG_RUN')!.decision).toBe('HOLD');
+
+    expect(pace.decision).toBe('PROGRESS');
+    // A FULL ordinary step, well past the materiality bar. This is the half
+    // that was unreachable before: the old rule 1 suppressed every proposal of
+    // this size whenever any load lever held.
+    expect(Math.abs(pace.magnitude!.value)).toBeGreaterThanOrEqual(1.5);
+    expect(pace.suppressedBy).toBeNull();
+    expect(pace.planDiff.entries.length).toBeGreaterThan(0);
+  });
+
+  it('the ONLY difference from the acceptance test is the ceiling', () => {
+    // The two fixtures are otherwise byte-identical, which is what makes this
+    // a proof about rule 1 rather than about two unrelated scenarios.
+    const full = volumeHoldsPaceProgresses();
+    const roomy = sameRunnerWithHeadroom();
+    expect({ ...full, athleteCeilingWeeklyDemand: null })
+      .toEqual({ ...roomy, athleteCeilingWeeklyDemand: null });
+
+    const suppressed = evaluateAdaptation(full)
+      .records.find((r) => r.lever === 'THRESHOLD_PACE')!;
+    const applied = evaluateAdaptation(roomy)
+      .records.find((r) => r.lever === 'THRESHOLD_PACE')!;
+
+    // Same evidence, same verdict, same proposed value. Only the mutation
+    // differs, which is the contract's own framing: "independent evidence
+    // followed by coherent plan-level arbitration".
+    expect(suppressed.decision).toBe(applied.decision);
+    expect(suppressed.proposedAfterValue).toBe(applied.proposedAfterValue);
+    expect(suppressed.suppressedBy).not.toBeNull();
+    expect(applied.suppressedBy).toBeNull();
+  });
+
+  it('an UNKNOWN ceiling does not suppress, and says so on the record', () => {
+    // Rule 11 · absent is not "at the ceiling" and not "no ceiling". Rule 1
+    // cannot run, nothing is deferred for demand, and the reason is recorded
+    // on every record rather than being absorbed into a quiet pass.
+    const out = evaluateAdaptation(baseInput({
       weeks: [
         week('2026-08-17', 47, 47.2),
         week('2026-08-24', 48, 43),
         week('2026-08-31', 48, 47.9),
       ],
       longRuns: twoGoodLongRuns(),
-      qualitySessions: [
-        session('s-1', '2026-08-25', { workPaceSecPerMi: measured(429) }),
-        session('s-2', '2026-09-01', { workPaceSecPerMi: measured(429) }),
-      ],
-    });
-    const out = evaluateAdaptation(input);
+      qualitySessions: twoFasterThresholdSessions(),
+    }));
+    expect(out.demandCeiling.kind).toBe('ABSENT');
+    expect(out.demandCeiling.rule1CanFire).toBe(false);
+    expect(out.demandCeiling.detail).toMatch(/not the same as having no ceiling/);
+
+    // The invariant is asserted FIRST on purpose. It is the one that fails when
+    // the guard is regressed to fire on an unknown ceiling, and an assertion
+    // that only ever runs after a different one has already failed proves
+    // nothing about itself (Rule 18).
+    for (const r of out.records) {
+      const inv = r.invariants.find((i) => i.id === 'INV_DEMAND_CEILING_POSTURE_STATED')!;
+      expect(inv.passed, inv.detail).toBe(true);
+      expect(inv.detail).toMatch(/no weekly demand ceiling was supplied/i);
+    }
+
     const pace = out.records.find((r) => r.lever === 'THRESHOLD_PACE')!;
-    expect(out.records.find((r) => r.lever === 'WEEKLY_VOLUME')!.decision).toBe('HOLD');
     expect(pace.decision).toBe('PROGRESS');
-    expect(Math.abs(pace.magnitude!.value)).toBeLessThan(1.5);
     expect(pace.suppressedBy).toBeNull();
-    expect(pace.planDiff.entries.length).toBeGreaterThan(0);
   });
 });
 

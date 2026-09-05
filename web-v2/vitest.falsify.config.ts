@@ -29,5 +29,15 @@ export default {
     // production and fails without credentials, and a runner that cannot
     // pass on a clean checkout is a runner nobody will run.
     include: ['lib/adaptation/canonical/*.script.ts'],
+    // `_counterfactual.script.ts` lives in the same directory and matches the
+    // include above, but it reads PRODUCTION through the read-only role and
+    // fails without credentials — the exact property this config's own comment
+    // says disqualifies a file from this runner. It has its own config
+    // (`vitest.counterfactual.config.ts`) and is excluded here so
+    // `npm run test:falsify` stays green on a clean checkout.
+    exclude: [
+      ...((base as { test?: { exclude?: string[] } }).test?.exclude ?? []),
+      'lib/adaptation/canonical/_counterfactual.script.ts',
+    ],
   },
 };
