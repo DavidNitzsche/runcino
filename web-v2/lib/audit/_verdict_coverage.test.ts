@@ -244,7 +244,12 @@ const PAIRS: readonly Pair[] = [
      * below also fails if it comes down and this pin is not tightened, so it
      * cannot quietly stop meaning anything.
      */
-    measuredRatio: 4.43,
+    // TIGHTENED 4.43 -> 3.78 on 2026-09-05. The ratchet demanded it, which is
+    // the direction it exists to enforce: PROPOSEUP-1 and the objective suite
+    // added push-side coverage to this pair, so the measured imbalance came
+    // DOWN and a pin left at the old number would have been a gate that had
+    // quietly stopped holding.
+    measuredRatio: 3.78,
   },
 ];
 

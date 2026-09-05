@@ -1,3 +1,4 @@
+import type { V5ProposalWire } from '@/lib/faff/v5-today';
 /**
  * GET /api/v5/today
  *
@@ -1813,6 +1814,11 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       ctx.recentRun = recentRun;
       ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
       ctx.blockNote = await loadBlockNote(userId);
+  // V5PROPOSAL-1 (2026-09-05) · pending adaptations reach the V5 screen.
+      // Until today they were served only at /api/plan/workout-proposals,
+      // whose one Swift caller is the v4 shell behind -faffLegacy, so the app
+      // that ships had no proposal surface at all.
+      ctx.proposals = await loadV5Proposals(userId);
       return NextResponse.json(composeV5Today(ctx));
     }
   }
@@ -2240,6 +2246,11 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   ctx.contingency = contingency;
   ctx.paceNote = await loadPaceNoteRow(activePlan?.id ?? null);
   ctx.blockNote = await loadBlockNote(userId);
+  // V5PROPOSAL-1 (2026-09-05) · pending adaptations reach the V5 screen.
+      // Until today they were served only at /api/plan/workout-proposals,
+      // whose one Swift caller is the v4 shell behind -faffLegacy, so the app
+      // that ships had no proposal surface at all.
+      ctx.proposals = await loadV5Proposals(userId);
 
   return NextResponse.json(composeV5Today(ctx));
 }
@@ -2307,6 +2318,30 @@ function emptyContext(
 const BLOCK_NOTE_KINDS = new Set([
   'recovery_complete', 'plan_elapsed', 'race_graduate', 'maintenance_to_raceprep',
 ]);
+/**
+ * V5PROPOSAL-1 · pending adaptations, mapped for the phone.
+ *
+ * Rule 11 on the failure path: a read that throws returns an EMPTY list and
+ * says so in the log, because "we could not read your proposals" and "you have
+ * none" are different facts and the screen must not present the first as the
+ * second. It cannot refuse outright without blanking Today, so the honest
+ * middle is an empty list plus a loud line.
+ */
+async function loadV5Proposals(userId: string): Promise<V5ProposalWire[]> {
+  try {
+    const [{ loadPendingProposals }, { toWire }] = await Promise.all([
+      import('@/lib/plan/workout-proposals'),
+      import('@/lib/faff/v5-proposals'),
+    ]);
+    const rows = await loadPendingProposals(userId);
+    return rows.map(toWire).filter((w): w is V5ProposalWire => w !== null);
+  } catch (err) {
+    console.log('[v5/today] proposal read FAILED, showing none · '
+      + 'this is not the same fact as having none · ' + String(err).slice(0, 160));
+    return [];
+  }
+}
+
 async function loadBlockNote(
   userId: string,
 ): Promise<{ title: string; body: string } | null> {

@@ -18,6 +18,8 @@
  * detects the signal; the runner stays in the driver's seat.
  */
 
+import { describesEvidence } from '@/lib/brain/objective';
+import { PROPOSABLE_KINDS } from '@/lib/plan/adaptation-authority';
 import { pool } from '@/lib/db/pool';
 import { rowOrNull } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
@@ -29,11 +31,25 @@ export interface PendingProposal {
   userUuid: string;
   planWorkoutId: string;
   workoutDateISO: string;
-  actionKind: 'downgrade' | 'shave' | 'reschedule' | 'field_test';
+  // PROPOSEUP-1 (2026-09-05) · `mark_upgrade` joins the four. The union used
+  // to be exactly the load-reducing and neutral kinds, which is the type-level
+  // shadow of the same defect `PROPOSABLE_KINDS` had: the proposal lane could
+  // not describe an increase, so nothing could have travelled down it even if
+  // the seam had let something through.
+  actionKind: 'downgrade' | 'shave' | 'reschedule' | 'field_test' | 'mark_upgrade';
   actionPayload: {
     newType?: string;
     newDate?: string;
     shaveFraction?: number;
+    /**
+     * The distance an upward proposal would set. Absent on every other kind.
+     *
+     * `action_payload` is jsonb and carries no constraint, so this needed no
+     * migration: the column could always have held it, and only the TYPE said
+     * a proposal may not describe more work. That is the shape of the whole
+     * finding, in one field.
+     */
+    newDistanceMi?: number;
     why?: string;
   };
   reason: string;
@@ -52,6 +68,8 @@ export async function writeWorkoutProposals(
   actions: AdaptationAction[],
   triggers: AdaptationTrigger[],
 ): Promise<number> {
+  /** Load-reducing proposals refused for naming no fact. Reported, never dropped. */
+  const skippedForUnevidencedDecline: string[] = [];
   // Most actions target one or more workoutIds. We write one proposal
   // per (workoutId, action) pair. The triggers array carries the
   // human-readable reason · we use the first matching trigger.
@@ -64,7 +82,13 @@ export async function writeWorkoutProposals(
     // shave / reschedule / field_test are propose-worthy · mark_dirty
     // and recompute_paces are internal bookkeeping and don't need
     // runner approval.
-    if (action.kind !== 'downgrade' && action.kind !== 'shave' && action.kind !== 'reschedule' && action.kind !== 'field_test') {
+    // PROPOSEUP-1 (2026-09-05) · one list, imported. This was a second copy of
+    // `PROPOSABLE_KINDS` written out longhand, and two copies of one set is a
+    // Rule 16 collision waiting to drift: adding an upward kind to the seam's
+    // list while this one still refused it would have routed the action to a
+    // writer that silently drops it, which is the exact evaporation the seam's
+    // own comment warns about.
+    if (!PROPOSABLE_KINDS.has(action.kind)) {
       continue;
     }
 
@@ -121,6 +145,29 @@ export async function writeWorkoutProposals(
         if (dup === null) continue;   // read failed · assume already proposed
         if (dup) continue;            // pending proposal on record
 
+        /* ── THE OBJECTIVE, ON THE LIVE PATH (2026-09-05) ─────────────────
+         *
+         * `lib/brain/objective.ts` says a decline requires evidence just as a
+         * push does. This is the one place in production where a decline
+         * reaches the runner, so it is where that clause has to bite.
+         *
+         * A load-reducing proposal whose `why` asserts a disposition rather
+         * than a fact ("safer", "this looks aggressive") is DOWNGRADED to an
+         * observational note rather than shown as a coaching decision. It is
+         * not dropped: Rule 11 says a dropped action is a lost fact, so the
+         * intent row still gets written by the caller's `recorded` lane.
+         *
+         * Upward kinds are exempt by construction, because they are not
+         * declining anything.
+         */
+        const reducesLoad = action.kind === 'downgrade' || action.kind === 'shave';
+        if (reducesLoad && !describesEvidence(action.why ?? '')) {
+          skippedForUnevidencedDecline.push(
+            `${action.kind} on ${workoutIds.join(',')}: "${action.why ?? ''}"`,
+          );
+          continue;
+        }
+
         const payload = {
           newType: action.newType ?? null,
           newDate: action.newDate ?? null,
@@ -142,6 +189,17 @@ export async function writeWorkoutProposals(
       }
     }
   }
+  // Rule 11: a refusal that nobody can see is indistinguishable from nothing
+  // having happened. My first cut collected these and returned, which is the
+  // swallowed-failure shape this repo has a gate for.
+  if (skippedForUnevidencedDecline.length > 0) {
+    console.log(
+      `[workout-proposals] ${skippedForUnevidencedDecline.length} load-reducing proposal(s) `
+      + 'withheld: the reason named a disposition rather than a fact, so the runner would have '
+      + `been asked to do less for no stated evidence · ${skippedForUnevidencedDecline.join(' | ')}`,
+    );
+  }
+
   return count;
 }
 

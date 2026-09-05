@@ -56,6 +56,7 @@ import type {
   StackedStress,
 } from './contract';
 import { MIN_COMPARABLES_FOR_CEILING_CLAIM, PROMOTION_DIMENSIONS } from './contract';
+import { describesEvidence, objectionToChoice } from '@/lib/brain/objective';
 
 /** What the runner has actually done, in the units decisions are made in. */
 export interface DemonstratedHistory {
@@ -693,6 +694,59 @@ export function checkPromotion(
     t.athlete.evidenceClass === 'CONTRAINDICATED'
     && (t.athlete.ceilingClaim === null || !t.athlete.ceilingClaim.valid));
 
+  /* ── THE OBJECTIVE, ENFORCED (2026-09-05) ─────────────────────────────
+   *
+   * `lib/brain/objective.ts` states the governing coaching objective once and
+   * this is where it bites. Two shapes are caught, and both are the shape of a
+   * decision that declined without paying for it:
+   *
+   *   1 · a SUPPORTED push that was not taken and gives no reason
+   *   2 · a rejection whose stated `why` asserts a disposition rather than a
+   *       fact ("safer", "this looks aggressive")
+   *
+   * The declines are read off the trace's own `rejected` list rather than a new
+   * field, so this needed no contract change and works on every trace that
+   * already exists.
+   */
+  const objectiveObjections: string[] = [];
+  for (const t of traces) {
+    const pushOpt = t.options.find((o) => o.option === 'PUSH');
+    if (pushOpt != null && t.chosen !== 'PUSH') {
+      // The reason for declining is the reason PUSH was REJECTED, not a reason
+      // attached to the option that won. My first wiring looked up
+      // `t.chosen` in `rejected`, which can never match: a chosen option is by
+      // definition not in the rejected list, so every trace read as "no
+      // justification" and the gate fired on all of them. Rule 16 in
+      // miniature, two meanings for one list.
+      const why = t.rejected.find((r) => r.option === 'PUSH')?.why ?? '';
+      /* A taper or race week is PRESCRIBED_RECOVERY, which the objective
+       * explicitly accepts as outranking a supported push. My first wiring
+       * classified every decline as ABSORPTION_EVIDENCE, so a correct taper
+       * hold read as an unjustified refusal and the archetype sweep fell from
+       * 85 promoted to 12. The objective's own exception list was unreachable
+       * from the only caller it had. */
+      const w = (ctx?.weeks ?? []).find((x) => x.weekStartISO === weekOf(t));
+      const prescribedDip = w != null && (w.isTaper || w.isRaceWeek);
+      const declines = prescribedDip
+        ? new Map([[t.chosen, {
+          basis: 'PRESCRIBED_RECOVERY' as const,
+          because: `${w.weekStartISO} is a prescribed ${w.isRaceWeek ? 'race week' : 'taper week'}`,
+          wouldAdvanceIf: 'the block leaves the taper',
+        }]])
+        : why !== '' && describesEvidence(why)
+          ? new Map([[t.chosen, {
+            basis: 'ABSORPTION_EVIDENCE' as const, because: why, wouldAdvanceIf: 'stated in the trace',
+          }]])
+          : new Map();
+      const objection = objectionToChoice({
+        chosen: t.chosen,
+        pushEvidence: pushOpt.evidenceClass,
+        declines,
+      });
+      if (objection != null) objectiveObjections.push(`${t.decisionId} · ${objection}`);
+    }
+  }
+
   // Rule 21, as a real check rather than `traces.length > 0`. A block that
   // never advances anywhere is not a training plan. This is the dimension the
   // first version could not fail on.
@@ -875,6 +929,10 @@ export function checkPromotion(
   if (traces.length === 0) {
     blocked.push('wholeBlockCoherence · nothing was adjudicated at all, which is not a pass (Rule 18)');
   }
+  if (objectiveObjections.length > 0) {
+    blocked.push(`progression · ${objectiveObjections.length} decision(s) decline to advance `
+      + `without evidence for declining: ${objectiveObjections.join(' | ')}`);
+  }
   if (traces.length > 0 && !anyAdvance) {
     blocked.push('progression · no decision in this block advances anything. Rule 21: a plan that only '
       + 'holds and pulls back is a safety system wearing a coach\'s clothes.');
@@ -906,7 +964,7 @@ export function checkPromotion(
       && badCeiling.length === 0 && unknownPushed.length === 0 && traces.length > 0,
     wholeBlockCoherence: missingOptions.length === 0 && traces.length > 0,
     recoverability: unarguedAdditions.length === 0,
-    progression: traces.length > 0 && anyAdvance,
+    progression: traces.length > 0 && anyAdvance && objectiveObjections.length === 0,
     taperIntegrity: pushedInTaper.length === 0,
     doctrineResolution: unresolvedConflict.length === 0,
     stackedStress: stackedUnaddressed.length === 0,

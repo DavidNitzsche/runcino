@@ -205,6 +205,27 @@ export type V5TodayStateWire =
   | 'before_run' | 'after_run' | 'injury_flare' | 'sick'
   | 'week_off' | 'off_season' | 'race_day' | 'not_on_phone_yet';
 
+/**
+ * One pending adaptation, as the runner reads it.
+ *
+ * DIRECTION IS FIRST because it is what he needs before anything else: is the
+ * app asking me to do more, less, or the same work on a different day. The
+ * engine's `action_kind` is not that question (`shave` and `downgrade` are
+ * both "less"), so the mapping happens once, on the server, and the phone
+ * never has to know an engine word.
+ */
+export interface V5ProposalWire {
+  id: string;
+  /** The day the affected session sits on. */
+  dateISO: string;
+  /** What the runner is being asked to change. */
+  direction: 'more' | 'less' | 'move' | 'test';
+  /** Six to ten words. What would change. */
+  headline: string;
+  /** One sentence. Why, in evidence terms. Never a disposition. */
+  why: string;
+}
+
 export interface V5Today {
   dateISO: string;
   /** PLANVERSION-1 · see `V5TodayContext.planVersion`'s doc comment. Carried
@@ -250,6 +271,28 @@ export interface V5Today {
   /// full ownership statement. Optional so a pre-existing context builder
   /// stays valid, matching `thesis?` just above.
   race?: V5RaceOnToday | null;
+
+  /**
+   * PROPOSEUP-1 / V5PROPOSAL-1 (2026-09-05) · PENDING ADAPTATIONS, ON THE
+   * SCREEN THE RUNNER ACTUALLY OPENS.
+   *
+   * `plan_workout_proposals` has been the engine's one runner-consented
+   * channel for changing a plan since 2026-06-04, and until today it was
+   * served ONLY at `/api/plan/workout-proposals`, whose single Swift caller is
+   * `Views/TodayView.swift` in the v4 shell, reachable only under
+   * `-faffLegacy`. So the V5 app that actually ships had no proposal surface
+   * at all: 7 rows have ever been written in production, 0 accepted, 0
+   * dismissed, and one from 2026-08-25 was still pending eleven days later.
+   *
+   * An adaptation the runner cannot see is not an adaptation. This is the
+   * field that closes evidence -> belief -> adjudication -> proposal ->
+   * RUNNER, and it is why `PROPOSABLE_KINDS` gaining `mark_upgrade` on the
+   * same day means anything at all.
+   *
+   * Optional so a pre-existing context builder stays valid, matching
+   * `thesis?` and `race?` above.
+   */
+  proposals?: V5ProposalWire[];
 
   askedVsRan: V5Row[];
   verdict: string | null;
@@ -994,6 +1037,8 @@ export interface V5TodayContext {
   /// See `V5Today.blockNote`. Same content-states-only contract as paceNote.
   /// Optional (like `contingency`) so pre-existing context builders stay valid.
   blockNote?: { title: string; body: string } | null;
+  /** V5PROPOSAL-1 · pending adaptations awaiting the runner's answer. */
+  proposals?: V5ProposalWire[];
 
   raceDay: boolean;
   /// See `V5Today.race`. Resolved by the route (needs DB access this pure
@@ -1640,6 +1685,7 @@ const EMPTY_TODAY = (
   beforeYouGo: [],
   paceNote: null,
   blockNote: null,
+  proposals: [],
   askedVsRan: [],
   verdict: null,
   facts: [],
@@ -1822,6 +1868,10 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.beforeYouGo = [];
     t.paceNote = ctx.paceNote;
     t.blockNote = ctx.blockNote ?? null;
+    // V5PROPOSAL-1 · carried on the same content-states as blockNote. A pending
+  // adaptation is a thing to answer, so it belongs on the states that
+  // prescribe and not on off-season, week-off or not-on-phone-yet.
+  t.proposals = ctx.proposals ?? [];
     t.askedVsRan = built.askedVsRan;
     t.verdict = ctx.recentRun.verdict;
     // QUOTED, NEVER RE-WRITTEN. One voice, one composer — the same rule
@@ -1949,6 +1999,10 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   t.beforeYouGo = ctx.beforeYouGo;
   t.paceNote = ctx.paceNote;
   t.blockNote = ctx.blockNote ?? null;
+  // V5PROPOSAL-1 · carried on the same content-states as blockNote. A pending
+  // adaptation is a thing to answer, so it belongs on the states that
+  // prescribe and not on off-season, week-off or not-on-phone-yet.
+  t.proposals = ctx.proposals ?? [];
   // DECISION-2 · race content on Today. `ctx.raceOnToday` is already fully
   // resolved (see `lib/faff/race-on-today.ts`'s header) — this line
   // threads it through, it does not compute anything.

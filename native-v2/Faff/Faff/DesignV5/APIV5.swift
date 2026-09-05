@@ -608,6 +608,14 @@ struct V5Today: Decodable, Equatable {
     /// DECISION-2 · race content on Today. Non-nil only on a race day whose
     /// resolver succeeded. Absent on older servers.
     let race: V5Race?
+    /// V5PROPOSAL-1 (2026-09-05) · adaptations waiting on an answer.
+    ///
+    /// The engine has written `plan_workout_proposals` since 2026-06-04 and
+    /// this shell never read them: the only caller was the v4 Today behind
+    /// `-faffLegacy`. Seven rows have ever been written in production, none
+    /// accepted, none dismissed. Empty on older servers, which decodes as
+    /// empty rather than nil so a view never has to ask which nothing it has.
+    let proposals: [V5Proposal]?
 
     // ── after a run ──
     /// The asked-vs-ran table. Effort is the only tappable row.
@@ -738,6 +746,25 @@ struct V5Today: Decodable, Equatable {
 struct V5BlockNote: Decodable, Equatable {
     let title: String
     let body: String
+}
+
+/// V5PROPOSAL-1 · one adaptation the runner has not answered yet.
+///
+/// Every field is a straight decode of `web-v2/lib/faff/v5-proposals.ts`.
+/// `direction` is deliberately a String rather than an enum: an older phone
+/// meeting a direction a newer server invented must render the card, not drop
+/// it, and a Swift enum would fail the whole decode. `DirectionV5` below is
+/// where the phone decides what it can DRAW, which is a different question.
+struct V5Proposal: Decodable, Equatable, Identifiable {
+    let id: String
+    let dateISO: String
+    /// "more" · "less" · "move" · "test". Mapped on the server so the phone
+    /// never learns an engine word.
+    let direction: String
+    /// Six to ten words. What would change.
+    let headline: String
+    /// One sentence. Why, in evidence terms.
+    let why: String
 }
 
 /// DECISION-2 (2026-09-03) · race content on Today, not only in the pre-run
@@ -1680,6 +1707,23 @@ extension API {
     /// went blind when we did not. A refusal wearing the outage treatment is
     /// the exact mistake the design names, and it reached the transport layer
     /// because an optional cannot hold the difference.
+    /// V5PROPOSAL-1 · answer a pending adaptation.
+    ///
+    /// Hits the SAME routes the v4 shell used, deliberately: the accept path
+    /// re-applies the stored payload through `applyAdaptations` with its
+    /// provenance chip, and duplicating it for V5 would be a second owner for
+    /// one decision. Returns true when the server accepted the answer.
+    static func answerProposal(id: String, accept: Bool) async throws -> Bool {
+        let path = "api/plan/workout-proposals/\(id)/\(accept ? "accept" : "dismiss")"
+        guard let url = URL(string: API.baseURL.absoluteString + path) else { return false }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = Data("{}".utf8)
+        let (_, http) = try await API.authedSend(req)
+        return (200...299).contains(http.statusCode)
+    }
+
     enum V5Fetch<T> {
         case ok(T)
         /// The engine answered, and the answer is that this does not apply.
@@ -2044,7 +2088,7 @@ extension V5Today {
         case routeSplits, routePhases, workoutPhases, hrZones, paceBand, elevGainMeasured
         case shoesWorn, whatThisDidToTheWeek, runId, postRun, supplementalRuns
         case injury, weekOff, offSeason, notOnPhoneYet
-        case paceNote, blockNote, sick, race
+        case paceNote, blockNote, sick, race, proposals
         case facts, win, conditionsNote, coachTip
         case hrAvg, hrMax, cadenceAvg, tempF, workoutType
         case hrAvgWork, cadenceAvgWork, paceWork
@@ -2100,6 +2144,7 @@ extension V5Today {
         notOnPhoneYet = c.opt(.notOnPhoneYet)
         paceNote = c.opt(.paceNote)
         blockNote = c.opt(.blockNote)
+        proposals = c.opt(.proposals)
         sick = c.opt(.sick)
         race = c.opt(.race)
     }

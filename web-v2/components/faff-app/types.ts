@@ -1,3 +1,4 @@
+import type { PendingProposal } from '@/lib/plan/workout-proposals';
 import type { EffortKey, PlannedDay, CompletedRun, ViewKey } from './constants';
 // 2026-08-25 · the proposal kind/status vocabulary lives with the loader that
 // reads the rows. See PlanProposalSeed below for why it is not re-listed here.
@@ -64,23 +65,13 @@ export type FaffSeed = {
    *  tomorrow's tempo to easy unless you object." Replaces the silent-
    *  overnight-mutation pattern · runner sees + gates via banner.
    *  Empty array = no pending proposals · banner hides. */
-  pendingWorkoutProposals?: Array<{
-    id: number;
-    userUuid: string;
-    planWorkoutId: string;
-    workoutDateISO: string;
-    actionKind: 'downgrade' | 'shave' | 'reschedule' | 'field_test';
-    actionPayload: {
-      newType?: string;
-      newDate?: string;
-      shaveFraction?: number;
-      why?: string;
-    };
-    reason: string;
-    evidence: Record<string, unknown>;
-    status: 'pending';
-    createdAt: string;
-  }>;
+  /* PROPOSEUP-1 (2026-09-05) · this was a FOURTH longhand copy of
+   * `PendingProposal`, after `lib/plan/workout-proposals.ts`, the seam's
+   * `PROPOSABLE_KINDS`, and the writer's own inline filter. Every copy listed
+   * only the load-reducing and neutral kinds, so widening the engine to
+   * describe an increase broke this file rather than flowing through it. Rule
+   * 16: one quantity, one name. It imports the type now. */
+  pendingWorkoutProposals?: PendingProposal[];
   // STRENGTH-3 (2026-08-17) · strengthRecommendation / strengthWeekStatus
   // removed from the seed. Nothing recommends or reconciles gym work.
   /** 2026-08-17 · composed morning brief · 2-3 deterministic sentences

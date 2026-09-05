@@ -318,7 +318,7 @@ describe('CIM block · corrected history', () => {
       ],
       chosen: 'PUSH',
       because: 'the block needs the volume',
-      rejected: [], conflicts: [], citations: [],
+      rejected: [{ option: 'PUSH' as const, why: 'his last two long runs deteriorated in the final third against pace, so the week holds' }], conflicts: [], citations: [],
       reassessOnISO: '2026-09-20',
       earningGate: gate,
     });
@@ -357,7 +357,9 @@ describe('CIM block · corrected history', () => {
       ],
       chosen,
       because: 'the projected chain supports it and the gate checks the chain',
-      rejected: [],
+      // The objective requires a decline to name a fact. A trace that holds
+      // against a SUPPORTED push and says nothing is a finding now.
+      rejected: [{ option: 'PUSH', why: 'the 46.8 mi week before this one has not completed, so the chain is unproven' }],
       conflicts: [],
       citations: [],
       reassessOnISO: '2026-10-12',

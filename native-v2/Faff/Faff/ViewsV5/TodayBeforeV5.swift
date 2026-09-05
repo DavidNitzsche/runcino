@@ -282,6 +282,7 @@ struct TodayBeforeV5: View {
                     if !model.supplementalRuns.isEmpty { supplementalRunsSection }
                     raceSection
                     blockNoteSection
+                    proposalsSection
                     groupsSection
                     whySection
                     paceNoteSection
@@ -488,6 +489,38 @@ struct TodayBeforeV5: View {
                 )
             }
         }
+    }
+
+    // MARK: - Pending adaptations
+
+    /// V5PROPOSAL-1 · the engine asking for an answer.
+    ///
+    /// ABOVE the run itself and below the block note, because a change to what
+    /// the runner is about to do has to be read before the thing it changes.
+    /// Drawn only when there is something to answer: an empty list draws
+    /// nothing at all, which is the correct rendering of "no decision pending"
+    /// and is what `PRODUCT_UX_SIMPLIFICATION_DOCTRINE` asks for.
+    @ViewBuilder
+    private var proposalsSection: some View {
+        let pending = model.proposals ?? []
+        if !pending.isEmpty {
+            VStack(alignment: .leading, spacing: V5.S.s10) {
+                V5SectionLabel(text: "YOUR CALL", color: V5.textSecondary)
+                ForEach(pending) { p in
+                    ProposalCardV5(proposal: p) { accept in
+                        Task { await answerProposal(p, accept: accept) }
+                    }
+                }
+            }
+        }
+    }
+
+    private func answerProposal(_ p: V5Proposal, accept: Bool) async {
+        // Fire and refresh. The server owns the mutation and the refresh is
+        // what makes the card disappear, so there is no local optimistic state
+        // to drift out of sync with the plan.
+        _ = try? await API.answerProposal(id: p.id, accept: accept)
+        NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
     }
 
     @ViewBuilder

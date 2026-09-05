@@ -131,7 +131,7 @@ function trace(week: PlannedWeek, over: Partial<DecisionTrace> = {}): DecisionTr
     options: [opt('PUSH', 'SUPPORTED'), opt('HOLD', 'SUPPORTED'), opt('PULL_BACK', 'SUPPORTED')],
     chosen: 'PUSH',
     because: 'he has held this volume and the week adds one thing at a time',
-    rejected: [],
+    rejected: [{ option: 'PUSH' as const, why: 'his last two long runs deteriorated in the final third against pace, so the week holds' }],
     conflicts: [],
     citations: [],
     reassessOnISO: null,

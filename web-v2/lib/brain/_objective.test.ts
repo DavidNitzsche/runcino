@@ -18,8 +18,13 @@ import {
   THE_OBJECTIVE, describesEvidence, objectionToChoice, optionsMissingEvidence,
   type DeclineJustification,
 } from '@/lib/brain/objective';
-import { heuristicRankScore, rankOptions } from '@/lib/plan/adjudication/adjudicate';
-import type { EvidenceClass, Option, OptionAppraisal } from '@/lib/plan/adjudication/contract';
+import {
+  athleteEvidenceFor, checkPromotion, heuristicRankScore, rankOptions,
+  type PlannedWeek,
+} from '@/lib/plan/adjudication/adjudicate';
+import type {
+  DecisionTrace, EvidenceClass, Option, OptionAppraisal,
+} from '@/lib/plan/adjudication/contract';
 
 const opt = (o: Option, cls: EvidenceClass): OptionAppraisal => ({
   option: o, describe: o, evidenceClass: cls, heuristicRankScore: heuristicRankScore(cls), risk: '',
@@ -112,6 +117,43 @@ describe('THE OBJECTIVE · declining costs evidence too', () => {
       expect(describesEvidence(`We held it because it is ${p}.`), p).toBe(false);
     }
     expect(describesEvidence('weekly volume rose 23% while the long run fell 12%')).toBe(true);
+  });
+
+  it('THE GATE ACTING ON IT · checkPromotion BLOCKS a trace that declines for nothing', () => {
+    // Caught by falsification, not by design: disabling the objection loop
+    // inside `checkPromotion` left the whole adjudication suite green, because
+    // the predicate was tested and the gate acting on it was not. That is the
+    // same shape found in `taperIntegrity` on 2026-09-04, in my own work again.
+    const week: PlannedWeek = {
+      weekStartISO: '2026-10-05', weeklyMi: 59.5, longestMi: 18.5,
+      stressors: ['tempo'], mpMi: 0, isTaper: false, isRaceWeek: false,
+    };
+    const base = (rejected: DecisionTrace['rejected']): DecisionTrace => ({
+      decisionId: 'held-for-nothing', dateISO: '2026-10-05', what: '59.5 mi week',
+      windowDays: 7,
+      athlete: athleteEvidenceFor({
+        what: '59.5 mi week', asOfISO: '2026-10-05', prescribed: 59.5,
+        demonstratedMaxToday: 60, demonstratedMaxProjected: null,
+        comparables: [], historyWindow: 'all of 2026',
+      }),
+      stacked: null, demand: null,
+      options: [opt('PUSH', 'SUPPORTED'), opt('HOLD', 'SUPPORTED'), opt('PULL_BACK', 'SUPPORTED')],
+      chosen: 'HOLD',
+      because: 'held',
+      rejected,
+      conflicts: [], citations: [], reassessOnISO: null, earningGate: null,
+    });
+
+    const silent = checkPromotion([base([])], { weeks: [week] });
+    expect(silent.check.progression).toBe(false);
+    expect(silent.blockedBecause.join(' ')).toMatch(/decline to advance\s+without evidence/);
+
+    // …and clears once the trace names a fact for declining.
+    const stated = checkPromotion([base([{
+      option: 'PUSH',
+      why: 'his last two long runs deteriorated in the final third against pace',
+    }])], { weeks: [week] });
+    expect(stated.blockedBecause.join(' ')).not.toMatch(/decline to advance/);
   });
 
   it('the objective is stated once and names absorption, not safety', () => {

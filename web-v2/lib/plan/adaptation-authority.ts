@@ -105,8 +105,54 @@ export const ADAPTATION_SEAM_ID = 'plan/adaptation-authority';
  * went missing once already. Rule 11: a dropped action is not a refusal, it
  * is a lost fact, so everything outside this set is RECORDED instead.
  */
-const PROPOSABLE_KINDS: ReadonlySet<AdaptationAction['kind']> =
-  new Set<AdaptationAction['kind']>(['downgrade', 'shave', 'reschedule', 'field_test']);
+export const PROPOSABLE_KINDS: ReadonlySet<AdaptationAction['kind']> =
+  new Set<AdaptationAction['kind']>([
+    // Load-reducing. These were the ONLY four for the life of this set.
+    'downgrade', 'shave',
+    // Neutral.
+    'reschedule', 'field_test',
+    // ── PROPOSEUP-1 (2026-09-05) · THE UPWARD KINDS, AND WHY THEY WERE ABSENT
+    //
+    // Every kind above either takes work away or moves it. So the proposal
+    // card, which is the ONE runner-visible, runner-consented channel this
+    // engine has for changing a plan, could only ever offer to make training
+    // easier. An upward adaptation had nowhere to go: it fell through to
+    // `toObservationalNote` and became a `coach_intents` row nobody reads.
+    //
+    // That is the mechanical answer to "why does the brain never push me". It
+    // is not only the seam. Opening `AUTOMATIC_ADAPTATION_AUTHORITY` would NOT
+    // have fixed it, because an upgrade would then have been applied silently
+    // rather than offered, and Rule 21's own measurement (309 intents, zero
+    // upward) could not distinguish "never proposed" from "proposed and
+    // declined" because there was no propose lane to decline from.
+    //
+    // Adding them here does NOT open the seam and does not authorise automatic
+    // mutation. A proposal changes nothing; the runner accepting it does, and
+    // that is the same consent path `downgrade` and `shave` have used since
+    // 2026-06-04. `automaticPlanMutationIsAuthorised()` is untouched and still
+    // returns false.
+    //
+    // `recompute_paces` is deliberately NOT here: it reprices a whole plan and
+    // has no single workout to hang a card on, so it would be dropped by the
+    // `workoutIds` test below and become a note anyway. Naming it here would
+    // be a lie about what this set can carry. `mark_dirty` is a staleness
+    // mark, not a load change.
+    'mark_upgrade',
+    //
+    // `reshape` is NOT here, and the reason is a guard I ran into rather than
+    // a judgement I made. `_seal_single_seam.test.ts` GUARD 5 asserts a
+    // quality-session reshape is RECORDED, citing the owner's 2026-09-02
+    // ruling by name: "Too many independent levers can soften, RESHAPE,
+    // re-phase, refuse, or automatically mutate the plan. Remove their
+    // decision authority."
+    //
+    // A proposal arguably has no decision authority, since the runner decides.
+    // But the ruling names this lever specifically, and CLAUDE.md is explicit
+    // that a doctrine-cited guard is not weakened to make room for new work.
+    // So `mark_upgrade` goes through, `reshape` waits for the owner, and the
+    // question is written down rather than resolved by whoever touched the
+    // file last.
+  ]);
 
 /**
  * The `coach_intents.reason` written for an action the seam refused to

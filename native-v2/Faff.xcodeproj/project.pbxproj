@@ -124,6 +124,7 @@
 		6C87D43270238C0B213BB3D3 /* ShellV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 180080F47DB86118277DF47B /* ShellV5.swift */; };
 		6D9687543F5EBEA6E7422E8F /* HealthSegmentedControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F097DD1FEE235AC5D4AD178 /* HealthSegmentedControl.swift */; };
 		70AD94734D10C3965FA2F513 /* ThemeV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EC4B08F6610A04777F2FC2E /* ThemeV5.swift */; };
+		71095A2C7F7D538741509A4D /* ProposalCardV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 077BCED75F85013E9A6888E5 /* ProposalCardV5.swift */; };
 		74D86F02898E21A4BFE78C3F /* Units.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E6A293892BB32DC4273DE50 /* Units.swift */; };
 		7772B8FFA13C514033773092 /* RequestDiagnosticsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DAD38C7298C01A8DA4A62EB5 /* RequestDiagnosticsTests.swift */; };
 		782AC5CD75A4DEB9208B6506 /* FaffSmartStackView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1AB61CC30CD62C9D33A506E4 /* FaffSmartStackView.swift */; };
@@ -341,6 +342,7 @@
 		0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRelayQueueTests.swift; sourceTree = "<group>"; };
 		04C367E8791B53FBF3C23ADD /* V5PostRunSurfacesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5PostRunSurfacesTests.swift; sourceTree = "<group>"; };
 		0743519D766EECA60297B74F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		077BCED75F85013E9A6888E5 /* ProposalCardV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalCardV5.swift; sourceTree = "<group>"; };
 		081F3BDD4979D92FC6A19386 /* TodayRecoveryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayRecoveryPanel.swift; sourceTree = "<group>"; };
 		0891DA9583913A7F36C7268C /* TodayBeforeSamplesPreRunV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayBeforeSamplesPreRunV5.swift; sourceTree = "<group>"; };
 		08D8D54D02FCF021937FDB44 /* RunAnalysisV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunAnalysisV5.swift; sourceTree = "<group>"; };
@@ -608,7 +610,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_6930B6E6-7D2C-4BCB-92BD-C67D25231A15" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_8E7DDB63-0150-444D-8B42-26E96647430E" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -845,6 +847,7 @@
 				F8825DD5FD2222468737B3C2 /* OnboardingV5.swift */,
 				B2AB92DBD2E38DE9C55813DC /* PacesMovedV5.swift */,
 				A5AB7330728883C00212DCC3 /* PlanSnapshotDayView.swift */,
+				077BCED75F85013E9A6888E5 /* ProposalCardV5.swift */,
 				764DB060460773CD4B017A69 /* RaceDetailV5.swift */,
 				8A369BFF325F4DEEBD7624B8 /* RacesV5.swift */,
 				B49B340C9CA89A0A1197B53C /* RequestDiagnosticsView.swift */,
@@ -1036,10 +1039,10 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_1B39E5C8-CE57-440B-82DD-400C9E450420" /* native-v2 */ = {
+		"TEMP_BF38D548-6186-48B9-8571-FB778275FEC5" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_6930B6E6-7D2C-4BCB-92BD-C67D25231A15" /* Secrets.xcconfig */,
+				"TEMP_8E7DDB63-0150-444D-8B42-26E96647430E" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1431,6 +1434,7 @@
 				D2D6BC52AB864AD678DF3709 /* Primitives.swift in Sources */,
 				3F8961DDB77A018095E82A1D /* ProView.swift in Sources */,
 				21BAA9938430A3B59A7DA1FF /* ProfileView.swift in Sources */,
+				71095A2C7F7D538741509A4D /* ProposalCardV5.swift in Sources */,
 				B04D4DDD07BE882FB5400E4A /* RPEV5.swift in Sources */,
 				58C73FAA4F3A621C91A48076 /* RaceDayView.swift in Sources */,
 				C6973D627D2FBF9018D6AEA1 /* RaceDetailV5.swift in Sources */,
@@ -1556,7 +1560,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_6930B6E6-7D2C-4BCB-92BD-C67D25231A15" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_8E7DDB63-0150-444D-8B42-26E96647430E" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1783,7 +1787,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_6930B6E6-7D2C-4BCB-92BD-C67D25231A15" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_8E7DDB63-0150-444D-8B42-26E96647430E" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
