@@ -245,34 +245,6 @@ const ALLOWLIST: Entry[] = [
       'A race-outlook fixture builder, same convention and same argument. Not '
       + 'reachable from any production module (asserted below).',
   },
-  {
-    path: 'lib/plan/seed-from-onboarding.ts',
-    status: 'OPEN',
-    reason:
-      'lib/plan/seed-from-onboarding.ts:564 · COLD START, BEFORE ANY BELIEF '
-      + 'EXISTS. The very first plan is seeded inside the onboarding transaction, '
-      + 'for a runner whose runs the resolver cannot yet read; '
-      + '_null_anchor_reachability.test.ts records that the capacity resolver\'s '
-      + 'rungs "are for once the first plan is authored". Genuinely a second '
-      + 'answer, kept because migrating it means resolving capacity mid-'
-      + 'transaction for a user with no rows. The anchor it writes is stamped '
-      + 'provisional_mileage and reanchorActivePlan replaces it within days.',
-  },
-  {
-    path: 'lib/training/goal-projection.ts',
-    status: 'OPEN',
-    reason:
-      'lib/training/goal-projection.ts:956 and :1202 · TWO SITES, BOTH REAL. :956 '
-      + 'derives the T-pace a test point is PASSED against (T + 10); :1202 '
-      + '(easyPaceForBlend) derives the easy band as T + 100 for the projection\'s '
-      + 'blended basis and for plannedStimulus. Both take a raw vdot argument '
-      + 'threaded from the caller, so migrating them means changing every caller\'s '
-      + 'signature to carry PrescribedPaceAnchors — the same change '
-      + 'lib/execution/load.ts just made for actualStimulus, and the obvious next '
-      + 'one. Left rather than half-done: a projection that priced its pass '
-      + 'criteria off one threshold and its easy band off another would be worse '
-      + 'than the single divergence it has now.',
-  },
 ];
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -344,14 +316,33 @@ describe('THRESHOLD-OWNER-1 · one threshold pace, one owner', () => {
     }
   });
 
-  it('3 · RATCHET · the OPEN set may shrink, never grow', () => {
-    // Two files, four call sites, both named with file:line in their reasons.
-    // Raising this number is a decision, not a refactor.
+  it('3 · RATCHET · the OPEN set is EMPTY and may never grow', () => {
+    // THRESHOLD-OWNER-2 (2026-09-05) · this list held two files and four call
+    // sites. It holds none. Both were closed by MIGRATION, not by exemption:
+    //
+    //   lib/training/goal-projection.ts:956  · the pass bar a threshold
+    //     session is graded against now reads `resolvePrescribedPaceAnchors`.
+    //     It was `tPaceFromVdot(vdot)` off a snapshot VDOT — measured live at
+    //     431 s/mi against the canonical 430 on the owner's account.
+    //   lib/training/goal-projection.ts:1202 · `easyPaceForBlend` takes THE
+    //     canonical threshold where it took a VDOT, and `loadRecentTestPoints`
+    //     no longer HAS a `vdot` parameter for a caller to pass one through.
+    //   lib/plan/seed-from-onboarding.ts:574 · the cold start calls
+    //     `coldStartThresholdCapacity`, which is `composeThresholdCapacity`
+    //     with a cold-start input — the canonical ladder's own rung 4, which
+    //     existed for exactly this case the whole time.
+    //
+    // ZERO IS THE RATCHET NOW. A new OPEN entry is not a smaller violation
+    // than the two that were here; it is the first one, and it fails.
     const open = ALLOWLIST.filter((e) => e.status === 'OPEN').map((e) => e.path);
-    expect(open.sort()).toEqual([
-      'lib/plan/seed-from-onboarding.ts',
-      'lib/training/goal-projection.ts',
-    ]);
+    expect(
+      open.sort(),
+      'A threshold owner was admitted as OPEN. There is one canonical owner '
+      + '(resolveThresholdCapacity) and one prescribed read '
+      + '(resolvePrescribedPaceAnchors().anchors.thresholdSecPerMi). A cold '
+      + 'start that cannot reach the database calls coldStartThresholdCapacity, '
+      + 'which is the same ladder. None of those needs an OPEN entry.',
+    ).toEqual([]);
   });
 
   it('4 · GUARDED AS REMOVED · tPaceFromGoal does not come back', () => {
@@ -452,5 +443,74 @@ describe('THRESHOLD-OWNER-1 · one threshold pace, one owner', () => {
     expect(rec).not.toContain('tPaceFromVdot');
     expect(stripComments(read('lib/execution/load.ts')))
       .toContain('tPaceSecPerMi: anchors?.thresholdSecPerMi ?? null');
+  });
+
+  it('8 · THRESHOLD-OWNER-2 · the three closed sites read the canonical', () => {
+    // Test 3 proves the OPEN list is empty and test 1 proves nothing new
+    // produces a threshold. NEITHER can see whether the replacement is
+    // actually wired — a deletion with nothing in its place passes both, which
+    // is the hole test 7 exists to close for the first migration and this one
+    // closes for the second (Rule 18 point 1: assert the shape of the result,
+    // never only the absence of the defect).
+    const read = (p: string) => stripComments(fs.readFileSync(path.join(WEB, p), 'utf8'));
+
+    // 1 · the pass bar reads the canonical, and reads it through the sealed
+    //     Pace Prescription entry rather than any capacity resolver directly.
+    const gp = read('lib/training/goal-projection.ts');
+    expect(gp, 'goal-projection no longer resolves the canonical anchors')
+      .toContain('resolvePrescribedPaceAnchors');
+    // 2 · and it cannot fall back to a VDOT: the producer is not imported at
+    //     all any more, which test 1 already enforces by absence and this
+    //     states positively so the diff shows it.
+    expect(/import \{[^}]*\btPaceFromVdot\b[^}]*\} from '\.\/vdot'/.test(gp)).toBe(false);
+
+    // 3 · THE PARAMETER IS GONE, not merely unused. An inert parameter is a
+    //     side door with a sign on it (Rule 20). `loadRecentTestPoints` must
+    //     not accept a caller-supplied anchor of any kind.
+    const sig = gp.slice(gp.indexOf('export async function loadRecentTestPoints'));
+    const params = sig.slice(sig.indexOf('('), sig.indexOf(')'));
+    expect(params, 'loadRecentTestPoints accepts a vdot again').not.toContain('vdot');
+
+    // 4 · `easyPaceForBlend` is anchored on the threshold, by parameter NAME —
+    //     Rule 16's one-quantity-one-name across the module seam, which is the
+    //     only thing that stops the next reader passing a VDOT into it again.
+    expect(gp).toContain('export function easyPaceForBlend(\n  tPaceSecPerMi: number | null,');
+
+    // 5 · the cold start calls the canonical ladder rather than pricing its own,
+    //     AND SPENDS WHAT IT GETS BACK.
+    //
+    // FALSIFIED, AND THE FIRST VERSION OF THIS BLOCK HAD A HOLE (Rule 18
+    // point 1). It asserted only that the file CONTAINED the call. Replacing
+    // `const tPaceSec = coldStart.paceSecPerMi` with `const tPaceSec = 480`
+    // left the call sitting there with its result discarded, and this gate
+    // reported clean — a canonical read whose answer nothing spends is
+    // decoration, and the assertion could not tell it from a wiring.
+    //
+    // So the binding is what is asserted: the threshold the seeder writes must
+    // BE the resolver's own number, by name.
+    const seed = read('lib/plan/seed-from-onboarding.ts');
+    expect(seed, 'the seeder no longer reads the canonical cold-start rung')
+      .toContain('coldStartThresholdCapacity');
+    expect(
+      seed,
+      'the seeder calls the canonical cold-start rung and then does not spend '
+      + 'its answer. `tPaceSec` must be `coldStart.paceSecPerMi`.',
+    ).toContain('const tPaceSec = coldStart.paceSecPerMi;');
+    expect(seed, 'the seeder is pricing a threshold again').not.toContain('tPaceFromVdot');
+    // The bare literal that stood in for "the table could not price this
+    // runner" is gone with it. Named so its return is visible in a diff.
+    expect(seed).not.toContain('?? 480');
+
+    // 6 · and the cold-start rung lives in the CANONICAL OWNER's file, so
+    //     there is still exactly one place the ladder is written down.
+    const cap = read('lib/training/capacity-resolver.ts');
+    expect(cap).toContain('export function coldStartThresholdCapacity');
+    expect(cap.slice(cap.indexOf('export function coldStartThresholdCapacity')))
+      .toContain('composeThresholdCapacity');
+
+    // 7 · both execution graders take the threshold, not a VDOT.
+    const rec = read('lib/execution/reconstruct.ts');
+    expect(rec).toContain('ctx: { tPaceSecPerMi: number | null }');
+    expect(rec).not.toContain('expandPlanned(session, ctx.vdot)');
   });
 });

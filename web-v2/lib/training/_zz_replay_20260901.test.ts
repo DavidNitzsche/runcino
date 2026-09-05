@@ -230,7 +230,7 @@ describe.runIf(hasDb)('REPLAY · 2026-09-01', () => {
       type: 'threshold', targetS: 430, watchWorkS: workPace, overallS: 483,
       rawSplits: data.splits ?? null, splitsUnreliable: false,
       spec, plannedDistanceMi: 8.5, actualDistanceMi: 8.5,
-      vdot: null, heatSlowdownPct: 0,
+      tPaceSecPerMi: null, heatSlowdownPct: 0,
     });
     say('## 7 · Evidence / Targets test point (`judgeTestPointExecution`)');
     say();

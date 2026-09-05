@@ -65,9 +65,13 @@ import { maxQualityDayMi, type QualityFamily } from './quality-day';
 import { atPaceSessionCapMi, INTERVAL_MIN_REPS } from '@/lib/prescription/levers';
 import { CALIBRATION_INTRO_WEEKS } from './anchor-provenance';
 import {
-  tPaceFromVdot, iPaceFromVdot, bestRecentVdot, VDOT_FULL_VALUE_DAYS,
+  iPaceFromVdot, bestRecentVdot, VDOT_FULL_VALUE_DAYS,
   EVIDENCE_RUN_FLOOR_MI,
 } from '@/lib/training/vdot';
+// THRESHOLD-OWNER-2 · the cold-start rung of THE canonical ladder. Pure, so
+// it runs inside the onboarding transaction; see its header for why the
+// seeder is a reader here and no longer an owner.
+import { coldStartThresholdCapacity } from '@/lib/training/capacity-resolver';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import {
   loadPrescribedWindows,
@@ -571,7 +575,27 @@ async function persistMaintenancePlan(args: {
   // is a volume plan; it is not evidence of fitness.
   const anchorVdot = args.anchorVdot ?? conservativeVdotFromMileage(args.currentWeeklyMi);
   const anchorSource = args.anchorVdot != null ? 'measured_run' : 'provisional_mileage';
-  const tPaceSec = tPaceFromVdot(anchorVdot) ?? 480;
+  /* THRESHOLD-OWNER-2 (2026-09-05) · THE COLD START READS THE CANONICAL
+   * LADDER, it no longer prices its own threshold.
+   *
+   * This line was `tPaceFromVdot(anchorVdot) ?? 480` — fresh arithmetic that
+   * made this file a second owner of "what can this runner hold at
+   * threshold", registered as such in `lib/runner-state/ownership.ts` and
+   * measured live at 472 s/mi against the canonical 430 on the owner's
+   * account. `coldStartThresholdCapacity` is `composeThresholdCapacity` with
+   * a cold-start input: same ladder, same rung 4, no database, callable here
+   * inside the onboarding transaction where the DB resolvers cannot run.
+   *
+   * The `?? 480` is gone rather than moved. It was a bare literal standing in
+   * for "the table could not price this runner", and the ladder answers that
+   * case honestly through the population prior instead. */
+  const coldStart = coldStartThresholdCapacity({
+    measuredVdot: args.anchorVdot,
+    measuredVdotSource: args.anchorVdot != null ? 'run' : null,
+    selfReportedWeeklyMi: args.currentWeeklyMi,
+    todayISO: args.startMonday,
+  });
+  const tPaceSec = coldStart.paceSecPerMi;
   // True Daniels I-pace for a goal BUILD (5K/10K quality = VO2 intervals).
   // Scales with fitness, unlike spec-builder's T−18 cruise default. Null for
   // no-goal maintenance (quality there is threshold, never intervals).

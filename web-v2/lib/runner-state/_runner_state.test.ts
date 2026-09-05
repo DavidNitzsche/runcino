@@ -360,24 +360,81 @@ describe('RUNNERSTATE-1 · Rule 16 · a conflict is recorded, never omitted', ()
     expect(bad).toEqual([]);
   });
 
+  /* THE ORACLES BUILD THEIR OWN BROKEN ROW.
+   *
+   * They used to spread `BELIEF_OWNERSHIP.THRESHOLD_PACE` and override one
+   * field, which coupled the falsification to that row's LIVE verdict and to
+   * its live count of disagreeing competitors. Both moved on 2026-09-05 when
+   * THRESHOLD-OWNER-2 routed the row (OPEN → ROUTED, and the seeder's
+   * `canDisagree` went true → false), and both oracles went red — while the
+   * gate they exist to falsify was working perfectly.
+   *
+   * A falsification that breaks when the CODEBASE IMPROVES is testing the
+   * fixture, not the check. These construct the exact shape each finding
+   * describes and nothing else, so they keep meaning the same thing however
+   * the real registry moves. */
+  const brokenRow = (over: Partial<BeliefOwnership>): BeliefOwnership => ({
+    key: 'THRESHOLD_PACE',
+    question: 'fixture',
+    constitutionOwner: 'Runner Model',
+    canonical: { module: 'm', symbol: 's', answers: 'a' },
+    rule8Side: 'NEITHER',
+    competing: [],
+    surveyed: 'fixture',
+    conflict: null,
+    movesUpOn: [],
+    movesDownOn: [],
+    neverMovesOn: [],
+    ...over,
+  });
+
   it('ORACLE · a competing owner with no conflict record is named', () => {
-    const broken: BeliefOwnership = {
-      ...BELIEF_OWNERSHIP.THRESHOLD_PACE,
+    const broken = brokenRow({
+      competing: [
+        { module: 'm2', symbol: 's2', at: 'm2:1', computes: 'c', canDisagree: true },
+        { module: 'm3', symbol: 's3', at: 'm3:1', computes: 'c', canDisagree: true },
+        // A competitor that CANNOT disagree must not be counted — the finding
+        // is about disagreement, not about how many functions exist.
+        { module: 'm4', symbol: 's4', at: 'm4:1', computes: 'c', canDisagree: false },
+      ],
       conflict: null,
-    };
+    });
     expect(conflictFindings(broken)).toContain(
-      'THRESHOLD_PACE has 3 competing owner(s) that can disagree and no conflict record',
+      'THRESHOLD_PACE has 2 competing owner(s) that can disagree and no conflict record',
     );
   });
 
   it('ORACLE · an OPEN conflict with no reason for staying open is named', () => {
-    const c = BELIEF_OWNERSHIP.THRESHOLD_PACE.conflict!;
-    const broken: BeliefOwnership = {
-      ...BELIEF_OWNERSHIP.THRESHOLD_PACE,
-      conflict: { ...c, notRoutedBecause: '' },
-    };
+    const broken = brokenRow({
+      conflict: {
+        verdict: 'OPEN',
+        between: ['a#b', 'c#d'],
+        shouldOwn: 'a#b',
+        because: 'fixture',
+        notRoutedBecause: '',
+      },
+    });
     expect(conflictFindings(broken)).toContain(
       'THRESHOLD_PACE is OPEN without saying why it was not routed',
+    );
+  });
+
+  it('ORACLE · a ROUTED conflict that still carries a not-routed reason is named', () => {
+    // The mirror of the one above, and the one the THRESHOLD-OWNER-2 edit
+    // could actually have got wrong: routing a row without clearing the prose
+    // that explains why it was NOT routed leaves two contradictory sentences
+    // in the registry (Rule 17 — the contradiction IS the finding).
+    const broken = brokenRow({
+      conflict: {
+        verdict: 'ROUTED',
+        between: ['a#b', 'c#d'],
+        shouldOwn: 'a#b',
+        because: 'fixture',
+        notRoutedBecause: 'a stale sentence nobody deleted',
+      },
+    });
+    expect(conflictFindings(broken)).toContain(
+      'THRESHOLD_PACE is ROUTED but carries a not-routed reason',
     );
   });
 

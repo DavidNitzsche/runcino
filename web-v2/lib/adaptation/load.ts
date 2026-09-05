@@ -199,7 +199,7 @@ export async function loadAdaptationInput(
     // archived plan the moment the next one is authored. His body does not
     // know that. The projection keeps the active-plan-only default.
     quiet('target verdicts', () =>
-      loadRecentTestPoints(userUuid, vdot, 200, fromISO, true)),
+      loadRecentTestPoints(userUuid, 200, fromISO, true)),
 
     quiet('rpe', async () =>
       (
@@ -689,7 +689,7 @@ export async function loadRepresentativeExecutionInput(
     quiet('representative key session executions', () =>
       loadKeySessionExecutions(userUuid, lookback.fromISO, todayISO, vdot)),
     quiet('representative target verdicts', () =>
-      loadRecentTestPoints(userUuid, vdot, 200, lookback.fromISO, true)),
+      loadRecentTestPoints(userUuid, 200, lookback.fromISO, true)),
   ]);
 
   const filtered = filterExecutionEvidenceByPrescribedWindow(
@@ -925,7 +925,7 @@ export async function buildAdaptationComparisonRecord(
   try {
     const [wideExec, wideVerdicts] = await Promise.all([
       loadKeySessionExecutions(userUuid, wideFromISO, todayISO, vdot),
-      loadRecentTestPoints(userUuid, vdot, 200, wideFromISO, true),
+      loadRecentTestPoints(userUuid, 200, wideFromISO, true),
     ]);
 
     const absorptionExecDates = new Set(

@@ -2186,6 +2186,126 @@ export function composeDurability(inputs: DurabilityInputs): DurabilityCapacityE
   };
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * COLD START · the same ladder, for a runner who has no rows yet.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** What onboarding knows about a runner at the instant the first plan is
+ *  seeded. Deliberately NOT a `userId` + date: the seeder runs INSIDE the
+ *  onboarding transaction, and the rows the DB resolvers read do not exist
+ *  yet — this is the whole reason the cold-start case ever grew a second
+ *  answer. Nothing here is a goal (see section 0's compile-time seal). */
+export interface ColdStartThresholdInputs {
+  /** A measured VDOT, when a connected-account backfill produced one. Null is
+   *  the ordinary case and is a real answer, not a failure (Rule 11). */
+  measuredVdot: number | null;
+  /** `runs.id` or race slug behind `measuredVdot`. Null with it. */
+  measuredVdotEvidenceId?: string | null;
+  measuredVdotDate?: string | null;
+  measuredVdotSource?: 'race' | 'run' | null;
+  /** The runner's OWN onboarding self-report of weekly volume, which is what
+   *  rung 4 exists to spend. Null when they never answered — which is not the
+   *  same fact as answering zero, and `priorWeeklyMi` keeps them apart. */
+  selfReportedWeeklyMi: number | null;
+  todayISO: string;
+}
+
+/**
+ * THE canonical threshold, for a runner the database cannot yet be asked
+ * about.
+ *
+ * ── WHY THIS IS HERE AND NOT IN THE SEEDER ─────────────────────────────────
+ *
+ * `lib/plan/seed-from-onboarding.ts` priced the very first plan with its own
+ * `tPaceFromVdot(anchorVdot) ?? 480`, and that made it a SECOND OWNER of
+ * "what can this runner hold at threshold" — registered as such in
+ * `lib/runner-state/ownership.ts`'s THRESHOLD_PACE row and measured live at
+ * 472 s/mi against the canonical 430 on 2026-09-05.
+ *
+ * The defect was never the cold-start CASE, which is real and unavoidable:
+ * the seeder runs inside the onboarding transaction and the runner has no
+ * rows. It was that the case was answered with fresh arithmetic instead of
+ * with THIS LADDER. Rung 4 already IS the cold-start rung — its own header
+ * says so: "real logged mileage reads zero, but the runner's OWN ONBOARDING
+ * SELF-REPORT of weekly volume exists (`user_prior`) or does not
+ * (`population_prior`), through the cold-start anchor either way". The seeder
+ * was reimplementing a rung that was sitting right here, one file away, and
+ * `docs/BRAIN_CONSTITUTION.md` §24 names that shape exactly: writing a second
+ * cascade to avoid touching the first is how two answers appear.
+ *
+ * So this function adds NO arithmetic. It builds the honest `VdotFallbackRead`
+ * a runner with no rows has and hands it to `composeThresholdCapacity`, the
+ * same pure core `resolveThresholdCapacity` uses. What the seeder gains is
+ * not a different number, it is `sourceMode`, `confidence`, `reasons` and
+ * `evidenceIds` — the provenance it was previously inventing as the string
+ * `'provisional_mileage'`.
+ *
+ * PURE. No database, no clock beyond the caller's own `todayISO`. That is
+ * what makes it callable mid-transaction, and it is the property that made
+ * the migration possible at all.
+ *
+ * ── WHAT THIS IS NOT ───────────────────────────────────────────────────────
+ *
+ * NOT a second resolver. It is `composeThresholdCapacity` with a cold-start
+ * input, and `_threshold_owner_scan.test.ts` holds that claim by keeping this
+ * file the single OWNER entry it already was.
+ *
+ * NOT reachable for a runner who HAS rows. Nothing routes here once the first
+ * plan exists; `resolveThresholdCapacity` is the entry point from then on,
+ * and its tier 1 will overtake this within days on real evidence.
+ */
+export function coldStartThresholdCapacity(
+  inputs: ColdStartThresholdInputs,
+): ThresholdCapacityEstimate {
+  return composeThresholdCapacity({
+    // Tier 1 cannot answer: there is no pace corpus for a runner with no runs.
+    // Stated as an argued refusal rather than an empty success, so the ladder
+    // FALLS THROUGH visibly instead of reporting a direct read of nothing.
+    direct: {
+      ok: false,
+      reason: 'no_observations',
+      observations: 0,
+      weightedSupport: 0,
+      excluded: [],
+      windowDays: 0,
+    },
+    fallback: {
+      measuredVdot: inputs.measuredVdot,
+      measuredVdotEvidenceId: inputs.measuredVdotEvidenceId ?? null,
+      measuredVdotDate: inputs.measuredVdotDate ?? null,
+      measuredVdotSource: inputs.measuredVdotSource ?? null,
+      belowTableAnchor: null,
+      // THE HABIT WINDOW REFUSES, and that is the literal truth of a cold
+      // start: not "he ran zero", but "there is no representative window to
+      // read yet". Coercing this to `{ ok: true, value: 0 }` would tell
+      // `priorWeeklyMi` the runner was measured at zero mileage, which is the
+      // exact zero-versus-absent collapse Rule 11 exists to stop — and it
+      // would zero the coverage blend from the wrong side.
+      normalWeeklyMi: {
+        ok: false,
+        refusal: {
+          code: 'not-enough-representative-training',
+          message: 'No training history yet. Paces start from what you told us and move as you run.',
+          windowFromISO: inputs.todayISO,
+          windowToISO: inputs.todayISO,
+          needDays: 0,
+        },
+        representativeDays: 0,
+        excludedDays: 0,
+      },
+      // Zero representative run days: the self-report is not yet retired by
+      // any evidence, which is what makes rung 4 spend it in full.
+      normalRunDays: 0,
+      selfReportedWeeklyMi: inputs.selfReportedWeeklyMi,
+      // Onboarding PRs are validated and spent by the DB path's own reader.
+      // The seeder does not hold them, and claiming otherwise here would be a
+      // fabricated rung.
+      selfReportedPr: { ok: false, reason: 'NO_PR_ON_FILE', considered: 0, rejected: [] },
+    },
+    todayISO: inputs.todayISO,
+  });
+}
+
 /**
  * How well does this runner's capability survive duration? THE canonical
  * answer (§2).

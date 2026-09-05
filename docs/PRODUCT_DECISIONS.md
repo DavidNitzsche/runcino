@@ -6,6 +6,114 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-09-05 · THRESHOLD-OWNER-2 · one canonical threshold belief, and the
+round trip proven end to end. Plus LEDGERRESPONDED-1, a real defect the round
+trip found on its first run.
+
+### The owner set, measured rather than assumed
+
+`_threshold_owner_census.audit.test.ts` is new: it runs every live threshold
+producer against the owner's real account over `DATABASE_URL_RO` and prints
+what each one says. THRESHOLD-OWNER-1 had deleted the goal side door
+(`spec-builder.tPaceFromGoal`, 394 s/mi off the stated 3:00 goal) and left
+three owners standing with the verdict OPEN. Measured 2026-09-05, BEFORE:
+
+| owner | value |
+|---|---|
+| `capacity-resolver.resolveThresholdCapacity` (CANONICAL) | **430** |
+| `load-prescription-anchors.resolvePrescribedPaceAnchors` | 430 |
+| `goal-projection.ts:956` · the threshold-session PASS BAR | **431** |
+| `goal-projection.ts:1202` · `easyPaceForBlend` | **431** |
+| `seed-from-onboarding.ts:574` · cold start, no measured vdot | **472** |
+
+Three distinct live answers. Widest pair **42 s/mi**.
+
+AFTER: every site that resolves a threshold for a runner with evidence returns
+**430**. The only 472 left is the canonical ladder's own `user_prior` rung for
+a runner with no evidence at all — the same number, but no longer a second
+OWNER, and now carrying `sourceMode` and `confidence` where it used to carry
+the invented string `provisional_mileage`.
+
+### How each was closed — by migration, never by exemption
+
+- **The pass bar** (`loadNextTestPoints`) reads `resolvePrescribedPaceAnchors`.
+  One second on the day it was measured, and the smallness is not the point:
+  this is the bar a threshold session is PASSED or FAILED against, and that
+  verdict is evidence the capacity resolver itself later reads. Grading the
+  runner against a threshold the engine does not believe is how a belief gets
+  corroborated by its own shadow.
+- **`easyPaceForBlend`** takes the canonical threshold as its first parameter
+  where it took a VDOT, and **`loadRecentTestPoints` no longer HAS a `vdot`
+  parameter** for any caller to thread one through. Deleted rather than
+  ignored: an inert parameter is a side door with a sign on it, and Rule 20's
+  whole lesson is that a sign is not a gate. Three call sites in
+  `lib/adaptation/load.ts` and two in `goal-projection.ts` were updated; the
+  compiler found every one.
+- **The cold start** calls the new `coldStartThresholdCapacity`, which is
+  `composeThresholdCapacity` with a cold-start input. No new arithmetic: rung 4
+  of the canonical ladder was BUILT for this case — its own header says "real
+  logged mileage reads zero, but the runner's OWN ONBOARDING SELF-REPORT of
+  weekly volume exists" — and the seeder had been reimplementing it one file
+  away. The bare `?? 480` is gone rather than moved; it stood in for "the table
+  could not price this runner", which the population prior answers honestly.
+- `lib/execution/reconstruct.ts`'s `plannedStimulus` and `expandPlanned` take
+  the threshold too, closing the divergence `actualStimulus`'s own header had
+  named as the obvious next migration: the domain a run was CLASSIFIED into
+  came off the canonical anchors while the easy band it was EXPANDED against
+  came off a VDOT, eleven lines apart in one call.
+
+`_threshold_owner_scan.test.ts`'s OPEN list is now **empty and ratcheted**, and
+its new test 8 asserts each closed site READS the canonical — because a
+deletion with nothing in its place passes every absence check.
+
+### LEDGERRESPONDED-1 · the defect the round trip found
+
+`lib/brain/_threshold_round_trip.db.test.ts` runs the whole loop against a real
+local database: evidence → belief → PUSH/HOLD/PULL_BACK → phase arbitration →
+PACE_CHANGE → V5 card → staleness → acceptance → mutation → ledger →
+phone/Watch → undo → authority boundary.
+
+On its first end-to-end run the plan mutated and **the ledger recorded
+nothing**. `recordDecision` hard-coded `responded_at` to `NULL` while taking
+`runner_response` from the caller, and the CHECK constraint
+`plan_decision_ledger_response_is_timed` correctly requires a settled response
+to carry the moment it settled. So **every row written with
+`runnerResponse: 'ACCEPTED'` was rejected by the database** — the entire
+runner-accept lane, which is the only lane that can currently produce an
+upward adaptation. `mutatePlan` logged "DECISION NOT RECORDED" to
+`console.error` and returned normally.
+
+That is Rule 21's own defect reproduced inside the mechanism built to end it:
+the census of upward adaptations would have read ZERO forever, and the reason
+would have been unfindable because the rows were never there to explain it.
+
+No per-stage suite could have seen it. The constraint is right, the writer is
+right in isolation, and they disagree only in composition. **That is the
+argument for the round trip existing at all**, and it is the same argument
+Rule 15 makes about corpora that cannot reach a mechanism.
+
+Fixed: `responded_at` is derived from `runner_response`. The round trip now
+prints `Rule 21 census {"UP":1,...}` — the first non-zero upward count this
+engine has produced.
+
+### What was NOT done, and why
+
+- **`WIRED_STEP_PIN` stays at 8.** The round trip proves the stages COMPOSE.
+  It does not prove anything composes them in production — steps 1, 3 and 5 are
+  still UNWIRED and 4, 7, 9 and 12 still SHADOW. Raising the pin because a test
+  assembled the stages by hand would be exactly the "wired, tested and inert"
+  claim this project keeps having to retract.
+- **`live-input.ts:788` still reads the FROZEN `authored_state.t_pace_s_per_mi`
+  as "belief"** rather than resolving it. It agreed with the canonical on the
+  day it was measured (both 430, frozen at authoring 2026-09-03) and it is
+  shadow-only, so it is recorded here and in the census rather than migrated
+  blind. It is a Rule 10 posture question, not a threshold-owner question.
+- **`spec-builder.resolveMarathonPace`** remains the registered OPEN conflict
+  on the MARATHON_PACE row — the last goal-shaped side door. Out of scope for
+  a threshold pass and left named rather than half-done.
+
+---
+
 ## 2026-09-04 · Crisis session · seven real defects, one false lead, one pattern
 worth naming. RETROSPECTIVE.
 
