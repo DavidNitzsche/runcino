@@ -393,6 +393,60 @@ export async function POST(req: NextRequest) {
       const bump = await tryAdaptiveBump(uid, applied > 0 || pullbackDecided).catch(() => null);
       if (bump) await bustBriefingCacheForEvent(uid, 'plan_swap');
 
+      /* ── LIVESEQ-1 (2026-09-05) · THE SEQUENCE GATE GETS A LIVE ENTRY POINT
+       *
+       * Every check above this line samples the plan at POINTS — is this day
+       * legal, is this week legal. The adjudication layer was written because
+       * an outside review found sequence-level problems that survive exactly
+       * that: an engine can quote the right doctrine on every individual
+       * session and still assemble an incoherent order. And then the layer had
+       * no caller, which the orphan registry recorded honestly — making it the
+       * largest instance of this codebase's signature failure, wired and
+       * tested and inert.
+       *
+       * This runs it on the real block. It reads, and it can propose; it holds
+       * no reference to any plan writer. One finding of the eleven
+       * `checkPromotion` grades is spent here — the one-stressor-at-a-time
+       * rule — and saying "the adjudicator is wired" would be false while
+       * "one of its findings now reaches the runner" is true.
+       *
+       * Failure is logged and swallowed DELIBERATELY, and this is the one
+       * place that is right: a sequence finding is advisory, the rest of the
+       * pass has already done the load-bearing work for this runner, and a
+       * throw here would cost the whole nightly tick for every runner behind
+       * him in the loop. */
+      try {
+        const [{ loadPlannedWeeks, findSequenceFindings }, { runnerToday }] = await Promise.all([
+          import('@/lib/plan/adjudication/live-sequence'),
+          import('@/lib/runtime/runner-tz'),
+        ]);
+        const seq = await loadPlannedWeeks(uid);
+        if (!seq.ok) {
+          console.log(`[run-adaptations] sequence gate refused · ${uid.slice(0, 8)} · ${seq.why}`);
+        } else {
+          const findings = findSequenceFindings(seq.weeks, await runnerToday(uid));
+          for (const f of findings) {
+            // Reported, not yet raised as a card. The fix a finding implies is
+            // a real coaching decision — take a quality session out of a week
+            // eleven weeks ahead — and it is not made automatically while the
+            // seam is closed. What changes today is that it is SEEN.
+            console.log(
+              `[run-adaptations] SEQUENCE FINDING · ${uid.slice(0, 8)} · week ${f.weekStartISO} `
+              + `adds ${(f.volumeStep * 100).toFixed(1)}% volume AND goes `
+              + `${f.stressorsBefore} to ${f.stressorsAfter} stressors · `
+              + `Research/00a one-at-a-time · the session it would name is `
+              + `${f.targetDateISO} ${f.targetType}`,
+            );
+          }
+          if (findings.length === 0) {
+            console.log(`[run-adaptations] sequence gate clean · ${uid.slice(0, 8)} · `
+              + `${seq.weeks.length} week(s) read`);
+          }
+        }
+      } catch (e) {
+        console.error('[run-adaptations] sequence gate threw:', e);
+      }
+
       // 2026-08-30 · the LTHR re-anchor USED TO BE HERE, and this is the
       // reason it is not any more.
       //
