@@ -24,12 +24,14 @@
  * ## The two tiers of evidence this file trusts
  *
  *   EXACT   — `data.planWorkoutId` equals the prescription's own
- *             `plan_workouts.id`. Stamped by `/api/watch/workouts/complete`
- *             at the moment a run the app itself tracked (watch, phone GPS,
- *             or treadmill) is written — the one write path that resolves a
- *             specific `plan_workouts` row and can carry its id forward.
- *             This is a durable, row-to-row link: once stamped it never has
- *             to be re-derived from type or distance again.
+ *             `plan_workouts.id`, OR names a SUPERSEDED VERSION of that same
+ *             prescription (see PLAN-VERSION-ALIAS-1 below). Stamped by
+ *             `/api/watch/workouts/complete` at the moment a run the app
+ *             itself tracked (watch, phone GPS, or treadmill) is written —
+ *             the one write path that resolves a specific `plan_workouts`
+ *             row and can carry its id forward. This is a durable,
+ *             row-to-row link: once stamped it never has to be re-derived
+ *             from type or distance again.
  *
  *   LEGACY  — `data.workoutType` (with `data.workoutTypeSource === 'plan'`)
  *             matches the prescription's `type`, with NO `planWorkoutId`
@@ -57,6 +59,66 @@
  * complete what was asked" calls THIS. No other surface re-derives the
  * question independently — that was the exact shape of the defect this file
  * closes.
+ *
+ * ## PLAN-VERSION-ALIAS-1 (2026-09-05) · one prescription, two row ids
+ *
+ * Found live, on production, read-only. On 2026-09-01 David ran his 4 × 1 mile
+ * threshold session; `/api/watch/workouts/complete` stamped the run with
+ * `planWorkoutId = wko_470a1327c80a75c3`. Two days later a `silent_rebuild`
+ * re-authored the block from its start (2026-08-24), which writes a FRESH set
+ * of `plan_workouts` rows over dates already run. The prescription for
+ * 2026-09-01 therefore exists twice, byte-identical in every field this file
+ * or any grader reads — same `type`, same `sub_label`, same `workout_spec`,
+ * same `pace_target_s_per_mi` — under two different ids.
+ *
+ * `ownedDaysSql` hands this resolver ONE of them, and by its own reign rule it
+ * hands back the ARCHIVED one, because a plan's reign starts at its
+ * `authored_iso` and the rebuild was authored after the day it re-describes.
+ * That is `ownedDaysSql` answering ITS question correctly ("which plan was
+ * live when this day would have been executed"). But the id it returns is not
+ * the id the run carries, so the EXACT tier compared two names for one
+ * prescription and called them different prescriptions.
+ *
+ * What that cost, verified against the three real route handlers:
+ *
+ *   /api/v5/today          `state: "before_run"` — the threshold session he
+ *                          had already run showed as still upcoming, and
+ *                          `postRun` was null, on every day of the current
+ *                          block that predates the last rebuild.
+ *   run detail             `currentType` null → no `workout_spec` → the
+ *                          strides on 2026-09-02 were not identified as
+ *                          strides, and the matched-workout basis sentence
+ *                          named the COMPARATOR's family ("intervals")
+ *                          because this run no longer had one.
+ *   /api/runs/[id]/recap   correct, because it reads `plan_workouts` by
+ *                          `archived_iso IS NULL` and so happened to land on
+ *                          the other version. Three surfaces, two answers,
+ *                          about one run (Rule 16).
+ *
+ * The fix is identity, not ownership: a stamped id that names a `plan_workouts`
+ * row for THIS user, on THIS date, of THIS (normalised) type is naming the same
+ * prescription the owned row names — a superseded version of it, not a foreign
+ * workout. `ownedDaysSql` is untouched; a proposal to widen its reign instead
+ * was measured against production and moved 15 of 210 owned days and one day's
+ * TYPE, which is a change to what the runner was historically ASKED to do and
+ * is not this defect's owner.
+ *
+ * Rule 11 is the reason this is not a one-line loosening. "Foreign" (another
+ * runner, another date, a row that no longer exists anywhere) and "superseded"
+ * (same runner, same date, same session, older plan version) were being
+ * collapsed into one refusal. They are different facts and only the first
+ * should refuse. Everything the WORKOUT-EXECUTION-ID-1 ruling forbids still
+ * refuses, unchanged and asserted row by row in `_identity_truth_table.test.ts`:
+ * same date alone is still not evidence, an unstamped run still never claims a
+ * prescription, a stamp for another date still matches nothing, a stamp for
+ * another runner still matches nothing, and the alias is refused outright on a
+ * day carrying more than one prescription of the same type — the same
+ * conservatism the LEGACY tier already applies, because a tie is not a name.
+ *
+ * The alias is still `match: 'exact'` rather than a fourth tier. The evidence
+ * is a durable row-to-row link to this day's prescription; the plan version the
+ * id happens to sit in is an artefact of a rebuild, not a weaker fact about
+ * what the runner did.
  */
 
 import { pool } from '@/lib/db/pool';
@@ -146,6 +208,14 @@ function nextDayISO(dateISO: string): string {
   return d.toISOString().slice(0, 10);
 }
 
+/** One `plan_workouts` row as it exists in SOME version of the plan — id and
+ *  type only, which is everything PLAN-VERSION-ALIAS-1 needs to decide whether
+ *  a stamped id names this same day's same session under an older id. */
+export interface PlanRowVersion {
+  id: string;
+  type: string;
+}
+
 export interface PrescribedRow {
   id: string;
   date_iso: string;
@@ -154,6 +224,17 @@ export interface PrescribedRow {
   sub_label: string | null;
   is_quality: boolean | null;
   is_long: boolean | null;
+  /**
+   * PLAN-VERSION-ALIAS-1 · every `plan_workouts` row this user has on THIS
+   * DATE, across every plan version, not just the one `ownedDaysSql` picked.
+   * Read from the same query, so no caller pays a second round trip.
+   *
+   * OPTIONAL, and absent means "no aliases known" rather than "no aliases
+   * exist" — a caller that builds `PrescribedRow`s itself (the reschedule
+   * contract test drives `classifyDay` directly) gets exactly the literal-id
+   * matching it had before, which is the conservative direction.
+   */
+  version_rows?: PlanRowVersion[] | null;
 }
 
 export interface RunRow {
@@ -204,14 +285,31 @@ export function classifyDay(
     };
   });
 
-  const prescriptions: PrescribedWorkout[] = [];
+  const prescriptions: PrescribedWorkout[] = prescribedRows.map((p) => ({
+    id: p.id,
+    type: p.type,
+    distanceMi: p.distance_mi == null ? null : Number(p.distance_mi),
+    subLabel: p.sub_label ?? null,
+    isQuality: p.is_quality === true,
+    isLong: p.is_long === true,
+    matchedRun: null,
+  }));
   const claimed = new Set<string>();
 
-  // Pass 1 · EXACT. A run's stamped id must equal a real prescription's id
-  // TODAY — a run stamped against a workout id from a plan version that has
-  // since been rebuilt is not evidence of anything (Rule 10: a persisted
-  // derived value is recomputed or refused, never trusted stale).
+  // How many prescriptions this date carries of each normalised type. Read by
+  // BOTH the alias half of pass 1 and by pass 2, because both are answering
+  // the same conservatism question: a tie is not a name.
+  const typeCounts = new Map<string, number>();
   for (const p of prescribedRows) {
+    const t = normType(p.type);
+    typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1);
+  }
+
+  // Pass 1a · EXACT, on the literal id. A run's stamped id equals a real
+  // prescription's id TODAY. This runs for EVERY prescription before any
+  // alias is considered, so a literal match always outranks an aliased one.
+  for (let i = 0; i < prescribedRows.length; i++) {
+    const p = prescribedRows[i];
     const exactRuns = resolvedRuns.filter(
       (r) => !claimed.has(r.runId) && r.matchedWorkoutId === p.id,
     );
@@ -219,16 +317,52 @@ export function classifyDay(
     if (best) {
       best.match = 'exact';
       claimed.add(best.runId);
+      prescriptions[i].matchedRun = best;
     }
-    prescriptions.push({
-      id: p.id,
-      type: p.type,
-      distanceMi: p.distance_mi == null ? null : Number(p.distance_mi),
-      subLabel: p.sub_label ?? null,
-      isQuality: p.is_quality === true,
-      isLong: p.is_long === true,
-      matchedRun: best,
-    });
+  }
+
+  // Pass 1b · EXACT, through a SUPERSEDED PLAN VERSION of the same row
+  // (PLAN-VERSION-ALIAS-1 — see this file's header for the production
+  // incident). `version_rows` carries every `plan_workouts` row this user has
+  // on this date across every plan version; an id in it whose type matches is
+  // the SAME prescription under an older name, not a foreign workout.
+  //
+  // Three things still refuse, and each is a separate fact rather than a
+  // softened version of the same one (Rule 11):
+  //   · an id absent from `version_rows` — another date, another runner, or a
+  //     row that exists in no version of this plan. Unchanged: supplemental.
+  //   · an id whose row is a DIFFERENT type — the rebuild replaced the
+  //     session rather than re-authoring it, so what he was stamped against
+  //     is not what the day now asks for. Refuse rather than re-grade.
+  //   · a day carrying more than one prescription of that type — the alias
+  //     cannot say WHICH, and pass 2's own comment already rules that a tie
+  //     is not a name.
+  for (let i = 0; i < prescribedRows.length; i++) {
+    if (prescriptions[i].matchedRun) continue;
+    const p = prescribedRows[i];
+    const t = normType(p.type);
+    if ((typeCounts.get(t) ?? 0) !== 1) continue;
+    const versions = Array.isArray(p.version_rows) ? p.version_rows : [];
+    const aliasIds = new Set(
+      versions
+        .filter((v) => v != null && typeof v.id === 'string' && typeof v.type === 'string'
+          && v.id !== p.id && normType(v.type) === t)
+        .map((v) => v.id),
+    );
+    if (aliasIds.size === 0) continue;
+    const aliasRuns = resolvedRuns.filter(
+      (r) => !claimed.has(r.runId) && r.matchedWorkoutId != null && aliasIds.has(r.matchedWorkoutId),
+    );
+    const best = pickRichest(aliasRuns);
+    if (best) {
+      best.match = 'exact';
+      // The run now names the prescription that is live for this date, so
+      // every consumer reading `matchedWorkoutId` (sealing, adaptation, the
+      // snapshot) sees ONE id for this execution rather than two.
+      best.matchedWorkoutId = p.id;
+      claimed.add(best.runId);
+      prescriptions[i].matchedRun = best;
+    }
   }
 
   // Pass 2 · LEGACY TYPE, conservative. Only when this date carries exactly
@@ -237,11 +371,6 @@ export function classifyDay(
   // guessing would be exactly the "ordering decides association" failure
   // David's ruling forbids. Runs already exact-claimed are excluded so the
   // same physical run cannot satisfy two prescriptions.
-  const typeCounts = new Map<string, number>();
-  for (const p of prescribedRows) {
-    const t = normType(p.type);
-    typeCounts.set(t, (typeCounts.get(t) ?? 0) + 1);
-  }
   for (const entry of prescriptions) {
     if (entry.matchedRun) continue; // already exact
     const t = normType(entry.type);
@@ -343,11 +472,25 @@ export async function resolveDateRangeExecutions(
   fromISO: string,
   toISO: string,
 ): Promise<Map<string, ResolvedDay>> {
+  /* `owned` is the one prescription per date (reign-aware — `ownedDaysSql`).
+   * `versions` is EVERY plan version's row for those dates, so pass 1b can
+   * recognise a stamped id that names a superseded copy of the owned row
+   * (PLAN-VERSION-ALIAS-1). Same table, same predicate, one round trip —
+   * a second query here would be a second population to keep in step. */
   const prescribedRows = (await pool.query<PrescribedRow>(
     `WITH owned AS (${ownedDaysSql({
       columns: 'pw.id, pw.date_iso, pw.type, pw.distance_mi::text, pw.sub_label, pw.is_quality, pw.is_long',
-    })})
-     SELECT * FROM owned WHERE owned.type <> 'rest' ORDER BY owned.date_iso, owned.id`,
+    })}),
+     versions AS (
+       SELECT pw.date_iso,
+              jsonb_agg(jsonb_build_object('id', pw.id, 'type', pw.type)) AS version_rows
+         FROM plan_workouts pw
+        WHERE pw.user_uuid = $1 AND pw.date_iso >= $2 AND pw.date_iso < $3
+        GROUP BY pw.date_iso
+     )
+     SELECT owned.*, versions.version_rows
+       FROM owned LEFT JOIN versions ON versions.date_iso = owned.date_iso
+      WHERE owned.type <> 'rest' ORDER BY owned.date_iso, owned.id`,
     [userUuid, fromISO, toISO],
   )).rows;
 
