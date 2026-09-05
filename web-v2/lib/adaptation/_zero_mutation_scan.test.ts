@@ -42,7 +42,29 @@ const WEB = path.resolve(HERE, '..', '..');
  *  listed INSERT, proven separately and more tightly by that directory's
  *  own `_never_mutates_plan.test.ts`. Argued exemption, not a widened
  *  hole: this scan only proves NO OTHER table is touched. */
-const OWNED_TABLES = new Set(['adaptation_shadow_log', 'canonical_adaptation_shadow_log']);
+/* `canonical_adaptation_deferrals` (added 2026-09-04, migration 165) is the
+ * durable half of `canonical/deferral-queue.ts` — the ledger of progressions
+ * arbitration DEFERRED, so one survives a process restart and is reconsidered
+ * at the next boundary instead of evaporating. Argued exemption, on the same
+ * terms as the two above and no wider:
+ *
+ *   · It is a table this layer OWNS. Nothing else in the app reads or writes
+ *     it, and nothing reads it to change a plan — a queued item is re-offered
+ *     to the engine, never applied. `AUTOMATIC_ADAPTATION_AUTHORITY` is
+ *     untouched.
+ *   · Its writes go through ONE fenced client (`canonical-shadow/
+ *     deferral-writer.ts`), which allow-lists exactly two statement shapes
+ *     against exactly this table and refuses everything else before the wire.
+ *   · UPDATE is authorized against it, which it is not against either shadow
+ *     log, and the reason is structural: rows here are never deleted, so
+ *     retiring an item is an UPDATE that stamps `expired_at` with a stated
+ *     reason. A DELETE would lose the distinction between "retired because
+ *     the block ended" and "silently vanished", which is the whole point.
+ *
+ * This scan still proves NO OTHER TABLE is touched. */
+const OWNED_TABLES = new Set([
+  'adaptation_shadow_log', 'canonical_adaptation_shadow_log', 'canonical_adaptation_deferrals',
+]);
 
 /** Every function in this codebase that writes a plan row, or reaches one. */
 export const PLAN_WRITERS = [
@@ -151,10 +173,21 @@ export function stripComments(src: string): string {
 
 const WRITE_RE = /\b(UPDATE|INSERT\s+INTO|DELETE\s+FROM|TRUNCATE(?:\s+TABLE)?)\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?/gi;
 
+/**
+ * `ON CONFLICT ... DO UPDATE SET` is the upsert half of the INSERT it belongs
+ * to, and names no table of its own. Without this, `WRITE_RE` reads it as an
+ * UPDATE against a table called `SET` — a phantom write against a table that
+ * does not exist. Added 2026-09-04 with this layer's first upsert
+ * (`canonical-shadow/deferral-store.ts`); the oracle below plants one.
+ */
+export function neutraliseUpsertClause(src: string): string {
+  return src.replace(/\bdo\s+update\s+set\b/gi, 'do_upsert_set');
+}
+
 /** Every write verb + table in a source, comments stripped. Pure, so the oracle can call it. */
 export function writesIn(src: string): Array<{ verb: string; table: string }> {
   const out: Array<{ verb: string; table: string }> = [];
-  const code = stripComments(src);
+  const code = neutraliseUpsertClause(stripComments(src));
   for (const m of code.matchAll(WRITE_RE)) out.push({ verb: m[1].toUpperCase().replace(/\s+/g, ' '), table: m[2] });
   return out;
 }
@@ -196,6 +229,27 @@ describe('liveness · the scanner read real files', () => {
     const prose = `// never UPDATE plan_workouts here\n/* nothing calls applyAdaptations */\nconst x = 1;`;
     expect(writesIn(prose)).toEqual([]);
     expect(writerNamesIn(prose)).toEqual([]);
+  });
+
+  it('ORACLE · the upsert neutraliser hides the phantom, and NOTHING else', () => {
+    // An upsert reports ONE write, against the INSERT's own table — not a
+    // second one against a phantom table called `SET`.
+    const upsert = 'const q = `INSERT INTO canonical_adaptation_deferrals (a) VALUES ($1)'
+      + ' ON CONFLICT (a) DO UPDATE SET a = 1`;';
+    expect(writesIn(upsert)).toEqual([
+      { verb: 'INSERT INTO', table: 'canonical_adaptation_deferrals' },
+    ]);
+
+    // FALSIFICATION, both directions. A REAL second statement smuggled after
+    // an upsert is still caught, so the neutraliser has not opened a hole —
+    // it rewrites exactly the four tokens `DO UPDATE SET` and nothing wider.
+    const smuggled = 'const q = `INSERT INTO canonical_adaptation_deferrals (a) VALUES ($1)'
+      + ' ON CONFLICT (a) DO UPDATE SET a = 1; UPDATE plan_workouts SET distance_mi = 9`;';
+    expect(writesIn(smuggled)).toContainEqual({ verb: 'UPDATE', table: 'plan_workouts' });
+
+    // And a plain UPDATE is untouched by it.
+    expect(neutraliseUpsertClause('UPDATE plan_workouts SET x = 1'))
+      .toBe('UPDATE plan_workouts SET x = 1');
   });
 });
 

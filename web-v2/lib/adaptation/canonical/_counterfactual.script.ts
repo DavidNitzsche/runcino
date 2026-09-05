@@ -10,13 +10,16 @@
  * none could, the bar is not a bar, it is a wall." A doctrine change to
  * arbitration exercised only against fixtures is a hypothesis.
  *
- * So this replays every weekly boundary of the owner's real training under
- * THREE readings of arbitration rule 1, carrying a SEPARATE belief forward in
- * each, and reports where every proposal the engine has ever made lands:
+ * So this replays every weekly boundary of the owner's real training under BOTH
+ * readings of arbitration rule 1, carrying a SEPARATE belief forward in each,
+ * and reports where every proposal the engine has ever made lands:
  *
  *     APPLIED             · survived arbitration and moved the belief
- *     DEFERRED            · suppressed AND queued, with the boundary named
+ *     DEFERRED            · suppressed AND queued, with the boundary named,
+ *                           and the boundary it came back at once it did
  *     REMAINS SUPPRESSED  · suppressed and NOT queued, with the reason named
+ *     REFUSED             · the engine declined to answer for want of
+ *                           admissible evidence, which is not a suppression
  *
  * ── THE SUBSTRATE IS THE SEALED HISTORY, NOT A LIVE READ ───────────────────
  *
@@ -66,10 +69,18 @@
  *   and it cannot: from the first divergence onward each world is describing a
  *   season he did not have, and every later row is conditional on the earlier
  *   ones being right.
- * · THE PROVISIONAL CEILING. World `C-probe` invents one from his own best
- *   completed non-cutback week so the result's sensitivity to a plausible
- *   ceiling can be seen. It is NOT a demand model, nothing in `lib/` reads it,
- *   and the honest live world is `C-absent`.
+ * · WHETHER THE CEILING IS THE RIGHT NUMBER. World C now uses the REAL demand
+ *   model (`lib/plan/adjudication/weekly-demand.ts`, through
+ *   `canonical/demand-ceiling.ts`), which is a large improvement on the
+ *   provisional probe this file used to carry — but five of that model's
+ *   coefficients are labelled POLICY_ASSUMPTION and nobody has calibrated them.
+ *   Wiring the model in made the ceiling REAL. It did not make it RIGHT, and
+ *   those are different claims.
+ * · THE BASIS. When one absorbed week's context cannot be reconstructed the
+ *   whole comparison degrades to BASE_ONLY, symmetrically and legally, and the
+ *   table below records which basis was used. Nothing here can tell you what a
+ *   FULL_CONTEXT comparison would have concluded on the weeks it could not
+ *   price.
  * · SESSION BOUNDARIES. This walks WEEKLY boundaries only, because the contract
  *   arbitrates plan-level change there and a session-boundary proposal is
  *   deferred by the cadence rule under every reading. Including them would add
@@ -81,11 +92,14 @@ import { describe, it } from 'vitest';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { evaluateAdaptation } from './evaluate';
-import { arbitrate, type ArbitrationReading, type ArbitratedVerdict } from './arbitration';
-import { demandCeilingForWeek } from './plan-load';
-import { enqueueDeferrals } from './deferral-queue';
 import {
-  measured, absent,
+  arbitrate,
+  type ArbitrationReading, type ArbitratedVerdict, type DemandCeilingPosture,
+} from './arbitration';
+import { enqueueDeferrals, reconsiderAtBoundary, type QueuedDeferral } from './deferral-queue';
+import type { AthleteWeeklyDemandCeiling } from './demand-ceiling';
+import {
+  absent,
   type CanonicalAdaptationInput, type CanonicalLever, type CapacityBelief, type Measured,
 } from './input';
 import type { CanonicalDecisionRecord } from './decision-record';
@@ -132,62 +146,28 @@ interface World {
   readonly id: string;
   readonly label: string;
   readonly reading: ArbitrationReading;
-  readonly ceiling: (input: CanonicalAdaptationInput) => Measured<number>;
+  readonly ceiling: (input: CanonicalAdaptationInput) => Measured<AthleteWeeklyDemandCeiling>;
   /** Whether a suppressed proposal survives as a queued deferral. */
   readonly queues: boolean;
-}
-
-/**
- * A PROVISIONAL stand-in for a demand ceiling, used by world `C-probe` only.
- *
- * His own best completed week in the evidence window, priced with the long run
- * and quality minutes the coming week already carries. It is NOT a demand
- * model, it is not doctrine, and nothing in `lib/` reads it: it exists so the
- * table can show how the result moves if a ceiling of a plausible size exists
- * at all, rather than only showing "no ceiling" against "the old rule".
- *
- * Rule 8 as far as this input allows: weeks the plan itself authored as a
- * cutback, a recovery block or a taper are excluded, because a peak measured
- * across a taper is not this runner's ceiling.
- */
-function provisionalCeiling(input: CanonicalAdaptationInput): Measured<number> {
-  let best = 0;
-  for (const w of input.weeks) {
-    if (w.isCutback) continue;
-    if (w.authoredPlanMode === 'RECOVERY' || w.authoredPlanMode === 'TAPER') continue;
-    if (!w.completedMi.ok) continue;
-    if (w.completedMi.value > best) best = w.completedMi.value;
-  }
-  if (best <= 0) {
-    return absent('no representative completed week to price a provisional ceiling from');
-  }
-  return measured(demandCeilingForWeek({
-    weeklyMi: best,
-    longRunMi: input.plan.nextWeekLongRunMi,
-    qualityMinutes: input.plan.nextWeekQualityMinutes,
-  }));
 }
 
 const WORLDS: readonly World[] = [
   {
     id: 'A',
-    label: 'today · a load HOLD suppresses a material increase',
+    label: 'today · a load HOLD suppresses a material increase, and nothing is queued',
     reading: 'LEGACY_HOLD_PRESENCE',
     ceiling: () => absent('the legacy reading never consulted a ceiling'),
     queues: false,
   },
   {
-    id: 'C-absent',
-    label: 'reading C, live posture · no demand model, so rule 1 cannot fire',
+    id: 'C',
+    label: 'reading C · the REAL weekly demand model, and a queue that carries deferrals',
     reading: 'WEEK_DEMAND_CEILING',
+    // The loader's own ceiling, resolved by `resolveAthleteWeeklyDemandCeiling`
+    // out of `lib/plan/adjudication/weekly-demand.ts` against his own absorbed
+    // weeks. NOT a probe, not a stand-in, and not invented here — the same
+    // function and the same code path the live loader calls.
     ceiling: (i) => i.athleteCeilingWeeklyDemand,
-    queues: true,
-  },
-  {
-    id: 'C-probe',
-    label: 'reading C, sensitivity probe · a provisional ceiling from his own peak week',
-    reading: 'WEEK_DEMAND_CEILING',
-    ceiling: provisionalCeiling,
     queues: true,
   },
 ];
@@ -196,7 +176,12 @@ const WORLDS: readonly World[] = [
  * ONE WORLD'S WALK
  * ═══════════════════════════════════════════════════════════════════════ */
 
-type Bucket = 'APPLIED' | 'DEFERRED' | 'REMAINS SUPPRESSED';
+/**
+ * Where a proposal landed. `REFUSED` is a fourth bucket and is NOT a kind of
+ * suppression: it is the engine declining to answer for want of admissible
+ * evidence, which the contract treats as a successful evaluation.
+ */
+type Bucket = 'APPLIED' | 'DEFERRED' | 'REMAINS SUPPRESSED' | 'REFUSED';
 
 interface Landing {
   readonly asOfISO: string;
@@ -207,6 +192,21 @@ interface Landing {
   readonly magnitude: string;
   readonly bucket: Bucket;
   readonly detail: string;
+  /** The sessions that justified it, and how many were excluded. */
+  readonly evidence: string;
+  /** The demand arithmetic rule 1 actually did, or why it could not. */
+  readonly demand: string;
+  /** The belief AFTER this boundary, so a reader can follow the trajectory.
+   *  Filled in once the whole boundary has been applied — a per-row snapshot
+   *  taken mid-loop would show a belief that never existed. */
+  beliefAfter: string;
+  /**
+   * For a DEFERRED proposal, the boundary at which the queue re-offered it and
+   * what happened there. Filled in on a second pass, once the walk knows.
+   */
+  returned: string;
+  /** One sentence the runner could actually be shown. */
+  readonly runnerSentence: string;
 }
 
 interface WorldResult {
@@ -214,6 +214,10 @@ interface WorldResult {
   readonly beliefTrail: ReadonlyArray<{ date: string; threshold: number; weekly: number; long: number }>;
   readonly anchorStart: number;
   readonly anchorEnd: number;
+  /** Every ceiling posture the walk saw, counted. Rule 11 made visible. */
+  readonly ceilingPostures: Record<string, number>;
+  /** What the queue did across the whole walk. */
+  readonly queueEvents: readonly string[];
 }
 
 /**
@@ -238,6 +242,70 @@ const verdictOf = (r: CanonicalDecisionRecord): LeverVerdict => ({
   reason: r.reason,
   whatWouldChangeIt: r.whatWouldChangeIt,
 });
+
+/** The evidence behind one proposal, in one cell. */
+function evidenceCell(r: CanonicalDecisionRecord): string {
+  const dates = [...r.evidenceIncluded].map((e) => e.dateISO).sort();
+  const span = dates.length === 0 ? 'none' : `${dates[0]} to ${dates[dates.length - 1]}`;
+  const excluded = r.evidenceExcluded.length;
+  return `${r.evidenceIncluded.length} admitted (${span}), ${excluded} excluded, `
+    + `${r.windowDays}-day window, confidence ${r.confidence.supportingCount} supporting`;
+}
+
+/**
+ * The demand arithmetic rule 1 actually did, or the honest reason it could not.
+ *
+ * Rule 11 · the three postures produce three different sentences here, so a
+ * reader of the table can tell "the week had room" from "nobody knew what the
+ * week's ceiling was". Collapsing them into one dash is the whole defect.
+ */
+function demandCell(
+  posture: DemandCeilingPosture,
+  a: ArbitratedVerdict,
+  base: number,
+  projected: number,
+): string {
+  if (!posture.rule1CanFire) {
+    return `${posture.kind} · rule 1 did not run. ${posture.detail.slice(0, 120)}`;
+  }
+  const head = `week ${base.toFixed(1)} to ${projected.toFixed(1)} EEM against a ceiling of `
+    + `${posture.value.toFixed(1)} on ${posture.basis}`;
+  const share = `${(a.demandShare * 100).toFixed(2)}% of the week`;
+  const over = projected > posture.value;
+  return `${head} · this proposal moves ${share} · ${over ? 'OVER' : 'within'}`;
+}
+
+/**
+ * The sentence a runner could actually be shown for this landing.
+ *
+ * The contract's acceptance test is one of these, verbatim, and the others are
+ * written in the same voice: short, no hype, no exclamation, states the
+ * evidence and the consequence and nothing else (CLAUDE.md's coach-voice rule).
+ */
+function runnerSentence(
+  bucket: Bucket,
+  r: CanonicalDecisionRecord,
+  a: ArbitratedVerdict,
+): string {
+  const what = r.lever === 'THRESHOLD_PACE'
+    ? 'threshold pace'
+    : r.lever === 'WEEKLY_VOLUME' ? 'weekly volume' : 'long run';
+  if (bucket === 'APPLIED') {
+    return `Your ${what} evidence supports this change, and the week has room for it, so it is made now.`;
+  }
+  if (bucket === 'REFUSED') {
+    return `There is not enough admissible evidence to move your ${what} yet. ${r.whatWouldChangeIt[0] ?? ''}`.trim();
+  }
+  if (a.suppressedBy?.rule === 'ONE_MATERIAL_LEVER_PER_CYCLE') {
+    return `Your ${what} evidence supports this change, but another change is already being `
+      + 'made this cycle, so it waits until the next appropriate boundary.';
+  }
+  if (a.suppressedBy?.rule === 'WEEK_AT_DEMAND_CEILING') {
+    return `Your ${what} evidence supports a change, but this week already contains enough `
+      + 'total demand, so the change is deferred until the next appropriate boundary.';
+  }
+  return `Your ${what} evidence supports this change. ${a.suppressedBy?.detail ?? ''}`.trim();
+}
 
 function landingFor(
   world: World,
@@ -271,7 +339,7 @@ function landingFor(
   }
   return {
     bucket: 'DEFERRED',
-    detail: `${a.suppressedBy.rule} · reconsidered ${queued[0].nextBoundaryISO ?? 'at the next boundary'}`,
+    detail: `${a.suppressedBy.rule} · due ${queued[0].nextBoundaryISO ?? 'at the next boundary'}`,
   };
 }
 
@@ -291,6 +359,22 @@ function walkWorld(world: World, boundaries: readonly string[]): WorldResult {
 
   const landings: Landing[] = [];
   const beliefTrail: Array<{ date: string; threshold: number; weekly: number; long: number }> = [];
+  const ceilingPostures: Record<string, number> = {};
+  const queueEvents: string[] = [];
+
+  /**
+   * THE DURABLE QUEUE, WALKED FOR REAL.
+   *
+   * The earlier draft of this script offered each suppression to
+   * `enqueueDeferrals([])` — an EMPTY queue, one boundary at a time — which
+   * proved a record was queueABLE and nothing else. This carries the queue
+   * across boundaries exactly as `run-live-shadow-evaluation.ts` does, so the
+   * table can answer the question the owner asked: when did a deferred
+   * proposal actually come back, and what happened to it.
+   */
+  let queue: readonly QueuedDeferral[] = [];
+  /** queueId → the landing row that queued it, so `returned` can be filled in. */
+  const queuedBy = new Map<string, Landing>();
 
   for (const asOfISO of boundaries) {
     const { input } = buildInputAt({
@@ -309,46 +393,114 @@ function walkWorld(world: World, boundaries: readonly string[]): WorldResult {
     }
 
     const records = evaluateAdaptation(input).records;
-    const arbitrated = arbitrate({
+    const result = arbitrate({
       verdicts: records.map(verdictOf),
+      baseWeekStartISO: input.plan.nextWeekStartISO,
       baseWeeklyMi: input.plan.nextWeekPrescribedMi,
       baseLongRunMi: input.plan.nextWeekLongRunMi,
       baseQualityMinutes: input.plan.nextWeekQualityMinutes,
       athleteCeilingWeeklyDemand: world.ceiling(input),
       nextBoundaryISO: input.plan.nextCutbackBoundaryISO ?? input.plan.nextWeekStartISO,
       reading: world.reading,
-    }).arbitrated;
+    });
+    const arbitrated = result.arbitrated;
+    ceilingPostures[result.demandCeiling.kind] = (ceilingPostures[result.demandCeiling.kind] ?? 0) + 1;
+
+    /* ── The queue, BEFORE this boundary's proposals are added to it ────────
+     *
+     * Reconsider first, so a queued item is judged against the fresh records
+     * this boundary just produced. That is the order the live caller uses and
+     * the reason it matters: an item superseded by a fresh proposal must hand
+     * over to it rather than compete with it. */
+    if (world.queues && queue.length > 0) {
+      const outcome = reconsiderAtBoundary({
+        queue,
+        atISO: asOfISO,
+        freshRecords: records,
+        currentPlanVersion: input.planVersion,
+        blockEndedISO: input.race.raceDateISO < asOfISO ? input.race.raceDateISO : null,
+      });
+      for (const ex of outcome.expired) {
+        const origin = queuedBy.get(ex.item.queueId);
+        if (origin) origin.returned = `${asOfISO} · ${ex.expiry}`;
+        queueEvents.push(`${asOfISO} · ${ex.item.lever} left the queue · ${ex.expiry}`);
+      }
+      for (const it of outcome.reconsidered) {
+        if (outcome.carried.some((c) => c.queueId === it.queueId)) {
+          const origin = queuedBy.get(it.queueId);
+          if (origin) origin.returned = `${asOfISO} · re-offered, still queued`;
+          queueEvents.push(`${asOfISO} · ${it.lever} was re-offered and stays queued`);
+        }
+      }
+      queue = outcome.carried;
+    }
+
+    const thisBoundary: Landing[] = [];
 
     for (const a of arbitrated) {
       const record = records.find((r) => r.lever === a.verdict.lever);
       if (record === undefined) continue;
-      if (NON_MOVING_DECISIONS.has(record.decision)) continue;
-      if (record.proposedAfterValue === null || record.magnitude === null) continue;
+
+      const moves = !NON_MOVING_DECISIONS.has(record.decision)
+        && record.proposedAfterValue !== null && record.magnitude !== null;
+
+      // REFUSE is reported, not dropped. A boundary where the engine could not
+      // answer is a different fact from one where it said no, and a table that
+      // shows only proposals hides the refusals entirely (Rule 11).
+      if (!moves) {
+        if (record.decision !== 'REFUSE') continue;
+        thisBoundary.push({
+          asOfISO, lever: record.lever, decision: record.decision,
+          beforeValue: record.beforeValue, proposedAfterValue: record.beforeValue,
+          magnitude: 'none',
+          bucket: 'REFUSED',
+          detail: record.reason.slice(0, 160),
+          evidence: evidenceCell(record),
+          demand: demandCell(result.demandCeiling, a, result.baseLoad.demandIndex, result.baseLoad.demandIndex),
+          beliefAfter: '',
+          returned: 'n/a',
+          runnerSentence: runnerSentence('REFUSED', record, a),
+        });
+        continue;
+      }
 
       const { bucket, detail } = landingFor(world, a, record);
-      landings.push({
+      const projected = result.baseLoad.demandIndex * (1 + a.demandShare);
+      const landing: Landing = {
         asOfISO,
         lever: record.lever,
         decision: record.decision,
         beforeValue: record.beforeValue,
-        proposedAfterValue: record.proposedAfterValue,
-        magnitude: `${record.magnitude.value > 0 ? '+' : ''}${record.magnitude.value} ${record.magnitude.unit}`,
+        proposedAfterValue: record.proposedAfterValue!,
+        magnitude: `${record.magnitude!.value > 0 ? '+' : ''}${record.magnitude!.value} ${record.magnitude!.unit}`,
         bucket,
         detail,
-      });
+        evidence: evidenceCell(record),
+        demand: demandCell(result.demandCeiling, a, result.baseLoad.demandIndex, projected),
+        beliefAfter: '',
+        returned: bucket === 'DEFERRED' ? 'not yet' : 'n/a',
+        runnerSentence: runnerSentence(bucket, record, a),
+      };
+      thisBoundary.push(landing);
+
+      if (bucket === 'DEFERRED' && world.queues) {
+        const added = enqueueDeferrals(queue, [{ ...record, suppressedBy: a.suppressedBy }]);
+        for (const q of added) if (!queuedBy.has(q.queueId)) queuedBy.set(q.queueId, landing);
+        queue = added;
+      }
 
       if (bucket !== 'APPLIED') continue;
 
       // Applied exactly as a deployment would apply it.
       if (record.lever === 'THRESHOLD_PACE') {
-        belief.thresholdPaceSecPerMi = record.proposedAfterValue;
+        belief.thresholdPaceSecPerMi = record.proposedAfterValue!;
         anchorMovedOn = asOfISO;
         steps.THRESHOLD_PACE += 1;
       } else if (record.lever === 'WEEKLY_VOLUME') {
-        belief.weeklyVolumeMi = record.proposedAfterValue;
+        belief.weeklyVolumeMi = record.proposedAfterValue!;
         steps.WEEKLY_VOLUME += 1;
       } else {
-        belief.longRunMi = record.proposedAfterValue;
+        belief.longRunMi = record.proposedAfterValue!;
         steps.LONG_RUN += 1;
       }
       belief.supportingSessionCount = record.confidence.supportingCount;
@@ -356,6 +508,14 @@ function walkWorld(world: World, boundaries: readonly string[]): WorldResult {
         [...record.evidenceIncluded].map((e) => e.dateISO).sort()[0]
         ?? belief.oldestSupportingDateISO;
     }
+
+    // The resulting belief, stamped on every row of this boundary AFTER the
+    // whole boundary has been applied — because two levers can both land here
+    // and a per-row snapshot taken mid-loop would show a belief that never
+    // existed.
+    const after = `T ${paceText(belief.thresholdPaceSecPerMi)} · `
+      + `${belief.weeklyVolumeMi} mi/wk · ${belief.longRunMi} mi long`;
+    for (const l of thisBoundary) { l.beliefAfter = after; landings.push(l); }
 
     beliefTrail.push({
       date: asOfISO,
@@ -370,6 +530,8 @@ function walkWorld(world: World, boundaries: readonly string[]): WorldResult {
     beliefTrail,
     anchorStart: SEED_THRESHOLD_SEC_PER_MI,
     anchorEnd: belief.thresholdPaceSecPerMi,
+    ceilingPostures,
+    queueEvents,
   };
 }
 
@@ -466,14 +628,14 @@ function render(
   p();
   p('**Freshness against production.** ' + freshness.detail);
   p();
-  p('## The three worlds');
+  p('## The two worlds');
   p();
   p('| id | rule 1 | ceiling | deferrals queued |');
   p('|---|---|---|---|');
   for (const w of WORLDS) {
     const ceil = w.reading === 'LEGACY_HOLD_PRESENCE'
       ? 'not consulted'
-      : w.id === 'C-absent' ? 'absent, as live' : 'provisional probe';
+      : 'the real demand model';
     p(`| **${w.id}** | ${w.label} | ${ceil} | ${w.queues ? 'yes' : 'no'} |`);
   }
   p();
@@ -487,15 +649,15 @@ function render(
 
   p('## Headline');
   p();
-  p('| world | proposals | APPLIED | DEFERRED | REMAINS SUPPRESSED | threshold anchor |');
-  p('|---|---:|---:|---:|---:|---|');
+  p('| world | proposals | APPLIED | DEFERRED | REMAINS SUPPRESSED | REFUSED | threshold anchor |');
+  p('|---|---:|---:|---:|---:|---:|---|');
   for (const id of worldIds) {
     const r = results.get(id);
     if (r === undefined) continue;
-    const c = { APPLIED: 0, DEFERRED: 0, 'REMAINS SUPPRESSED': 0 } as Record<Bucket, number>;
+    const c = { APPLIED: 0, DEFERRED: 0, 'REMAINS SUPPRESSED': 0, REFUSED: 0 } as Record<Bucket, number>;
     for (const l of r.landings) c[l.bucket] += 1;
     const moved = r.anchorStart - r.anchorEnd;
-    p(`| ${id} | ${r.landings.length} | ${c.APPLIED} | ${c.DEFERRED} | ${c['REMAINS SUPPRESSED']} `
+    p(`| ${id} | ${r.landings.length} | ${c.APPLIED} | ${c.DEFERRED} | ${c['REMAINS SUPPRESSED']} | ${c.REFUSED} `
       + `| ${paceText(r.anchorStart)} to ${paceText(r.anchorEnd)} (${moved > 0 ? '-' : '+'}${Math.abs(moved)} s/mi) |`);
   }
   p();
@@ -529,16 +691,40 @@ function render(
     if (r === undefined) continue;
     p(`### World ${w.id} · ${w.label}`);
     p();
-    p('| boundary | lever | decision | move | landed | why |');
-    p('|---|---|---|---|---|---|');
+    p('Every column the owner asked for: the evidence behind the proposal, the');
+    p('demand arithmetic that judged it, where it landed, the belief that');
+    p('resulted, when a deferred proposal came back, and the sentence the');
+    p('runner would read.');
+    p();
+    p('| boundary | lever | move | evidence | demand | landed | belief after | returned | what the runner reads |');
+    p('|---|---|---|---|---|---|---|---|---|');
     for (const l of r.landings) {
       const move = l.lever === 'THRESHOLD_PACE'
         ? `${paceText(l.beforeValue)} to ${paceText(l.proposedAfterValue)} (${l.magnitude})`
         : `${l.beforeValue} to ${l.proposedAfterValue} (${l.magnitude})`;
-      p(`| ${l.asOfISO} | ${l.lever} | ${l.decision} | ${move} | **${l.bucket}** | ${l.detail} |`);
+      p(
+        `| ${l.asOfISO} | ${l.lever} | ${move} | ${l.evidence} | ${l.demand} `
+        + `| **${l.bucket}** · ${l.detail} | ${l.beliefAfter} | ${l.returned} `
+        + `| ${l.runnerSentence} |`,
+      );
     }
-    if (r.landings.length === 0) p('| _no proposal at any boundary_ | | | | | |');
+    if (r.landings.length === 0) p('| _no proposal at any boundary_ | | | | | | | | |');
     p();
+    p(`**Ceiling postures across the walk.** ${
+      Object.entries(r.ceilingPostures).map(([k, n]) => `${k} x${n}`).join(', ') || 'none'
+    }. A posture of ABSENT means rule 1 could not run at that boundary and `
+      + 'suppressed nothing, which is not the same as a week with room.');
+    p();
+    if (r.queueEvents.length > 0) {
+      p('**What the queue did.**');
+      p();
+      for (const e of r.queueEvents) p(`- ${e}`);
+      p();
+    } else if (w.queues) {
+      p('**What the queue did.** Nothing left it and nothing was re-offered across');
+      p('the whole walk.');
+      p();
+    }
   }
 
   /* ── Belief trails ─────────────────────────────────────────────────────── */
@@ -564,7 +750,8 @@ function render(
   p('  would notice. Every criticism `build-input.ts` makes of itself applies.');
   p('- It counts where proposals land. It says nothing about whether the season that');
   p('  followed would have been better for him.');
-  p('- The provisional ceiling is a sensitivity probe, not a demand model.');
+  p('- The ceiling is the real demand model, and its five POLICY_ASSUMPTION');
+  p('  coefficients are uncalibrated. Real is not the same as right.');
   p('- Weekly boundaries only. A session-boundary proposal is deferred by the cadence');
   p('  rule under every reading, so including them would add identical rows to every');
   p('  column.');
@@ -577,7 +764,7 @@ function render(
  * ═══════════════════════════════════════════════════════════════════════ */
 
 describe('counterfactual · reading C against real history', () => {
-  it('replays every weekly boundary under all three readings', async () => {
+  it('replays every weekly boundary under both readings', async () => {
     const boundaries = mondays(FIRST_BOUNDARY, LAST_BOUNDARY);
     const freshness = await checkFreshness();
 

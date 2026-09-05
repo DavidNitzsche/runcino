@@ -82,6 +82,11 @@ import {
 } from '@/lib/runs/run-shape';
 import { wireVerdictLandedTheWork } from '@/lib/training/execution-semantics';
 import { distanceMiOfMeta } from '@/lib/race/distance';
+import { resolveAthleteWeeklyDemandCeiling } from '@/lib/adaptation/canonical/demand-ceiling';
+import {
+  contextForWeek, demonstratedWeeksFrom, prescribedWeekQuantities,
+  type DemandSubstrate, type RanRace,
+} from './demand-input';
 import { roQuery } from './read-only-db';
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -272,6 +277,33 @@ async function readRecentRuns(
     [userUuid, sinceISO, untilISO],
   );
   return r.rows;
+}
+
+/**
+ * Races this athlete has already RUN, for the demand model's recovery term.
+ *
+ * Rule 14 · the population is stated: this user by uuid, races dated on or
+ * before the evaluation date. `meta` carries the date and the distance, which
+ * is the same pair `distanceMiOfMeta` already reads for the target race.
+ *
+ * RULE 11 · the CALLER keeps "the read failed" apart from "he has not raced".
+ * An empty array means he has not raced before this date; a thrown error means
+ * nobody knows, and the caller passes `null` rather than an empty list.
+ */
+async function readRacesRun(userUuid: string, asOf: string): Promise<RanRace[]> {
+  const r = await roQuery<RaceRow>(
+    `SELECT slug, meta, plan FROM races WHERE user_uuid = $1::uuid`,
+    [userUuid],
+  );
+  const out: RanRace[] = [];
+  for (const row of r.rows) {
+    const d = row.meta?.date;
+    if (typeof d !== 'string' || d.length < 10) continue;
+    const dateISO = d.slice(0, 10);
+    if (dateISO > asOf) continue;
+    out.push({ dateISO, distanceMi: distanceMiOfMeta(row.meta) });
+  }
+  return out;
 }
 
 async function readRace(slug: string, userUuid: string): Promise<RaceRow | null> {
@@ -672,6 +704,53 @@ export async function buildLiveCanonicalInput(
   const futureRaceWeek = weeks.find((w) => w.week_start_iso >= currentWeekStart && w.is_race_week);
   const isTaperPlan = (plan.mode ?? '').toLowerCase().includes('taper');
 
+  /* ── THE DEMAND CEILING · rule 1's only input ─────────────────────────────
+   *
+   * RULE 11 · the race read is wrapped on its own, because a failed read of
+   * the race table and "he has not raced" are different facts and only one of
+   * them lets the recovery term price. A throw here would abort the whole
+   * evaluation over a term the model treats as one of seven.
+   */
+  let racesRun: RanRace[] | null = null;
+  try {
+    racesRun = await readRacesRun(userUuid, asOf);
+  } catch {
+    racesRun = null;
+  }
+
+  const substrate: DemandSubstrate = {
+    asOfISO: asOf,
+    runs: runData.map((r) => ({ dateISO: r.dateISO, distanceMi: runDistanceMi(r.d) })),
+    sessions: workouts.map((w) => ({
+      dateISO: w.date_iso,
+      distanceMi: num(w.distance_mi),
+      isQuality: w.is_quality,
+      isLong: w.is_long,
+      spec: w.workout_spec,
+    })),
+    cutbackWeekStarts: weeks.filter((w) => w.is_cutback || w.is_race_week).map((w) => w.week_start_iso),
+    racesRun,
+    weekObservations,
+  };
+
+  // The week rule 1 is about is the one a proposal would first affect: NEXT
+  // week, the same week `plan.nextWeekPrescribedMi` describes. Pricing this
+  // week instead would measure a proposal against a week it cannot change.
+  const nextWeekQuantities = prescribedWeekQuantities(substrate, nextWeekStart);
+  const ceiling = resolveAthleteWeeklyDemandCeiling({
+    context: contextForWeek(substrate, nextWeekStart),
+    week: {
+      weeklyMi: nextWeekQuantities.weeklyMi ?? Number.NaN,
+      longRunMi: nextWeekQuantities.longRunMi ?? Number.NaN,
+      // RULE 11 · this is where the old literal `0` lived. A week whose quality
+      // cannot be priced now REFUSES rather than pricing a pace correction at
+      // zero added demand, which is what made rule 1 unable to defer one.
+      qualityMinutes: nextWeekQuantities.qualityMinutes ?? Number.NaN,
+      thresholdAnchorDeltaSecPerMi: 0,
+    },
+    demonstratedWeeks: demonstratedWeeksFrom(substrate),
+  });
+
   const input: CanonicalAdaptationInput = {
     athleteId: userUuid,
     planVersion: plan.id,
@@ -693,9 +772,21 @@ export async function buildLiveCanonicalInput(
       nextWeekStartISO: nextWeekStart,
       nextWeekPrescribedMi: sum(nextWeekWorkouts.map((w) => num(w.distance_mi) ?? 0)),
       nextWeekLongRunMi: Math.max(0, ...nextWeekWorkouts.filter((w) => w.is_long).map((w) => num(w.distance_mi) ?? 0), 0),
-      nextWeekQualityMinutes: 0, // Not read live yet — no lever currently
-      // consumes it (see `evaluate.ts`'s call sites), so leaving it at its
-      // honest zero rather than approximating costs nothing today.
+      // Parsed from the authored `workout_spec` by `qualityMinutesOfWeek`,
+      // which is a parse and not an estimate. It used to be a literal `0` with
+      // a comment saying it was "not read live yet" — a hard-coded zero
+      // standing in for an unread quantity, and it had a real consequence: a
+      // zero-quality week prices a threshold-pace proposal at zero added
+      // demand, so rule 1 could never defer a pace correction however full the
+      // week was.
+      //
+      // RULE 11, and the limit of what this field can express: it is typed
+      // `number`, so a week whose quality cannot be priced still arrives as 0
+      // here. That zero is CONTAINED — the ceiling resolver above refuses on
+      // the same unknown, so rule 1 cannot fire, and the only thing the zero
+      // reaches is the reported demand share on a record that already carries
+      // a FAILED ceiling posture explaining why.
+      nextWeekQualityMinutes: nextWeekQuantities.qualityMinutes ?? 0,
       nextCutbackBoundaryISO: futureCutbackWeek?.week_start_iso ?? null,
       nextRaceBoundaryISO: futureRaceWeek?.week_start_iso ?? (raceDateISO >= asOf ? raceDateISO : null),
       taperStartISO: isTaperPlan ? plan.authored_iso.slice(0, 10) : null,
@@ -711,25 +802,27 @@ export async function buildLiveCanonicalInput(
     qualitySessions,
     weeks: weekObservations,
     longRuns: longRunObservations,
-    // Rule 11, stated rather than guessed. "How much total weekly demand can
-    // this athlete absorb" belongs to the demand model
-    // (`docs/BRAIN_CONSTITUTION.md` · one question, one canonical owner), and
-    // no such model is wired into this app yet. So this is ABSENT, not a
-    // number this loader invented from the athlete's peak week.
+    // THE DEMAND MODEL, wired 2026-09-04.
     //
-    // CONSEQUENCE, STATED PLAINLY, in the same posture as the two refusals
-    // named in this file's header: arbitration's rule 1 (the week-level demand
-    // test) CANNOT FIRE on any live evaluation until a ceiling is supplied.
-    // That is not silent. `arbitrate` carries the posture out on
-    // `ArbitrationResult.demandCeiling`, `evaluateAdaptation` puts it on
-    // `CanonicalEvaluation.demandCeiling`, and every decision record carries
-    // `INV_DEMAND_CEILING_POSTURE_STATED` naming it. A reader of a live shadow
-    // record can therefore tell "the week had room" apart from "nobody knew
-    // what the week's ceiling was", which is the whole of Rule 11.
-    athleteCeilingWeeklyDemand: absent(
-      'no weekly demand model is wired into this app yet, so no ceiling has been supplied '
-      + 'for this athlete',
-    ),
+    // This used to read `absent('no weekly demand model is wired into this app
+    // yet')`, and the consequence was stated here in as many words:
+    // arbitration's rule 1, the week-level demand test, COULD NOT FIRE on any
+    // live evaluation. It is now resolved out of
+    // `lib/plan/adjudication/weekly-demand.ts` through
+    // `canonical/demand-ceiling.ts`, against this athlete's own ABSORBED
+    // weeks, with Rule 8's habit filter applied to those weeks and NOT to the
+    // absorbed-load terms that price them — `demand-input.ts` states which
+    // reader is on which side of the corollary, one by one.
+    //
+    // It is still frequently ABSENT, and that is correct rather than a
+    // regression: a runner with no absorbed week yet has no ceiling, and the
+    // refusal says so instead of inventing one. Every posture — READ, ABSENT,
+    // FAILED — travels out on `ArbitrationResult.demandCeiling`, onto
+    // `CanonicalEvaluation.demandCeiling`, and onto every decision record as
+    // `INV_DEMAND_CEILING_POSTURE_STATED`. A reader of a live shadow record
+    // can therefore tell "the week had room" from "nobody knew what the week's
+    // ceiling was", which is the whole of Rule 11.
+    athleteCeilingWeeklyDemand: ceiling,
     readable: true,
   };
 

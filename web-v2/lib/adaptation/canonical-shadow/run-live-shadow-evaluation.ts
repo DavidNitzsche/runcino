@@ -46,8 +46,10 @@
  * against unchanged evidence is a no-op write, not a double-count.
  */
 import { evaluateAdaptation } from '@/lib/adaptation/canonical/evaluate';
+import { enqueueDeferrals, reconsiderAtBoundary } from '@/lib/adaptation/canonical/deferral-queue';
 import type { CanonicalDecisionRecord } from '@/lib/adaptation/canonical/decision-record';
 import { buildLiveCanonicalInput } from './live-input';
+import { loadLiveQueue, persistQueueAtBoundary } from './deferral-store';
 import { roQuery, readOnlyConnectionConfigured } from './read-only-db';
 import { insertShadowRecord, CANONICAL_ADAPTATION_SHADOW_LOG_TABLE } from './shadow-log-writer';
 
@@ -61,6 +63,14 @@ export interface LiveShadowEvaluationResult {
     decision: CanonicalDecisionRecord['decision'];
     persisted: boolean;
   }[];
+  /**
+   * What this cycle did to the DURABLE deferral queue, in one sentence.
+   *
+   * Always present, and never silently absent when the queue could not be
+   * reached: "the table is not there", "the read failed" and "nothing needed
+   * doing" are three facts (Rule 11) and this string says which one happened.
+   */
+  readonly deferrals: string;
 }
 
 let tableExists: boolean | null = null;
@@ -178,7 +188,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
     return {
       userUuid, ran: false,
       detail: 'DATABASE_URL_RO is not configured · live canonical shadow evaluation cannot run.',
-      records: [],
+      records: [], deferrals: 'not reached — the evaluation did not run.',
     };
   }
 
@@ -189,11 +199,14 @@ export async function runAndPersistCanonicalShadowEvaluation(
     return {
       userUuid, ran: false,
       detail: `Building live input failed: ${e instanceof Error ? e.message : String(e)}`,
-      records: [],
+      records: [], deferrals: 'not reached — the evaluation did not run.',
     };
   }
   if (!built.input) {
-    return { userUuid, ran: false, detail: built.refusal ?? 'No input could be built.', records: [] };
+    return {
+      userUuid, ran: false, detail: built.refusal ?? 'No input could be built.', records: [],
+      deferrals: 'not reached — no input could be built.',
+    };
   }
 
   const previouslyEmittedKeys = await previouslyEmittedKeysFor(userUuid);
@@ -209,7 +222,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
     return {
       userUuid, ran: false,
       detail: `evaluateAdaptation threw, which its own contract says never happens: ${e instanceof Error ? e.message : String(e)}`,
-      records: [],
+      records: [], deferrals: 'not reached — the evaluation did not run.',
     };
   }
 
@@ -231,5 +244,75 @@ export async function runAndPersistCanonicalShadowEvaluation(
       : `evaluated but not persisted — canonical_adaptation_shadow_log does not exist yet `
         + `(migration 164 not applied on this database).`,
     records: results,
+    deferrals: await carryTheQueue(userUuid, built.input, evaluation.records),
   };
+}
+
+/**
+ * THE DEFERRAL QUEUE, CARRIED ACROSS THIS BOUNDARY.
+ *
+ * A deferred progression used to be a `SuppressionNote` with a
+ * `reconsiderAtISO` on it, and then the whole proposal was gone: the date was
+ * a PROMISE nothing kept, because the next evaluation started from scratch in
+ * a fresh process. This is what keeps it.
+ *
+ * Four steps, in this order and no other:
+ *
+ *   1 · READ the live queue. If it cannot be read, STOP — writing "fresh"
+ *       deferrals over identities whose live rows were never seen would
+ *       silently retire them. Rule 11: a failed read is not an empty queue.
+ *   2 · RECONSIDER every item against this evaluation's fresh records. That
+ *       is the queue's own arithmetic and this file adds no policy to it.
+ *   3 · ENQUEUE what this evaluation deferred, onto what survived.
+ *   4 · PERSIST: retire first, then write, so a SUPERSEDED item frees its live
+ *       identity before the fresh row claims it.
+ *
+ * RULE 23 · LATENESS IS HARMLESS. Items whose boundary has not arrived are
+ * carried untouched, and an item whose boundary passed while the cron was late
+ * is simply reconsidered on the next run against whatever evidence exists
+ * then. Nothing here depends on being called on a particular day, and running
+ * twice in one day is idempotent: step 2 is a pure function of the queue and
+ * the records, and step 4's INSERT is an upsert on the live identity.
+ *
+ * NOTHING HERE APPLIES ANYTHING. A queued item is re-offered to the engine,
+ * never auto-applied; `AUTOMATIC_ADAPTATION_AUTHORITY` is untouched and no
+ * plan row is reachable from this function.
+ */
+async function carryTheQueue(
+  userUuid: string,
+  input: NonNullable<Awaited<ReturnType<typeof buildLiveCanonicalInput>>['input']>,
+  records: readonly CanonicalDecisionRecord[],
+): Promise<string> {
+  const live = await loadLiveQueue(userUuid);
+  if (!live.ok) {
+    // Three facts, three sentences. `READ` is unreachable on a refusal branch
+    // and is written out rather than asserted away, because a `!` here would
+    // be the one place this function could produce `undefined` in a report.
+    if (live.why.kind === 'READ') return 'queue not persisted · no reason recorded.';
+    return live.why.kind === 'ABSENT'
+      ? `queue not persisted · ${live.why.what}`
+      : `queue NOT touched · ${live.why.what}`;
+  }
+
+  const outcome = reconsiderAtBoundary({
+    queue: live.value,
+    atISO: input.evaluatedAtISO,
+    freshRecords: records,
+    currentPlanVersion: input.planVersion,
+    // The block ends at the race. Stated rather than passed as null: `null`
+    // is the CLAIM that the block has not ended, and after race day that claim
+    // is false — a queued mile would have nowhere to land and the queue would
+    // carry it forever.
+    blockEndedISO: input.race.raceDateISO < input.evaluatedAtISO.slice(0, 10)
+      ? input.race.raceDateISO
+      : null,
+  });
+
+  const carried = enqueueDeferrals(outcome.carried, records);
+  const persisted = await persistQueueAtBoundary(userUuid, {
+    carried,
+    expired: outcome.expired,
+  });
+
+  return `${live.value.length} live on entry, ${outcome.reconsidered.length} reconsidered · ${persisted.detail}`;
 }

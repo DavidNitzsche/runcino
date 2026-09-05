@@ -66,13 +66,42 @@
  * lever did hold, the suppression note still names it in `by`, so a reader can
  * see the corroborating context without it having been the cause.
  *
+ * ── WHERE THE CEILING NOW COMES FROM (changed 2026-09-04) ──────────────────
+ *
+ * Until this change `athleteCeilingWeeklyDemand` was a bare `Measured<number>`
+ * and `canonical-shadow/live-input.ts` supplied it as `absent(...)`, so RULE 1
+ * COULD NOT FIRE ON ANY LIVE EVALUATION. It was CLAUDE.md Rule 15's failure in
+ * its purest form: a mechanism no case could reach, sitting behind a green
+ * suite of fixtures that all supplied a ceiling by hand.
+ *
+ * `lib/plan/adjudication/weekly-demand.ts` is the demand model, and
+ * `demand-ceiling.ts` is the seam onto it. Two things follow, and the second
+ * matters more than the first:
+ *
+ *   · the ceiling is now a real reading of his own biggest ABSORBED week,
+ *     priced on seven components where the data allows and on volume, quality
+ *     and a flat long-run surcharge where it does not;
+ *   · EVERY WEEK THIS FILE PROJECTS IS PRICED BY THE MODEL'S OWN FUNCTION, on
+ *     the ceiling's own basis. There is no longer a three-term projection here
+ *     being compared against a seven-component ceiling. `priceProjection` is
+ *     the only place a week becomes a number, and it calls
+ *     `priceWeekOnBasis`, which calls `priceProjectedWeek`, which calls
+ *     `ceilingCostOf` — the model's one pricing door, and the same one the
+ *     ceiling itself came out of. That is Rule 16 held by construction rather
+ *     than by care.
+ *
+ * The old three-term scale in `plan-load.ts` is NOT a rival and is not
+ * deleted: `weekly-demand.ts` imports its three coefficients, and on BASE_ONLY
+ * against an unknown context the two produce the identical number. That
+ * identity is asserted, not asserted-in-prose (Rule 20).
+ *
  * ── RULE 11 · WHEN THE CEILING IS NOT KNOWN ────────────────────────────────
  *
- * `athleteCeilingWeeklyDemand` is a `Measured<number>` supplied by the caller,
- * because "how much can this athlete absorb in a week" belongs to the demand
- * model and not here (`docs/BRAIN_CONSTITUTION.md`, one question one owner).
- * When it is not READ, rule 1 CANNOT FIRE. That is the honest posture: an
- * absent ceiling is not "no ceiling" and it is not "at the ceiling".
+ * The ceiling is still supplied by the caller, because "how much can this
+ * athlete absorb in a week" belongs to the demand model and not here
+ * (`docs/BRAIN_CONSTITUTION.md`, one question one owner). When it is not READ,
+ * rule 1 CANNOT FIRE. That is the honest posture: an absent ceiling is not "no
+ * ceiling" and it is not "at the ceiling".
  *
  * A missing input must never silently disable a safety mechanism, so the fact
  * is recorded loudly rather than assumed: `ArbitrationResult.demandCeiling`
@@ -115,10 +144,17 @@
  *
  * ── RULE 22 · WHAT THIS FILE'S GATE CANNOT FAIL ON ─────────────────────────
  *
- * · It cannot fail on the CEILING ITSELF BEING WRONG. Every test supplies one,
- *   and a ceiling 20% too generous would pass the entire suite while letting
- *   through weeks no runner should be asked to carry. That number belongs to
- *   the demand model and this engine has no way to check it.
+ * · It cannot fail on the CEILING ITSELF BEING WRONG. A ceiling 20% too
+ *   generous would pass the entire suite while letting through weeks no runner
+ *   should be asked to carry. That number belongs to the demand model, whose
+ *   five POLICY_ASSUMPTION coefficients nobody has calibrated, and this engine
+ *   has no way to check it. Wiring the model in made the ceiling REAL; it did
+ *   not make it RIGHT, and those are different claims.
+ * · It cannot fail on the BASIS being weaker than it should be. A live
+ *   evaluation that degrades to BASE_ONLY because one absorbed week's context
+ *   could not be reconstructed produces a legal, well-formed, narrower
+ *   comparison, and the only thing that says so is the `basis` field a reader
+ *   has to look at.
  * · It cannot fail on the materiality threshold being set wrong. Every test
  *   here constructs proposals that are clearly above or clearly below the bar.
  * · It cannot fail on the plan-load coefficients. Only ordering and sign are
@@ -136,7 +172,13 @@ import type { CanonicalLever, Measured } from './input';
 import type { SuppressionNote } from './decision-record';
 import { NON_MOVING_DECISIONS } from './decision-record';
 import type { LeverVerdict } from './levers/shared';
-import { projectPlanLoad, demandDeltaShare, type ProjectedPlanLoad } from './plan-load';
+import { demandDeltaShare, type ProjectedPlanLoad } from './plan-load';
+import {
+  priceWeekOnBasis,
+  priceWeekWithoutCeiling,
+  type AthleteWeeklyDemandCeiling,
+  type CeilingBasis,
+} from './demand-ceiling';
 
 /**
  * Workload before pace. Volume before the long run that sits inside it.
@@ -177,6 +219,22 @@ export type DemandCeilingPosture =
   | {
     readonly kind: 'READ';
     readonly value: number;
+    /**
+     * Which component set BOTH sides of the comparison were priced on. Carried
+     * onto every decision record, because "at the ceiling on all six
+     * components" and "at the ceiling on volume, quality and a flat long-run
+     * surcharge" are different findings and a reader is entitled to know
+     * which one suppressed a progression.
+     */
+    readonly basis: CeilingBasis;
+    /** The absorbed week the ceiling was measured from. */
+    readonly fromWeekStartISO: string | null;
+    /**
+     * Components of the projected week the demand model could not compute.
+     * Empty is a measured "all seven priced"; a non-empty list is Rule 11's
+     * unknown, carried where a reader will actually see it.
+     */
+    readonly unknownComponents: readonly string[];
     /** Whether rule 1 was able to run at all. */
     readonly rule1CanFire: true;
     readonly detail: string;
@@ -189,16 +247,26 @@ export type DemandCeilingPosture =
 
 export interface ArbitrationInput {
   readonly verdicts: readonly LeverVerdict[];
+  /** Which week this is. Identifies the week the demand model prices. */
+  readonly baseWeekStartISO: string;
   /** The week a proposal would first affect, as authored. */
   readonly baseWeeklyMi: number;
   readonly baseLongRunMi: number;
   readonly baseQualityMinutes: number;
   /**
-   * The athlete's own ceiling on one week's total demand, on `plan-load.ts`'s
-   * `demandIndex` scale. Build one with `demandCeilingForWeek`. Owned by the
-   * demand model, not by this file.
+   * The athlete's own ceiling on one week's total demand, WITH the basis it was
+   * priced on and the week context every projection is priced in. Build one
+   * with `resolveAthleteWeeklyDemandCeiling` in `demand-ceiling.ts`. Owned by
+   * the demand model, not by this file.
+   *
+   * When it is READ, every week this file projects is priced through
+   * `priceWeekOnBasis` against exactly these terms, so the two sides of rule
+   * 1's comparison are the same arithmetic by construction. When it is not,
+   * the projections fall back to `priceWeekWithoutCeiling`, which is the same
+   * pricing door read on BASE_ONLY against an unknown context — a narrower
+   * reading of one function, not a second scale.
    */
-  readonly athleteCeilingWeeklyDemand: Measured<number>;
+  readonly athleteCeilingWeeklyDemand: Measured<AthleteWeeklyDemandCeiling>;
   /** Where a deferred proposal would next be reconsidered. */
   readonly nextBoundaryISO: string | null;
   /** Defaults to the live reading. See `ArbitrationReading`. */
@@ -246,11 +314,25 @@ function isMaterial(v: LeverVerdict, input: ArbitrationInput): boolean {
   return delta >= LONG_RUN_MAX_STEP_MI * MATERIAL_SHARE_OF_ORDINARY_STEP;
 }
 
-/** The week with a set of verdicts applied together. */
-function loadWithMany(
+/**
+ * The four quantities the levers move, with a set of verdicts applied together.
+ *
+ * Separated from the PRICING below because the two are different questions:
+ * this one is "what does the week become", and pricing is "what does that
+ * cost". Only the second belongs to the demand model.
+ */
+interface ProjectedWeek {
+  readonly weeklyMi: number;
+  readonly longRunMi: number;
+  readonly qualityMinutes: number;
+  /** Signed, against the anchor the plan was authored at. Negative is faster. */
+  readonly thresholdAnchorDeltaSecPerMi: number;
+}
+
+function weekWithMany(
   input: ArbitrationInput,
   verdicts: readonly LeverVerdict[],
-): ProjectedPlanLoad {
+): ProjectedWeek {
   let weekly = input.baseWeeklyMi;
   let long = input.baseLongRunMi;
   let paceDelta = 0;
@@ -268,28 +350,71 @@ function loadWithMany(
     if (v.lever === 'THRESHOLD_PACE') paceDelta = v.proposedAfterValue - v.beforeValue;
   }
 
-  return projectPlanLoad({
+  return {
     weeklyMi: weekly,
     longRunMi: long,
     qualityMinutes: input.baseQualityMinutes,
     thresholdAnchorDeltaSecPerMi: paceDelta,
-  });
+  };
 }
 
-/** Project the week with exactly one verdict applied. */
-const loadWith = (input: ArbitrationInput, v: LeverVerdict | null): ProjectedPlanLoad =>
-  loadWithMany(input, v === null ? [] : [v]);
+/**
+ * PRICE a projected week, ON THE CEILING'S OWN TERMS.
+ *
+ * The one place in this file a week becomes a number. When a ceiling is READ
+ * the pricing runs through `priceWeekOnBasis` against that ceiling's basis and
+ * context, so rule 1 compares like with like by construction. When it is not,
+ * `priceWeekWithoutCeiling` reads the same demand-model door on BASE_ONLY —
+ * one pricing function, read two ways, never two scales.
+ *
+ * RULE 11 · a week the model REFUSES to price is not a week that costs
+ * nothing, so this throws rather than returning a number. The branch is
+ * unreachable through `resolveAthleteWeeklyDemandCeiling`, which proves the
+ * base week prices on the ceiling's basis before handing the ceiling over. It
+ * is written as a real branch anyway, because a caller may build a ceiling by
+ * hand, and a zero or a NaN travelling into a decision record as "demand" is
+ * exactly the collapse this engine exists to make impossible.
+ */
+function priceProjection(
+  ceiling: Measured<AthleteWeeklyDemandCeiling>,
+  weekStartISO: string,
+  week: ProjectedWeek,
+): ProjectedPlanLoad {
+  const priced = ceiling.ok
+    ? priceWeekOnBasis(ceiling.value, week)
+    : priceWeekWithoutCeiling(weekStartISO, week);
+
+  if (priced === null) {
+    throw new Error(
+      'arbitrate: the demand model refused to price the projected week on the ceiling\'s '
+      + `own basis (${ceiling.ok ? ceiling.value.basis : 'BASE_ONLY'}). A ceiling that cannot `
+      + 'price the week it governs is half a comparison; build it with '
+      + 'resolveAthleteWeeklyDemandCeiling, which refuses instead of returning one.',
+    );
+  }
+
+  return {
+    weeklyMi: week.weeklyMi,
+    longRunMi: week.longRunMi,
+    qualityMinutes: week.qualityMinutes,
+    demandIndex: Math.round(priced * 1000) / 1000,
+  };
+}
 
 /** Rule 11, resolved once, so no branch below has to get it right on its own. */
-function ceilingPostureOf(m: Measured<number>): DemandCeilingPosture {
+function ceilingPostureOf(m: Measured<AthleteWeeklyDemandCeiling>): DemandCeilingPosture {
   if (m.ok) {
     return {
       kind: 'READ',
-      value: m.value,
+      value: m.value.value,
+      basis: m.value.basis,
+      fromWeekStartISO: m.value.fromWeekStartISO,
+      unknownComponents: m.value.unknownComponents,
       rule1CanFire: true,
       detail:
-        `The athlete's weekly demand ceiling stands at ${m.value}. `
-        + 'The complete projected week is measured against it.',
+        `The athlete's weekly demand ceiling stands at ${m.value.value} equivalent easy `
+        + `miles, priced on ${m.value.basis}. The complete projected week is priced by the `
+        + `same function on the same basis and measured against it. ${m.value.detail}`,
     };
   }
   if (m.why.kind === 'FAILED') {
@@ -317,14 +442,23 @@ function ceilingPostureOf(m: Measured<number>): DemandCeilingPosture {
 
 export function arbitrate(input: ArbitrationInput): ArbitrationResult {
   const reading: ArbitrationReading = input.reading ?? 'WEEK_DEMAND_CEILING';
-  const baseLoad = loadWith(input, null);
   const ceiling = ceilingPostureOf(input.athleteCeilingWeeklyDemand);
+
+  /** Every projection in this function goes through here. One scale (Rule 16). */
+  const price = (verdicts: readonly LeverVerdict[]): ProjectedPlanLoad =>
+    priceProjection(
+      input.athleteCeilingWeeklyDemand,
+      input.baseWeekStartISO,
+      weekWithMany(input, verdicts),
+    );
+
+  const baseLoad = price([]);
 
   /* ── Materiality, one proposal at a time. Rule 3's question only ───────── */
 
   const scored = input.verdicts.map((verdict) => {
     const moves = !NON_MOVING_DECISIONS.has(verdict.decision);
-    const share = moves ? demandDeltaShare(baseLoad, loadWith(input, verdict)) : 0;
+    const share = moves ? demandDeltaShare(baseLoad, price([verdict])) : 0;
     return {
       verdict,
       demandShare: Math.round(share * 10_000) / 10_000,
@@ -369,7 +503,7 @@ export function arbitrate(input: ArbitrationInput): ArbitrationResult {
 
     /* ── Rule 1 · is the COMPLETE PROJECTED WEEK at the athlete's ceiling ── */
 
-    if (rule1Suppresses({ input, reading, ceiling, s, accepted, increasesDemand, heldLever, heldRank })) {
+    if (rule1Suppresses({ price, reading, ceiling, s, accepted, increasesDemand, heldLever, heldRank })) {
       out.push({
         ...s,
         suppressedBy: {
@@ -416,7 +550,7 @@ export function arbitrate(input: ArbitrationInput): ArbitrationResult {
 
   /* ── The combined projection of everything that survived ───────────────── */
 
-  const combinedLoad = loadWithMany(input, accepted);
+  const combinedLoad = price(accepted);
 
   // Restore the caller's original ordering so a reader sees the levers in the
   // order they were evaluated, not the order they were arbitrated in.
@@ -458,7 +592,8 @@ export function arbitrate(input: ArbitrationInput): ArbitrationResult {
  * and reachable only from `_counterfactual.script.ts`.
  */
 function rule1Suppresses(args: {
-  input: ArbitrationInput;
+  /** The one pricing door. Passed in so this function cannot open a second. */
+  price: (verdicts: readonly LeverVerdict[]) => ProjectedPlanLoad;
   reading: ArbitrationReading;
   ceiling: DemandCeilingPosture;
   s: { verdict: LeverVerdict; demandShare: number; material: boolean };
@@ -467,7 +602,7 @@ function rule1Suppresses(args: {
   heldLever: CanonicalLever | 'PLAN_LOAD';
   heldRank: number;
 }): boolean {
-  const { input, reading, ceiling, s, accepted, increasesDemand, heldLever, heldRank } = args;
+  const { price, reading, ceiling, s, accepted, increasesDemand, heldLever, heldRank } = args;
 
   if (reading === 'LEGACY_HOLD_PRESENCE') {
     const rank = ARBITRATION_PRIORITY.indexOf(s.verdict.lever);
@@ -484,7 +619,7 @@ function rule1Suppresses(args: {
   if (!ceiling.rule1CanFire) return false;
   if (!increasesDemand) return false;
 
-  const projected = loadWithMany(input, [...accepted, s.verdict]);
+  const projected = price([...accepted, s.verdict]);
   return projected.demandIndex > ceiling.value + DEMAND_CEILING_EPSILON;
 }
 

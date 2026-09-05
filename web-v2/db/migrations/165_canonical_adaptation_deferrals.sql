@@ -1,19 +1,41 @@
 -- 165_canonical_adaptation_deferrals.sql
 --
 -- ══════════════════════════════════════════════════════════════════════════
--- DELIBERATELY UNAPPLIED. NOTHING RUNS THIS.
+-- NOT APPLIED TO PRODUCTION. APPLIED AND EXERCISED ON A LOCAL SCRATCH DB.
 -- ══════════════════════════════════════════════════════════════════════════
 --
--- Written 2026-09-04 alongside `lib/adaptation/canonical/deferral-queue.ts`,
--- and left unapplied on purpose. CLAUDE.md's operational boundary is explicit:
--- code changes deploy on approval, DDL and data writes need the owner's
--- separate, explicit, per-statement go. No statement in this file has been
--- executed against any database, no application code reads this table, and the
--- deferral queue is in memory until it is.
+-- Written 2026-09-04 alongside `lib/adaptation/canonical/deferral-queue.ts`.
+-- CLAUDE.md's operational boundary is explicit: code changes deploy on
+-- approval, DDL and data writes need the owner's separate, explicit,
+-- per-statement go. No statement in this file has been executed against
+-- production or against any hosted database.
 --
--- To apply, when that decision is made:
+-- It HAS been applied to a local scratch database — `faff_deferral_scratch` on
+-- loopback, created for the purpose — and the read/write path in
+-- `lib/adaptation/canonical-shadow/deferral-store.ts` was exercised against it
+-- end to end, because an unapplied migration is an untested one and Rule 18
+-- does not accept "it looks right" as evidence about DDL. See
+-- `lib/adaptation/canonical-shadow/_deferral_store.db.test.ts`, which SKIPS
+-- when no scratch database is reachable and says so rather than reporting
+-- clean.
+--
+-- To apply to production, when that decision is made:
 --
 --     psql $DATABASE_URL -f web-v2/db/migrations/165_canonical_adaptation_deferrals.sql
+--
+-- Until then `deferral-store.ts` probes for the table once and reports
+-- "evaluated but not persisted" rather than throwing, exactly as
+-- `run-live-shadow-evaluation.ts` already does for migration 164.
+--
+-- ── IT IS ADDITIVE ONLY, AND THAT IS THE POINT ─────────────────────────────
+--
+-- One new table, two new indexes, one comment. It contains no ALTER against an
+-- existing table, no rename, no drop, and no NOT NULL applied to data that
+-- already exists — every NOT NULL below is on a column of a table being
+-- created in the same statement, where there are no rows to violate it. An
+-- application running the OLD code against a database with this migration
+-- applied behaves identically, because nothing outside this feature reads or
+-- writes the table.
 --
 -- ── WHY A TABLE OF ITS OWN ─────────────────────────────────────────────────
 --
@@ -106,10 +128,22 @@ CREATE TABLE IF NOT EXISTS canonical_adaptation_deferrals (
             AND expiry_detail IS NOT NULL AND length(expiry_detail) > 0))
 );
 
--- One live queue entry per (athlete, lever, evidence). Re-evaluating the same
+-- One LIVE queue entry per (athlete, lever, evidence). Re-evaluating the same
 -- evidence at successive boundaries must refresh the row, never grow the queue.
-CREATE UNIQUE INDEX IF NOT EXISTS canonical_adaptation_deferrals_identity
-  ON canonical_adaptation_deferrals (user_uuid, lever, idempotency_key);
+--
+-- PARTIAL, on `expired_at IS NULL`, and the partiality is load-bearing rather
+-- than an optimisation. Rows here are never deleted: an item that leaves the
+-- queue is stamped with a reason and kept, because "retired because the block
+-- ended" and "silently vanished" are different facts and only one of them is
+-- recoverable afterwards. A TOTAL unique index would put those two
+-- requirements in direct conflict — the expired row would occupy the identity,
+-- so re-queueing the same (athlete, lever, evidence) later could only succeed
+-- by UPDATING the expired row back to live, which erases the expiry it was
+-- kept to record. Partial, the history accumulates and at most one row per
+-- identity is ever live.
+CREATE UNIQUE INDEX IF NOT EXISTS canonical_adaptation_deferrals_live_identity
+  ON canonical_adaptation_deferrals (user_uuid, lever, idempotency_key)
+  WHERE expired_at IS NULL;
 
 -- The read the reconsideration pass makes: this athlete's LIVE queue, oldest
 -- boundary first.
@@ -120,4 +154,6 @@ CREATE INDEX IF NOT EXISTS canonical_adaptation_deferrals_live
 COMMENT ON TABLE canonical_adaptation_deferrals IS
   'Canonical Adaptation Engine · progressions deferred by arbitration, kept until a '
   'boundary reconsiders them. Rows are never deleted: an item that leaves the queue is '
-  'stamped with expired_at and a stated expiry_reason. UNAPPLIED as of 2026-09-04.';
+  'stamped with expired_at and a stated expiry_reason. SHADOW-ONLY: nothing reads this '
+  'table to change a plan, and AUTOMATIC_ADAPTATION_AUTHORITY remains false. Not applied '
+  'to production as of 2026-09-04.';

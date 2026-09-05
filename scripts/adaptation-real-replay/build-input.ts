@@ -65,6 +65,12 @@ import {
   type AuthoredPlanMode,
 } from '@/lib/adaptation/canonical/input';
 import { gradeStimulus, type StimulusGrade } from '@/lib/adaptation/canonical/stimulus';
+import { resolveAthleteWeeklyDemandCeiling } from '@/lib/adaptation/canonical/demand-ceiling';
+import {
+  contextForWeek, demonstratedWeeksFrom, prescribedWeekQuantities,
+  type DemandSubstrate,
+} from '@/lib/adaptation/canonical-shadow/demand-input';
+import { qualityMinutesOfWeek } from '@/lib/plan/adjudication/quality-minutes';
 import { workHrCeilingFor } from '@/lib/adaptation/canonical/work-hr-ceiling';
 import { HEAT_HR_CONFOUNDER } from '@/lib/weather/heat-adjustment';
 import { tPaceFromVdot, vdotFromRace } from '@/lib/training/vdot';
@@ -1053,12 +1059,36 @@ export function buildInputAt(args: BuildArgs, snapshot?: SealedHistory): BuiltIn
 
   const nextWeekPrescribedMi = sum(nextPres.map((w) => num(w.distanceMi) ?? 0));
   const nextWeekLongRunMi = Math.max(0, ...nextPres.filter((w) => w.isLong).map((w) => num(w.distanceMi) ?? 0));
-  const nextWeekQualityMinutes = sum(
-    nextPres.filter((w) => w.isQuality).map((w) => {
-      const p = prescribedFrom(w, d);
-      return p ? p.workSeconds / 60 : 0;
-    }),
+
+  /* ── QUALITY MINUTES · ONE OWNER, AND IT IS NOT THIS FILE ───────────────
+   *
+   * This used to sum `prescribedFrom(w).workSeconds` over the week's
+   * `isQuality` sessions. Two problems, and the second is a Rule 16 defect
+   * rather than an inaccuracy:
+   *
+   *   · it misses the long run's marathon-pace FINISH block, which the demand
+   *     model's own field doc counts ("plus race-pace work") and which is
+   *     real quality work this athlete really does;
+   *   · with `weekly-demand.ts` now pricing intensity, "how many quality
+   *     minutes does this week carry" is a question with a live answer
+   *     elsewhere, and two answers under one name is what Rule 16 forbids.
+   *
+   * `prescribedFrom` still owns the question it was written for — the
+   * per-segment work duration, segment count, target pace and HR ceiling a
+   * SESSION is GRADED against. That is a different question and it keeps its
+   * own function. This one goes to `qualityMinutesOfWeek`.
+   *
+   * RULE 11 · that reader returns null for a week it cannot price. This field
+   * is typed `number`, so an unpriceable week arrives as 0 here — CONTAINED,
+   * because the demand ceiling below refuses on the same unknown, so nothing
+   * measures a week against a ceiling on the strength of it. */
+  const nextWeekQuality = qualityMinutesOfWeek(
+    nextPres.map((w) => ({ dateISO: w.dateISO, spec: w.spec, isQuality: w.isQuality, isLong: w.isLong })),
   );
+  const nextWeekQualityMinutes = nextWeekQuality.minutes ?? 0;
+  if (nextWeekQuality.minutes === null) {
+    cannot(d, `${asOf} · the week starting ${nextWeekStart} carries quality this loader cannot price: ${nextWeekQuality.why}`);
+  }
   if (nextWeekPrescribedMi === 0) {
     cannot(d, `${asOf} · the plan in force prescribes nothing for the week starting ${nextWeekStart}.`);
   }
@@ -1102,6 +1132,60 @@ export function buildInputAt(args: BuildArgs, snapshot?: SealedHistory): BuiltIn
     ).map((w) => w.workoutId)
     : [];
 
+  /* ── THE DEMAND SUBSTRATE · what the model needs, out of what is in scope ─
+   *
+   * Built from the SAME already-fenced views everything above reads, and it
+   * reaches for nothing new: `runs` is `snap.runs.before(A)`, `weeks` is the
+   * observation list already assembled, and every prescription comes through
+   * `prescriptionOn`, which resolves exactly one plan per date. So this adds
+   * no way for a future row to reach a past decision.
+   *
+   * `sessions` spans the observed weeks plus NEXT week, because the week rule
+   * 1 is about is the one a proposal would first affect — and next week's
+   * prescriptions are AUTHORED IN ADVANCE, which is the one class of row the
+   * fence admits ahead of `asOf` and says so by name. */
+  const demandDays: string[] = [];
+  {
+    const firstWeek = weeks.length > 0 ? weeks[0].weekStartISO : nextWeekStart;
+    for (let day0 = firstWeek; day0 <= addDays(nextWeekStart, 6); day0 = addDays(day0, 1)) {
+      demandDays.push(day0);
+    }
+  }
+  const demandSubstrate: DemandSubstrate = {
+    asOfISO: asOf,
+    runs: runs.map((r) => ({ dateISO: r.date, distanceMi: r.distanceMi })),
+    sessions: demandDays
+      .map((day0) => prescriptionOn(day0))
+      .filter((w): w is SnapWorkout => w !== null)
+      .map((w) => ({
+        dateISO: w.dateISO,
+        distanceMi: num(w.distanceMi),
+        isQuality: w.isQuality,
+        isLong: w.isLong,
+        spec: w.spec,
+      })),
+    cutbackWeekStarts: planWeeksOfCurrent
+      .filter((w) => w.isCutback || w.isRaceWeek)
+      .map((w) => w.weekStartISO),
+    // RULE 11 · the sealed history was read, so an empty list is the KNOWN
+    // fact that he had not raced by this date, never "nobody looked".
+    racesRun: raceResults
+      .filter((r) => r.dateISO !== null && r.dateISO < asOf)
+      .map((r) => ({ dateISO: r.dateISO as string, distanceMi: num(r.distanceMi) })),
+    weekObservations: weeks,
+  };
+  const demandNextWeek = prescribedWeekQuantities(demandSubstrate, nextWeekStart);
+  const demandCeiling = resolveAthleteWeeklyDemandCeiling({
+    context: contextForWeek(demandSubstrate, nextWeekStart),
+    week: {
+      weeklyMi: demandNextWeek.weeklyMi ?? Number.NaN,
+      longRunMi: demandNextWeek.longRunMi ?? Number.NaN,
+      qualityMinutes: demandNextWeek.qualityMinutes ?? Number.NaN,
+      thresholdAnchorDeltaSecPerMi: 0,
+    },
+    demonstratedWeeks: demonstratedWeeksFrom(demandSubstrate),
+  });
+
   const zero = { THRESHOLD_PACE: 0, WEEKLY_VOLUME: 0, LONG_RUN: 0 } as const;
   const no = { THRESHOLD_PACE: false, WEEKLY_VOLUME: false, LONG_RUN: false } as const;
 
@@ -1130,17 +1214,26 @@ export function buildInputAt(args: BuildArgs, snapshot?: SealedHistory): BuiltIn
     qualitySessions,
     weeks,
     longRuns,
-    // Rule 11 · the athlete's weekly demand ceiling belongs to a demand model
-    // (`docs/BRAIN_CONSTITUTION.md` · one question, one canonical owner) and no
-    // such model exists, in production or in this snapshot. ABSENT, never a
-    // number invented here from his peak week: arbitration's rule 1 then
-    // reports that it could not run rather than silently passing everything, and
-    // `CanonicalEvaluation.demandCeiling` carries the reason out to the ledger.
-    // A counterfactual that wants to probe a plausible ceiling substitutes its
-    // own and says so; it does not get one smuggled in through the loader.
-    athleteCeilingWeeklyDemand: absent(
-      'no weekly demand model exists for this athlete, in production or in this snapshot',
-    ),
+    // THE DEMAND CEILING, wired 2026-09-04.
+    //
+    // This used to be `absent('no weekly demand model exists for this athlete,
+    // in production or in this snapshot')`, and the consequence was that
+    // arbitration's rule 1 could not fire in the replay any more than it could
+    // live — so the historical counterfactual could only ever compare the old
+    // rule against a world with no ceiling at all.
+    //
+    // It is now the REAL model, resolved from the same
+    // `resolveAthleteWeeklyDemandCeiling` the live loader calls, over the same
+    // `demand-input.ts` helpers, against THIS athlete's own absorbed weeks as
+    // they stood at this moment. Nothing is invented from his peak week: the
+    // ceiling is his biggest week the plan did not author as a cutback, a race
+    // week, a taper or a recovery block (Rule 8's habit filter), priced by the
+    // model, and it REFUSES when there is no such week.
+    //
+    // The no-lookahead fence is untouched. Every input above comes through
+    // `asof.ts`'s branded views, and this reads only what is already in scope
+    // here.
+    athleteCeilingWeeklyDemand: demandCeiling,
     readable: args.readable ?? true,
   };
 

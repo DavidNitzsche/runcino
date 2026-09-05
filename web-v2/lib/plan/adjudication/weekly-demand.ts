@@ -209,6 +209,7 @@ import { ACWR_BANDS } from '@/lib/coach/tier-rules';
 import {
   QUALITY_MINUTE_TO_EASY_MILE,
   LONG_RUN_SURCHARGE_PER_MI,
+  PACE_SEC_PER_MI_TO_QUALITY_COST,
 } from '@/lib/adaptation/canonical/plan-load';
 import type { DoctrineCitation } from './contract';
 
@@ -649,6 +650,30 @@ export interface WeekCostInput {
    */
   readonly hardSessionDayOrdinals: readonly number[] | null;
 
+  /**
+   * How far this week's threshold ANCHOR has been moved from the anchor the
+   * plan was authored at, in seconds per mile. Negative is faster, which is
+   * more demanding.
+   *
+   * OPTIONAL, AND THE OMITTED VALUE IS A MEASURED ZERO, NOT AN UNKNOWN. That
+   * is the one place in this file where a default is allowed, and the reason
+   * is that this field is a property of a PROPOSAL rather than a measurement
+   * of the runner: a week nobody has proposed anything against is priced at
+   * the anchor it was written at, and a week he has already run was run at its
+   * own anchor by definition. There is no third state to lose, so Rule 11 has
+   * nothing to protect here. Everywhere else in this type an absent number
+   * means "nobody looked" and is priced `null`.
+   *
+   * It exists so `lib/adaptation/canonical/arbitration.ts` can price the
+   * PROJECTED week — the one carrying a proposal — through the same function
+   * that prices the ceiling. Before it, arbitration had a second, three-term
+   * scale of its own, and the two sides of its rule-1 comparison were built by
+   * different arithmetic (Rule 16). The coefficient is
+   * `PACE_SEC_PER_MI_TO_QUALITY_COST`, imported from `plan-load.ts` rather
+   * than restated, so there is still one number.
+   */
+  readonly thresholdAnchorDeltaSecPerMi?: number;
+
   /* ── ABSORBED LOAD · RULE 8 SAYS DO NOT FILTER THESE ───────────────── */
 
   /**
@@ -913,15 +938,38 @@ function injuryComponent(safety: SafetyResolution | null): DemandComponent {
  * THE CEILING · Rule 8 HABIT side
  * ═══════════════════════════════════════════════════════════════════════ */
 
-/** The base cost of one completed week, in the same unit as `demandIndex`. */
+/**
+ * The base cost of one completed week, in the same unit as `demandIndex`.
+ *
+ * With `thresholdAnchorDeltaSecPerMi` omitted or zero this is byte-for-byte
+ * `projectPlanLoad(...).demandIndex` for the same week, and with it supplied
+ * it stays byte-for-byte equal for the same delta. That identity is what makes
+ * BASE_ONLY and the arbitration scale ONE quantity rather than two that happen
+ * to agree today, and `_weekly_demand.test.ts` asserts it in both directions.
+ */
 export function baseCostOfWeek(w: {
   readonly weeklyMi: number;
   readonly longRunMi: number;
   readonly qualityMinutes: number;
+  readonly thresholdAnchorDeltaSecPerMi?: number;
 }): number {
   return w.weeklyMi
-    + w.qualityMinutes * QUALITY_MINUTE_TO_EASY_MILE
+    + w.qualityMinutes * QUALITY_MINUTE_TO_EASY_MILE * anchorCostMultiplier(w.thresholdAnchorDeltaSecPerMi)
     + w.longRunMi * LONG_RUN_SURCHARGE_PER_MI;
+}
+
+/**
+ * What moving the threshold anchor does to the cost of the SAME quality
+ * minutes. One expression, called from `baseCostOfWeek` and from the intensity
+ * component, so the two pricing paths cannot disagree about it.
+ *
+ * A faster anchor (a negative delta) makes the same work harder, which is why
+ * the sign is inverted — the contract's "do not pretend pace changes are
+ * load-neutral", in one line.
+ */
+export function anchorCostMultiplier(deltaSecPerMi: number | undefined): number {
+  const d = isReal(deltaSecPerMi) ? deltaSecPerMi : 0;
+  return 1 + -d * PACE_SEC_PER_MI_TO_QUALITY_COST;
 }
 
 /* NOTE · `athleteCeilingFrom` IS GUARDED AS REMOVED.
@@ -946,6 +994,10 @@ export function demonstratedWeekAsInput(w: DemonstratedWeek): WeekCostInput {
     weeksSinceLastCutback: w.context?.weeksSinceLastCutback ?? null,
     // Injury is excluded from BOTH sides of the comparison. See the header.
     safety: null,
+    // A week he already ran was run at its own anchor. Stated rather than
+    // left to the default, because this is the side of the comparison where a
+    // silent anchor term would be a fabrication about the past.
+    thresholdAnchorDeltaSecPerMi: 0,
   };
 }
 
@@ -974,6 +1026,7 @@ export function ceilingCostOf(
       weeklyMi: week.weeklyMi,
       longRunMi: week.longRunMi,
       qualityMinutes: week.qualityMinutes,
+      thresholdAnchorDeltaSecPerMi: week.thresholdAnchorDeltaSecPerMi,
     }));
   }
   const priced = priceWeek(week);
@@ -985,6 +1038,77 @@ export function ceilingCostOf(
     total += c.contribution;
   }
   return round3(total);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * PRICING A PROJECTED WEEK · the arbitration seam
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Everything about a week EXCEPT the four quantities a lever can move.
+ *
+ * Split out so a caller can hold one context and price many candidate weeks
+ * against it, which is precisely what plan-level arbitration does: it projects
+ * the same week half a dozen ways (base, with volume applied, with volume plus
+ * the long run, and so on) and every one of those projections has to be priced
+ * by the same function on the same basis as the ceiling, or the comparison is
+ * apples to oranges again.
+ *
+ * `weekStartISO` stays here because it identifies the week and no lever moves
+ * it.
+ */
+export type WeekDemandContext = Omit<
+  WeekCostInput,
+  'weeklyMi' | 'longRunMi' | 'qualityMinutes' | 'thresholdAnchorDeltaSecPerMi'
+>;
+
+/** The four quantities a canonical lever can move. */
+export interface ProjectedWeekQuantities {
+  readonly weeklyMi: number;
+  readonly longRunMi: number;
+  readonly qualityMinutes: number;
+  /** Signed, against the anchor the plan was authored at. Negative is faster. */
+  readonly thresholdAnchorDeltaSecPerMi: number;
+}
+
+/**
+ * A context that knows NOTHING but the week's date.
+ *
+ * Every context term is `null`, which per this file's Rule 11 spine means
+ * unknown, so `ceilingCostOf(..., 'FULL_CONTEXT')` refuses against it and only
+ * BASE_ONLY prices. That is the correct behaviour and it is the reason this
+ * constant exists rather than a caller hand-rolling `{ acwr: null, ... }`:
+ * a hand-rolled context is a place a future field can be silently forgotten,
+ * and a forgotten field defaults to a cheaper week.
+ */
+export const unknownWeekDemandContext = (weekStartISO: string): WeekDemandContext => ({
+  weekStartISO,
+  hardSessionDayOrdinals: null,
+  longestRunPrior30dMi: null,
+  acwr: null,
+  lastRace: null,
+  weeksSinceLastCutback: null,
+  safety: null,
+});
+
+/**
+ * PRICE ONE PROJECTION OF A WEEK, ON THE BASIS THE CEILING WAS BUILT ON.
+ *
+ * The only function plan-level arbitration may use to price a week. It goes
+ * through `ceilingCostOf`, which is the only place either side of the ceiling
+ * comparison is computed, so the projected week and the ceiling are
+ * commensurable by construction rather than by coincidence (Rule 16).
+ *
+ * Returns `null` when the week cannot be priced on that basis — a refusal, not
+ * a zero. A caller that reads `null` as "no demand" has reintroduced the exact
+ * defect Rule 11 exists to stop.
+ */
+export function priceProjectedWeek(
+  context: WeekDemandContext,
+  week: ProjectedWeekQuantities,
+  basis: CeilingBasis,
+): number | null {
+  return ceilingCostOf({ ...context, ...week }, basis);
 }
 
 /**
@@ -1093,15 +1217,21 @@ export function priceWeek(input: WeekCostInput): WeekPricing {
     };
 
   /* ── 2 · INTENSITY ──────────────────────────────────────────────────── */
+  const anchorMul = anchorCostMultiplier(input.thresholdAnchorDeltaSecPerMi);
   const intensity: DemandComponent = isReal(input.qualityMinutes)
     ? {
       key: 'intensity',
-      contribution: input.qualityMinutes * QUALITY_MINUTE_TO_EASY_MILE,
+      contribution: input.qualityMinutes * QUALITY_MINUTE_TO_EASY_MILE * anchorMul,
       provenance: 'POLICY_ASSUMPTION',
       basis: `${cite('intensity')} · coefficient inherited from `
           + 'lib/adaptation/canonical/plan-load.ts QUALITY_MINUTE_TO_EASY_MILE',
       why: `${round3(input.qualityMinutes)} quality minutes at `
-          + `${QUALITY_MINUTE_TO_EASY_MILE} equivalent easy miles each. The `
+          + `${QUALITY_MINUTE_TO_EASY_MILE} equivalent easy miles each`
+          + (anchorMul === 1
+            ? ', priced at the anchor the week was written at. '
+            : `, priced ${round3((anchorMul - 1) * 100)}% differently because the threshold `
+              + `anchor is proposed to move ${round3(input.thresholdAnchorDeltaSecPerMi ?? 0)} s/mi. `)
+          + 'The '
           + 'intensity-distribution table gives shares and no load equivalence, '
           + 'so this coefficient has no research behind it. It is the same '
           + 'number the arbitration scale already used, kept in one place so '

@@ -47,16 +47,21 @@
  * · WHETHER THE ITEM SHOULD HAVE BEEN QUEUED AT ALL. This file takes decision
  *   records as given. A record that was deferred for the wrong reason is
  *   queued faithfully and re-offered faithfully, and no test here can tell.
- * · WHETHER ANYONE CALLS IT. The queue is pure and in memory: it holds nothing
- *   across a process. Persistence is proposed in `PERSISTENCE` below and is
- *   deliberately NOT implemented here, so a gate over this file proves the
- *   ledger's arithmetic and proves nothing whatsoever about durability across
- *   a deploy. That gap is real and is stated rather than implied.
+ * · DURABILITY. This file is PURE and holds nothing across a process, and that
+ *   is still true after persistence landed (2026-09-04): the storage lives in
+ *   `canonical-shadow/deferral-store.ts` and this file has no idea it exists.
+ *   So a gate over THIS file proves the ledger's arithmetic and nothing
+ *   whatsoever about a deferral surviving a deploy. The other half is
+ *   `canonical-shadow/_deferral_store.db.test.ts`, which runs against a real
+ *   table and SKIPS LOUDLY when no local scratch database is reachable.
+ *   Neither proves the table exists on production — migration 165 is applied
+ *   to a scratch database only, pending the owner's per-statement go on DDL
+ *   (Rule 19: green is not deployed).
  * · THE STALENESS WINDOW BEING RIGHT. It reuses the threshold lever's own
  *   evidence window for every lever, which is a stated simplification below,
  *   not a doctrine claim.
  *
- * ── PERSISTENCE · THE PROPOSAL, NOT YET APPLIED ────────────────────────────
+ * ── PERSISTENCE · BUILT 2026-09-04, AND WHERE IT LIVES ─────────────────────
  *
  * Two existing homes were considered and both are wrong:
  *
@@ -79,13 +84,25 @@
  * expiry_detail). Same shape, same discipline and the same read-only fences as
  * `lib/adaptation/canonical-shadow/shadow-log-writer.ts`.
  *
- * A migration file is written and DELIBERATELY LEFT UNAPPLIED at
- * `db/migrations/165_canonical_adaptation_deferrals.sql`. Nothing in this
- * repository runs it, nothing reads the table, and no DDL has been executed:
- * per CLAUDE.md's operational boundary, a data or schema write needs the
- * owner's explicit per-statement go. Until then this queue is in memory, which
- * is honest about what it is rather than pretending durability it does not
- * have.
+ * That table is `db/migrations/165_canonical_adaptation_deferrals.sql` and the
+ * code that reads and writes it is
+ * `lib/adaptation/canonical-shadow/deferral-store.ts`, behind a fenced writer
+ * (`deferral-writer.ts`) allow-listed to exactly two statement shapes against
+ * exactly that table. `run-live-shadow-evaluation.ts` carries the queue across
+ * every boundary: read, reconsider, enqueue, persist, in that order.
+ *
+ * THE MIGRATION IS NOT APPLIED TO PRODUCTION. It is applied to a local scratch
+ * database and exercised end to end there, because per CLAUDE.md's operational
+ * boundary a schema write needs the owner's explicit per-statement go. Until it
+ * lands, `deferral-store.ts` probes for the table once and reports
+ * "evaluated but not persisted" rather than throwing — so on the live database
+ * this queue is still in memory, and the store SAYS SO rather than reporting a
+ * successful write of nothing.
+ *
+ * NONE OF THIS GIVES A DEFERRAL ANY AUTHORITY. A queued item is re-offered to
+ * the engine at its boundary and never auto-applied;
+ * `AUTOMATIC_ADAPTATION_AUTHORITY` is untouched and no plan row is reachable
+ * from any of it.
  */
 import { THRESHOLD_EVIDENCE_WINDOW_DAYS } from './contract-constants';
 import type {
