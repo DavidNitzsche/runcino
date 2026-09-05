@@ -47,16 +47,14 @@ import {
   enqueueDeferrals, reconsiderAtBoundary, queueIdFor,
   DEFERRAL_EVIDENCE_STALE_AFTER_DAYS, type QueuedDeferral,
 } from './deferral-queue';
-import { measured } from './input';
 import { demandCeilingForWeek } from './plan-load';
 import {
   baseInput, week, longRun, decayingThirds, threeGoodWeeks, twoGoodLongRuns,
-  twoFasterThresholdSessions, baseWeekWithHeadroom,
+  twoFasterThresholdSessions, baseWeekWithHeadroom, ceilingOf,
 } from './_fixtures';
 
-const BASE_WEEK_INDEX = demandCeilingForWeek({
-  weeklyMi: 48, longRunMi: 16, qualityMinutes: 60,
-});
+const BASE_WEEK = { weeklyMi: 48, longRunMi: 16, qualityMinutes: 60 } as const;
+const BASE_WEEK_INDEX = demandCeilingForWeek(BASE_WEEK);
 
 /** The acceptance-test runner: a full week, both load levers holding. */
 const fullWeekRunner = (opts?: Parameters<typeof baseInput>[0]) =>
@@ -71,7 +69,7 @@ const fullWeekRunner = (opts?: Parameters<typeof baseInput>[0]) =>
       longRun('lr-2', '2026-08-30', 16, 16, { thirds: decayingThirds() }),
     ],
     qualitySessions: twoFasterThresholdSessions(),
-    athleteCeilingWeeklyDemand: measured(BASE_WEEK_INDEX),
+    athleteCeilingWeeklyDemand: ceilingOf(BASE_WEEK),
     ...opts,
   });
 

@@ -35,6 +35,7 @@ import path from 'node:path';
 import { writesIn, writerNamesIn, stripComments } from '../canonical/_cannot_mutate.test';
 import { classifyStatement } from '@/lib/verify/production-barrier';
 import { insertShadowRecord, CANONICAL_ADAPTATION_SHADOW_LOG_TABLE, ShadowLogWriteRefused } from './shadow-log-writer';
+import { CANONICAL_ADAPTATION_DEFERRALS_TABLE } from './deferral-writer';
 
 const HERE = __dirname;
 
@@ -60,18 +61,54 @@ describe('liveness · the scanner read this directory', () => {
   });
 });
 
-describe('guard 1 · the only writes anywhere in this directory target canonical_adaptation_shadow_log', () => {
+/**
+ * The two tables this directory owns, and the verbs each may take.
+ *
+ * `canonical_adaptation_shadow_log` is APPEND-ONLY: a record of what the
+ * engine decided, so INSERT and nothing else.
+ *
+ * `canonical_adaptation_deferrals` (added 2026-09-04) is a LEDGER OF OPEN
+ * ITEMS, and it takes UPDATE as well. That is not a loosening, it is the
+ * consequence of a stricter rule: rows there are NEVER DELETED, so retiring a
+ * queued progression is an UPDATE that stamps `expired_at` with a stated
+ * reason. DELETE is authorized against neither, which is what actually matters
+ * — the failure this feature exists to prevent is a deferred progression
+ * vanishing without a record.
+ *
+ * Nothing here licenses a plan write: neither table is read by anything that
+ * changes training, and the oracle below still fails on a planted
+ * `UPDATE plan_workouts`.
+ */
+const OWNED_WRITES: ReadonlyMap<string, ReadonlySet<string>> = new Map([
+  [CANONICAL_ADAPTATION_SHADOW_LOG_TABLE, new Set(['INSERT INTO'])],
+  [CANONICAL_ADAPTATION_DEFERRALS_TABLE, new Set(['INSERT INTO', 'UPDATE'])],
+]);
+
+describe('guard 1 · the only writes anywhere in this directory target the two tables it owns', () => {
   for (const f of SOURCE) {
     it(path.relative(HERE, f), () => {
       const writes = writesIn(readFileSync(f, 'utf8'));
       for (const w of writes) {
-        expect(w.table, `${path.relative(HERE, f)} writes ${w.verb} against ${w.table}`)
-          .toBe(CANONICAL_ADAPTATION_SHADOW_LOG_TABLE);
-        expect(w.verb, `${path.relative(HERE, f)} issues ${w.verb} against the shadow log — only INSERT is authorized`)
-          .toBe('INSERT INTO');
+        const verbs = OWNED_WRITES.get(w.table);
+        expect(verbs, `${path.relative(HERE, f)} writes ${w.verb} against ${w.table}, which this directory does not own`)
+          .toBeDefined();
+        expect(verbs!.has(w.verb), `${path.relative(HERE, f)} issues ${w.verb} against ${w.table} — not an authorized verb for that table`)
+          .toBe(true);
       }
     });
   }
+
+  it('liveness · the map is not vacuously permissive', () => {
+    // A map that had lost its entries would pass every file by finding no
+    // writes to check. It cannot: both tables must be present, DELETE must be
+    // authorized against neither, and UPDATE must be authorized against
+    // exactly one of them.
+    expect([...OWNED_WRITES.keys()].sort()).toEqual([
+      'canonical_adaptation_deferrals', 'canonical_adaptation_shadow_log',
+    ]);
+    for (const verbs of OWNED_WRITES.values()) expect(verbs.has('DELETE FROM')).toBe(false);
+    expect([...OWNED_WRITES.values()].filter((v) => v.has('UPDATE'))).toHaveLength(1);
+  });
 
   it('ORACLE · a write against a plan-shape table would be caught', () => {
     const planted = writesIn("const q = `UPDATE plan_workouts SET distance_mi = 9 WHERE id = $1`;");

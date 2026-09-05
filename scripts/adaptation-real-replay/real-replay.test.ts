@@ -713,7 +713,54 @@ describe('the distribution across PROGRESS / HOLD / REGRESS / REFUSE', () => {
     // REGRESS 4 -> 6 is the same mechanism in the other direction and is the
     // check that this was not a one-way loosening: a downward pace correction
     // that used to be suppressed alongside everything else now also lands.
-    expect(dist).toEqual({ PROGRESS: 9, HOLD: 67, REGRESS: 6, REFUSE: 38 });
+    //
+    // ── 2026-09-04, THIRD PASS · THE REAL DEMAND MODEL IS WIRED IN ─────────
+    //
+    // Previous pin: `{ PROGRESS: 9, HOLD: 67, REGRESS: 6, REFUSE: 38 }`.
+    //
+    // That pin was measured with `athleteCeilingWeeklyDemand` supplied as
+    // `absent(...)`, here and in production alike, which meant arbitration's
+    // rule 1 COULD NOT FIRE AT ANY BOUNDARY. Reading C was in force and its
+    // only live effect was that a load HOLD no longer vetoed another lever.
+    //
+    // The ceiling is now resolved from `lib/plan/adjudication/weekly-demand.ts`
+    // through `lib/adaptation/canonical/demand-ceiling.ts`, against this
+    // athlete's own ABSORBED weeks. Rule 1 now fires: the counterfactual
+    // reports the posture as READ at all 13 boundaries, where it was ABSENT at
+    // all 13 before.
+    //
+    //   PROGRESS   9 ->  14
+    //   HOLD      67 ->  64
+    //   REGRESS    6 ->   4
+    //   REFUSE    38 ->  38
+    //
+    // AND THE ARROW POINTS THE WRONG WAY AGAIN, FOR THE OPPOSITE REASON THIS
+    // TIME. Read the second-pass note above: PROGRESS fell from 14 to 9 there
+    // because proposals started LANDING, so the same proposal stopped being
+    // re-made at four successive boundaries. This pass undoes exactly that —
+    // 14 is the count of RE-MADE proposals, and it is back because rule 1 is
+    // now DEFERRING them. The threshold anchor walks 7:22 -> 7:19 where the
+    // no-ceiling world walked 7:22 -> 7:10.
+    //
+    // THAT IS A FINDING, NOT A TUNING TARGET, and it is written down rather
+    // than smoothed away. The ceiling is his biggest week the plan did not
+    // author as a cutback, a race week, a taper or a recovery block, and early
+    // in a build block he has few such weeks while the plan is already
+    // prescribing more than he has demonstrated. So the prescribed week sits
+    // ABOVE the ceiling and every demand-increasing proposal — including a
+    // 3 s/mi pace correction — is deferred. Measured here: 4 of 8 moving
+    // proposals deferred in world C, and the deferred ones were re-offered and
+    // then expired as their evidence aged.
+    //
+    // Whether that is the right coaching call is the owner's to settle, and
+    // `docs/reports/core-closure-2026-09-04/COUNTERFACTUAL.md` puts the whole
+    // season in front of him to settle it with. What this test asserts is only
+    // that the engine now RESPONDS to a real ceiling instead of to nothing.
+    //
+    // REGRESS 6 -> 4 is the same mechanism and is the check that this is not a
+    // one-way tightening reported as a safety improvement: the downward path
+    // lost two landings too, for the same reason the upward path did.
+    expect(dist).toEqual({ PROGRESS: 14, HOLD: 64, REGRESS: 4, REFUSE: 38 });
   });
 
   it('the belief no longer walks below the volume he demonstrably ran', () => {

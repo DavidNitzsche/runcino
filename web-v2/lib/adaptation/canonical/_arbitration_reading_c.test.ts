@@ -45,17 +45,19 @@ import { evaluateAdaptation } from './evaluate';
 import { arbitrate, type ArbitrationReading } from './arbitration';
 import { demandCeilingForWeek } from './plan-load';
 import { enqueueDeferrals } from './deferral-queue';
-import { measured, failed, type Measured } from './input';
+import { failed, type Measured } from './input';
+import type { AthleteWeeklyDemandCeiling } from './demand-ceiling';
 import {
   baseInput, week, longRun, decayingThirds, twoGoodLongRuns,
   twoFasterThresholdSessions, threeGoodWeeks, baseWeekWithHeadroom,
+  ceilingOf, ceilingAt,
 } from './_fixtures';
 
 /**
  * One runner, held on both load levers, with strong threshold evidence. The
  * only thing any test below varies is the ceiling.
  */
-const heldOnLoadWithPaceEvidence = (ceiling: Measured<number>) =>
+const heldOnLoadWithPaceEvidence = (ceiling: Measured<AthleteWeeklyDemandCeiling>) =>
   baseInput({
     weeks: [
       week('2026-08-17', 47, 47.2),
@@ -71,9 +73,10 @@ const heldOnLoadWithPaceEvidence = (ceiling: Measured<number>) =>
   });
 
 /** The base fixture's own next week, priced. 48 mi, 16-mile long, 60 quality. */
-const BASE_WEEK_INDEX = demandCeilingForWeek({
-  weeklyMi: 48, longRunMi: 16, qualityMinutes: 60,
-});
+const BASE_WEEK = { weeklyMi: 48, longRunMi: 16, qualityMinutes: 60 } as const;
+const BASE_WEEK_INDEX = demandCeilingForWeek(BASE_WEEK);
+/** That week AS A CEILING, through the demand model's own resolver. */
+const baseWeekAtItsCeiling = () => ceilingOf(BASE_WEEK);
 
 describe('property 1 · rule 1 responds to the WEEK, not to a HOLD', () => {
   it('a load HOLD alone suppresses nothing when the week has room', () => {
@@ -94,7 +97,7 @@ describe('property 1 · rule 1 responds to the WEEK, not to a HOLD', () => {
       weeks: threeGoodWeeks(),
       longRuns: twoGoodLongRuns(),
       qualitySessions: twoFasterThresholdSessions(),
-      athleteCeilingWeeklyDemand: measured(BASE_WEEK_INDEX),
+      athleteCeilingWeeklyDemand: baseWeekAtItsCeiling(),
     }));
     const volume = out.records.find((r) => r.lever === 'WEEKLY_VOLUME')!;
     expect(volume.decision).toBe('PROGRESS');
@@ -111,7 +114,7 @@ describe('property 1 · rule 1 responds to the WEEK, not to a HOLD', () => {
         week('2026-08-31', 48, 28),
       ],
       longRuns: twoGoodLongRuns(),
-      athleteCeilingWeeklyDemand: measured(1),
+      athleteCeilingWeeklyDemand: ceilingAt(1),
     }));
     for (const r of out.records) {
       if (r.decision !== 'REGRESS') continue;
@@ -123,7 +126,7 @@ describe('property 1 · rule 1 responds to the WEEK, not to a HOLD', () => {
     // Rule 11's third fact. The engine must not treat a broken read as "no
     // ceiling", and it must not treat it as "at the ceiling" either.
     const out = evaluateAdaptation(
-      heldOnLoadWithPaceEvidence(failed<number>('the demand model timed out')),
+      heldOnLoadWithPaceEvidence(failed<AthleteWeeklyDemandCeiling>('the demand model timed out')),
     );
     expect(out.demandCeiling.kind).toBe('FAILED');
     expect(out.demandCeiling.rule1CanFire).toBe(false);
@@ -158,7 +161,7 @@ describe('property 2 · rule 3 is independent and still caps material changes', 
       weeks: threeGoodWeeks(),
       longRuns: twoGoodLongRuns(),
       plan: { ...baseInput().plan, nextWeekLongRunMi: 15 },
-      athleteCeilingWeeklyDemand: measured(BASE_WEEK_INDEX),
+      athleteCeilingWeeklyDemand: baseWeekAtItsCeiling(),
     }));
     for (const r of out.records) {
       if (r.suppressedBy === null) continue;
@@ -174,7 +177,7 @@ describe('property 3 · Rule 9 · the ceiling is a monotone boundary, not a clif
    * increments and assert the output vector behaves.
    */
   const paceSuppressedAtCeiling = (ceiling: number): boolean => {
-    const out = evaluateAdaptation(heldOnLoadWithPaceEvidence(measured(ceiling)));
+    const out = evaluateAdaptation(heldOnLoadWithPaceEvidence(ceilingAt(ceiling)));
     return out.records.find((r) => r.lever === 'THRESHOLD_PACE')!.suppressedBy !== null;
   };
 
@@ -202,7 +205,7 @@ describe('property 3 · Rule 9 · the ceiling is a monotone boundary, not a clif
     const out = evaluateAdaptation(baseInput({
       weeks: threeGoodWeeks(),
       longRuns: twoGoodLongRuns(),
-      athleteCeilingWeeklyDemand: measured(BASE_WEEK_INDEX),
+      athleteCeilingWeeklyDemand: baseWeekAtItsCeiling(),
     }));
     // The base week itself is admissible. What is refused is GROWING past it.
     const volume = out.records.find((r) => r.lever === 'WEEKLY_VOLUME')!;
@@ -212,7 +215,7 @@ describe('property 3 · Rule 9 · the ceiling is a monotone boundary, not a clif
     const roomier = evaluateAdaptation(baseInput({
       weeks: threeGoodWeeks(),
       longRuns: twoGoodLongRuns(),
-      athleteCeilingWeeklyDemand: measured(BASE_WEEK_INDEX + 5),
+      athleteCeilingWeeklyDemand: ceilingAt(BASE_WEEK_INDEX + 5),
     }));
     expect(roomier.records.find((r) => r.lever === 'WEEKLY_VOLUME')!.suppressedBy).toBeNull();
   });
@@ -222,7 +225,7 @@ describe('property 3 · Rule 9 · the ceiling is a monotone boundary, not a clif
     // proposal that lands a hair over the ceiling must survive as a queued
     // item, so a hair of input buys a week of delay rather than a lost
     // progression.
-    const out = evaluateAdaptation(heldOnLoadWithPaceEvidence(measured(BASE_WEEK_INDEX)));
+    const out = evaluateAdaptation(heldOnLoadWithPaceEvidence(baseWeekAtItsCeiling()));
     const pace = out.records.find((r) => r.lever === 'THRESHOLD_PACE')!;
     expect(pace.suppressedBy!.rule).toBe('WEEK_AT_DEMAND_CEILING');
 
@@ -303,6 +306,7 @@ describe('property 4 · the legacy reading is reachable from exactly one file', 
     }));
     const shared = {
       verdicts,
+      baseWeekStartISO: input.plan.nextWeekStartISO,
       baseWeeklyMi: input.plan.nextWeekPrescribedMi,
       baseLongRunMi: input.plan.nextWeekLongRunMi,
       baseQualityMinutes: input.plan.nextWeekQualityMinutes,

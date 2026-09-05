@@ -40,7 +40,8 @@ import type {
   WeekObservation,
 } from './input';
 import { measured, absent } from './input';
-import { demandCeilingForWeek } from './plan-load';
+import { resolveAthleteWeeklyDemandCeiling } from './demand-ceiling';
+import { unknownWeekDemandContext } from '@/lib/plan/adjudication/weekly-demand';
 import type { StimulusGrade } from './stimulus';
 
 /** 7:10/mi, the demonstrated threshold anchor. */
@@ -194,30 +195,75 @@ export const baseInput = (
   longRuns: [],
   /**
    * ABSENT by default, and that default is a statement rather than a
-   * convenience: no demand model is wired anywhere in this app yet, so an
-   * absent ceiling is the state every live evaluation is actually in. A
-   * fixture that quietly supplied one would make the corpus test a world that
-   * does not exist, which is CLAUDE.md Rule 15's failure ("a mechanism the
-   * test corpus cannot REACH is untested") pointed the other way round.
+   * convenience.
+   *
+   * A ceiling now exists on a live evaluation (`canonical-shadow/demand-input
+   * .ts` builds one from the demand model), but it exists only when the runner
+   * has ABSORBED WEEKS TO PRICE ONE FROM. A new runner, a rebuilt plan with no
+   * completed week yet, and an unreadable history all still land here. So the
+   * absent posture is a real production state and the default keeps testing it.
    *
    * A test about rule 1 must therefore say so, by passing
    * `athleteCeilingWeeklyDemand: ceilingOf(...)`. That is deliberate friction.
    */
-  athleteCeilingWeeklyDemand: absent('no demand model is wired yet'),
+  athleteCeilingWeeklyDemand: absent('no absorbed week has been supplied to price a ceiling from'),
   readable: true,
   ...opts,
 });
 
 /**
- * A demand ceiling stated as the week that sits exactly at it, priced by the
- * engine's own `demandCeilingForWeek` so both sides of the comparison come from
- * one piece of arithmetic (Rule 16).
+ * A demand ceiling stated as the week that sits exactly at it.
+ *
+ * Built by running the REAL resolver over a demonstrated week of exactly those
+ * numbers, rather than by hand. That matters for two reasons and both are
+ * CLAUDE.md rules:
+ *
+ *   · Rule 15 — a fixture that hand-built the ceiling object would leave
+ *     `resolveAthleteWeeklyDemandCeiling` unreached by every test that uses a
+ *     ceiling, which is most of them.
+ *   · Rule 16 — the number comes out of the demand model's own pricing door,
+ *     so it cannot drift from the number arbitration prices the week with.
+ *
+ * The context is unknown, so the model prices on BASE_ONLY, and on BASE_ONLY
+ * this is identically `demandCeilingForWeek(week)` — which is what every
+ * existing expectation in this suite was written against.
  */
 export const ceilingOf = (week: {
   weeklyMi: number;
   longRunMi: number;
   qualityMinutes: number;
-}) => measured(demandCeilingForWeek(week));
+}) => {
+  const resolved = resolveAthleteWeeklyDemandCeiling({
+    context: unknownWeekDemandContext('2026-09-07'),
+    week: { ...week, thresholdAnchorDeltaSecPerMi: 0 },
+    demonstratedWeeks: [{
+      weekStartISO: '2026-08-31',
+      weeklyMi: week.weeklyMi,
+      longRunMi: week.longRunMi,
+      qualityMinutes: week.qualityMinutes,
+      absorbed: true,
+      context: null,
+    }],
+  });
+  if (!resolved.ok) {
+    // A fixture that silently produced an absent ceiling would make every
+    // rule-1 test pass vacuously, which is the worst failure available here.
+    const why = resolved.why.kind === 'READ' ? 'no reason recorded' : resolved.why.what;
+    throw new Error(`ceilingOf: the demand model refused to price a ceiling: ${why}`);
+  }
+  return resolved;
+};
+
+/**
+ * The same, but as a RAW index on the model's own scale, for the handful of
+ * assertions that want to name a number rather than a week.
+ *
+ * Kept as one expression so a test can say "the ceiling one demand-step
+ * higher" without hand-rolling a second pricing path.
+ */
+export const ceilingAt = (index: number) => ceilingOf({
+  weeklyMi: index, longRunMi: 0, qualityMinutes: 0,
+});
 
 /**
  * The base fixture's own next week, as a ceiling: 48 mi, a 16-mile long run and

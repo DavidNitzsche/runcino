@@ -133,9 +133,25 @@ export function stripComments(src: string): string {
 const WRITE_RE =
   /\b(UPDATE|INSERT\s+INTO|DELETE\s+FROM|TRUNCATE(?:\s+TABLE)?)\s+(?:public\.)?"?([a-z_][a-z0-9_]*)"?/gi;
 
+/**
+ * `ON CONFLICT ... DO UPDATE SET` is the upsert half of the INSERT it belongs
+ * to. It names no table — by definition of the clause it targets the one the
+ * INSERT already named — so `WRITE_RE` reads it as `UPDATE` against a table
+ * called `SET`, which is a phantom write against a table that does not exist.
+ *
+ * Neutralised rather than filtered out downstream, so the scanners keep their
+ * property that EVERY write they find is a real write. Added 2026-09-04 with
+ * the first upsert in this layer (`canonical-shadow/deferral-store.ts`); the
+ * oracle below plants one and asserts exactly one write, against the INSERT's
+ * own table.
+ */
+export function neutraliseUpsertClause(src: string): string {
+  return src.replace(/\bdo\s+update\s+set\b/gi, 'do_upsert_set');
+}
+
 export function writesIn(src: string): Array<{ verb: string; table: string }> {
   const out: Array<{ verb: string; table: string }> = [];
-  for (const m of stripComments(src).matchAll(WRITE_RE)) {
+  for (const m of neutraliseUpsertClause(stripComments(src)).matchAll(WRITE_RE)) {
     out.push({ verb: m[1].toUpperCase().replace(/\s+/g, ' '), table: m[2] });
   }
   return out;
@@ -296,8 +312,30 @@ function canonicalEngineImportsIn(code: string): Array<{ module: string; names: 
 interface AllowedImport { readonly file: string; readonly module: string; readonly symbols: ReadonlySet<string> }
 const ALLOWED_EXCEPTION_FILE = path.join(WEB, 'lib/adaptation/canonical-shadow/run-live-shadow-evaluation.ts');
 const ALLOWED_LOADER_FILE = path.join(WEB, 'lib/adaptation/canonical-shadow/live-input.ts');
+/**
+ * DEMANDWIRE-1 (2026-09-04) · the loader's demand-model half, split into its
+ * own file only because `live-input.ts` is already 39 KB. It is the SAME
+ * loader by every property this gate cares about, and it is enumerated
+ * separately rather than folded into `ALLOWED_LOADER_FILE` so a reader can see
+ * exactly which symbols the split bought.
+ */
+const ALLOWED_DEMAND_LOADER_FILE = path.join(WEB, 'lib/adaptation/canonical-shadow/demand-input.ts');
 const ALLOWLIST: readonly AllowedImport[] = [
   { file: ALLOWED_EXCEPTION_FILE, module: '@/lib/adaptation/canonical/evaluate', symbols: new Set(['evaluateAdaptation']) },
+  // DEFERPERSIST-1 (2026-09-04) · the shadow cycle must CARRY THE DEFERRAL
+  // QUEUE across boundaries, which is what makes a deferred progression
+  // survive a process restart instead of evaporating. Both symbols are PURE:
+  // `reconsiderAtBoundary` is a total function of (queue, date, fresh records)
+  // returning what to carry and what to retire, and `enqueueDeferrals` folds
+  // suppressed records onto a queue. Neither touches a plan, a database or a
+  // clock, and neither APPLIES anything — a queued item is re-offered to the
+  // engine at its boundary, never auto-applied, and
+  // `AUTOMATIC_ADAPTATION_AUTHORITY` is untouched by this grant.
+  {
+    file: ALLOWED_EXCEPTION_FILE,
+    module: '@/lib/adaptation/canonical/deferral-queue',
+    symbols: new Set(['enqueueDeferrals', 'reconsiderAtBoundary']),
+  },
   { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/input', symbols: new Set(['measured', 'absent', 'failed']) },
   { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/stimulus', symbols: new Set(['gradeStimulus']) },
   // HRCEILING-1 (2026-09-04) · the loader must ask the ONE owner of "what HR
@@ -315,6 +353,59 @@ const ALLOWLIST: readonly AllowedImport[] = [
   // day) turns those into the phase means the grader reads. A PURE FUNCTION of
   // sample arrays: no plan, no database, no writes.
   { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/hr-trace-credibility', symbols: new Set(['workTraceIsCredible']) },
+  // DEMANDWIRE-1 (2026-09-04) · the loader must now RESOLVE this athlete's
+  // weekly demand ceiling, because supplying it as `absent(...)` meant
+  // arbitration's rule 1 could not fire on any live evaluation.
+  //
+  // `resolveAthleteWeeklyDemandCeiling` is a PURE function of the week and the
+  // demonstrated weeks handed to it: it reads no plan, opens no pool, writes
+  // nothing, and its only outward call is into `lib/plan/adjudication/
+  // weekly-demand.ts`, which is itself pure and gated on that property by its
+  // own suite. It returns a `Measured<AthleteWeeklyDemandCeiling>` — a
+  // refusal-carrying value, never a mutation — and it cannot widen this
+  // boundary in any direction.
+  { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/demand-ceiling', symbols: new Set(['resolveAthleteWeeklyDemandCeiling']) },
+  // And the demand loader's own Rule 8 filter. `prescribedNonNormalWeek` is
+  // the engine's ONE reconciliation of the two witnesses that say a week was
+  // not normal — the week's own cutback flag and the authoring plan's mode.
+  // It is imported rather than reimplemented precisely so this loader cannot
+  // become a second answer to "is this a normal week" (Rule 16), which is the
+  // question that decides whether a taper week raises the athlete's ceiling.
+  // A pure predicate over one `WeekObservation`; it returns a boolean and a
+  // sentence.
+  { file: ALLOWED_DEMAND_LOADER_FILE, module: '@/lib/adaptation/canonical/input', symbols: new Set(['prescribedNonNormalWeek']) },
+  // ── A GATE THAT WAS ALREADY RED, FIXED HERE RATHER THAN LEFT ────────────
+  //
+  // `lib/plan/adjudication/weekly-demand.ts` landed on main in fc9257d2 and
+  // imports three COEFFICIENTS from `plan-load.ts` as values. Guard 4 has no
+  // entry for it, so THIS GUARD HAS BEEN FAILING ON MAIN SINCE THAT MERGE —
+  // verified by running it against the unmodified tree, where it names
+  // `_weekly_demand.test.ts` importing `projectPlanLoad`. It is fixed here
+  // because Rule 20 says fix the gate, not just the instance, and a red gate
+  // nobody has looked at is worth less than no gate at all.
+  //
+  // The grant is right rather than convenient. The whole reason the demand
+  // model imports these three numbers instead of restating them is Rule 16:
+  // `plan-load`'s three-term projection and the demand model's seven-component
+  // reading are ONE scale, and they can only stay one scale if the shared
+  // terms have one definition. They are `const number` declarations and two
+  // pure functions in a file guards 1-3 already prove has no I/O of any kind.
+  {
+    file: path.join(WEB, 'lib/plan/adjudication/weekly-demand.ts'),
+    module: '@/lib/adaptation/canonical/plan-load',
+    symbols: new Set([
+      'QUALITY_MINUTE_TO_EASY_MILE', 'LONG_RUN_SURCHARGE_PER_MI',
+      'PACE_SEC_PER_MI_TO_QUALITY_COST',
+    ]),
+  },
+  {
+    file: path.join(WEB, 'lib/plan/adjudication/_weekly_demand.test.ts'),
+    module: '@/lib/adaptation/canonical/plan-load',
+    // The suite's own Rule 16 identity assertion: with no context, the demand
+    // model's `demandIndex` must EQUAL `projectPlanLoad(...).demandIndex` for
+    // the same week. It has to call the other side to compare against it.
+    symbols: new Set(['projectPlanLoad']),
+  },
 ];
 
 function violatesAllowlist(file: string, imp: { module: string; names: string[] }): boolean {

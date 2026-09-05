@@ -56,6 +56,11 @@
  * rather than a samples array.
  */
 import type { StimulusGrade } from './stimulus';
+/* TYPE-ONLY, and therefore erased: this file reaches no module at run time.
+ * `AthleteWeeklyDemandCeiling` lives beside the resolver that builds it, so
+ * this type surface stays small enough to audit by reading — which is the
+ * mitigation `_forbidden_inputs.test.ts` guard 3 asserts. */
+import type { AthleteWeeklyDemandCeiling } from './demand-ceiling';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * IDENTITY AND VERSIONING
@@ -429,9 +434,10 @@ export interface CanonicalAdaptationInput {
   readonly longRuns: readonly LongRunObservation[];
 
   /**
-   * The athlete's own ceiling on a week's total demand, expressed on the same
-   * scale as `plan-load.ts`'s `demandIndex` (build one with
-   * `demandCeilingForWeek`).
+   * The athlete's own ceiling on a week's total demand, together with the BASIS
+   * it was priced on and the week context every projection must be priced in.
+   * Build one with `resolveAthleteWeeklyDemandCeiling` in `demand-ceiling.ts`,
+   * which is the seam onto `lib/plan/adjudication/weekly-demand.ts`.
    *
    * ── WHY THIS IS AN INPUT AND NOT SOMETHING THIS ENGINE DERIVES ───────────
    *
@@ -439,9 +445,17 @@ export interface CanonicalAdaptationInput {
    * total weekly demand can this athlete absorb" is a Training Load and Runner
    * Model question, not an arbitration question. Arbitration's job is to decide
    * whether the week it is about to propose fits inside that answer, so it takes
-   * the answer and does not invent one. A demand model is a separate workstream;
-   * until it lands, this arrives absent, and the consequence is recorded rather
-   * than hidden.
+   * the answer and does not invent one.
+   *
+   * ── WHY IT IS NOT A BARE NUMBER (changed 2026-09-04) ─────────────────────
+   *
+   * It used to be `Measured<number>` on `plan-load.ts`'s three-term scale, and
+   * the demand model prices a week on SEVEN components. A number with no basis
+   * attached is a number a caller can compare against a week priced some other
+   * way, which is the mixed-basis defect `weekly-demand.ts` documents at length
+   * and fixes for its own two sides. Carrying the basis and the context along
+   * with the value makes the mismatch unsayable: every projection arbitration
+   * prices goes through `priceWeekOnBasis`, using exactly these terms.
    *
    * ── RULE 11 · THREE FACTS, AND THE POSTURE FOR EACH ──────────────────────
    *
@@ -459,7 +473,7 @@ export interface CanonicalAdaptationInput {
    * decision record carries the `INV_DEMAND_CEILING_POSTURE_STATED` invariant,
    * and `CanonicalEvaluation.demandCeiling` puts it in front of any caller.
    */
-  readonly athleteCeilingWeeklyDemand: Measured<number>;
+  readonly athleteCeilingWeeklyDemand: Measured<AthleteWeeklyDemandCeiling>;
 
   /**
    * Rule 11 · false when a read FAILED rather than came back empty. A failed

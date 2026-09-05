@@ -171,6 +171,7 @@ export function evaluateAdaptation(
 
   const result = arbitrate({
     verdicts,
+    baseWeekStartISO: input.plan.nextWeekStartISO,
     baseWeeklyMi: input.plan.nextWeekPrescribedMi,
     baseLongRunMi: input.plan.nextWeekLongRunMi,
     baseQualityMinutes: input.plan.nextWeekQualityMinutes,
