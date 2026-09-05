@@ -1,7 +1,7 @@
 # Consolidated handback · overnight 2026-09-04 into 2026-09-05
 
 **Starting commit:** `a8392d08`
-**Ending commit:** see the final line of this document (updated at close)
+**Ending commit:** `bc24447e1`
 **TestFlight:** build **279**, shipped from `95a7134e`, contains STUCKCONN-2
 
 Nothing was written to the live training plan. No live adaptation was promoted.
@@ -240,7 +240,37 @@ Two gates caught mechanical resolutions of mine:
   mechanically and re-added a `weekly-demand.ts` exemption that had become stale
   the moment `defer-persist` gave that module a caller.
 
-## 10 · Known-failing, pre-existing
+## 10 · Test and gate results, on the final tree
+
+    npx tsc --noEmit          clean
+    npm run prebuild          exit 0 · all 22 gates
+    npx vitest run            10,682 passed · 1 expected fail · 31 skipped
+                              9 failed, all pre-existing (see below)
+
+Read-only production replay, re-run on the final tree: **0 of 7 active plans
+would promote.** The CIM block carries exactly ONE finding, 2026-09-21, which is
+the same week every other line of reasoning converged on. The other six are
+blocked solely for having no demonstrated history.
+
+## 11 · The CIM verdict, in one table
+
+| Sequence | Verdict | Gated |
+|---|---|---|
+| 9/21 · 55.2 mi | **HOLD today, PUSH on evidence** | **yes, 2026-09-20** |
+| 10/5 · 59.5 mi | PUSH | conditional on 9/21 |
+| 10/26 · 60.0 mi | PUSH on volume and long run | stacking gated, 2026-10-25 |
+| 11/1 · 21.5 long | PUSH, keep | no |
+| Malibu + 11/15 | PUSH | no |
+| 11/22 · 5 mi @ M | **HOLD on an explicit absence** | reaches 6 mi on evidence |
+| 11/29 primer | HOLD | no |
+| Race week | HOLD | no |
+
+Full reasoning in `CIM-DECISION-TRACE.md`. Corrections carried there: there is
+no fast finish on 11/1; the largest CONTINUOUS marathon-pace dose is 5 miles but
+the block already TOTALS eight on 10/18; and prescribed CIM race pace is
+7:46/mi, not the 3:00 goal pace, so the engine is pacing from evidence.
+
+## 12 · Known-failing, pre-existing
 
 Nine failures in two post-run live-audit files. **Verified pre-existing** by
 running them against unmodified `origin/main` in a detached worktree, where they
