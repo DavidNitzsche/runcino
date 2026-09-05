@@ -2117,30 +2117,37 @@ export function capSpecToDistance(spec: WorkoutSpec, maxMi: number): WorkoutSpec
   return s as WorkoutSpec;
 }
 
-/**
- * Derive T-pace (s/mi) from the runner's goal race + distance.
- * Same formula as lib/training/prescriptions.ts § tPaceSecPerMi.
+/* ── DELETED 2026-09-05 · THRESHOLD-OWNER-1 · `tPaceFromGoal` ────────────────
  *
- * Returns null when the runner has no goal · callers should fall back
- * to a default (e.g. 480s/mi = 8:00/mi) and leave specs null until
- * goal lands.
+ * GUARDED AS REMOVED. It took the runner's STATED GOAL and returned a
+ * threshold pace — `docs/BRAIN_CONSTITUTION.md` §4's forbidden side door
+ * "Goal Time → Fitness directly", and the reason
+ * `docs/DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md` §6 asks for the
+ * separation to be structural. Measured live on the owner's account the day it
+ * went: 394 s/mi off a 3:00 CIM goal against the canonical 430 s/mi
+ * (`resolveThresholdCapacity`) off his own corroborated threshold corpus.
+ *
+ * Its last production caller was `adapt.ts`'s single-row rebuild, which now
+ * reads `resolvePrescribedPaceAnchors` — the same six anchors
+ * `recompute-paces.ts` and `reanchor-plan.ts` write, so a shave, a recompute
+ * and a re-anchor can no longer price the same row three ways (Rule 16).
+ *
+ * The offset table it carried is NOT gone, and was never unique to it:
+ * `tPaceFromAnchorPace` (`lib/training/vdot.ts`) has held the identical tiers
+ * against a MEASURED anchor since P1-56, with the same
+ * `Research/01-pace-zones-vdot.md` §"Pace conversion from a race time"
+ * citation. One table, one anchor kind, which is what Constitution §5 asks.
+ *
+ * The synthetic archetypes that used it to assert a fixture's own threshold
+ * call `fixtureTPaceFromGoalPace` (`lib/plan/_fixture-goal-tpace.ts`) instead —
+ * byte-identical arithmetic, a name that cannot be mistaken for capacity, and
+ * `lib/training/_threshold_owner_scan.test.ts` fails the build if any
+ * non-test module imports it.
+ *
+ * Do not reintroduce this symbol here. `scripts/check-goal-pace-leak.sh`
+ * matches `tPaceFromGoal(` by name and `_threshold_owner_scan.test.ts` guards
+ * the export as removed.
  */
-export function tPaceFromGoal(
-  goalSeconds: number | null | undefined,
-  goalDistanceMi: number | null | undefined,
-): number | null {
-  if (!goalSeconds || !goalDistanceMi) return null;
-  const goalSPerMi = Math.round(goalSeconds / goalDistanceMi);
-  // PACE-5 · ultra (50K+) T-pace is NOT goalPace−18 — an ultra finish pace is an arbitrary
-  // slow target far below threshold. Return null so the caller anchors T to VDOT instead
-  // (Research/22:289/297/316 · ultra runs at "race-paced effort", not MP; Research/00a:311-312
-  // · ultra threshold ≈ fitness-anchored steady tempo, never finish-pace-derived).
-  if (goalDistanceMi >= 31) return null;
-  if (goalDistanceMi >= 25) return goalSPerMi - 18;   // marathon
-  if (goalDistanceMi >= 12) return goalSPerMi - 5;    // half
-  if (goalDistanceMi >= 5)  return goalSPerMi + 8;    // 10K
-  return goalSPerMi + 15;                              // 5K
-}
 
 /**
  * Cold-start pace floor: when no measured fitness signal exists, anchor

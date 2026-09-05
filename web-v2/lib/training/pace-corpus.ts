@@ -371,7 +371,11 @@ import {
   corroboratedCorpusVdot,
   type CorpusObservation,
 } from '@/lib/training/vdot-corpus';
-import { vdotFromTpace, tPaceFromVdot, zoneFromType } from '@/lib/training/vdot';
+// THRESHOLD-OWNER-1 · `tPaceFromVdot` REMOVED · this reader inverts a pace to
+// a VDOT (`vdotFromTpace`) and never converts one back. An unused binding of
+// the forward curve inside the DIRECT evidence reader is the one place a
+// second threshold answer would be least visible.
+import { vdotFromTpace, zoneFromType } from '@/lib/training/vdot';
 import { normalizeDataWorkoutType, QUALITY_TYPES } from '@/lib/runs/log-enrich';
 import { normalizeSplits } from '@/lib/runs/run-shape';
 import { excludeDistanceReviewSql } from '@/lib/runs/distance-guard';

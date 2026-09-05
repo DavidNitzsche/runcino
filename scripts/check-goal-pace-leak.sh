@@ -161,10 +161,36 @@ OWNERS_RE='web-v2/lib/training/achievable-target\.ts'
 # Rule 18 point 4). The list may shrink. It may not grow without an argument
 # that survives review.
 read -r -d '' ALLOWLIST <<'EOF'
-web-v2/lib/plan/spec-builder.ts|DEFINITION SITE + THE RACE BRANCH. `tPaceFromGoal` is defined here and `buildWorkoutSpec`'s `case race` prices race day off `goalPaceSPerMi`, which is Constitution §J and correct. The AUTHORING callers are gone (AUTHORING-CANONICAL-1); what remains are the definition, the race branch, and the restore/adapt fallbacks below that still import it. Shrinks to the race branch alone when `tPaceFromGoal` loses its last non-race caller.
-web-v2/lib/plan/adapt.ts|ADAPT-TIME RESTORE FALLBACK. `adapt.ts` re-derives a T-pace from the goal when it has to rebuild a single row and no anchor was handed to it. Phase 3 of the P0 order owns the adaptation path and will re-point it at `resolvePrescribedPaceAnchors`; migrating it here would collide with that work. OPEN — a real, if narrow, §G leak.
 web-v2/lib/plan/authoring-shadow-compare.ts|SHADOW ONLY, AND THE LAST PLACE THE LEGACY DERIVATION EXISTS. `legacyPricingFor` hands the stated goal to `resolveMarathonPace` because that is precisely what the pre-migration composer did, and a comparison that does not reproduce the leak cannot measure it - the goal-at-MP days are the single largest divergence in the whole block. The module has no runtime importer, is declared in MODULE_ORPHANS with that argument, and imports nothing that can persist. It is deleted the day the migration report stops needing a before.
 EOF
+
+# ── THRESHOLD-OWNER-1 (2026-09-05) · TWO MORE EXEMPTIONS CLOSED ──────────────
+#
+# `web-v2/lib/plan/spec-builder.ts` and `web-v2/lib/plan/adapt.ts` were on that
+# list, and the adapt.ts entry said in its own words: "OPEN — a real, if
+# narrow, §G leak."
+#
+#   · `tPaceFromGoal` is DELETED from `spec-builder.ts`. The offset table it
+#     carried was never unique to it — `tPaceFromAnchorPace` (`vdot.ts`) has
+#     held the identical tiers against a MEASURED anchor since P1-56, with the
+#     same `Research/01` §"Pace conversion from a race time" citation, so the
+#     deletion leaves one copy rather than none. The 37 test fixtures that
+#     asserted an archetype's own threshold from its goal call
+#     `fixtureTPaceFromGoalPace` (`lib/plan/_fixture-goal-tpace.ts`), which
+#     `lib/training/_threshold_owner_scan.test.ts` forbids any production
+#     module to import.
+#   · `adapt.ts`'s `deriveTPaceSecForRebuild` no longer takes a race id at all.
+#     It reads `resolvePrescribedPaceAnchors` — the same six anchors
+#     `recompute-paces.ts` and `reanchor-plan.ts` write.
+#
+# Measured on the owner's own account the day they went, goal-derived against
+# canonical threshold: 394 s/mi (6:34/mi) vs 430 s/mi (7:10/mi). Every future
+# threshold/tempo row in his live block already carried 430, so a shave would
+# have re-priced one row 36 s/mi faster than its neighbours.
+#
+# Both entries are DELETED rather than annotated, because section 4's ratchet
+# fails on a stale exemption — and it did, by name, on the first run after the
+# migration. That failure is this gate's own falsification evidence.
 
 # ── SECOND-OWNER-1 (2026-09-02) · ONE EXEMPTION CLOSED ───────────────────────
 #

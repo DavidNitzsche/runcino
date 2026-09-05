@@ -29,7 +29,8 @@
 import { describe, it, expect } from 'vitest';
 import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import { composePlan, finalizeComposedPlan, inlinePrescriptions, type ComposePlanInput, type DOW } from './generate';
-import { tPaceFromGoal, buildWorkoutSpec } from './spec-builder';
+import { buildWorkoutSpec } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 const START = '2026-08-31';
 const addDays = (i: string, n: number) => new Date(Date.parse(i + 'T12:00:00Z') + n * 86400000).toISOString().slice(0, 10);
 function inputFor(o: any): ComposePlanInput {
@@ -39,7 +40,7 @@ function inputFor(o: any): ComposePlanInput {
     longRunDow: o.longDow as DOW, restDow: 6 as DOW, qualityDows: [2, 4] as DOW[], availableDows: null,
     trainingDaysPerWeek: null, crossModes: [], rxQuality: inlinePrescriptions(distanceCategoryOrThrow(o.distMi)),
     rxRaceSpecific: inlinePrescriptions(distanceCategoryOrThrow(o.distMi)),
-    tPaceSec: tPaceFromGoal(o.goalSec, o.distMi), lthr: null, maxHr: null,
+    tPaceSec: fixtureTPaceFromGoalPace(o.goalSec, o.distMi), lthr: null, maxHr: null,
     ...(o.vdot != null ? { bestRecentVdot: o.vdot } : {}), midBlockRaces: [] } as ComposePlanInput;
 }
 const DISTS: Array<[number, number]> = [[3.11, 1080], [6.22, 2400], [13.11, 5400], [26.22, 11400], [31.07, 16200]];

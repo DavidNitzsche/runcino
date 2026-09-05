@@ -26,11 +26,11 @@ import {
   REGRESSION_DELTA_THRESHOLD,
   fitnessRegressionFires,
   TRAINING_LEAD_DELTA_THRESHOLD,
-  TRAINING_LEAD_MIN_SESSIONS,
-  TRAINING_LEAD_MIN_SPAN_DAYS,
-  TRAINING_LEAD_MAX_AGE_DAYS,
+  TRAINING_TREND_MIN_SESSIONS,
+  TRAINING_TREND_MIN_SPAN_DAYS,
+  TRAINING_TREND_MAX_AGE_DAYS,
   trainingLeadFires,
-  trainingLeadSustained,
+  sustainedTrainingTrend,
 } from './adapt';
 
 const TODAY = '2026-10-12';
@@ -157,23 +157,23 @@ describe('the upward gate now fires where doctrine says it should', () => {
 
 describe('sustained means sustained · two sessions across two weeks', () => {
   it('doctrine\'s window is 2 weeks, not 6', () => {
-    expect(TRAINING_LEAD_MIN_SPAN_DAYS).toBe(14);
-    expect(TRAINING_LEAD_MIN_SESSIONS).toBe(2);
+    expect(TRAINING_TREND_MIN_SPAN_DAYS).toBe(14);
+    expect(TRAINING_TREND_MIN_SESSIONS).toBe(2);
   });
 
   it('one good session is not a trend', () => {
-    expect(trainingLeadSustained(['2026-10-09'], TODAY).sustained).toBe(false);
+    expect(sustainedTrainingTrend(['2026-10-09'], TODAY).sustained).toBe(false);
   });
 
   it('two sessions in the same week is a good week, not a trend', () => {
-    const r = trainingLeadSustained(['2026-10-06', '2026-10-09'], TODAY);
+    const r = sustainedTrainingTrend(['2026-10-06', '2026-10-09'], TODAY);
     expect(r.sessions).toBe(2);
     expect(r.spanDays).toBe(3);
     expect(r.sustained).toBe(false);
   });
 
   it('two sessions a fortnight apart clears both conditions', () => {
-    const r = trainingLeadSustained(['2026-09-26', '2026-10-10'], TODAY);
+    const r = sustainedTrainingTrend(['2026-09-26', '2026-10-10'], TODAY);
     expect(r.sessions).toBe(2);
     expect(r.spanDays).toBe(14);
     expect(r.sustained).toBe(true);
@@ -181,15 +181,15 @@ describe('sustained means sustained · two sessions across two weeks', () => {
 
   it('a lead that stopped a month ago is stale, however long it ran', () => {
     // Sessions spanning six weeks, but the newest is 40 days old.
-    const r = trainingLeadSustained(['2026-07-20', '2026-08-10', '2026-09-02'], TODAY);
+    const r = sustainedTrainingTrend(['2026-07-20', '2026-08-10', '2026-09-02'], TODAY);
     expect(r.sessions).toBe(3);
-    expect(r.spanDays).toBeGreaterThan(TRAINING_LEAD_MIN_SPAN_DAYS);
-    expect(r.newestAgeDays!).toBeGreaterThan(TRAINING_LEAD_MAX_AGE_DAYS);
+    expect(r.spanDays).toBeGreaterThan(TRAINING_TREND_MIN_SPAN_DAYS);
+    expect(r.newestAgeDays!).toBeGreaterThan(TRAINING_TREND_MAX_AGE_DAYS);
     expect(r.sustained).toBe(false);
   });
 
   it('duplicate dates cannot manufacture a session count', () => {
-    const r = trainingLeadSustained(['2026-10-10', '2026-10-10', '2026-10-10'], TODAY);
+    const r = sustainedTrainingTrend(['2026-10-10', '2026-10-10', '2026-10-10'], TODAY);
     expect(r.sessions).toBe(1);
     expect(r.sustained).toBe(false);
   });
@@ -199,8 +199,8 @@ describe('sustained means sustained · two sessions across two weeks', () => {
     const qualifying = r.considered.filter(
       (c) => c.source === 'run' && trainingLeadFires(ANCHOR_VDOT, c.vdot),
     );
-    expect(qualifying.length).toBeGreaterThanOrEqual(TRAINING_LEAD_MIN_SESSIONS);
-    expect(trainingLeadSustained(qualifying.map((c) => c.date), TODAY).sustained).toBe(true);
+    expect(qualifying.length).toBeGreaterThanOrEqual(TRAINING_TREND_MIN_SESSIONS);
+    expect(sustainedTrainingTrend(qualifying.map((c) => c.date), TODAY).sustained).toBe(true);
   });
 });
 

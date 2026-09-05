@@ -43,7 +43,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { composePlan, inlinePrescriptions, type ComposePlanInput, type DOW } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import type { ThesisAtAuthoring } from './phase-answers';
 import { WORKOUT_CATALOGUE } from '@/lib/workout-catalogue/catalogue';
@@ -72,7 +72,7 @@ function tenKInput(thesis: ThesisAtAuthoring | null): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(2400, raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(2400, raceDistanceMi),
     lthr: 168,
     maxHr: 185,
     ...(thesis ? { thesisAtAuthoring: thesis } : {}),

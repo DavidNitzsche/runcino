@@ -38,7 +38,7 @@ import {
   type ComposePlanResult,
   type DOW,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 // ── domain ────────────────────────────────────────────────────────────────
 
@@ -135,7 +135,7 @@ function buildInput(o: {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: o.goalPaceSec != null ? tPaceFromGoal(goalSec, o.raceMi) : null,
+    tPaceSec: o.goalPaceSec != null ? fixtureTPaceFromGoalPace(goalSec, o.raceMi) : null,
     lthr: null,
     maxHr: null,
   };

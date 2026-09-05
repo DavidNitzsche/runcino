@@ -27,7 +27,8 @@ import {
   type DOW,
 } from './generate';
 import { buildSimPlan } from './sim-inputs';
-import { buildWorkoutSpec, totalDistanceMiFromSpec, tPaceFromGoal } from './spec-builder';
+import { buildWorkoutSpec, totalDistanceMiFromSpec } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { tPaceFromVdot } from '@/lib/training/vdot';
 import { weekIntensity, EASY_SHARE_FLOOR } from './intensity-distribution';
 import { AT_PACE_SESSION_MI, atPaceSessionCapMi } from '@/lib/prescription/levers';
@@ -38,7 +39,7 @@ function cimBlock(): ComposePlanInput {
   const distanceMi = 26.2;
   const goalSec = 10800;
   const currentT = tPaceFromVdot(44.1);
-  const goalT = tPaceFromGoal(goalSec, distanceMi);
+  const goalT = fixtureTPaceFromGoalPace(goalSec, distanceMi);
   return {
     raceDistanceMi: distanceMi,
     goalSec,

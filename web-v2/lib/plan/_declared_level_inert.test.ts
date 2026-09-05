@@ -214,7 +214,7 @@ import {
   type ComposePlanInput, type ComposePlanResult, type ComposedWeek,
   type DOW, type DayPlan, type LevelKey,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { prerequisitesFor, type EvidenceRequirement } from './strategy-contracts';
 import type { ProgressionLever } from '@/lib/prescription/levers';
 
@@ -288,7 +288,7 @@ async function inputAt(v: SweepValue): Promise<ComposePlanInput> {
     crossModes: [],
     rxQuality,
     rxRaceSpecific,
-    tPaceSec: tPaceFromGoal(10800, 26.2),
+    tPaceSec: fixtureTPaceFromGoalPace(10800, 26.2),
     lthr: 168,
     maxHr: 180,
     midBlockRaces: DODGERS,

@@ -75,7 +75,7 @@ describe('P1-56 · tPaceFromAnchorPace — training paces derived from the ancho
     expect(t).toBeGreaterThan(anchor.paceSPerMi);
   });
 
-  it('distance tiers match spec-builder.tPaceFromGoal exactly (same offsets, different anchor)', () => {
+  it('distance tiers match spec-builder.fixtureTPaceFromGoalPace exactly (same offsets, different anchor)', () => {
     // marathon anchor: pace - 18
     const mAnchor = anchorPaceFrom(6 * 3600 + 30 * 60, 26.2188)!; // 6:30 marathon
     expect(tPaceFromAnchorPace(mAnchor)).toBe(Math.round(mAnchor.paceSPerMi - 18));

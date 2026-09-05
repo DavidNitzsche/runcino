@@ -69,12 +69,8 @@
 import { describe, it, expect } from 'vitest';
 import { buildSimPlan } from './sim-inputs';
 import { matrix, arcStr, simInputsForArc, type Arc } from './sim-matrix';
-import {
-  buildWorkoutSpec,
-  capSpecToDistance,
-  conservativeVdotFromMileage,
-  tPaceFromGoal,
-} from './spec-builder';
+import { buildWorkoutSpec, capSpecToDistance, conservativeVdotFromMileage } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { composeQualityDay, JOG_PACE_S_PER_MI, type QualityFamily } from './quality-day';
 import { tPaceFromVdot, iPaceFromVdot, vdotFromTpace } from '@/lib/training/vdot';
 import { distanceCategoryOf } from './goal-tiers';
@@ -261,7 +257,7 @@ function midBlockInput(recentQualityDistanceMi: number): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(10800, raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(10800, raceDistanceMi),
     lthr: 168,
     maxHr: 185,
   };

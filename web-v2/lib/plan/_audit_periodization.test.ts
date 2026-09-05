@@ -29,7 +29,7 @@ import {
   type ComposePlanResult,
   type DOW,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { isBaseBuildingPlan } from './plan-templates';
 
 type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus' | null;
@@ -128,7 +128,7 @@ function buildInput(opts: {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(opts.goalSec, opts.raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(opts.goalSec, opts.raceDistanceMi),
     lthr: null,
     maxHr: null,
   };
@@ -563,7 +563,7 @@ describe('INV-12 · advanced-marathon (David class) plan is protected', () => {
       crossModes: [],
       rxQuality: inlinePrescriptions(cat),
       rxRaceSpecific: inlinePrescriptions(cat),
-      tPaceSec: tPaceFromGoal(goalSec, distanceMi),
+      tPaceSec: fixtureTPaceFromGoalPace(goalSec, distanceMi),
       lthr: null,
       maxHr: null,
     };

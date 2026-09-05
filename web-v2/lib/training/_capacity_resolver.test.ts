@@ -263,7 +263,7 @@ describe('CAPACITY · goal isolation is structural, not conventional (§6)', () 
     // Falsify the check itself before trusting it (Rule 18). The matcher the
     // test above uses must actually fire on the shape it is looking for.
     const synthetic = [
-      'const t = tPaceFromGoal(goalSec, distanceMi);',
+      'const t = fixtureTPaceFromGoalPace(goalSec, distanceMi);',
       'const x = 1;',
     ].join('\n');
     const hits = synthetic.split('\n').filter((l) => /goal/i.test(l));

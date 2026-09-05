@@ -17,7 +17,7 @@ import {
   type ComposedWeek,
 } from './generate';
 import { validateComposedPlan, type PlanValidationContext } from './validate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 const START_MONDAY = '2026-01-05';
 
@@ -47,7 +47,7 @@ function buildBeginner5K(mpw: number, recentLongMi: number, planWeeks = 12): Com
     crossModes: [],
     rxQuality: inlinePrescriptions('5k'),
     rxRaceSpecific: inlinePrescriptions('5k'),
-    tPaceSec: tPaceFromGoal(goalSec, distMi),
+    tPaceSec: fixtureTPaceFromGoalPace(goalSec, distMi),
     lthr: null,
     maxHr: null,
   };

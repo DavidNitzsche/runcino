@@ -102,7 +102,6 @@ import {
   paceOverWindow,
   easyPaceForBlend,
 } from '@/lib/training/goal-projection';
-import { tPaceFromVdot } from '@/lib/training/vdot';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 
 /* ─────────────────────────────────────────────────────────────── constants */
@@ -387,14 +386,45 @@ export interface ActualRead {
  *
  * `null` means the run exists but no rung could describe its work — which the
  * caller must treat as missing evidence, never as a miss.
+ *
+ * ── THRESHOLD-OWNER-1 (2026-09-05) · `tPaceSecPerMi`, NOT A SECOND FITNESS ──
+ *
+ * This read `tPaceFromVdot(ctx.vdot)` and handed the result to `paceDomain`,
+ * whose whole ladder (`t-30` R, `t-18` I, `t` threshold, `t+18` M, `t+100` E)
+ * hangs off that one number — so the domain an executed run was CLASSIFIED
+ * into came off a VDOT while the domain it was PRESCRIBED at came off
+ * `resolvePrescribedPaceAnchors`. Two answers to "what is this runner's
+ * threshold", eleven lines apart in the same call.
+ *
+ * F-5 fixed exactly this shape one function down (`establishedPaceFor`, see
+ * its header) and did not follow it up here; `load.ts` already resolves the
+ * canonical anchors in the same function that calls this one and was passing
+ * the VDOT anyway. On the owner's account, 2026-09-05, the two numbers were
+ * 431 s/mi (`tPaceFromVdot(47.7)`) and 430 s/mi (canonical) — one second, and
+ * that smallness is the point: the divergence is unbounded by construction,
+ * and it has been as wide as the tier flips the continuity cap exists for.
+ *
+ * `vdot` stays on `ctx` because `expandPlanned` still prices the EASY band
+ * from it (`easyPaceForBlend`). That is a separate quantity with a separate
+ * owner and a separate migration; naming them separately is Rule 16 rather
+ * than a compromise of it. It is listed as OPEN in
+ * `lib/training/_threshold_owner_scan.test.ts`.
  */
 export function actualStimulus(
   runData: RunData,
   planned: PlannedRead,
   session: PlannedSession,
-  ctx: { vdot: number | null; watchStatusFallback?: 'completed' | 'partial' | 'abandoned' | null },
+  ctx: {
+    vdot: number | null;
+    /** THE canonical threshold, from `resolvePrescribedPaceAnchors`. Null is
+     *  a real answer — a runner nobody can price gets no domain
+     *  reclassification, which is what `paceDomain`'s caller already handles
+     *  (Rule 11). */
+    tPaceSecPerMi: number | null;
+    watchStatusFallback?: 'completed' | 'partial' | 'abandoned' | null;
+  },
 ): ActualRead | null {
-  const tPace = tPaceFromVdot(ctx.vdot);
+  const tPace = ctx.tPaceSecPerMi;
   const phases = runPhases(runData);
   const workPhases = phases.filter((p) => p.type === 'work');
   const watchStatus = runWatchStatus(runData) ?? ctx.watchStatusFallback ?? null;

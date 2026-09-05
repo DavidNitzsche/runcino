@@ -12,7 +12,8 @@ import {
   type ComposePlanInput,
   type DOW,
 } from './generate';
-import { tPaceFromGoal, buildWorkoutSpec, capSpecToDistance, totalDistanceMiFromSpec } from './spec-builder';
+import { buildWorkoutSpec, capSpecToDistance, totalDistanceMiFromSpec } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 const ISO_START = '2026-01-05'; // Monday
 function raceDateForWeeks(weeks: number): string {
@@ -51,7 +52,7 @@ function buildInput(o: {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: goalPaceSec != null ? tPaceFromGoal(o.goalSec, o.raceMi) : null,
+    tPaceSec: goalPaceSec != null ? fixtureTPaceFromGoalPace(o.goalSec, o.raceMi) : null,
     lthr: null,
     maxHr: null,
   };

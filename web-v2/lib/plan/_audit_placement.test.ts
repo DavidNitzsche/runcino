@@ -30,7 +30,7 @@ import {
   type ComposePlanInput,
   type DOW,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 // ───────────────────────────────────────────────────────────────────────
 // Faithful port of generate.ts loadGeneratorInputs day-reconciliation.
@@ -156,7 +156,7 @@ function buildInput(layout: DerivedLayout, sc: Scenario, startISO: string = STAR
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(sc.goalSec ?? 0, sc.raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(sc.goalSec ?? 0, sc.raceDistanceMi),
     lthr: null,
     maxHr: null,
   };

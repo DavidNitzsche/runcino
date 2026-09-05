@@ -47,7 +47,7 @@ import {
   composePlan, finalizeComposedPlan, inlinePrescriptions,
   type ComposePlanInput, type DOW,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 function marathonInput(over: Partial<ComposePlanInput> = {}): ComposePlanInput {
   return {
@@ -69,7 +69,7 @@ function marathonInput(over: Partial<ComposePlanInput> = {}): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions('m'),
     rxRaceSpecific: inlinePrescriptions('m'),
-    tPaceSec: tPaceFromGoal(10800, 26.2),
+    tPaceSec: fixtureTPaceFromGoalPace(10800, 26.2),
     lthr: null,
     maxHr: null,
     midBlockRaces: [],

@@ -181,7 +181,9 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/training/pace-corpus.ts',
-    digest: '573503045116ea89',
-    why: 'Re-pinned at epoch 2 · Phase 1 walks the threshold continuity chain rather than sampling it, with a faithful per-day fallback, which moves which sessions carry the belief.',
+    digest: '2c99348a17a88f68',
+    why: 'Re-pinned WITHOUT an epoch bump (case b) on 2026-09-05 · THRESHOLD-OWNER-1 removed an UNUSED import of the forward VDOT-to-threshold curve from this file and nothing else. '
+      + 'The reader inverts a pace to a VDOT (`vdotFromTpace`) and never converted one back, so the binding was dead; deleting a dead binding cannot move a resolved value, and no shadow record is invalidated. '
+      + 'The behavioural pin from epoch 2 stands: Phase 1 walks the threshold continuity chain rather than sampling it, with a faithful per-day fallback, which moves which sessions carry the belief.',
   },
 ];

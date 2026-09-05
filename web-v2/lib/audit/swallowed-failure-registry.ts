@@ -481,7 +481,13 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/plan/adapt.ts::actionsForTrigger',
   'lib/plan/adapt.ts::actionsForTrigger',
   'lib/plan/adapt.ts::applyAdaptations',
-  'lib/plan/adapt.ts::deriveTPaceSecForRebuild',
+  // 2026-09-05 · THRESHOLD-OWNER-1 · one fewer. `deriveTPaceSecForRebuild`
+  // read the plan's race row and handed the runner's GOAL to
+  // `tPaceFromGoal`, swallowing every failure on the way into a bare
+  // `catch { return null }`. It no longer takes a race at all: it reads
+  // `resolvePrescribedPaceAnchors`, branches on the refusal explicitly,
+  // and logs a thrown read rather than collapsing it into "this runner
+  // has no threshold" (Rule 11). EMPTIED_BASELINE 353 -> 352.
   'lib/plan/adapt.ts::detectFitnessRegression',
   'lib/plan/adapt.ts::detectFitnessRegression',
   'lib/plan/adapt.ts::detectFitnessRegression',
@@ -753,7 +759,13 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // This was the single most consequential swallow left on the list: it sat on
 // the ONE surface whose entire job is carrying a decision to the runner, and
 // its empty list rendered as "your coach has nothing to say."
-export const EMPTIED_BASELINE = 352;
+// MERGE (2026-09-05) · 353 -> 351, and the ratchet caught the arithmetic.
+// TWO branches each removed one swallow from 353 for different reasons and
+// each independently wrote 352. Merging them kept one number and two
+// reductions, which the gate refused: "EMPTIED_KNOWN holds 351 ids but
+// EMPTIED_BASELINE says 352". A ratchet that only ever moves down is exactly
+// the check that catches a merge keeping the smaller of two decrements.
+export const EMPTIED_BASELINE = 351;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

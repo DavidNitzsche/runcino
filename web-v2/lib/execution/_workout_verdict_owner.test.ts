@@ -53,6 +53,7 @@ import { composeTrainingInfluence } from '@/lib/coach/training-influence';
 import { judgeTestPointExecution } from '@/lib/training/goal-projection';
 import { actualStimulus, type PlannedRead, type PlannedSession } from './reconstruct';
 import { asRunData } from '@/lib/runs/run-shape';
+import { tPaceFromVdot } from '@/lib/training/vdot';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 import type { WorkoutType } from '@/lib/coach/run-purpose';
 
@@ -595,7 +596,7 @@ describe('VERDICT-2 · the twelve workout types, every consumer agreeing', () =>
       });
 
       it('execution reconstruction · the same rep verdicts', () => {
-        const a = actualStimulus(asRunData({ phases: f.phases, status: 'completed' }), plannedFor(f), sessionFor(f), { vdot: 48 });
+        const a = actualStimulus(asRunData({ phases: f.phases, status: 'completed' }), plannedFor(f), sessionFor(f), { vdot: 48, tPaceSecPerMi: tPaceFromVdot(48) });
         expect(a?.basis).toBe('watch-phases');
         expect(a?.workVerdicts).toEqual(workVerdicts);
       });
@@ -709,7 +710,7 @@ describe('VERDICT-3 · the owner s 2026-09-01 4×1 mi, on every consumer', () =>
       basis: 'expanded-spec', workTargetSPerMi: 430,
       stimulus: { domain: 'threshold', workMinutes: 28.7, workMi: 4, meanWorkPaceSPerMi: 430, recoveryIntent: 'incomplete' },
     }, { dateISO: '2026-09-01', type: 'threshold', isQuality: true, isLong: false, distanceMi: 8.5, paceTargetSPerMi: 430,
-         spec: { kind: 'threshold' } as unknown as WorkoutSpec }, { vdot: 48 });
+         spec: { kind: 'threshold' } as unknown as WorkoutSpec }, { vdot: 48, tPaceSecPerMi: tPaceFromVdot(48) });
     expect(a?.workVerdicts).toEqual(['hit', 'hit', 'hit', 'fast']);
   });
 

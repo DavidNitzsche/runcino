@@ -35,7 +35,7 @@ import {
   type ComposePlanInput,
   type DOW,
 } from './generate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { TIER_TARGETS, distanceCategoryOf, type GoalTier } from './goal-tiers';
 // BOUNDARY-OWNER-1 · the app's one split of a day into easy and at-pace miles.
 import { splitDay } from './intensity-distribution';
@@ -120,7 +120,7 @@ function personaToComposeInput(p: SyntheticRunner): ComposePlanInput {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(p.race.goalSec, p.race.distanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(p.race.goalSec, p.race.distanceMi),
     lthr: null,
     // 2026-06-03 · Rule 16 · personas without maxHr fall back to
     // LTHR-only HR cap derivation. Null is the honest default for

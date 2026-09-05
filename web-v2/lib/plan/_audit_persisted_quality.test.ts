@@ -52,12 +52,8 @@ import {
   type ComposePlanResult,
   type DOW,
 } from './generate';
-import {
-  tPaceFromGoal,
-  buildWorkoutSpec,
-  capSpecToDistance,
-  totalDistanceMiFromSpec,
-} from './spec-builder';
+import { buildWorkoutSpec, capSpecToDistance, totalDistanceMiFromSpec } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 import { vdotFromTpace, iPaceFromVdot } from '@/lib/training/vdot';
 
 // ── input builder (mirrors the periodization harness) ───────────────────────
@@ -100,7 +96,7 @@ function buildInput(o: {
     crossModes: [],
     rxQuality: inlinePrescriptions(cat),
     rxRaceSpecific: inlinePrescriptions(cat),
-    tPaceSec: tPaceFromGoal(o.goalSec, o.raceDistanceMi),
+    tPaceSec: fixtureTPaceFromGoalPace(o.goalSec, o.raceDistanceMi),
     lthr: o.lthr ?? null,
     maxHr: o.maxHr ?? null,
   };

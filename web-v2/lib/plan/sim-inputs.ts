@@ -59,7 +59,9 @@ import { resolveLoadTier, pickPlanMode, buildOpensISO, type PlanMode } from './g
 import { distanceCategoryOrNull, UNKNOWN_DISTANCE_REASON } from '@/lib/race/distance-category';
 import { ULTRA_UNSUPPORTED_REASON, planAuthorshipUnsupported } from './supported-distances';
 import { syntheticPaceAnchors } from './authoring-anchors';
-import { vdotFromRace, tPaceFromVdot, predictRaceTime } from '@/lib/training/vdot';
+// THRESHOLD-OWNER-1 · `tPaceFromVdot` REMOVED · unused since the simulator's
+// `min(tPaceFromGoal(goal), currentT)` line was deleted.
+import { vdotFromRace, predictRaceTime } from '@/lib/training/vdot';
 import {
   SIM_DISTANCE_MI,
   recentWeeklyMiFromBucket,

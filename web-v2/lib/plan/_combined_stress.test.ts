@@ -65,7 +65,7 @@ import { SPIKE_MIN_COHERENT_ANCHOR_MI } from './generate';
 import { matrix, arcStr, simInputsForArc, type Arc } from './sim-matrix';
 import { buildSimPlan } from './sim-inputs';
 import { validateComposedPlan, PlanValidationError } from './validate';
-import { tPaceFromGoal } from './spec-builder';
+import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 /* ─────────────────────────────────────────── 1 · doctrine, read at run time */
 
@@ -495,7 +495,7 @@ function marathonInput(mid: ComposePlanInput['midBlockRaces']): ComposePlanInput
     crossModes: [],
     rxQuality: inlinePrescriptions('m'),
     rxRaceSpecific: inlinePrescriptions('m'),
-    tPaceSec: tPaceFromGoal(10800, 26.2),
+    tPaceSec: fixtureTPaceFromGoalPace(10800, 26.2),
     lthr: null,
     maxHr: null,
     midBlockRaces: mid,
