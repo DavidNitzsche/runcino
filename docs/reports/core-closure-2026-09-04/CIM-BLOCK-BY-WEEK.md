@@ -40,3 +40,31 @@ date, not against today, and each is reassessed at a boundary BEFORE it lands.
 - **reassess 2026-09-20**. Requires the 46.8 mi week of the block completed with no session graded MISSED.
 - if unmet: REDUCE to 48.5, not dropped.
 
+
+## What happens if the gate is not met
+
+The projection chain is a POLICY ASSUMPTION: every "SUPPORTED against projection"
+verdict downstream assumes the weeks before it were completed. A chain that
+silently assumes its own premises is worth nothing, so here is the counterfactual.
+
+**A · every gate passes.** 2026-09-21 is the only week rated above SUPPORTED.
+Once 55.2 is completed, every later week including the 60.0 on 2026-10-26 sits
+inside SUPPORTED against what came before. Final projected ceiling 60 mi.
+
+**B · the 2026-09-21 gate is not met and the week reduces to 48.5.** The block
+does not collapse. The reach simply moves: 2026-10-05 at 59.5 becomes the
+ALLOWED week, at +22.7% on 48.5, and arms its own gate. Final projected ceiling
+is still 60 mi, reached later and on evidence rather than on assumption.
+
+That is the behaviour the deferral rule asks for. **A progression that is not
+earned on schedule is not deleted, it is re-queued at the next boundary where it
+can be earned.** The block carries at most two gates and the second one only
+arms if the first is missed.
+
+## What this does NOT check
+
+Volume and long-run distance only. It does not price intensity, stressor
+stacking, recent adaptation or recovery context, so a week can read SUPPORTED
+here and still be too much. That is defect 5, and the seven-component demand
+model that answers it is in build. Until it lands, treat this table as necessary
+and not sufficient.
