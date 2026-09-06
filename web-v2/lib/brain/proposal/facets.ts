@@ -471,10 +471,15 @@ export const FACET_GAPS: readonly FacetGap[] = [
     because:
       'Nothing in the engine adds a session. Every upward lever it has resizes a day that already '
       + 'exists — tryAdaptiveBump raises distance on existing rows, the progression gate raises dose '
-      + 'inside an existing session — because adding one needs a week, a day-of-week and a '
-      + 'composer-authored workout_spec. Closed by giving the composer a single-session entry point '
-      + 'that authors a spec for one day, at which point the ACCEPT_EXECUTOR and UNDO gaps below '
-      + 'close with it.',
+      + 'inside an existing session. RE-CHECKED 2026-09-05 (round 2): the mechanical half of the old '
+      + 'claim is stale — `generate.ts`\'s `specForComposedDay`/`persistedDayShape` (extracted '
+      + '2026-08-24) ARE a single-day, composer-authored spec entry point; nothing here still needs '
+      + 'a whole-week recompose to author one row. What is still missing, and is the real blocker, is '
+      + 'upstream of authoring: no live caller invokes that entry point outside `composePlan` itself, '
+      + 'and — the harder half — no EVIDENCE_SOURCE reader answers "should there be a session here '
+      + 'that is not" (see the EVIDENCE_SOURCE gap below). Closed by that reader plus wiring the '
+      + 'existing entry point to it, at which point the ACCEPT_EXECUTOR and UNDO gaps below close '
+      + 'with it.',
   },
   {
     kind: 'ADD_WORKOUT', facet: 'EVIDENCE_SOURCE',
