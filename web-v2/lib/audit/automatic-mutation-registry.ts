@@ -306,6 +306,36 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       + 'pace-drift-monitor.ts#explainPaceDrift`\'s six named fields before deciding whether a pending '
       + 'reprice proposal explains it — never a bare tolerance.',
   },
+  {
+    id: 'cron/reassessment-sweep',
+    route: 'app/api/cron/reassessment-sweep/route.ts',
+    trigger: '30 5 * * *',
+    reach: 'append_or_fill',
+    changes: ['reassessment_schedule (status/resulting_decision/resolved_at only)', 'cron_ledger (stamp only)'],
+    idempotent: true,
+    onPartialFailure:
+      'One try/catch per due item inside runReassessmentEvaluationSweep. A throw is recorded via '
+      + 'recordAssessmentFailure (attempts/last_error/next_retry_at on the SAME row, never a second '
+      + 'kind) and does not stop the rest of the pass. Every resolution goes through '
+      + 'resolveReassessment, whose UPDATE is guarded on status IN (\'PENDING\',\'DUE\'), so a crash '
+      + 'between evaluating and resolving one item leaves it exactly where it was — re-evaluated, not '
+      + 'double-applied, on the next pass.',
+    runnerSees: 'invisible',
+    reversible:
+      'Nothing to reverse in the runner-facing sense: this never writes plan_workouts, races or '
+      + 'runner_injuries. It only ever transitions its OWN scheduler row (PENDING/DUE to '
+      + 'RESOLVED/ABANDONED) and never a second time, since the guard above makes a terminal row '
+      + 'invisible to the next read.',
+    note:
+      'REASSESSEVAL-1 (2026-09-06) · the evaluator POST_RACE_RECOVERY_CHECK and '
+      + 'RETURN_TO_TRAINING_STAGE never had. Both kinds had a real scheduleReassessment call site '
+      + '(plan-drift\'s POSTRACE-1, v5/return/checkin\'s RETURNSTAGE-1) and no consumer that read a '
+      + 'DUE item back and re-asked its question. lib/ops/reassessment-evaluators.ts is that '
+      + 'consumer. Deliberately does not create a plan_workout_proposals row for either kind — see '
+      + 'that file\'s own header for why (the one proposal kind that could plausibly carry either '
+      + 'finding, RECOVERY_CHANGE, has no generator, no evidence source and no writer anywhere in '
+      + 'this app yet, per lib/brain/proposal/facets.ts\'s own ledger).',
+  },
 
   // ── The physiological constants ───────────────────────────────────────────
   {

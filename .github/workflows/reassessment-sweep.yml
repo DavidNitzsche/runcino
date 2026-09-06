@@ -1,0 +1,65 @@
+# REASSESSEVAL-1 (2026-09-06) · the call site POST_RACE_RECOVERY_CHECK and
+# RETURN_TO_TRAINING_STAGE never had.
+#
+# Both kinds have had a real scheduleReassessment call site since before this
+# change (plan-drift's POSTRACE-1, v5/return/checkin's RETURNSTAGE-1) and no
+# consumer that ever read a due item of either kind back and re-asked its
+# question. web-v2/lib/ops/reassessment-evaluators.ts is that consumer;
+# web-v2/app/api/cron/reassessment-sweep/route.ts is its only caller.
+#
+# Read-only against every other table it touches (races, runner_injuries,
+# coach_intents via loadReturnCheckins) except reassessment_schedule itself,
+# which it only ever transitions PENDING/DUE -> RESOLVED/ABANDONED, guarded
+# by resolveReassessment's own WHERE status IN ('PENDING','DUE'). Idempotent:
+# an item already resolved is invisible to the next pass's read, so running
+# this twice, or twelve hours late, does the same work once.
+#
+# Schedule: any time, daily — this does not depend on plan-drift or
+# run-adaptations having already run today (Rule 23; it reads whatever is
+# currently due, regardless of when it was scheduled).
+#
+# Also driven by the in-process tick (lib/ops/cron-ledger.ts CRON_JOBS) and
+# the tick's own GitHub backstop (cron-tick.yml) — this workflow is the
+# job's OWN schedule, kept per the repo's stated convention of not removing
+# an existing per-job trigger when the tick is added (see tick/route.ts's
+# own header).
+#
+# Manual trigger: Actions tab > "Sweep reassessment evaluations" > Run workflow.
+
+name: Sweep reassessment evaluations
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Hit /api/cron/reassessment-sweep
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 120 \
+            https://www.faff.run/api/cron/reassessment-sweep)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Reassessment sweep failed with HTTP $status"
+            exit 1
+          fi

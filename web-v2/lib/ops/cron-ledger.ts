@@ -292,6 +292,24 @@ export const CRON_JOBS: readonly CronJob[] = [
       + 'REDUCES the number of passes — today it runs on every trigger, here at most once a day — '
       + 'so the crash window is entered less often, not more. Nothing in the plan chain reads it.',
   },
+  {
+    id: 'reassessment-sweep',
+    path: '/api/cron/reassessment-sweep',
+    slotsUtcHour: [5],
+    staleAfterHours: 30,
+    timeoutMs: 65000,
+    // Deliberately []. `runReassessmentEvaluationSweep` reads `loadDueItems`
+    // directly (PENDING or DUE, `assess_on_iso <= today`) rather than
+    // depending on `sweepReassessments` (inside run-adaptations) having
+    // already promoted anything to DUE first — Rule 23: this job ensures its
+    // own precondition instead of assuming another job's ordering.
+    requires: [],
+    idempotenceEvidence:
+      'automatic-mutation-registry cron/reassessment-sweep · idempotent: true · every transition '
+      + 'goes through resolveReassessment, whose UPDATE is guarded on status IN (\'PENDING\',\'DUE\'); '
+      + 'an item a prior pass already resolved is invisible to the next pass\'s read, so re-running '
+      + 'this twice does the same work once.',
+  },
 ] as const;
 
 /**
