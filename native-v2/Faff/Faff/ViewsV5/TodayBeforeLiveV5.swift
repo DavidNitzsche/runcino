@@ -273,6 +273,15 @@ struct TodayBeforeLiveV5: View {
                     TodayBeforeGoOption(id: "cancel-move", label: "Keep both as planned")
                 ]
             }
+            // SKIPCONFIRM-1 · already skipped today. "Skip it" a second time
+            // is not an option that means anything — offer the one action
+            // that does (put it back) ahead of whatever move targets remain,
+            // so the runner reads confirmation before anything else.
+            if row.skipped == true {
+                return [TodayBeforeGoOption(id: "unskip", label: "Put it back",
+                                             sub: "Skip it, run it after all")]
+                    + moveOptions().filter { $0.id != "skip" }
+            }
             return moveOptions()
         default:
             return []
@@ -352,6 +361,9 @@ struct TodayBeforeLiveV5: View {
             if option.id == "skip" {
                 await skip()
                 return true
+            } else if option.id == "unskip" {
+                await unskip()
+                return true
             } else if option.id == "cancel-move" {
                 moveConflict = nil
                 return true
@@ -383,6 +395,15 @@ struct TodayBeforeLiveV5: View {
 
     private func skip() async {
         _ = try? await API.postSkip(date: model.dateISO)
+        await reload()
+    }
+
+    /// SKIPCONFIRM-1 · the symmetric write. `API.deleteSkip(date:)` already
+    /// existed for un-skipping a future day from the week-strip preview;
+    /// this is the same call reached from today's own row once it can see
+    /// it was already skipped.
+    private func unskip() async {
+        _ = try? await API.deleteSkip(date: model.dateISO)
         await reload()
     }
 

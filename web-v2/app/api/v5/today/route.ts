@@ -2094,6 +2094,19 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const shoePick = (pickedShoeId ? shoes.find((s) => String(s.id) === pickedShoeId) : undefined)
     ?? recommendShoe(shoes, shoeType);
 
+  // SKIPCONFIRM-1 (2026-09-06) · the same gap the shoe-pick comment above
+  // describes, for the OTHER `day_actions` writer this screen has. `POST
+  // /api/today/skip` landed a real row and this row never asked for it back,
+  // so "Move or skip" said the identical "Move to another day, or skip it"
+  // whether or not the runner had already tapped Skip five minutes earlier —
+  // no confirmation anywhere on the day. Reproduced live 2026-09-06.
+  const alreadySkipped = ((await pool.query(
+    `SELECT 1 FROM day_actions
+      WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip'
+      LIMIT 1`,
+    [userId, today],
+  ).catch(() => ({ rows: [] as any[] }))).rows.length > 0);
+
   const beforeYouGo: V5Row[] = [];
   if (shoePick) {
     beforeYouGo.push({
@@ -2105,7 +2118,9 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     beforeYouGo.push({ id: 'fuel', label: 'Fuel', sub: fueling.shortLine, value: null, action: null });
   }
   if (todayPlan && todayPlan.type !== 'rest') {
-    beforeYouGo.push({ id: 'move', label: 'Move or skip', sub: 'Move to another day, or skip it', value: null, action: 'move_skip' });
+    beforeYouGo.push(alreadySkipped
+      ? { id: 'move', label: 'Skipped', sub: 'You can still move it, or put it back', value: null, action: 'move_skip', skipped: true }
+      : { id: 'move', label: 'Move or skip', sub: 'Move to another day, or skip it', value: null, action: 'move_skip' });
   }
 
   const raceDay = todayPlan?.type === 'race';

@@ -330,15 +330,21 @@ struct V5Row: Decodable, Equatable, Hashable, Identifiable {
     let action: String?
     /// How the engine wants the VALUE inked. See `V5Tone`. Absent is neutral.
     let tone: String?
+    /// SKIPCONFIRM-1 · true when `day_actions` already carries a skip for
+    /// this date. Only the `move_skip` row ever sets it; optional so a build
+    /// that has never heard of it (or a stale cache from before it existed)
+    /// decodes exactly as before — same posture as `tone`.
+    let skipped: Bool?
 
     var toneValue: V5Tone { tone.flatMap(V5Tone.init(rawValue:)) ?? .neutral }
 
-    /// Defaults on the two the engine may not send, so adding a field to this
+    /// Defaults on the fields the engine may not send, so adding one to this
     /// contract never breaks a construction site.
     init(id: String, label: String, sub: String? = nil, value: V5Number? = nil,
-         action: String? = nil, tone: String? = nil) {
+         action: String? = nil, tone: String? = nil, skipped: Bool? = nil) {
         self.id = id; self.label = label; self.sub = sub
         self.value = value; self.action = action; self.tone = tone
+        self.skipped = skipped
     }
 }
 

@@ -75,6 +75,20 @@ export interface V5Row {
    * call site (which has nothing to say) stays exactly as it was.
    */
   tone?: string | null;
+  /**
+   * SKIPCONFIRM-1 (2026-09-06) · true when `day_actions` already carries a
+   * `skip` row for this date. Optional — like `tone` — so a call site with
+   * nothing to say, and an old cached payload from before this field
+   * existed, both decode exactly as before. Only the "Move or skip" row
+   * (`action: 'move_skip'`) sets it; every other row omits it.
+   *
+   * Mirrors the shoe-pick fix immediately above this row's construction:
+   * the write to `day_actions` landed and nothing ever read it back, so the
+   * row kept offering "Skip it" forever, even to a runner who had already
+   * skipped — no confirmation anywhere on the day, in either row copy or
+   * the panel above it. Reproduced live 2026-09-06, David's own phone.
+   */
+  skipped?: boolean;
 }
 
 export interface V5Step {
