@@ -105,6 +105,7 @@ import {
   recommendReschedule,
   applyReschedule,
   undoReschedule,
+  resolveConstraint,
   timelineOf,
   applyEditsToTimeline,
   separationFindings,
@@ -184,6 +185,22 @@ function allRefused(why: string): Checks {
   const out = {} as Checks;
   for (const c of READJUDICATION_CHECKS) out[c] = { state: 'refused', why };
   return out;
+}
+
+/**
+ * MOVEREADJUDICATE-2 · a caller that already holds an `AvailabilityConstraint`
+ * (every apply path does — it is required to actually move the row) splits it
+ * back into the neutral contract's two plain arrays, rather than re-deriving
+ * or re-asking. One conversion, used everywhere `readjudicateMove` is called
+ * alongside an apply, so the gate and the write always search the same
+ * candidate set.
+ */
+function constraintToDates(
+  c: AvailabilityConstraint,
+): { unavailableDates: readonly string[]; availableDates: readonly string[] } {
+  if (c.kind === 'UNAVAILABLE_DATES') return { unavailableDates: c.dates, availableDates: [] };
+  if (c.kind === 'AVAILABLE_DATES') return { unavailableDates: [], availableDates: c.dates };
+  return { unavailableDates: [], availableDates: [] };
 }
 
 const finding = (
@@ -455,7 +472,22 @@ export async function readjudicateMoveWith(
   const roles = weekRolesOf(shape, races);
 
   /* ── the ranked set, from the decision owner ───────────────────────────── */
-  const constraint: AvailabilityConstraint = { kind: 'UNAVAILABLE_DATES', dates: [target.dateISO] };
+  //
+  // MOVEREADJUDICATE-2 · the caller's REAL availability, never invented here.
+  // This used to hardcode `{ kind: 'UNAVAILABLE_DATES', dates: [target.
+  // dateISO] }` regardless of what the runner actually said, which searches a
+  // DIFFERENT candidate set than the one his real GET/POST computed with his
+  // real answer (or UNKNOWN, when he gave none — the common case, since RS-2
+  // opens with nothing marked). Verified live: with the runner's actual
+  // UNKNOWN constraint, 2026-09-16 ranked option 1; with this line's invented
+  // UNAVAILABLE_DATES, CONFLICTS refused the same date on the same request as
+  // "not among the dates the coach can offer" — a fact that was never true.
+  // `resolveConstraint` is the one function every other caller in this file
+  // already uses for the same three-state shape (Rule 16); this makes the
+  // port ASK rather than assume.
+  const constraint: AvailabilityConstraint = resolveConstraint(
+    [...(req.unavailableDates ?? [])], [...(req.availableDates ?? [])],
+  );
   const rec = await recommendReschedule({
     userUuid,
     todayISO,
@@ -1172,9 +1204,11 @@ export async function applyMove(input: ApplyMoveInput): Promise<MoveOutcome> {
     };
   }
 
-  /* 2 · re-adjudicate. */
+  /* 2 · re-adjudicate. The SAME constraint `applyReschedule` below is about to
+   * apply under — never a second, invented one (MOVEREADJUDICATE-2). */
   const report = await readjudicateMove({
     userUuid: input.userUuid, todayISO: input.todayISO, move: input.move,
+    ...constraintToDates(input.constraint),
   });
   const v = verdictOf(report);
   if (v === 'REFUSED' && input.overrideRefusals !== true) {
@@ -1189,10 +1223,15 @@ export async function applyMove(input: ApplyMoveInput): Promise<MoveOutcome> {
   }
 
   /* 3 · apply, through the one mutation boundary. */
+  // `input.move.planWorkoutId` is `''` (never undefined) on the by-date shape
+  // POST /api/plan/move accepts — forward `fromISO` as `dateISO` too, or
+  // `recommendReschedule` inside `applyReschedule` sees neither a usable id
+  // nor a date and refuses `not_found` for a request that named its day fine.
   const applied = await applyReschedule({
     userUuid: input.userUuid,
     todayISO: input.todayISO,
-    planWorkoutId: input.move.planWorkoutId,
+    planWorkoutId: input.move.planWorkoutId || undefined,
+    dateISO: input.move.planWorkoutId ? undefined : (input.move.fromISO || undefined),
     constraint: input.constraint,
     optionId: input.optionId,
     token: input.token,

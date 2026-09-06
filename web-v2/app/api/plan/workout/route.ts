@@ -1,12 +1,34 @@
 /**
  * PATCH /api/plan/workout
- *   { plan_id, date_iso, type?, distance_mi?, sub_label?, new_date_iso? }
+ *   { plan_id, date_iso, type?, distance_mi?, sub_label? }
  *
- * Updates one plan_workouts row in place. If new_date_iso is given,
- * date_iso + dow + week_id are updated to match the new date (workout
- * "moves" to that calendar slot).
+ * Updates one plan_workouts row IN PLACE — type, distance, sub-label. It does
+ * NOT move a session to another day.
  *
  * Coach picks up the change on next briefing — no separate write needed.
+ *
+ * ── MOVEREADJUDICATE-1 (2026-09-05) · new_date_iso RETIRED, not wired ───────
+ *
+ * This route used to accept `new_date_iso` and, when present, update
+ * `date_iso` + `dow` + `week_id` directly against `plan_workouts` — a second,
+ * silent way to move a scheduled session with NONE of the nine re-adjudication
+ * checks Move-a-Run runs (no race-proximity read, no demand recompute, no
+ * hard-session-spacing check, no ledger row naming what moved). The mover
+ * census in `lib/brain/orchestration/_move_readjudication.test.ts` named it as
+ * one of the paths bypassing re-adjudication.
+ *
+ * Retired rather than wired, because it was genuinely dead: `new_date_iso` had
+ * exactly one caller in the whole app — `API+Toolkit.swift`'s
+ * `patchPlannedWorkout(newDateIso:)` — and THAT function itself had zero
+ * callers anywhere in native-v2, and nothing in web-v2 posted `new_date_iso`
+ * to this route either. Per CLAUDE.md's move-census instruction ("route it
+ * through MoveOrchestrator, or retire the path if it's genuinely dead"): a
+ * bypass nothing calls is a bigger risk left in place than removed, because
+ * the day a first caller appears it would silently reach production with no
+ * re-adjudication and no discovery — this comment and the 400 below are what
+ * stop that. A session that genuinely needs to move belongs on
+ * `POST /api/plan/move` or `POST /api/today/reschedule`, both of which are
+ * WIRED movers per that same census.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
@@ -43,24 +65,20 @@ export async function PATCH(req: NextRequest) {
   }
   if (body.sub_label !== undefined) updates.sub_label = body.sub_label;
 
-  // Handling a move (date change)
-  let newDate: string | null = null;
+  // RETIRED (2026-09-05) · see this file's header. This route no longer moves
+  // a session. A caller that still sends `new_date_iso` is told exactly why
+  // and where to go instead, rather than being silently ignored — Rule 11,
+  // an unsupported request is a refusal, not a no-op.
   if (body.new_date_iso && body.new_date_iso !== body.date_iso) {
-    newDate = body.new_date_iso;
-    // Resolve new week_id for the target date
-    const w = (await pool.query(
-      `SELECT id::text AS id FROM plan_weeks
-        WHERE plan_id = $1
-          AND week_start_iso <= $2::text
-          AND to_char((week_start_iso::date + interval '7 days'), 'YYYY-MM-DD') > $2::text
-        LIMIT 1`,
-      [body.plan_id, newDate]
-    )).rows[0];
-    if (!w) return NextResponse.json({ error: 'no plan_week covers new_date_iso' }, { status: 400 });
-    updates.date_iso = newDate;
-    updates.week_id = w.id;
-    // dow: 0=Sun..6=Sat
-    updates.dow = new Date(newDate + 'T12:00:00Z').getUTCDay();
+    return NextResponse.json(
+      {
+        error: 'move_not_supported',
+        reason: 'This route no longer moves a workout to another day — new_date_iso was retired '
+          + 'because it bypassed re-adjudication (race proximity, demand, hard-session spacing, '
+          + 'the ledger). Use POST /api/plan/move or POST /api/today/reschedule instead.',
+      },
+      { status: 400 },
+    );
   }
 
   if (Object.keys(updates).length === 0) {
@@ -103,11 +121,14 @@ export async function PATCH(req: NextRequest) {
     const r = { rowCount: boundary.value?.rowCount ?? 0, rows: [boundary.value?.row] };
     if (r.rowCount === 0) return NextResponse.json({ error: 'workout not found' }, { status: 404 });
 
-    // Log intent so coach acknowledges the swap once
+    // Log intent so coach acknowledges the swap once. 'workout_swapped' is a
+    // shared reason string other routes reuse (api/coach/proposal, api/today/
+    // reschedule) so the cache-bust + acknowledgment reader matches all three —
+    // left as-is; only the date-move capability above was retired.
     await pool.query(
       `INSERT INTO coach_intents (user_id, user_uuid, reason, field, value)
        VALUES ($1, $1, 'workout_swapped', $2, $3)`,
-      [userId, body.date_iso, JSON.stringify({ from: body.date_iso, to: newDate ?? body.date_iso, ...updates })]
+      [userId, body.date_iso, JSON.stringify({ date_iso: body.date_iso, ...updates })]
     ).catch(() => {});
 
     await bustBriefingCacheForEvent(userId, 'plan_swap');

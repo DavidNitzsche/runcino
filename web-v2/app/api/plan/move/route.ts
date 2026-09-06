@@ -71,6 +71,16 @@ const STATUS: Record<string, number> = {
   read_failed: 503,
 };
 
+/** Dates arrive as a comma-separated list. Anything that is not an ISO day is
+ *  dropped rather than silently reinterpreted — same convention as
+ *  `/api/plan/reschedule`'s own `parseDates`, kept local rather than shared
+ *  because it is four lines and a shared import would be the only coupling
+ *  between these two routes. */
+function parseDates(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  return raw.split(',').map((s) => s.trim()).filter(isISODate);
+}
+
 /** Rule 11 · the report is serialised WITH the checks that could not run. A
  *  surface that printed only the findings would show an incomplete
  *  re-adjudication as a clean one, which is the exact collapse the contract's
@@ -109,13 +119,20 @@ export async function GET(req: NextRequest) {
   // The mover's own ranked set, unchanged. The constraint is the real one:
   // he cannot run it on its own day. Availability elsewhere stays UNKNOWN
   // unless he says otherwise, which is RS-2 and is not this route's to assume.
+  //
+  // RS-2 FIX (2026-09-05) · this used to hardcode `[]` for `unavailable`,
+  // meaning a runner who marked days he cannot run had that answer silently
+  // dropped the moment RescheduleV5.swift was repointed at this route — the
+  // exact "never assume availability" rule RS-2 exists to hold read back as
+  // UNKNOWN regardless of what he said. `/api/plan/reschedule`'s own
+  // `parseDates` is the model.
   const rec = await recommendReschedule({
     userUuid,
     todayISO,
     planWorkoutId: workoutId,
     dateISO: isISODate(fromISO) ? fromISO : undefined,
     constraint: resolveConstraint(
-      [], q.get('available')?.split(',').filter(isISODate) ?? [], q.get('note') ?? undefined,
+      parseDates(q.get('unavailable')), parseDates(q.get('available')), q.get('note') ?? undefined,
     ),
     allowAdjacentWeek: q.get('adjacent_week') !== '0',
   });
@@ -126,6 +143,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  // MOVEREADJUDICATE-2 · the SAME availability just asked above, not a second,
+  // invented one. `readjudicateMove` used to hardcode its own constraint and
+  // could refuse a date `rec.recommendation.options` had just ranked first,
+  // for a reason that was never true — verified live against this exact route.
   const report = await readjudicateMove({
     userUuid,
     todayISO,
@@ -135,6 +156,8 @@ export async function GET(req: NextRequest) {
       toISO,
       optionId: rec.recommendation.options.find((o) => o.newDateISO === toISO)?.id ?? null,
     },
+    unavailableDates: parseDates(q.get('unavailable')),
+    availableDates: parseDates(q.get('available')),
   });
 
   return NextResponse.json({
@@ -192,8 +215,11 @@ export async function POST(req: NextRequest) {
     },
     optionId,
     token,
+    // RS-2 FIX (2026-09-05) · see the matching comment on GET above. Same
+    // hardcoded-`[]` gap, same fix.
     constraint: resolveConstraint(
-      [], Array.isArray(body.available) ? (body.available as string[]).filter(isISODate) : [],
+      Array.isArray(body.unavailable) ? (body.unavailable as string[]).filter(isISODate) : [],
+      Array.isArray(body.available) ? (body.available as string[]).filter(isISODate) : [],
     ),
     allowAdjacentWeek: body.adjacent_week !== false,
     // AUTHORITY · he read the options and tapped one. `applyMove` refuses any

@@ -333,6 +333,29 @@ export interface ReadjudicationRequest {
   /** Runner-local today, passed in. This layer never reads a clock. */
   readonly todayISO: string;
   readonly move: ProposedMove;
+  /**
+   * The runner's stated availability, exactly as it was put to the mover's own
+   * decision engine — never re-derived, never assumed. Omitted, or both
+   * empty, means UNKNOWN.
+   *
+   * MOVEREADJUDICATE-2 (2026-09-05): before this field existed, the
+   * implementation invented its own constraint (`UNAVAILABLE_DATES` on the
+   * session's own day, always) rather than asking the caller. Verified live
+   * against the owner's real block: `GET /api/plan/move?from=2026-09-06
+   * &to=2026-09-16` ranked 2026-09-16 as option 1 in `recommendation.options`
+   * — the exact date the runner is looking at, on the exact same request — and
+   * the SAME response's `readjudication.findings` refused it with "2026-09-16
+   * is not among the dates the coach can offer for this session, and no
+   * reason was recorded for it." Two answers to one question, Rule 16, caught
+   * by Rule 13 (rendering the real reschedule sheet against a scratch copy of
+   * the owner's block, not a fixture). The invented constraint and the real
+   * one searched different candidate sets, so a date the runner was shown and
+   * chose came back refused for a reason that never existed. This field is
+   * the fix: a caller that HOLDS the real constraint threads it through
+   * instead of the port inventing one.
+   */
+  readonly unavailableDates?: readonly string[];
+  readonly availableDates?: readonly string[];
 }
 
 /**

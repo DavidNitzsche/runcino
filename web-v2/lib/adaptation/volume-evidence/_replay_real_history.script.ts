@@ -170,9 +170,18 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
       [OWNER, FROM, TO],
     )).rows;
 
+    // RULE 14 · `plan_weeks.user_uuid` is NULL on 88 of 672 rows in production
+    // (measured 2026-09-05), including all 15 weeks of the currently active
+    // plan — the column stopped being populated at some point and a filter on
+    // it silently returns an empty or truncated block. A week belongs to a
+    // PLAN and the plan belongs to the runner: join through `training_plans`,
+    // which cannot be defeated by an unpopulated denormalised column. Same fix
+    // as `lib/plan/volume-evidence-loader.ts`, which is what named this file
+    // as still carrying the defect.
     const planWeeks = (await roQuery<WeekRow>(
-      `SELECT plan_id, week_start_iso, is_cutback, is_race_week
-         FROM plan_weeks WHERE user_uuid = $1::uuid`,
+      `SELECT w.plan_id, w.week_start_iso, w.is_cutback, w.is_race_week
+         FROM plan_weeks w
+         JOIN training_plans tp ON tp.id = w.plan_id AND tp.user_uuid = $1::uuid`,
       [OWNER],
     )).rows;
 
