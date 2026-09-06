@@ -593,10 +593,10 @@ describe('8 · simultaneous volume and intensity proposals', () => {
   });
 
   it('and never discards it · step 10', () => {
-    expect(response.deferred).toHaveLength(1);
-    expect(response.deferred[0].lever).toBe('WEEKLY_VOLUME');
-    expect(response.deferred[0].proposedAfterValue).toBeGreaterThan(response.deferred[0].beforeValue);
-    expect(response.deferred[0].reasonDetail).toContain('Practical load rules');
+    expect(response.deferredRaises).toHaveLength(1);
+    expect(response.deferredRaises[0].lever).toBe('WEEKLY_VOLUME');
+    expect(response.deferredRaises[0].proposedAfterValue).toBeGreaterThan(response.deferredRaises[0].beforeValue);
+    expect(response.deferredRaises[0].reasonDetail).toContain('Practical load rules');
   });
 
   // FALSIFICATION · with the stressor count unchanged week to week, doctrine
@@ -628,7 +628,7 @@ describe('9 · a deferred increase that later applies', () => {
       weekBeforeFirstFuture: futureWeek({ weekStartISO: WEEK, prescribedMi: 30, stressors: ['long'] }),
     },
   });
-  const queued: QueuedDeferral[] = [...response.deferred];
+  const queued: QueuedDeferral[] = [...response.deferredRaises];
 
   it('the evidence survives the boundary it could not cross', () => {
     expect(queued).toHaveLength(1);
@@ -652,7 +652,7 @@ describe('9 · a deferred increase that later applies', () => {
       currentPlanVersion: 'plan-1', blockEndedISO: null,
     });
     const item = out.reconsidered[0] ?? out.carried[0];
-    expect(item.proposedAfterValue).toBe(response.deferred[0].proposedAfterValue);
+    expect(item.proposedAfterValue).toBe(response.deferredRaises[0].proposedAfterValue);
   });
 
   // FALSIFICATION · a deferral whose block has ended must NOT come back.

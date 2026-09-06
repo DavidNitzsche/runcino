@@ -124,6 +124,110 @@ const PERMITTED_EXTERNAL_IMPORTS: ReadonlyArray<{ file: string; module: string; 
       + 'band and stepMultiplier only, so the `evidenceSufficient` field added in this pass '
       + 'does not change what it authors.',
   },
+  /* ── FOUND BY WIDENING THE SCANNER, 2026-09-05 ────────────────────────
+   *
+   * Four production files were importing NESTED modules of this layer and no
+   * ratchet could see any of them, because `IMPORT_RE` matched one path
+   * segment. All four are CONSTANT or PURE-FUNCTION reads and none of them can
+   * reach a proposal or a writer, which is why nothing broke; but "it happened
+   * to be harmless" is not the same as "it was checked", and the whole point
+   * of a ratchet is that the next one gets argued rather than assumed. */
+  {
+    file: 'lib/plan/adjudication/cold-start.ts', module: '@/lib/adaptation/canonical',
+    names: ['LONG_RUN_LOOKBACK_COUNT', 'LONG_RUN_COMPLETION_MIN_FRAC',
+      'THRESHOLD_EVIDENCE_WINDOW_DAYS', 'THRESHOLD_MIN_QUALIFYING_SESSIONS',
+      'VOLUME_MIN_CONSECUTIVE_WEEKS', 'VOLUME_WEEK_COMPLETION_MIN_FRAC'],
+    why:
+      'Doctrine CONSTANTS from `canonical/contract-constants`, which is the module that exists '
+      + 'so the numbers governing evidence sufficiency have one owner. The cold-start '
+      + 'adjudicator asks the same questions of a runner with no history that the canonical '
+      + 'engine asks of one with history, and re-typing the bands here is precisely the Rule 16 '
+      + 'divergence that module was carved out to prevent. Constants only: no evaluator, no '
+      + 'lever, no proposal.',
+  },
+  {
+    file: 'lib/plan/adjudication/weekly-demand.ts', module: '@/lib/adaptation/canonical',
+    names: ['QUALITY_MINUTE_TO_EASY_MILE', 'LONG_RUN_SURCHARGE_PER_MI',
+      'PACE_SEC_PER_MI_TO_QUALITY_COST'],
+    why:
+      'The three EXCHANGE RATES that price a planned week as load (`canonical/plan-load`). One '
+      + 'owner of "what a quality minute costs in easy miles", read by the demand model so the '
+      + 'plan side and the evidence side cannot drift apart. Coefficients only.',
+  },
+  {
+    file: 'app/api/admin/canonical-adaptation-shadow/route.ts',
+    module: '@/lib/adaptation/canonical-shadow',
+    names: ['runAndPersistCanonicalShadowEvaluation'],
+    why:
+      'The admin probe for the canonical shadow evaluation, GET and admin-gated. It writes '
+      + '`canonical_adaptation_shadow_log`, which guard 1 lists as a table this layer owns, and '
+      + 'nothing else. Same shape as the `shadow-compare` entry above.',
+  },
+  {
+    file: 'app/api/cron/run-adaptations/route.ts', module: '@/lib/adaptation/canonical-shadow',
+    names: ['shadowExit', 'summarisePass', 'ShadowExit', '<dynamic>'],
+    why:
+      'SHADOWOBS-1 · two edges into the same sub-directory, both invisible to this ratchet '
+      + 'until the scanner was widened. The static one is the exit taxonomy the nightly pass '
+      + 'logs, so "the shadow produced nothing" can be told apart from "the shadow never ran"; '
+      + 'the dynamic one is `run-live-shadow-evaluation`, the shadow pass itself, deferred so a '
+      + 'route that never reaches it does not pay to load it. Guard 4 separately asserts that '
+      + 'its result reaches no writer and is read for `.error` only.',
+  },
+  {
+    file: 'lib/plan/volume-evidence-loader.ts', module: '@/lib/adaptation/canonical',
+    names: ['assessDeterioration', 'deteriorationPattern', 'phaseFromAuthoredLabel'],
+    why:
+      'VOLUMESEAM-1 · the canonical DETERIORATION verdict, which is admission condition 3 for '
+      + 'the volume lever. Two pure functions over thirds this file supplies; no evaluator, no '
+      + 'lever, no proposal. `_cannot_mutate.test.ts` guard 4 carries the same grant with the '
+      + 'symbols enumerated, and is the stricter of the two.',
+  },
+  {
+    file: 'lib/plan/volume-evidence-loader.ts', module: '@/lib/adaptation/canonical-shadow',
+    names: ['isHrReliable', 'buildThirds'],
+    why:
+      'VOLUMESEAM-1 · the two RECONSTRUCTIONS the volume lever\'s admission conditions 2 and 3 '
+      + 'need, imported rather than copied. `live-input.ts` already owns "is this heart-rate '
+      + 'trace worth grading" (it fails a held sensor value that a naive avgHr read would '
+      + 'trust) and "what were this run\'s thirds" (it refuses below six splits rather than '
+      + 'comparing incomparable ones). Both are PURE functions of one `RunData`: no query, no '
+      + 'clock, no write. A second copy in `lib/plan` would be two answers to two questions '
+      + 'that decide whether a runner\'s week counts as evidence, which is the divergence Rule '
+      + '16 names. Nothing else in that module is reached.',
+  },
+  {
+    file: 'lib/plan/volume-evidence-loader.ts', module: '@/lib/adaptation/volume-evidence',
+    names: ['absent', 'failed', 'measured', 'VOLUME_MIN_CONSECUTIVE_WEEKS',
+      'VOLUME_WEEK_COMPLETION_MIN_FRAC'],
+    why:
+      'VOLUMESEAM-1 (2026-09-05) · THE READ HALF OF THE ONE SEAM THIS LAYER HAS TO A RUNNER, '
+      + 'and it writes nothing. `lib/adaptation/volume-evidence/` answers "if the runner runs '
+      + 'MORE than prescribed, does future planned mileage increase" and, until this entry, '
+      + 'answered it for nobody: grepped 2026-09-05 its only importers were four vitest '
+      + 'configs, two allowlists and prose. Wired, tested and inert, on the UPWARD path. This '
+      + 'file builds the directory\'s inputs from the database and hands them back; it names no '
+      + 'plan writer and issues SELECTs only. The `Measured<T>` constructors are imported '
+      + 'rather than re-typed for the same Rule 16 reason `contract.ts` re-exports them: a '
+      + 'second dialect of measured/absent/failed is how two readers start disagreeing about '
+      + 'what a refusal is.',
+  },
+  {
+    file: 'lib/plan/volume-evidence-proposal.ts', module: '@/lib/adaptation/volume-evidence',
+    names: ['demonstratedLoadAfterEachWeek', 'respondToVolumeEvidence'],
+    why:
+      'VOLUMESEAM-1 (2026-09-05) · THE PROPOSAL HALF, and the reason this entry is worth '
+      + 'reading before changing either module. It calls exactly two pure functions — the '
+      + 'belief recompute `lib/plan/load-progression-contract.ts` has promised in its header '
+      + 'since 2026-09-02 and never had, and the responder that turns a fresher belief into '
+      + 'larger future weeks — and turns the result into a `mark_upgrade` PROPOSAL through '
+      + '`writeWorkoutProposals`. It reaches `plan_workout_proposals` and nothing else: '
+      + '`AUTOMATIC_ADAPTATION_AUTHORITY` stays false, this file does not read it, and the '
+      + 'plan on the phone changes only when the runner accepts, under `RUNNER_ACCEPTED`. '
+      + 'Guard 3b is what holds the shadow boundary and is unaffected: neither function is on '
+      + 'the PROPOSAL path (`adaptation-engine` / `load-adaptation-engine` / `shadow-compare`), '
+      + 'so no plan writer can reach `composeAdaptation` through this door.',
+  },
   {
     file: 'lib/plan/adapt.ts', module: '@/lib/adaptation/load', names: ['<dynamic>'],
     why:
@@ -274,8 +378,27 @@ describe('guard 2 · no plan writer is named in code under lib/adaptation', () =
 });
 
 describe('guard 3 · the ratchet on who may import this layer', () => {
-  const IMPORT_RE = /import\s+(type\s+)?\{([^}]*)\}\s+from\s+'(@\/lib\/adaptation\/[a-z-]+)'/g;
-  const DYNAMIC_RE = /import\('(@\/lib\/adaptation\/[a-z-]+)'\)/g;
+  /* VOLUMESEAM-1 (2026-09-05) · THE NESTED-PATH BLIND SPOT, CLOSED.
+   *
+   * These two patterns matched ONE path segment: `@/lib/adaptation/[a-z-]+`
+   * with the closing quote immediately after. So every import of a NESTED
+   * module — `@/lib/adaptation/canonical/evaluate`,
+   * `@/lib/adaptation/volume-evidence/respond` — was invisible to this
+   * ratchet, and the ratchet reported clean about a directory it could not
+   * see into. `_cannot_mutate.test.ts`'s own header names this hole, and
+   * covers it for `canonical/` alone; nothing covered the rest.
+   *
+   * It was found the way Rule 18 says these are found: an entry added for a
+   * real new importer failed the STALE-ENTRY half ("no longer imports"),
+   * because the scanner could not find an import that was three lines above
+   * it in the file. A ratchet whose two halves disagree is telling you the
+   * scanner is wrong, not the entry.
+   *
+   * The module recorded is the FIRST segment, so an entry names the
+   * sub-directory rather than each file inside it, which is what keeps a
+   * whole directory's dependence auditable in one row. */
+  const IMPORT_RE = /import\s+(type\s+)?\{([^}]*)\}\s+from\s+'@\/lib\/adaptation\/([a-z-]+)(?:\/[a-z0-9-]+)*'/g;
+  const DYNAMIC_RE = /import\('@\/lib\/adaptation\/([a-z-]+)(?:\/[a-z0-9-]+)*'\)/g;
 
   const found: Array<{ file: string; module: string; names: string[] }> = [];
   for (const file of OUTSIDE_FILES) {
@@ -284,10 +407,14 @@ describe('guard 3 · the ratchet on who may import this layer', () => {
       if (m[1]) continue; // `import type` · a type cannot write
       const names = m[2].split(',').map((s) => s.trim()).filter(Boolean)
         .filter((n) => !n.startsWith('type '));
-      if (names.length > 0) found.push({ file: path.relative(WEB, file), module: m[3], names });
+      // The capture is the FIRST path segment; the entry names the module the
+      // way an import statement spells it, so a reader can grep either.
+      if (names.length > 0) {
+        found.push({ file: path.relative(WEB, file), module: `@/lib/adaptation/${m[3]}`, names });
+      }
     }
     for (const m of src.matchAll(DYNAMIC_RE)) {
-      found.push({ file: path.relative(WEB, file), module: m[1], names: ['<dynamic>'] });
+      found.push({ file: path.relative(WEB, file), module: `@/lib/adaptation/${m[1]}`, names: ['<dynamic>'] });
     }
   }
 

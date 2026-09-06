@@ -12226,9 +12226,23 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           'adaptive-ramp.ts no longer states that its bump policy is a convention',
         );
       }
-      // Every bump must be clamped to the tier band. Without these the bump is
-      // unbounded and the "convention" has no ceiling at all.
-      for (const clamp of [/Math\.min\(proposed, opp\.tierLongUpper\)/, /tierWeeklyUpper/]) {
+      /* Every bump must be clamped to the tier band. Without these the bump is
+       * unbounded and the "convention" has no ceiling at all.
+       *
+       * VOLUMESEAM-1 (2026-09-05) · the long-run clamp moved into
+       * `distributeWeeklyBump`, which `planUpgrade` now calls and which
+       * `lib/plan/volume-evidence-proposal.ts` also calls, so the two upward
+       * lanes cannot spread a raise differently (Rule 16). The PROPERTY is
+       * unchanged and so is the ceiling; what changed is the identifier the
+       * clamp reads. Both halves are pinned rather than one: the clamp must
+       * exist inside the shared spreader, AND `planUpgrade` must still hand it
+       * the tier band, because a spreader that clamps to a number nobody
+       * supplies from the tier is a ceiling in name only. */
+      for (const clamp of [
+        /Math\.min\(proposed, opts\.longUpperMi\)/,
+        /longUpperMi: opp\.tierLongUpper/,
+        /tierWeeklyUpper/,
+      ]) {
         if (!clamp.test(src)) {
           throw new Error(`the bump no longer clamps to the tier band (${clamp})`);
         }

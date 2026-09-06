@@ -490,7 +490,12 @@ function buildGradedSession(args: {
  * HR moves a capacity belief. What the runner SEES is `runPhases`' question and
  * is not changed here — see the report for that follow-up.
  */
-function isHrReliable(run: RunData): boolean {
+/* EXPORTED 2026-09-05 (VOLUMESEAM-1) · `lib/plan/volume-evidence-loader.ts`
+ * needs the same two reconstructions, and a second copy of "is this trace
+ * worth grading" or "what were the thirds" is exactly the Rule 16 divergence
+ * this file's own header argues against. Both are pure functions of one
+ * `RunData`; neither reads the database. */
+export function isHrReliable(run: RunData): boolean {
   const avg = runAvgHr(run);
   if (avg == null || avg <= 60 || avg >= 220) return false;
   // The RAW phases, not `runPhases`. The normalizer exposes the derived
@@ -514,7 +519,7 @@ function isHrReliable(run: RunData): boolean {
 
 /** Long-run thirds from mile splits · see file header for the coarseness
  *  this accepts. */
-function buildThirds(run: RunData): ComparableThirds {
+export function buildThirds(run: RunData): ComparableThirds {
   const splits = splitsWithHrAndPace((run as Record<string, unknown>).splits);
   if (splits.length < 6) {
     return {
