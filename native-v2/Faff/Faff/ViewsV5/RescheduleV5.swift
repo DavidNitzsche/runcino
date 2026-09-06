@@ -9,9 +9,31 @@
 //  shows him the ways to keep its training value, ranked, each one saying what
 //  it costs. Nothing is written until he picks one and confirms.
 //
-//  Backend: `GET/POST /api/plan/reschedule` · `web-v2/lib/plan/reschedule.ts`.
+//  Backend: `GET/POST /api/plan/move` · `web-v2/lib/brain/orchestration/
+//  move-orchestrator.ts`, sitting above `web-v2/lib/plan/reschedule.ts`.
 //  Contract: `docs/RESCHEDULING_CONTRACT.md` and MASTER_CORE_PRODUCT_PROGRAM
 //  RS-1..RS-8.
+//
+//  MOVEREADJUDICATE-1 (2026-09-05) · repointed from `/api/plan/reschedule`.
+//  The ranked options, their costs and this screen's whole vocabulary are
+//  UNCHANGED — both routes read the exact same `recommendReschedule` decision
+//  owner, and `/api/plan/move` is the reverse arrangement sitting above it
+//  (see that file's own header): it re-adjudicates the destination through
+//  the nine checks Move-a-Run runs (race proximity, demand, hard-session
+//  spacing, the reassessment queue, the sequence layer) and applies under
+//  RUNNER_ACCEPTED with an atomic ledger row, none of which
+//  `/api/plan/reschedule` alone does. This screen still never renegotiates:
+//  a REFUSED verdict comes back as a refusal the runner reads, same as any
+//  other `unavailable`/`rejected` answer.
+//
+//  The wire shape moved with it: the ranked recommendation now arrives inside
+//  a `{ recommendation, readjudication }` envelope, and an APPLY's success
+//  body is flat (`decision_id` beside `summary`) rather than nested under a
+//  `decision` object — see `V5MoveRecommendationEnvelope` and the simplified
+//  `V5RescheduleApplied` below. `V5RescheduleSummary`, `V5RescheduleOption`
+//  and everything else drawn on screen are byte-identical, because
+//  `summaryOf`/`recommendReschedule` are the same functions either route
+//  calls.
 //
 //  ─────────────────────────────────────────────────────────────────────────
 //  RS-2 · AVAILABILITY IS ASKED FOR, NEVER ASSUMED
@@ -187,9 +209,17 @@ struct V5RescheduleSummary: Decodable, Equatable {
     let decisionId: String
 }
 
+/// MOVEREADJUDICATE-1 · `/api/plan/move`'s success body is FLAT
+/// (`{ ok, decision_id, summary, plan_version, ledger, readjudication }`),
+/// not nested under a `decision` object the way `/api/plan/reschedule`'s was.
+/// The old `decision.decisionId` / `decision.newDateISO` fields were decoded
+/// and never read anywhere in this file — `undo(s.decisionId)` below has
+/// always read `summary.decisionId` — so nothing is lost by dropping them,
+/// and keeping them would mean this type could not decode the route it is
+/// actually pointed at (a `try?` swallowing that into a silent `.failed` is
+/// exactly the CLAUDE.md Rule 13 failure: the request would have succeeded
+/// and the runner would have been told nothing changed).
 struct V5RescheduleApplied: Decodable, Equatable {
-    struct Decision: Decodable, Equatable { let decisionId: String; let newDateISO: String }
-    let decision: Decision
     let summary: V5RescheduleSummary
 }
 
@@ -270,14 +300,29 @@ extension API {
         let restored: Int?
     }
 
+    /// MOVEREADJUDICATE-1 · `/api/plan/move`'s GET wraps the SAME ranked
+    /// recommendation this screen has always drawn inside `{ recommendation,
+    /// readjudication }`. `readjudication` is for the destination named by
+    /// `to` alone and this screen has not yet chosen one at browse time, so it
+    /// is decoded here and then discarded — the ranked list in
+    /// `.recommendation` does not depend on `to` at all, only WHICH option
+    /// also gets a readjudication attached does.
+    private struct V5MoveRecommendationEnvelope: Decodable { let recommendation: V5Reschedule }
+
     /// RECOMMEND. Reads only. Passing neither list means UNKNOWN, and the
     /// server says so back rather than assuming the rest of the week is free.
     static func fetchReschedule(dateISO: String,
                                 unavailable: [String] = [],
                                 available: [String] = [],
                                 adjacentWeek: Bool = false) async throws -> V5RescheduleFetch {
-        var comps = URLComponents(string: API.baseURL.absoluteString + "/api/plan/reschedule")
-        var q = [URLQueryItem(name: "date", value: dateISO)]
+        var comps = URLComponents(string: API.baseURL.absoluteString + "/api/plan/move")
+        // `to` is required by this route even to browse — the ranked list does
+        // not depend on it, so the day after the target is a safe placeholder
+        // that stays inside any real search window.
+        var q = [
+            URLQueryItem(name: "from", value: dateISO),
+            URLQueryItem(name: "to", value: RecoveryWindows.addDays(dateISO, 1)),
+        ]
         if !unavailable.isEmpty { q.append(URLQueryItem(name: "unavailable", value: unavailable.joined(separator: ","))) }
         if !available.isEmpty { q.append(URLQueryItem(name: "available", value: available.joined(separator: ","))) }
         if adjacentWeek { q.append(URLQueryItem(name: "adjacent_week", value: "1")) }
@@ -286,7 +331,7 @@ extension API {
 
         let (data, http) = try await API.authedGET(url)
         if (200...299).contains(http.statusCode) {
-            return .ok(try JSONDecoder().decode(V5Reschedule.self, from: data))
+            return .ok(try JSONDecoder().decode(V5MoveRecommendationEnvelope.self, from: data).recommendation)
         }
         if (400...499).contains(http.statusCode),
            let r = try? JSONDecoder().decode(RescheduleRefusalBody.self, from: data),
@@ -298,13 +343,21 @@ extension API {
 
     /// APPLY. The only write, and it carries the token the runner actually
     /// read. Without it the server refuses, because a change applied to a plan
-    /// he never saw is indistinguishable from a bug.
+    /// he never saw is indistinguishable from a bug. `workoutId` and `toISO`
+    /// are new: `/api/plan/move` re-adjudicates a specific destination, so
+    /// unlike the old route it needs to be told which one was chosen, not just
+    /// which option id.
     static func applyReschedule(dateISO: String,
+                                workoutId: String,
+                                toISO: String,
                                 optionId: String,
                                 token: String,
                                 unavailable: [String] = [],
                                 available: [String] = []) async throws -> V5RescheduleWrite {
-        var body: [String: Any] = ["date": dateISO, "option_id": optionId, "token": token]
+        var body: [String: Any] = [
+            "workout_id": workoutId, "from": dateISO, "to": toISO,
+            "option_id": optionId, "token": token,
+        ]
         if !unavailable.isEmpty { body["unavailable"] = unavailable }
         if !available.isEmpty { body["available"] = available }
         return try await rescheduleWrite(body)
@@ -312,7 +365,7 @@ extension API {
 
     /// UNDO.  RS-6.
     static func undoReschedule(decisionId: String) async throws -> V5RescheduleUndo {
-        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/plan/reschedule"))
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/plan/move"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(
@@ -335,7 +388,7 @@ extension API {
     }
 
     private static func rescheduleWrite(_ body: [String: Any]) async throws -> V5RescheduleWrite {
-        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/plan/reschedule"))
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/plan/move"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
@@ -949,6 +1002,8 @@ struct RescheduleSheetV5: View {
         defer { busy = false }
         do {
             let out = try await API.applyReschedule(dateISO: dateISO,
+                                                    workoutId: m.target.planWorkoutId,
+                                                    toISO: o.newDateISO,
                                                     optionId: o.id,
                                                     token: m.token,
                                                     unavailable: cannotRun.sorted())

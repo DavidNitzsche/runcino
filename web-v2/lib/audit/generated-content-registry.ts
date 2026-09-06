@@ -654,6 +654,8 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'Form-metric definitions, bands and drills — "coach giving a one-thing-to-do". Its only importer is /api/tips, which the phone has a decode model for and never fetches. Wire the fetch or delete both ends.',
   'web-v2/components/redesign/graphics/DualPoint.tsx':
     'The /redesign tree. That direction was shipped and reverted on 2026-08-18 and is not the plan; its orphans are expected and are not this gate\'s business.',
+  'web-v2/lib/audit/plan-weeks-scope-exemptions.ts':
+    'PLANWEEKS-1 (2026-09-05). A gate\'s ratchet, same posture as active-plan-exemptions.ts and normal-window-registry.ts beside it: it is DATA FOR A CHECK (_plan_weeks_scope_scan.test.ts) and its only importer is that suite by design. It names statements that legitimately read plan_weeks\'s own user_uuid/user_id column directly rather than scoping through training_plans — currently empty, because the two live instances found in the 2026-09-05 sweep (lib/plan/volume-evidence-loader.ts, lib/adaptation/volume-evidence/_replay_real_history.script.ts) and the write-path instance (lib/adaptation-harness/substrate.ts, a scratch-DB date-shift, not a scanned read) were all fixed rather than exempted. Runtime code must never import it.',
 };
 
 /**
@@ -683,6 +685,4 @@ export const ROUTE_CALLERS: Record<string, string> = {
     'Same shape as /api/plan/generate — the HTTP door onto lib/plan/replan-scenarios, used by hand and by the drift cron through the library.',
   'web-v2/app/api/tips/route.ts':
     'Half-built wire. native-v2/Faff/Faff/Models/Tips.swift exists as a decode model and API.swift never fetches it, so lib/training/form-tips.ts prose has no reader. Wire the fetch or delete both ends.',
-  'web-v2/app/api/plan/move/route.ts':
-    'MOVEREADJUDICATE-1 (2026-09-05). The orchestrated Move-a-Run surface: it asks lib/plan/reschedule.ts for candidates, re-adjudicates the destination through all nine checks, applies under RUNNER_ACCEPTED, ledgers and syncs. UNCALLED BY THE PHONE TODAY, and named here rather than hidden: native-v2 ViewsV5/RescheduleV5.swift still posts to /api/plan/reschedule, which moves the run correctly and does not re-adjudicate it. Repointing that sheet is a native change and a TestFlight build, which is a separate decision from landing the engine, so the honest state is "the coaching exists and one surface has not been moved onto it yet". This entry is what stops that becoming permanent, and lib/brain/orchestration/_move_readjudication.test.ts pins the mover count beside it. Delete this entry the moment the sheet is repointed.',
 };

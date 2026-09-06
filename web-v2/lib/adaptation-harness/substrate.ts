@@ -233,9 +233,18 @@ export async function shiftRealBlockOntoToday(opts?: {
        WHERE user_uuid = $1::uuid`,
       [OWNER_UUID, offsetDays],
     );
+    // RULE 14 · `plan_weeks.user_uuid` is NULL on 88 of 672 rows in production
+    // (measured 2026-09-05), including every week of the owner's live block —
+    // and this substrate is a copy of exactly those rows, so scoping on the
+    // column here silently updates ZERO plan_weeks while plan_workouts above
+    // shifts correctly, leaving week_start_iso stale against the shifted plan.
+    // A week belongs to a PLAN and the plan belongs to the runner: join
+    // through training_plans, which cannot be defeated by an unpopulated
+    // denormalised column. Same fix as `lib/plan/volume-evidence-loader.ts`.
     await client.query(
-      `UPDATE plan_weeks SET week_start_iso = to_char(week_start_iso::date + $2::int, 'YYYY-MM-DD')
-        WHERE user_uuid = $1::uuid`,
+      `UPDATE plan_weeks w SET week_start_iso = to_char(week_start_iso::date + $2::int, 'YYYY-MM-DD')
+        FROM training_plans tp
+        WHERE tp.id = w.plan_id AND tp.user_uuid = $1::uuid`,
       [OWNER_UUID, offsetDays],
     );
     await client.query(

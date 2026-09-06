@@ -552,14 +552,34 @@ describe('conflicts', () => {
  * it next session" becoming permanent — the state `steps.ts` was written to
  * escape and `adaptation-log.ts` recorded as still open for exactly these
  * three routes.
+ *
+ * MOVEREADJUDICATE-1 (2026-09-05) closed two of the three remaining gaps:
+ *
+ *   · `app/api/plan/change/route.ts` scenario `move_day` — WIRED. It keeps its
+ *     own mutation path (`planMoveDay` -> `applyChange` -> `mutatePlan`, which
+ *     already lands an atomic ledger row on every commit per LEDGERATOMIC-1)
+ *     and adds `readjudicateMove` as a GATE in front of both propose and
+ *     confirm: a REFUSED verdict stops the request before the existing path
+ *     ever runs. It does not call `applyMove` — the write stays where it was —
+ *     which is why it is absent from the ledger-string check two tests below,
+ *     whose regex is scoped to the two routes that write through the
+ *     orchestrator's OWN apply path.
+ *   · `app/api/plan/workout/route.ts` PATCH — RETIRED, not wired. Its
+ *     `new_date_iso` move capability had zero callers anywhere in native-v2 or
+ *     web-v2 (the one Swift function that could send it was itself never
+ *     called), so it was removed rather than re-adjudicated — a bypass
+ *     nothing calls is a bigger risk left in place than deleted. The route
+ *     still edits type/distance/sub_label in place; it can no longer move a
+ *     session, so it is not a "mover" needing wiring and the census below
+ *     correctly reports it unwired forever.
  */
 const MOVERS: readonly { file: string; note: string }[] = [
   { file: 'app/api/plan/move/route.ts', note: 'the orchestrated surface' },
   { file: 'app/api/today/reschedule/route.ts', note: 'the older, dumber verb, now re-adjudicated and ledgered' },
-  { file: 'app/api/plan/change/route.ts', note: 'scenario move_day · NOT wired' },
-  { file: 'app/api/plan/workout/route.ts', note: 'PATCH raw field edit · NOT wired' },
+  { file: 'app/api/plan/change/route.ts', note: 'scenario move_day · WIRED as a gate in front of its existing apply path' },
+  { file: 'app/api/plan/workout/route.ts', note: 'PATCH raw field edit · new_date_iso RETIRED (zero callers) rather than wired — it can no longer move a session' },
 ];
-const WIRED_MOVERS = 2;
+const WIRED_MOVERS = 3;
 
 describe('the mover census', () => {
   it('every named mover still exists · no dead entries', () => {
