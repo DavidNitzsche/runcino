@@ -62,7 +62,33 @@ export interface ExplainInput {
    * sentence about a measurement is gated on that measurement).
    */
   readonly progressionFraction: number;
+  /**
+   * DETERIORATION-SEVERITY-1 · how much of the week's credit survived the worst
+   * session in it, in [0, 1]. `CapacityEvidence.deteriorationWeight`.
+   *
+   * Below 1 means a session faded late and the week counted for less than it
+   * ran. Saying nothing there would leave the runner with a sentence that is
+   * true and incomplete: he ran 1.9 miles over and the plan moved by less than
+   * that arithmetic implies, with no reason given. Rule 16's clause is the
+   * standard -- a sentence about a measurement is gated on that measurement --
+   * so the fade is mentioned only when it was measured and only when it cost
+   * something.
+   */
+  readonly deteriorationWeight: number;
 }
+
+/**
+ * Was a fade material enough to be worth a clause?
+ *
+ * The threshold is a ROUNDING one, not a coaching one: at 99.5 per cent kept
+ * the sentence "counted at 100 per cent" would be printed alongside a claim
+ * that something was held back, which reads as a contradiction. Anything the
+ * runner would see as a real reduction is above it.
+ */
+const fadeCost = (w: number): number | null => {
+  const kept = Math.round(w * 100);
+  return kept >= 100 || kept < 0 ? null : kept;
+};
 
 const mi = (n: number): string => `${roundTo(n)} miles`;
 
@@ -100,6 +126,12 @@ export function explainVolumeResponse(input: ExplainInput): string {
     const where = input.weeksRaised === 1
       ? 'the next week'
       : `the next ${input.weeksRaised} building weeks`;
+    const kept = fadeCost(input.deteriorationWeight);
+    if (kept != null) {
+      return 'You handled more volume, so upcoming mileage increases. '
+        + `${mi(input.addedMi)} across ${where}, counted at ${kept} per cent because a `
+        + 'session faded late.';
+    }
     return `You handled more volume, so upcoming mileage increases. `
       + `${mi(input.addedMi)} across ${where}.`;
   }
@@ -134,6 +166,11 @@ export function explainVolumeResponse(input: ExplainInput): string {
           + 'absorbed it, so the weeks ahead stay as written.';
       }
       if (input.progressionFraction < 1) {
+        const kept = fadeCost(input.deteriorationWeight);
+        if (kept != null) {
+          return `The extra mileage counts as evidence at ${kept} per cent, because a session `
+            + 'faded late. The weeks ahead stay as written until there is more of it.';
+        }
         return 'The extra mileage counts as evidence, and it is part of the way to a larger '
           + 'week. The weeks ahead stay as written until there is more of it.';
       }
@@ -156,17 +193,23 @@ export function allExplanations(): string[] {
       // Every progression fraction that produces a DIFFERENT sentence, so the
       // voice gate walks all three of them rather than only the full one.
       for (const progressionFraction of [0, 0.28, 1]) {
-        out.push(explainVolumeResponse({
-          admission: admitted, addedMi: 0, weeksRaised: 0, firstRaisedWeekISO: null,
-          blockedBy, phase, progressionFraction,
-        }));
+        // Every deterioration weight that produces a DIFFERENT sentence: no
+        // fade, a partial fade, and a total one.
+        for (const deteriorationWeight of [1, 0.62, 0]) {
+          out.push(explainVolumeResponse({
+            admission: admitted, addedMi: 0, weeksRaised: 0, firstRaisedWeekISO: null,
+            blockedBy, phase, progressionFraction, deteriorationWeight,
+          }));
+        }
       }
     }
     for (const weeksRaised of [1, 3]) {
-      out.push(explainVolumeResponse({
-        admission: admitted, addedMi: 2.4, weeksRaised, firstRaisedWeekISO: '2026-09-07',
-        blockedBy: null, phase, progressionFraction: 1,
-      }));
+      for (const deteriorationWeight of [1, 0.62]) {
+        out.push(explainVolumeResponse({
+          admission: admitted, addedMi: 2.4, weeksRaised, firstRaisedWeekISO: '2026-09-07',
+          blockedBy: null, phase, progressionFraction: 1, deteriorationWeight,
+        }));
+      }
     }
     for (const outcome of ['NOT_SUPPORTED', 'UNREADABLE'] as const) {
       for (const blocking of [
@@ -177,7 +220,7 @@ export function allExplanations(): string[] {
         out.push(explainVolumeResponse({
           admission: { admitted: false, outcome, blocking: [...blocking], conditions: [] },
           addedMi: 0, weeksRaised: 0, firstRaisedWeekISO: null, blockedBy: null, phase,
-          progressionFraction: 0,
+          progressionFraction: 0, deteriorationWeight: 1,
         }));
       }
     }

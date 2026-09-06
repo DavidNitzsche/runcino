@@ -133,7 +133,8 @@ const conditions = (followingFrac: number | null): Omit<AdmissionInput, 'week'> 
   identityResolved: measured(true),
   telemetry: absent<HrTraceVerdict>('no heart-rate question on a distance lever'),
   deterioration: measured({
-    repeated: false, deterioratedCount: 0, unknownCount: 0, cleanCount: 3, detail: 'clean',
+    repeated: false, deterioratedCount: 0, unknownCount: 0, cleanCount: 3,
+    worstSeverityFrac: 0.01, detail: 'clean',
   }),
   keySessionGrades: [],
   painOrInjuryReported: measured(false),
@@ -303,6 +304,50 @@ describe('CONTINUOUS-EVIDENCE-1 · every coefficient has named provenance', () =
     // And the app's own "this counts as adding mileage" number is the same
     // one, so the ceiling is doctrine on both readings.
     expect(PER_WEEK_CREDIT_CEILING_FRAC).toBe(VOLUME_ADDITION_THRESHOLD);
+  });
+
+  it('three weeks is the FLOOR and not the expectation · the ledger applies two more factors', () => {
+    /* CORRECTED 2026-09-05. `weight.ts` used to say the minimum "IS" three
+     * weeks, full stop. That is arithmetic about the 0.15 / 0.05 ratio and it
+     * is NOT a claim about the ledger, which multiplies every week by
+     * `absorptionWeight` and `recencyWeight` before summing it. Read as a
+     * claim about the ledger the sentence was false, and nothing could tell,
+     * which is Rule 20's corollary exactly: a header asserting an invariant is
+     * documentation, not enforcement. So it is asserted here.
+     *
+     * Three saturating weeks, each confirmed absorbed, one week apart. */
+    const saturated = read(PRESCRIBED * 1.10, 1.0).capacity;
+    expect(saturated.units).toBeCloseTo(PER_WEEK_CREDIT_CEILING_FRAC, 10);
+    const at = (weekStartISO: string): CapacityEvidence => ({ ...saturated, weekStartISO });
+    const three = [at('2026-06-01'), at('2026-06-08'), at('2026-06-15')];
+
+    // READ THE DAY AFTER THE THIRD WEEK ENDS · 21, 14 and 7 days old, all
+    // inside EVIDENCE_FULL_CREDIT_DAYS, so recency costs nothing. This is the
+    // case the ratio describes, and it holds.
+    const fresh = accumulateCapacityEvidence(three, '2026-06-22');
+    expect(fresh.totalUnits).toBeCloseTo(PROGRESSION_UNLOCK_FRAC, 10);
+    expect(fresh.progressionFraction).toBeCloseTo(1, 10);
+
+    // READ ONE WEEK LATER · 28, 21 and 14 days old. The oldest has reached
+    // EVIDENCE_WINDOW_DAYS and contributes NOTHING, so the same three weeks of
+    // running are now worth two thirds of a step. Same evidence, later
+    // question, different answer, and that is the ramp working rather than a
+    // defect: evidence ageing out is a change in TIME.
+    const stale = accumulateCapacityEvidence(three, '2026-06-29');
+    expect(stale.totalUnits).toBeCloseTo(PROGRESSION_UNLOCK_FRAC * (2 / 3), 10);
+    expect(stale.progressionFraction).toBeCloseTo(2 / 3, 10);
+
+    // AND THE OTHER FACTOR · the newest week is normally PROVISIONAL, because
+    // the week after it has not been run. Three weeks whose last one is
+    // unconfirmed fall short of a full step on the freshest reading too.
+    const provisional = [at('2026-06-01'), at('2026-06-08'), {
+      ...read(PRESCRIBED * 1.10, null).capacity, weekStartISO: '2026-06-15',
+    }];
+    const withProvisional = accumulateCapacityEvidence(provisional, '2026-06-22');
+    expect(withProvisional.progressionFraction).toBeLessThan(1);
+    expect(withProvisional.progressionFraction).toBeCloseTo(
+      (2 + PROVISIONAL_ABSORPTION_WEIGHT) / 3, 10,
+    );
   });
 
   it('doctrine does NOT support a steep weekly curve, and none of these is steep', () => {

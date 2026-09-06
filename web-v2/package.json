@@ -38,6 +38,7 @@
     "falsify:actions": "bash ../scripts/falsify-action-completeness.sh",
     "falsify:mileage": "vitest run --config vitest.falsify-mileage.config.ts",
     "falsify:continuity": "vitest run --config vitest.falsify-continuity.config.ts",
+    "falsify:deterioration": "vitest run --config vitest.falsify-deterioration.config.ts",
     "falsify:volume-seam": "vitest run --config vitest.falsify-volume-seam.config.ts",
     "mileage-replay": "vitest run --config vitest.mileage-replay.config.ts",
     "volume-seam-probe": "vitest run --config vitest.volume-seam-probe.config.ts",

@@ -362,6 +362,14 @@ const ALLOWED_ADJUDICATION_DEMAND_DOOR = path.join(WEB, 'lib/plan/adjudication/c
 /* VOLUMESEAM-1 · the loader that carries this engine's deterioration verdict
  * into the volume lever's admission conditions. One module, one question. */
 const ALLOWED_VOLUME_LOADER_FILE = path.join(WEB, 'lib/plan/volume-evidence-loader.ts');
+/* DETERIORATION-SEVERITY-1 · the GATE over the severity rule, which has to run
+ * the real grader to have anything to price. See the grant at the end of
+ * ALLOWLIST for why a test file gets its own line rather than being waved
+ * through by a blanket "tests may import anything" rule, which this guard
+ * deliberately does not have. */
+const ALLOWED_SEVERITY_GATE_FILE = path.join(
+  WEB, 'lib/adaptation/volume-evidence/_deterioration_severity.test.ts',
+);
 const ALLOWLIST: readonly AllowedImport[] = [
   { file: ALLOWED_ADJUDICATION_DEMAND_DOOR, module: '@/lib/adaptation/canonical/plan-load', symbols: new Set(['projectPlanLoad']) },
   { file: ALLOWED_EXCEPTION_FILE, module: '@/lib/adaptation/canonical/evaluate', symbols: new Set(['evaluateAdaptation']) },
@@ -515,7 +523,14 @@ const ALLOWLIST: readonly AllowedImport[] = [
   // `weight.ts` had 21 and 28 as its own literals, which was a second
   // definition of the contract's evidence window (Rule 16). Both are inert
   // numbers on a frozen module and neither can decide anything.
-  { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/contract-constants', symbols: new Set(['CONTRACT_DOC', 'VOLUME_MAX_STEP_FRAC', 'VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE', 'VOLUME_MIN_CONSECUTIVE_WEEKS', 'VOLUME_WEEK_COMPLETION_MIN_FRAC', 'THRESHOLD_EVIDENCE_WINDOW_DAYS', 'THRESHOLD_EVIDENCE_WINDOW_DAYS_TIGHT']) },
+  // DETERIORATION-SEVERITY-1 (2026-09-05) · two more inert numbers through the
+  // SAME door, and they also remove a duplicate rather than adding a
+  // dependency: `weight.ts` needs the two edges of Research/03 §12's Pa:HR
+  // decoupling band table to turn "a session deteriorated" into "by how much",
+  // and one of those edges is already this engine's
+  // `DETERIORATION_DECOUPLING_FRAC`. Re-typing it in the volume lane would be a
+  // second definition of Q13's own threshold (Rule 16).
+  { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/contract-constants', symbols: new Set(['CONTRACT_DOC', 'DETERIORATION_DECOUPLING_FRAC', 'DETERIORATION_SEVERITY_EXTREME_FRAC', 'VOLUME_MAX_STEP_FRAC', 'VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE', 'VOLUME_MIN_CONSECUTIVE_WEEKS', 'VOLUME_WEEK_COMPLETION_MIN_FRAC', 'THRESHOLD_EVIDENCE_WINDOW_DAYS', 'THRESHOLD_EVIDENCE_WINDOW_DAYS_TIGHT']) },
 
   /* VOLUMESEAM-1 (2026-09-05) · THE SECOND FILE OUTSIDE `lib/adaptation` THAT
    * MAY REACH THIS ENGINE, and it reaches one module for one question.
@@ -538,6 +553,32 @@ const ALLOWLIST: readonly AllowedImport[] = [
     file: ALLOWED_VOLUME_LOADER_FILE,
     module: '@/lib/adaptation/canonical/deterioration',
     symbols: new Set(['assessDeterioration', 'deteriorationPattern', 'DeteriorationResult']),
+  },
+  /* DETERIORATION-SEVERITY-1 (2026-09-05) · THE GATE OVER THE SEVERITY RULE,
+   * and it is a TEST FILE getting a grant, which is worth arguing rather than
+   * assuming. This guard has no blanket "tests may import anything" exemption
+   * on purpose: a test is exactly where a second, quieter grader would appear
+   * first, and be believed.
+   *
+   * `_deterioration_severity.test.ts` asserts that ONE deteriorated session
+   * discounts a week in proportion to how far it fell rather than refusing it,
+   * which is what Q13 says and what `admit.ts` used to get wrong. Two of its
+   * cases cannot be written any other way. The severity-versus-UNKNOWN
+   * invariant is a claim ABOUT `assessDeterioration`'s own branches, so it has
+   * to run them; and the walk across Q13's second-signal boundary has to
+   * observe the real verdict flip to prove the rejected verdict-gated design
+   * had a cliff there. Re-deriving either in the test would prove the
+   * re-derivation correct and nothing else (Rule 18).
+   *
+   * Three pure functions and one type, all total functions of their arguments.
+   * No `evaluate`, no lever, no `arbitrate`, and the file writes nothing. */
+  {
+    file: ALLOWED_SEVERITY_GATE_FILE,
+    module: '@/lib/adaptation/canonical/deterioration',
+    symbols: new Set([
+      'assessDeterioration', 'deteriorationPattern', 'paHrDecouplingFrac',
+      'DeteriorationResult',
+    ]),
   },
   /* VOLUMESEAM-1 · `plan_phases.label` has ONE translator and it lives here.
    * `phaseFromAuthoredLabel` is the function that knows the generator writes

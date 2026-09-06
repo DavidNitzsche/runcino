@@ -147,6 +147,7 @@ function admissionInput(o: Partial<AdmissionInput> & { week: AdmissionInput['wee
     telemetry: absent('no heart-rate trace on these runs'),
     deterioration: measured({
       repeated: false, deterioratedCount: 0, unknownCount: 0, cleanCount: 3,
+      worstSeverityFrac: 0.01,
       detail: 'three comparable sessions, none deteriorated',
     }),
     keySessionGrades: ['FULL', 'SUBSTANTIAL'],
@@ -202,6 +203,11 @@ function responseInput(o: Partial<VolumeResponseInput> & {
     // handed a full progression fraction. The cases that exercise the fraction
     // itself live in `_continuous_evidence.test.ts` and pass their own.
     progressionFraction: 1,
+    // DETERIORATION-SEVERITY-1 · nothing faded in these fixtures, so the week
+    // counts at face value and the runner's sentence carries no fade clause.
+    // The cases that exercise the discount live in
+    // `_deterioration_severity.test.ts` and pass their own.
+    deteriorationWeight: 1,
     beliefBefore: PRIOR_BELIEF,
     futureWeeks: FOUR_ORDINARY_WEEKS,
     weekBeforeFirstFuture: futureWeek({ weekStartISO: WEEK, prescribedMi: 40 }),
@@ -344,6 +350,7 @@ describe('3 · an overrun followed by deterioration', () => {
     admission: {
       deterioration: measured({
         repeated: true, deterioratedCount: 2, unknownCount: 0, cleanCount: 1,
+        worstSeverityFrac: 0.06,
         detail: 'the final third slowed at equal or higher heart rate in two sessions',
       }),
     },

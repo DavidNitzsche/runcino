@@ -564,11 +564,13 @@ describe('the adapters return an absence, never a zero', () => {
 
   it('an unjudgeable deterioration window is absent, not clean', () => {
     const noneJudged: DeteriorationPattern = {
-      repeated: false, deterioratedCount: 0, unknownCount: 4, cleanCount: 0, detail: 'f',
+      repeated: false, deterioratedCount: 0, unknownCount: 4, cleanCount: 0,
+      worstSeverityFrac: null, detail: 'f',
     };
     expect(deterioratedSessions(noneJudged).ok).toBe(false);
     const judged: DeteriorationPattern = {
-      repeated: false, deterioratedCount: 0, unknownCount: 1, cleanCount: 3, detail: 'f',
+      repeated: false, deterioratedCount: 0, unknownCount: 1, cleanCount: 3,
+      worstSeverityFrac: 0.01, detail: 'f',
     };
     const r = deterioratedSessions(judged);
     expect(r.ok).toBe(true);

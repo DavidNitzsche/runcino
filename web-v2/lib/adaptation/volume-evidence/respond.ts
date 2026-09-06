@@ -170,6 +170,18 @@ export interface VolumeResponseInput {
    * quality.
    */
   readonly progressionFraction: number;
+  /**
+   * DETERIORATION-SEVERITY-1 · how much of the admitted week's credit survived
+   * the worst session in it, in [0, 1]. `CapacityEvidence.deteriorationWeight`.
+   *
+   * Carried for ONE reason: so the runner's sentence can say that his week
+   * counted at less than face value and why. It changes no arithmetic here --
+   * the discount is already inside `progressionFraction`, and applying it
+   * twice would be two opinions about one quantity (Rule 16).
+   *
+   * REQUIRED, not defaulted, for the same reason `progressionFraction` is.
+   */
+  readonly deteriorationWeight: number;
   /** Upward steps already taken in this cutback cycle. */
   readonly stepsTakenThisCycle: number;
   /** Where a deferred proposal would be reconsidered. */
@@ -293,6 +305,7 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
         blockedBy: reason,
         phase: input.phase,
         progressionFraction: clamp01(input.progressionFraction),
+        deteriorationWeight: clamp01(input.deteriorationWeight),
       }),
       totalAddedMi: 0,
     };
@@ -535,6 +548,7 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
         : null,
       phase: input.phase,
       progressionFraction: clamp01(input.progressionFraction),
+      deteriorationWeight: clamp01(input.deteriorationWeight),
     }),
     totalAddedMi,
   };

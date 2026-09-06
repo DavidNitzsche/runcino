@@ -54,7 +54,12 @@ import { roundTo } from '@/lib/format/run';
 import { loadVolumeEvidence } from '@/lib/plan/volume-evidence-loader';
 import { decideVolumeRaise } from '@/lib/plan/volume-evidence-proposal';
 import { demonstratedLoadAfterEachWeek } from '@/lib/adaptation/volume-evidence/after-each-week';
-import { PROGRESSION_UNLOCK_FRAC } from '@/lib/adaptation/volume-evidence/weight';
+import {
+  DETERIORATION_DECOUPLING_FRAC,
+  DETERIORATION_SEVERITY_EXTREME_FRAC,
+  deteriorationConfidenceWeight,
+  PROGRESSION_UNLOCK_FRAC,
+} from '@/lib/adaptation/volume-evidence/weight';
 
 const OWNER = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const OUT = path.resolve(__dirname, '..', '..', '..',
@@ -167,6 +172,68 @@ describe('VOLUMESEAM-1 · the wired lane, against the real account', () => {
           + `| ${pct(r.capacity.fractionOfFullStep)}% | ${r.fatigue.excessMi.ok ? r.fatigue.excessMi.value : 'unreadable'} |`);
       }
       md.push('');
+
+      /* DETERIORATION-SEVERITY-1 · THE FADE AXIS, MADE OBSERVABLE.
+       *
+       * CLAUDE.md Rule 21's observability clause: "a log that records that
+       * something happened but not what is not a log." The week table above
+       * prints a rounded percentage inside a prose reason, which is not enough
+       * to tell a week that missed doctrine's endurance-gap edge by a
+       * thousandth from one that missed it by two points. The exact number is
+       * the whole decision on this axis, so it gets its own column. */
+      md.push('### The deterioration axis, exactly · Research/03 §12');
+      md.push('');
+      md.push(`Doctrine's two edges: a fade costs nothing at or below **${pct(DETERIORATION_DECOUPLING_FRAC)} per cent** `
+        + `Pa:HR decoupling ("Strong aerobic endurance; sustainable") and costs everything at or above `
+        + `**${pct(DETERIORATION_SEVERITY_EXTREME_FRAC)} per cent** ("Endurance gap; build base before progressing").`);
+      md.push('');
+      md.push('| week | key sessions read | deteriorated | unreadable | worst Pa:HR decoupling | credit kept |');
+      md.push('|---|---|---|---|---|---|');
+      let weeksWithAReadableFade = 0;
+      let weeksPastTheEdge = 0;
+      for (const cw of w.weeks) {
+        const d = cw.conditions.deterioration;
+        if (!d.ok) {
+          md.push(`| ${cw.week.weekStartISO} | refused | | | | |`);
+          continue;
+        }
+        const worst = d.value.worstSeverityFrac;
+        if (worst != null) {
+          weeksWithAReadableFade += 1;
+          if (worst >= DETERIORATION_SEVERITY_EXTREME_FRAC) weeksPastTheEdge += 1;
+        }
+        const read = d.value.deterioratedCount + d.value.cleanCount + d.value.unknownCount;
+        md.push(`| ${cw.week.weekStartISO} | ${read} | ${d.value.deterioratedCount} `
+          + `| ${d.value.unknownCount} `
+          + `| ${worst == null ? 'no readable session' : `${(worst * 100).toFixed(3)}%`} `
+          + `| ${pct(deteriorationConfidenceWeight(worst))}% |`);
+      }
+      md.push('');
+      md.push(`- weeks with a readable key session: **${weeksWithAReadableFade}**`);
+      md.push(`- of those, weeks at or past doctrine's endurance-gap edge: **${weeksPastTheEdge}**`);
+      md.push('');
+      /* COUNTED RATHER THAN EYEBALLED, because the ratio is the one thing about
+       * this rule an agent cannot settle and the owner can. If half the weeks
+       * with a readable long run sit past 8 per cent, there are two readings
+       * and they lead opposite ways: either the runner's long runs really do
+       * finish at the aerobic limit, which is a coaching fact worth acting on,
+       * or transferring Research/03 §12's HALF-versus-HALF band table onto
+       * Q13's MIDDLE-third-versus-FINAL-third window is systematically harsher
+       * than the table intends, which is a calibration defect. Nothing in this
+       * repo can tell those apart. */
+      if (weeksWithAReadableFade > 0 && weeksPastTheEdge * 2 >= weeksWithAReadableFade) {
+        md.push(`**DECISION FOR THE OWNER · ${weeksPastTheEdge} of ${weeksWithAReadableFade} weeks with a`);
+        md.push('readable key session sit at or past the endurance-gap edge.** That is a high share,');
+        md.push('and it has two readings that lead opposite ways. Either these long runs really are');
+        md.push('finishing at the aerobic limit, which is a coaching fact worth acting on rather than');
+        md.push('a threshold to move. Or the transfer is too harsh: `Research/03` §12 states its');
+        md.push('bands for a steady 60-90 minute run compared FIRST HALF against SECOND HALF, and');
+        md.push('Q13 compares the MIDDLE third against the FINAL third, which excludes the warm-up');
+        md.push('and therefore compares a harder window against a harder window. Nothing in this');
+        md.push('repo can tell those two apart, and moving the edge to make the numbers nicer is');
+        md.push('exactly the tuning CLAUDE.md Rule 21 forbids. It is written down instead.');
+        md.push('');
+      }
     }
 
     const decision = decideVolumeRaise(w);
@@ -241,28 +308,29 @@ describe('VOLUMESEAM-1 · the wired lane, against the real account', () => {
     md.push('the pipeline is what produced that. Saying "the lane did not fire" without saying');
     md.push('this would be the confident-and-wrong reading Rule 22 warns about.');
     md.push('');
-    md.push('## Two things the owner should decide, and neither is an agent\'s call');
+    md.push('## One thing the owner should decide, and one thing that was resolved');
     md.push('');
-    md.push('**1 · `admit.ts` blocks on ONE deteriorated session; the canonical owner\'s own');
-    md.push('sentence says one does not block.** `deteriorationPattern` in');
-    md.push('`lib/adaptation/canonical/deterioration.ts` writes, for exactly one deteriorated');
-    md.push('session: *"One session showed late deterioration, which reduces confidence without');
-    md.push('blocking progression."* `admit.ts` condition 3 then refuses the whole week on');
-    md.push('`deterioratedCount > 0`. Those two statements cannot both be right, and the');
-    md.push('disagreement is not academic. It is the single reason 2026-06-15, the only week on');
-    md.push('this account carrying a real admissible surplus, contributes nothing.');
+    md.push('**RESOLVED · DETERIORATION-SEVERITY-1.** The earlier run of this probe recorded a');
+    md.push('contradiction: `deteriorationPattern` said one deteriorated session *"reduces');
+    md.push('confidence without blocking progression"* while `admit.ts` refused the whole week');
+    md.push('on `deterioratedCount > 0`. `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q13 states the');
+    md.push('first, and adds an escape it never defined: one session may block *"unless the');
+    md.push('deterioration is extreme"*.');
     md.push('');
-    md.push('A continuous answer exists and would match what CONTINUOUS-EVIDENCE-1 already did');
-    md.push('for absorption: let one deteriorated session REDUCE the credit rather than zero it,');
-    md.push('and keep the hard block at `repeated` (two or more), which is where');
-    md.push('`DETERIORATION_REPEATED_MIN_SESSIONS` already draws doctrine\'s line.');
+    md.push('`Research/03-heart-rate-zones.md` §12 defines it, for the same quantity Q13\'s own');
+    md.push('third signal thresholds. One deteriorated session now DISCOUNTS a week');
+    md.push('continuously across §12\'s own band table and blocks only when the fade is past');
+    md.push('the endurance-gap edge, when it is repeated (Q13\'s two sessions), or when its size');
+    md.push('could not be measured at all (Rule 11: known-bad-but-unmeasurable is not mild).');
     md.push('');
-    md.push('**It has deliberately NOT been changed in this pass.** Changing an admission');
-    md.push('threshold so that the lane fires is exactly the tuning CLAUDE.md Rule 21 forbids');
-    md.push('("never manufacture push by weakening a guard"), and it moves a constant the');
-    md.push('canonical engine owns. It is written down here instead.');
+    md.push('**And it did not make his week fire, which is the honest result.** 2026-06-15\'s');
+    md.push('worst key session measures the value in the table above, and it is past §12\'s');
+    md.push('8 per cent edge. The week is still refused. What changed is that it is refused for');
+    md.push('a reason doctrine states rather than by a rule doctrine forbids, and that missing');
+    md.push('the edge by a hair now costs a hair rather than everything: the credit curve');
+    md.push('reaches zero AT the edge, so a week either side of it is worth about the same.');
     md.push('');
-    md.push('**2 · An OVERRUN cutback week.** 2026-06-01: 44.9 mi run against 44.5 prescribed, in');
+    md.push('**STILL OPEN · An OVERRUN cutback week.** 2026-06-01: 44.9 mi run against 44.5 prescribed, in');
     md.push('a week the plan marked a cutback, refused for that reason. Rule 8 is unambiguous');
     md.push('that a week the engine authored small is not evidence about the runner\'s normal.');
     md.push('But a cutback is not a taper: he was not told to rest, he was told to run less, and');

@@ -100,6 +100,17 @@ interface WeekSpec {
   readonly telemetryCredible?: boolean | 'absent';
   readonly deteriorated?: number;
   /**
+   * DETERIORATION-SEVERITY-1 · how badly the worst session in the week fell
+   * away, as Research/03 §12's Pa:HR decoupling. Defaults to 6 per cent when
+   * `deteriorated` is set, which is inside §12's "Acceptable; approaching
+   * aerobic limit" band and therefore DISCOUNTS without refusing, and to 1 per
+   * cent otherwise, which is inside the "sustainable" band and costs nothing.
+   *
+   * Explicit so a case can reach the EXTREME branch (>= 8 per cent) and the
+   * unreadable one (null) as well, which nothing could before.
+   */
+  readonly deterioratedSeverityFrac?: number | null;
+  /**
    * How many runs the week's mileage is spread across. Default five.
    *
    * IT MATTERS, and the continuity walk is why. `classifyWeekSurplus` rounds
@@ -156,6 +167,13 @@ function week(spec: WeekSpec): CompletedWeek {
         deterioratedCount: spec.deteriorated ?? 0,
         unknownCount: 0,
         cleanCount: (spec.runCount ?? 5) - (spec.deteriorated ?? 0),
+        // DETERIORATION-SEVERITY-1 · a deteriorated fixture session is priced
+        // at 6 per cent Pa:HR decoupling, inside Research/03 §12's
+        // "Acceptable; approaching aerobic limit" band, so it DISCOUNTS
+        // without refusing. A clean fixture sits in the sustainable band.
+        worstSeverityFrac: spec.deterioratedSeverityFrac !== undefined
+          ? spec.deterioratedSeverityFrac
+          : (spec.deteriorated ?? 0) > 0 ? 0.06 : 0.01,
         detail: 'fixture',
       }),
       keySessionGrades: [],
@@ -913,12 +931,66 @@ describe('guard 11 · the bar to come DOWN is not lower than the bar to go UP ·
     expect(raiseOf(d)).toBe(0);
   });
 
-  it('a deteriorating session withholds a raise', () => {
-    const d = decideVolumeRaise(windowFor({
+  /* ── DETERIORATION-SEVERITY-1 · FOUR CASES WHERE THERE WAS ONE ──────────
+   *
+   * This block used to hold a single case, "a deteriorating session withholds
+   * a raise", asserting `raiseOf(d) === 0` for ONE deteriorated session. It
+   * passed, and it was asserting a defect: `docs/PROGRESSIVE_BASELINE_DOCTRINE
+   * .md` Q13 says one deteriorated session "must not independently block
+   * progression unless the deterioration is extreme". A gate that only knows
+   * how to assert a refusal will pass an engine that can only refuse, which is
+   * Rule 22 measured on one test.
+   *
+   * So the one case is now four, and TWO of them assert that a raise HAPPENS,
+   * which keeps this block's own up/down distribution honest.
+   */
+
+  it('ONE mild fade DISCOUNTS a raise rather than refusing it · Q13', () => {
+    const clean = decideVolumeRaise(windowFor({
+      asOfISO: '2026-06-29',
+      weeks: overrunHistory(3, 0.05, '2026-06-01'),
+      future: [{ weekStartISO: '2026-06-29', rows: futureWeekRows('2026-06-29', 7, 16) }],
+    }));
+    const faded = decideVolumeRaise(windowFor({
       asOfISO: '2026-06-29',
       weeks: overrunHistory(3, 0.05, '2026-06-01').map((w) => ({ ...w, deteriorated: 1 })),
       future: [{ weekStartISO: '2026-06-29', rows: futureWeekRows('2026-06-29', 7, 16) }],
     }));
+    // It still fires. That is the half a refusal-shaped suite could not see.
+    expect(raiseOf(faded)).toBeGreaterThan(0);
+    // And it costs something, which is the "reduces confidence" half.
+    expect(raiseOf(faded)).toBeLessThan(raiseOf(clean));
+  });
+
+  it('an EXTREME fade refuses on its own · Research/03 §12 "build base before progressing"', () => {
+    const d = decideVolumeRaise(windowFor({
+      asOfISO: '2026-06-29',
+      weeks: overrunHistory(3, 0.05, '2026-06-01')
+        .map((w) => ({ ...w, deteriorated: 1, deterioratedSeverityFrac: 0.09 })),
+      future: [{ weekStartISO: '2026-06-29', rows: futureWeekRows('2026-06-29', 7, 16) }],
+    }));
+    expect(raiseOf(d)).toBe(0);
+  });
+
+  it('REPEATED fading refuses however mild each one was · Q13 ">=2 sessions"', () => {
+    const d = decideVolumeRaise(windowFor({
+      asOfISO: '2026-06-29',
+      weeks: overrunHistory(3, 0.05, '2026-06-01')
+        .map((w) => ({ ...w, deteriorated: 2, deterioratedSeverityFrac: 0.055 })),
+      future: [{ weekStartISO: '2026-06-29', rows: futureWeekRows('2026-06-29', 7, 16) }],
+    }));
+    expect(raiseOf(d)).toBe(0);
+  });
+
+  it('a fade whose SEVERITY could not be measured refuses · Rule 11', () => {
+    const d = decideVolumeRaise(windowFor({
+      asOfISO: '2026-06-29',
+      weeks: overrunHistory(3, 0.05, '2026-06-01')
+        .map((w) => ({ ...w, deteriorated: 1, deterioratedSeverityFrac: null })),
+      future: [{ weekStartISO: '2026-06-29', rows: futureWeekRows('2026-06-29', 7, 16) }],
+    }));
+    // "Known bad, size unknown" is not "mild". Spending it as mild is the
+    // collapse Rule 11 names, on the axis where being wrong grants a raise.
     expect(raiseOf(d)).toBe(0);
   });
 });

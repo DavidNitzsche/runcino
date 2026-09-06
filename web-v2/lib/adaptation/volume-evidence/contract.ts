@@ -101,6 +101,8 @@ import { GRADES_THAT_COUNT_AS_EVIDENCE } from '@/lib/adaptation/canonical/stimul
 import { reconsiderAtBoundary } from '@/lib/adaptation/canonical/deferral-queue';
 import {
   CONTRACT_DOC,
+  DETERIORATION_DECOUPLING_FRAC,
+  DETERIORATION_SEVERITY_EXTREME_FRAC,
   THRESHOLD_EVIDENCE_WINDOW_DAYS,
   THRESHOLD_EVIDENCE_WINDOW_DAYS_TIGHT,
   VOLUME_MAX_STEP_FRAC,
@@ -129,6 +131,8 @@ import {
  *   measured / absent / failed      pure constructors for `Measured<T>`
  *   GRADES_THAT_COUNT_AS_EVIDENCE   a frozen Set of two grade names
  *   VOLUME_* / THRESHOLD_EVIDENCE_* doctrine constants
+ *   DETERIORATION_*                 the two edges of Research/03 §12's Pa:HR
+ *                                   decoupling band table
  *   CONTRACT_DOC                    a citation string
  *   reconsiderAtBoundary            a PURE ledger function: it takes a queue
  *                                   and returns a queue, opens no connection
@@ -144,6 +148,8 @@ export {
   GRADES_THAT_COUNT_AS_EVIDENCE,
   reconsiderAtBoundary,
   CONTRACT_DOC,
+  DETERIORATION_DECOUPLING_FRAC,
+  DETERIORATION_SEVERITY_EXTREME_FRAC,
   THRESHOLD_EVIDENCE_WINDOW_DAYS,
   THRESHOLD_EVIDENCE_WINDOW_DAYS_TIGHT,
   VOLUME_MAX_STEP_FRAC,
@@ -586,7 +592,13 @@ export const RULE_21_THRESHOLD_LEDGER: readonly ThresholdPair[] = [
   },
   {
     question: 'What deterioration does.',
-    up: 'DETERIORATED blocks admission. UNKNOWN also blocks admission.',
+    up: 'ONE deteriorated session DISCOUNTS the week continuously by how far it fell '
+      + '(deteriorationConfidenceWeight: full credit at or below '
+      + 'DETERIORATION_DECOUPLING_FRAC (0.05), nothing at or above '
+      + 'DETERIORATION_SEVERITY_EXTREME_FRAC (0.08), Research/03 §12\'s own band table). '
+      + 'It BLOCKS only when repeated (Q13: >=2 sessions), when the worst session is at or '
+      + 'past 0.08, or when a session is known to have deteriorated and its severity could '
+      + 'not be measured. UNKNOWN alone never blocks and never discounts.',
     down: 'DETERIORATED does not by itself lower the belief; it withholds a '
       + 'raise. UNKNOWN does nothing at all.',
     symmetric: false,
@@ -595,6 +607,16 @@ export const RULE_21_THRESHOLD_LEDGER: readonly ThresholdPair[] = [
       + 'raise on an unreadable session costs the runner a week; cutting his '
       + 'plan on one costs him the block. lib/adaptation/canonical/'
       + 'deterioration.ts returns UNKNOWN rather than CLEAN for truncated or '
-      + 'non-comparable thirds precisely so the caller can make this split.',
+      + 'non-comparable thirds precisely so the caller can make this split. '
+      + 'DETERIORATION-SEVERITY-1 (2026-09-05) corrected the UP column, and it was wrong in '
+      + 'BOTH directions at once, which is why it is worth saying rather than quietly '
+      + 'editing. It claimed "UNKNOWN also blocks admission", which the code has never done '
+      + '(admit.ts blocks on deterioratedCount, never on unknownCount) -- so the ledger was '
+      + 'describing a bar HIGHER than the engine actually had. And it claimed DETERIORATED '
+      + 'blocks, which the code DID do and doctrine forbids: PROGRESSIVE_BASELINE_DOCTRINE.md '
+      + 'Q13 says one deteriorated session "must not independently block progression unless '
+      + 'the deterioration is extreme". The bar to go UP is now strictly lower than it was, '
+      + 'never higher, which is the only direction Rule 21 permits, and the two doctrine '
+      + 'edges are read out of Research/03 at gate time rather than chosen.',
   },
 ];

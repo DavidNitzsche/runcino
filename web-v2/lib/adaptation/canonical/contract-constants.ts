@@ -245,8 +245,45 @@ export const DETERIORATION_PACE_SLOWDOWN_FRAC = 0.04;
 export const DETERIORATION_PACE_STABLE_FRAC = 0.02;
 export const DETERIORATION_HR_RISE_BPM = 6;
 
-/** Q13 · "Pace-to-HR decoupling >~5%." */
+/**
+ * Q13 · "Pace-to-HR decoupling >~5%."
+ *
+ * DETERIORATION-SEVERITY-1 · this number has a SECOND citation, and the second
+ * one is what turns a flag into a scale. `Research/03-heart-rate-zones.md`
+ * §12 "Cardiac Drift and Aerobic Decoupling (Pa:HR)" states a four-row band
+ * table over exactly this quantity, and its top row is
+ *
+ *     | <5% | Strong aerobic endurance; sustainable |
+ *
+ * so 5% is not only where Q13 starts flagging, it is the ceiling of the band
+ * doctrine calls SUSTAINABLE. That is why it can be the point at which the
+ * confidence penalty is still exactly zero: doctrine says a session below it
+ * held together. See `DETERIORATION_SEVERITY_EXTREME_FRAC` for the other end.
+ */
 export const DETERIORATION_DECOUPLING_FRAC = 0.05;
+
+/**
+ * WHERE Q13's WORD "EXTREME" IS ACTUALLY WRITTEN DOWN.
+ *
+ * Q13 says one deteriorated session "must not independently block progression
+ * unless the deterioration is extreme or that session was the direct
+ * prerequisite" — and never defines extreme. `Research/03` §12 does, for the
+ * same quantity Q13's own third signal measures:
+ *
+ *     | <5%   | Strong aerobic endurance; sustainable                |
+ *     | 5–8%  | Acceptable; approaching aerobic limit                |
+ *     | 8–10% | Endurance gap; build base before progressing         |
+ *     | >10%  | Above aerobic threshold or insufficient endurance    |
+ *
+ * The 8% row is doctrine saying, in its own words, BUILD BASE BEFORE
+ * PROGRESSING. So 8% is where a progression stops being licensed, and it is
+ * the lower edge of that row rather than a number anybody chose.
+ *
+ * Read out of the doc at gate time by
+ * `volume-evidence/_deterioration_severity.test.ts`, never hardcoded on both
+ * sides (Rule 7 point 2, Rule 18).
+ */
+export const DETERIORATION_SEVERITY_EXTREME_FRAC = 0.08;
 
 /**
  * Q13 · "'Repeated' means ≥2 relevant SESSIONS in the window, not two segments

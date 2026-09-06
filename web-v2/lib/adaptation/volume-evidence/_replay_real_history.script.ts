@@ -356,6 +356,11 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
         telemetry: absent('this replay does not reconstruct heart-rate traces'),
         deterioration: measured({
           repeated: false, deterioratedCount: 0, unknownCount: 0, cleanCount: 0,
+          // Rule 11 · NOT a measured zero. This replay reconstructs no thirds,
+          // so no session was readable, which is exactly what `null` means.
+          // `deteriorationConfidenceWeight(null)` is 1, so pass B withholds
+          // nothing on this axis and grants nothing either.
+          worstSeverityFrac: null,
           detail: 'ASSUMED CLEAN · not reconstructed by this replay',
         }),
         keySessionGrades: [],
@@ -378,6 +383,7 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
         telemetry: absent('this replay does not reconstruct heart-rate traces'),
         deterioration: measured({
           repeated: false, deterioratedCount: 0, unknownCount: 0, cleanCount: 0,
+          worstSeverityFrac: null,
           detail: 'ASSUMED CLEAN · not reconstructed by this replay',
         }),
         keySessionGrades: [],
@@ -467,6 +473,10 @@ describe('MILEAGE-RESPONSIVE-1 · replay against the owner\'s real 2026', () => 
           : b.input.isRaceWeek ? 'RACE_WEEK' : 'BUILD';
 
       const resp = respondToVolumeEvidence({
+        /* This replay reconstructs no session thirds, so no fade was measured
+         * and nothing is withheld on that axis (Rule 11 · unreadable is not
+         * bad). Stated rather than defaulted. */
+        deteriorationWeight: 1,
         asOfISO: addDays(b.ws, 7),
         athleteId: OWNER,
         planVersion: b.plan?.id ?? 'none',
