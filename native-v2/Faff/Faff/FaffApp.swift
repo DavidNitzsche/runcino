@@ -178,7 +178,7 @@ struct FaffApp: App {
     /// `plan_workout_proposals` rows in the life of the product, two of them
     /// pending, and both are `field_test`. So signing the simulator in and
     /// opening Today would exercise ONE of the six directions and none of the
-    /// four standings, and seeding the other five would mean writing rows into
+    /// five standings, and seeding the other five would mean writing rows into
     /// the production table, which is exactly what
     /// `lib/verify/install-barrier` exists to prevent.
     ///

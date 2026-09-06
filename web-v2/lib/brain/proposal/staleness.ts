@@ -31,12 +31,22 @@ export async function readLiveRows(
   const out = new Map<string, LiveRow>();
   if (planWorkoutIds.length === 0) return out;
 
+  /* UNDOCOMPLETE-1 · the five SHAPE columns are selected too, because the
+   * snapshot this read produces is what `beforeFromLive` turns into the
+   * proposal's `before` — and an undo can only restore what was recorded.
+   * Selecting them here is the difference between "undoable" being a promise
+   * and being a fact. */
   const rows = (await pool.query<{
     id: string;
     date_iso: string;
     type: string;
     distance_mi: string | number | null;
     pace_target_s_per_mi: number | null;
+    duration_min: string | number | null;
+    is_quality: boolean | null;
+    sub_label: string | null;
+    notes: string | null;
+    workout_spec: Record<string, unknown> | null;
     plan_id: string;
     last_adapted_at: Date | null;
   }>(
@@ -45,6 +55,11 @@ export async function readLiveRows(
             pw.type,
             pw.distance_mi,
             pw.pace_target_s_per_mi,
+            pw.duration_min,
+            pw.is_quality,
+            pw.sub_label,
+            pw.notes,
+            pw.workout_spec,
             tp.id AS plan_id,
             tp.last_adapted_at
        FROM plan_workouts pw
@@ -63,6 +78,11 @@ export async function readLiveRows(
       distanceMi: r.distance_mi === null ? null : Number(r.distance_mi),
       paceTargetSecPerMi: r.pace_target_s_per_mi,
       planVersion: planVersionOf({ id: r.plan_id, last_adapted_at: r.last_adapted_at }),
+      durationMin: r.duration_min === null ? null : Number(r.duration_min),
+      isQuality: r.is_quality,
+      subLabel: r.sub_label,
+      notes: r.notes,
+      workoutSpec: r.workout_spec,
     });
   }
   return out;
@@ -80,6 +100,15 @@ export function beforeFromLive(live: ReadonlyMap<string, LiveRow>): readonly Row
     distanceMi: r.distanceMi,
     paceTargetSecPerMi: r.paceTargetSecPerMi,
     planVersion: r.planVersion,
+    /* Rule 11 on the SNAPSHOT: a reader that did not select a shape column
+     * leaves it `undefined`, and the field is OMITTED rather than written as
+     * null — "nobody read this" and "the session had none" are different facts
+     * and `undoWritesFor` answers them differently. */
+    ...(r.durationMin === undefined ? {} : { durationMin: r.durationMin }),
+    ...(r.isQuality === undefined ? {} : { isQuality: r.isQuality }),
+    ...(r.subLabel === undefined ? {} : { subLabel: r.subLabel }),
+    ...(r.notes === undefined ? {} : { notes: r.notes }),
+    ...(r.workoutSpec === undefined ? {} : { workoutSpec: r.workoutSpec }),
   }));
 }
 

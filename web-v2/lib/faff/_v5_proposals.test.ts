@@ -28,6 +28,10 @@
 import { describe, it, expect } from 'vitest';
 import { detailFor, directionOf, headlineFor, standingOf, toWire } from '@/lib/faff/v5-proposals';
 import type { PendingProposal } from '@/lib/plan/workout-proposals';
+import type { BrainAction } from '@/lib/brain/proposal/action';
+import { serializeAction } from '@/lib/brain/proposal/serialize';
+import { holdFor } from '@/lib/brain/proposal/generate/from-seal';
+import { safetyStopFrom } from '@/lib/brain/proposal/generate/from-safety';
 
 const TODAY = '2026-09-05';
 
@@ -104,6 +108,72 @@ describe('V5PROPOSAL-1 · direction is the objective\'s vocabulary, not a fourth
     expect(headlineFor({
       ...base, actionKind: 'reschedule', actionPayload: { newDate: '2026-09-12' },
     } as PendingProposal)).toBe('Move Thursday to Saturday');
+  });
+});
+
+describe('ACTIONCOMPLETE-2 · the two kinds that could only ever be seeded', () => {
+  /* WHAT THIS PROVES AND WHAT IT DOES NOT (Rule 13, honestly).
+   *
+   * It proves the SERVER half end to end: an action built by the real generator,
+   * put through the real serializer into the shape `writeActionProposal`
+   * inserts, read back by the real reader, and mapped by the real `toWire` into
+   * the exact card the phone decodes. Every step here is shipping code.
+   *
+   * It does NOT prove the phone draws it. Rule 13's standard is a screenshot of
+   * the real app against real data, and the honest statement is that this is
+   * one layer short of that: `ProposalCardV5` and `ProposalStandingV5` are
+   * Swift and are not in this process. What this does close is the gap the
+   * SERVER had, which is where the failure actually was — `directionOf`
+   * returned null for anything outside five engine words and `toWire` withheld
+   * the card, so a HOLD written to the database rendered as nothing at all.
+   */
+  const row = (action: BrainAction, kind: string, reason: string): PendingProposal => ({
+    ...base,
+    actionKind: kind as PendingProposal['actionKind'],
+    actionPayload: { why: reason, action: serializeAction(action) },
+    reason,
+  } as PendingProposal);
+
+  it('a HOLD from its real generator reaches the wire as a NOTICE', () => {
+    const hold = holdFor(
+      'One hard week is not evidence. Two more sessions at this control and the dose moves.',
+      ['wko_1'],
+    );
+    const w = toWire(row(hold, 'hold', 'One hard week is not evidence.'), TODAY);
+    expect(w, 'a HOLD row is withheld from the phone').not.toBeNull();
+    expect(w!.direction).toBe('hold');
+    expect(w!.headline).toBe('Holding the plan as it is');
+    /* NOT `proposal`. Two buttons on a hold would ask the runner to approve the
+     * engine leaving his plan alone, which is a question nobody put. */
+    expect(w!.standing).toBe('notice');
+  });
+
+  it('a SAFETY_STOP from its real generator reaches the wire as a STOP notice', () => {
+    const stop = safetyStopFrom({
+      resolution: {
+        known: true, state: 'STOP', posture: 'NO_TRAINING', reason: 'injury_major',
+        driver: 'injury', injury: { site: 'left shin', severity: 'major' },
+        illness: null, niggle: null, degradedSignals: [], explain: 'x',
+      } as never,
+      before: [{ planWorkoutId: 'wko_1', dateISO: '2026-09-10' }],
+    });
+    expect(stop).not.toBeNull();
+    const w = toWire(
+      row(stop!, 'safety_stop',
+        'Localised shin pain that has not settled with two easy days.'),
+      TODAY,
+    );
+    expect(w, 'a SAFETY_STOP row is withheld from the phone').not.toBeNull();
+    expect(w!.direction).toBe('stop');
+    expect(w!.headline).toBe('Stop running and let this settle');
+    expect(w!.standing).toBe('notice');
+  });
+
+  it('an ordinary change is still a PROPOSAL, so the notice did not swallow everything', () => {
+    // The control. A standing that spread to every card would draw no buttons
+    // anywhere, which is a worse failure than the one it fixed and would look
+    // exactly like it working.
+    expect(toWire(base, TODAY)!.standing).toBe('proposal');
   });
 });
 

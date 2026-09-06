@@ -6,6 +6,112 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-09-05 · ACTIONCOMPLETE-2 · the propose lane can carry a JUDGEMENT, the
+runner can take a session's shape back, and "complete" now means fourteen things
+rather than eleven.
+
+### The finding
+
+The owner: *"HOLD and SAFETY_STOP must be producible by real evidence, not
+seeded screenshots."*
+
+They were seeded. `scripts/v5-roundtrip-seed.ts` wrote both by hand and said so
+in its own header, and the reason was a TYPE-LEVEL wall rather than a missing
+feature: `writeWorkoutProposals` takes `AdaptationAction[]`, `PROPOSABLE_KINDS`
+is a set of `AdaptationAction['kind']`, and HOLD, REFUSAL and SAFETY_STOP are
+not members of that type at all — because none of them is a mutation. Widening
+`PROPOSABLE_KINDS` would not have moved it.
+
+So the three kinds this engine has for making a JUDGEMENT VISIBLE were the three
+kinds no production path could show anyone. Generated, validated, serialized,
+rendered, executable, ledgered, watched, undo-posture stated — eleven green
+cells each — and unreachable.
+
+### What was decided
+
+**1 · A writer that takes a `BrainAction`.** `lib/brain/proposal/write.ts`.
+Not a second writer beside `writeWorkoutProposals`: that function's job is
+TRANSLATION (walk the adaptation actions, filter, read the row, call
+`actionFromAdaptation`), and it produces exactly the thing this one takes as its
+argument. The two are halves of one path; what changed is that the second half
+is no longer reachable only through the first.
+
+**2 · One lever is deliberately withheld from that door.** `reshape` is not in
+`PROPOSABLE_KINDS` because the owner's 2026-09-02 ruling names it by name, and
+CLAUDE.md is explicit that a doctrine-cited guard is not weakened to make room
+for new work. `write.ts` refuses the four session-geometry kinds plus
+LONG_RUN_STRUCTURE_CHANGE out loud rather than becoming the side door around it.
+`RACE_TARGET_CHANGE` is refused for Rule 20's reason. **Those six close on his
+word, not on an engineer's.**
+
+**3 · A hold is worth a card; a refusal is not.** A hold said out loud is the
+only thing that separates "the engine never pushes" from "the runner has not
+earned it" — the ambiguity Rule 21 had to query `coach_intents` sideways to
+resolve. A refusal card would say "the engine was not permitted to change this",
+which is bookkeeping about an authority setting the runner did not choose and
+cannot answer. One hold at a time, deduped on (runner, kind).
+
+**4 · A stop cannot be declined.** `decline-facet.ts`, and the dismiss route now
+asks it before writing. The route was one UPDATE for twenty-one kinds, so
+tapping "Leave it" on a withhold marked it answered — a button that overrides
+safety, which is the one thing the authority boundary exists to make impossible.
+
+**5 · A judgement is not a question on the card either.** `V5ProposalStanding`
+gains `notice`, resolved from the EXECUTOR path rather than from a second list
+of kinds, and `ProposalStandingV5` mirrors it. `isAnswerable` is false, so no
+Do it / Leave it is drawn on a decision nobody asked the runner to make.
+
+**6 · `RowBefore` records the session's SHAPE.** Seven kinds could be applied
+and never reversed, every one for the same reason: what they overwrote lived in
+`workout_spec`, `sub_label`, `notes`, `duration_min` and `is_quality`, and
+`RowBefore` recorded none of the five. The refusal was honest and it was the
+right answer to the wrong shape. Eight cells closed. The refusal STAYS for a
+proposal that recorded no spec — restoring a chip onto a prescription it no
+longer describes is worse than refusing, and that is the "is it 5 or 4 miles"
+defect running backwards.
+
+The five new fields are **not compared for staleness**, and that is a decision:
+staleness asks "is this still the session I reasoned about", and a note is not
+the session. A note edited under a pending card must not make his decision
+refuse to apply.
+
+**7 · Completeness means fourteen things.** EVIDENCE_SOURCE (what MEASURED it),
+PROPOSAL_WRITER (can a live path RAISE it), DECLINE (what the runner's no
+means). The eleven-facet matrix certified two unreachable levers as complete,
+which is the strongest argument available that a facet list is a hypothesis.
+`ORIGINAL_ELEVEN_GAP_CEILING` pins the count on the old matrix — 23 down to
+14 — so a new facet cannot hide a regression on an old one.
+
+### The authority boundary did not move
+
+`AUTOMATIC_ADAPTATION_AUTHORITY` is still the literal `false`. Neither new
+module imports it or reads it, and both are gated on that rather than asserting
+it in a header (Rule 19's corollary). Both kinds the new lane raises are
+RECORD_ONLY at the executor: accepting one writes no plan row, by design.
+
+### Falsification (Rule 18)
+
+Twenty-three plants across both gates. Three passed that should have failed, and
+each was a real hole:
+
+- deleting a kind from `WRITER_REFUSES` passed — the cross-check was consistent
+  with the map SHRINKING, so a ruled-on lever could be un-refused silently.
+  Closed with `WRITER_MUST_REFUSE`, pinned set-for-set.
+- deleting `workout_spec` from `UNDOABLE_COLUMNS` passed — the assertion asked
+  whether the FILE contained the string, and a second list two lines below still
+  spelled it. Scoped to the block.
+- deleting the `workoutSpec` line from `beforeFromLive` passed — every undo
+  assertion ran against fixtures richer than the live snapshot, so the facet
+  could read green while every real proposal was un-undoable. Now driven through
+  the shipping snapshot.
+
+And one in the new shell gate: emptying `ALL_ACTION_KINDS` made it exit 1 saying
+NOTHING, because `set -euo pipefail` killed the script before its own liveness
+message could print. A gate that fails without naming the defect is barely
+better than one that passes.
+
+---
+
 ## 2026-09-05 · THRESHOLD-OWNER-2 · one canonical threshold belief, and the
 round trip proven end to end. Plus LEDGERRESPONDED-1, a real defect the round
 trip found on its first run.

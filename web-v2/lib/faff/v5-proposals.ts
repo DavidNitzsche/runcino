@@ -50,6 +50,7 @@ import type { PendingProposal } from '@/lib/plan/workout-proposals';
 import { actionFromPending, actionShapeOfEngineKind } from '@/lib/brain/proposal/staleness';
 import { deserializeAction } from '@/lib/brain/proposal/serialize';
 import { phoneDirectionOf, actionHeadline } from '@/lib/faff/v5-action-render';
+import { executorFor } from '@/lib/brain/proposal/executor-map';
 
 /**
  * Engine kind to the runner's question.
@@ -154,6 +155,27 @@ export function standingOf(p: PendingProposal, todayISO: string): V5ProposalStan
   if (earningConditionsFrom(p.evidence) != null) return 'condition';
   const reassess = reassessOnFrom(p.evidence);
   if (reassess != null && reassess > todayISO) return 'deferral';
+
+  /* ── ACTIONCOMPLETE-2 (2026-09-05) · A JUDGEMENT IS NOT A QUESTION ────────
+   *
+   * HOLD, REFUSAL and SAFETY_STOP became reachable in production this day, and
+   * they all fell through to `proposal` — which draws Do it / Leave it. That
+   * would have asked the runner to approve the engine LEAVING HIS PLAN ALONE,
+   * and to decline a safety withhold, on the one screen he actually opens.
+   *
+   * The test is the EXECUTOR's, not a second list of kinds here: a kind routed
+   * to RECORD_ONLY changes nothing when accepted, which is exactly the property
+   * that makes an accept button meaningless (Rule 16 — one answer to "does
+   * accepting this do anything", and `executor-map.ts` owns it).
+   *
+   * `CONDITIONAL` is also RECORD_ONLY and is deliberately caught by the gate
+   * ABOVE this one when it carries an earning gate, because "here is what would
+   * earn it" is a better thing to draw than "this is a notice". A conditional
+   * with no gate recorded reads as a notice, which is honest: nothing was
+   * written down for the runner to work toward. */
+  const action = actionFromPending(p);
+  if (action != null && executorFor(action).path === 'RECORD_ONLY') return 'notice';
+
   return 'proposal';
 }
 

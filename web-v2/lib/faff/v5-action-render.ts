@@ -23,7 +23,7 @@
  * true is the adjudicator's.
  */
 
-import type { ActionShape, BrainAction, Quantity } from '@/lib/brain/proposal/action';
+import type { ActionKind, ActionShape, BrainAction, Quantity } from '@/lib/brain/proposal/action';
 import type { V5ProposalDirection } from '@/lib/faff/v5-today';
 import { fmtMi, roundTo } from '@/lib/format/run';
 
@@ -36,33 +36,77 @@ import { fmtMi, roundTo } from '@/lib/format/run';
  * opinion about the one quantity the engine is measured on (Rule 16).
  */
 export function phoneDirectionOf(action: ActionShape): V5ProposalDirection {
-  switch (action.kind) {
-    case 'SAFETY_STOP': return 'stop';
-    /* A field test never asks for less. It replaces a prescribed quality
-     * session with a maximal effort whose entire purpose is to earn a faster
-     * prescription — an advance in both PACE and SPECIFICITY. It is not a load
-     * reduction under any reading, and that is the property that decides the
-     * axis, not the fact that the session's own direction field is neutral. */
-    case 'FIELD_TEST': return 'push';
-    case 'RESCHEDULE': return 'move';
-    case 'HOLD':
-    case 'REFUSAL': return 'hold';
-    /* Prescribed easing is not a pull-back. Being told to taper and being told
-     * you have overreached are different things to read on a Tuesday, and the
-     * card's colour is the whole difference. */
-    case 'TAPER_CHANGE':
-    case 'RECOVERY_CHANGE': return 'recovery';
-    case 'WORKOUT_TYPE_CHANGE':
-      return action.to === 'rest' || action.to === 'recovery' ? 'recovery' : 'pull_back';
-    default:
-      switch (action.direction) {
-        case 'MORE': return 'push';
-        case 'LESS': return 'pull_back';
-        case 'STOP': return 'stop';
-        case 'NEUTRAL': return 'hold';
-      }
+  const rule = DRAWING_RULE[action.kind];
+  if (rule === 'FROM_TARGET_TYPE') {
+    return action.to === 'rest' || action.to === 'recovery' ? 'recovery' : 'pull_back';
+  }
+  if (rule !== 'FROM_DIRECTION') return rule;
+  switch (action.direction) {
+    case 'MORE': return 'push';
+    case 'LESS': return 'pull_back';
+    case 'STOP': return 'stop';
+    case 'NEUTRAL': return 'hold';
   }
 }
+
+/**
+ * HOW EACH KIND IS DRAWN · TOTAL AT COMPILE TIME.
+ *
+ * This was a `switch` whose `default` arm read the action's own `direction`
+ * field. That is correct BEHAVIOUR and was the wrong SHAPE: a `default` arm is
+ * exactly what stops a compiler noticing a missing case, so a twenty-second
+ * kind would have been drawn by inheritance rather than by anyone deciding
+ * what the runner should see. `scripts/check-action-kinds.sh` GUARD 5 found it
+ * on the day that gate was written, which is the gate doing its job.
+ *
+ * `FROM_DIRECTION` is the same behaviour, DECLARED. It says "this kind's
+ * drawing follows the direction the engine set", which is a real answer for
+ * most kinds and is now a per-kind statement rather than a fallthrough — a new
+ * member of the union fails `tsc` until someone puts it in this table.
+ */
+type DrawingRule =
+  | V5ProposalDirection
+  /** Follow the action's own `direction` field, which is what Rule 21 counts. */
+  | 'FROM_DIRECTION'
+  /** Read the target type: rest and recovery are prescribed easing, not retreat. */
+  | 'FROM_TARGET_TYPE';
+
+const DRAWING_RULE: Readonly<Record<ActionKind, DrawingRule>> = {
+  SAFETY_STOP: 'stop',
+  /* A field test never asks for less. It replaces a prescribed quality session
+   * with a maximal effort whose entire purpose is to earn a faster
+   * prescription — an advance in both PACE and SPECIFICITY. It is not a load
+   * reduction under any reading, and that is the property that decides the
+   * axis, not the fact that the session's own direction field is neutral. */
+  FIELD_TEST: 'push',
+  RESCHEDULE: 'move',
+  HOLD: 'hold',
+  REFUSAL: 'hold',
+  /* Prescribed easing is not a pull-back. Being told to taper and being told
+   * you have overreached are different things to read on a Tuesday, and the
+   * card's colour is the whole difference. */
+  TAPER_CHANGE: 'recovery',
+  RECOVERY_CHANGE: 'recovery',
+  WORKOUT_TYPE_CHANGE: 'FROM_TARGET_TYPE',
+
+  /* Everything below follows the engine's own declared direction, which is the
+   * field the asymmetry census counts. A renderer that re-decided direction
+   * from the kind would be a second opinion about the one quantity the engine
+   * is measured on (Rule 16). */
+  PACE_CHANGE: 'FROM_DIRECTION',
+  DISTANCE_CHANGE: 'FROM_DIRECTION',
+  DURATION_CHANGE: 'FROM_DIRECTION',
+  REPETITION_CHANGE: 'FROM_DIRECTION',
+  RECOVERY_INTERVAL_CHANGE: 'FROM_DIRECTION',
+  QUALITY_DOSE_CHANGE: 'FROM_DIRECTION',
+  LONG_RUN_STRUCTURE_CHANGE: 'FROM_DIRECTION',
+  ADD_WORKOUT: 'FROM_DIRECTION',
+  REMOVE_WORKOUT: 'FROM_DIRECTION',
+  FREQUENCY_CHANGE: 'FROM_DIRECTION',
+  COORDINATED: 'FROM_DIRECTION',
+  RACE_TARGET_CHANGE: 'FROM_DIRECTION',
+  CONDITIONAL: 'FROM_DIRECTION',
+};
 
 /** Six to ten words. One per kind, total over the union. */
 export function actionHeadline(action: BrainAction, dayName: string): string {

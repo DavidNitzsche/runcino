@@ -38,18 +38,21 @@
  * proves the lane from the decision onward, and says nothing about whether the
  * engine would have made these decisions on this data.
  *
- * NOT REAL, AND A FINDING RATHER THAN A SHORTCUT. `hold` and `stop` do NOT go
- * through `writeWorkoutProposals`, because they CANNOT: `PROPOSABLE_KINDS` is a
- * set of `AdaptationAction['kind']`, and HOLD, REFUSAL and SAFETY_STOP are not
- * members of that type at all. The repo says so itself —
- * `lib/audit/generated-content-registry.ts` records the SAFETY_STOP generator as
- * "COMPLETE AND DELIBERATELY UNWIRED", waiting on the canonical safety slice. So
- * for those two this file writes the row the way a writer would once one exists,
- * in the real serializer's envelope. The HOLD comes from its real generator; the
- * SAFETY_STOP is written out as a fixture rather than generated, and the reason
- * is at that call site — importing the generator from a script would make the
- * repo's own orphan gate believe a deliberately-unwired module had been wired.
- * Every reader downstream is untouched. The report says which two those are.
+ * REAL AS OF 2026-09-05 (ACTIONCOMPLETE-2), AND THIS PARAGRAPH IS THE RECORD OF
+ * WHY IT WAS NOT. `hold` and `stop` used to be written out by hand here, because
+ * they COULD NOT go through `writeWorkoutProposals`: `PROPOSABLE_KINDS` is a set
+ * of `AdaptationAction['kind']`, and HOLD, REFUSAL and SAFETY_STOP are not
+ * members of that type at all — they are not mutations. That was a finding
+ * rather than a shortcut, and the owner ruled on it: "HOLD and SAFETY_STOP must
+ * be producible by real evidence, not seeded screenshots."
+ *
+ * `lib/brain/proposal/write.ts::writeActionProposal` is the door that was
+ * missing, and `lib/plan/action-proposal-lane.ts` is the live path through it,
+ * running nightly from the run-adaptations cron off `resolveSafety` and the
+ * progression gate. So both rows below now go through the SHIPPING writer — the
+ * same validation, the same dedup, the same objective check, the same envelope.
+ * What stays unreal here is what is unreal for the other four: THE DETECTION.
+ * This file hands the writer a decision; no verdict was taken and no gate ran.
  *
  * ─────────────────────────────────────────────────────────────────────────────
  * WHAT THIS CANNOT FAIL ON (Rule 22)
@@ -75,7 +78,7 @@ import { inspectConnectionString } from '@/lib/adaptation-harness/fence';
 import { pool } from '@/lib/db/pool';
 import { writeWorkoutProposals } from '@/lib/plan/workout-proposals';
 import { holdFor } from '@/lib/brain/proposal/generate/from-seal';
-import { serializeAction } from '@/lib/brain/proposal/serialize';
+import { writeActionProposal } from '@/lib/brain/proposal/write';
 import type { AdaptationAction, AdaptationTrigger } from '@/lib/plan/adapt';
 import type { BrainAction } from '@/lib/brain/proposal/action';
 import { ACTION_SCHEMA_VERSION } from '@/lib/brain/proposal/action';
@@ -163,30 +166,47 @@ function trigger(kind: string, reason: string, evidence: Record<string, unknown>
  * `actionFromPending` prefers, and therefore what decides the card. Nothing
  * downstream of this INSERT is special-cased for the seed.
  */
+/**
+ * ACTIONCOMPLETE-2 (2026-09-05) · THIS NO LONGER WRITES ITS OWN ROW.
+ *
+ * It used to build the INSERT by hand, because `writeWorkoutProposals` could
+ * not carry a HOLD or a SAFETY_STOP and no other writer existed. Both facts
+ * changed on the same day: `writeActionProposal` takes a `BrainAction`, and it
+ * is the SHIPPING writer — the nightly lane calls exactly this function with
+ * exactly this shape.
+ *
+ * So the seed now proves more than it did. A hand-written INSERT could only
+ * ever demonstrate that the READERS work; going through the writer also
+ * exercises `validateAction`, the objective's evidence clause, the dedup and
+ * the envelope, which is the half the owner said had never been proven.
+ *
+ * The name is kept because the report prints it and because it is still true
+ * of `writeWorkoutProposals`: these two kinds are unwritable BY THAT WRITER.
+ */
 async function insertUnwritable(
   action: BrainAction,
   row: Row,
-  actionKind: string,
+  _actionKind: string,
   reason: string,
   evidence: Record<string, unknown>,
 ): Promise<number> {
-  const payload = {
-    newType: null, newDate: null, shaveFraction: null, newDistanceMi: null,
-    why: reason,
-    action: serializeAction(action),
-  };
-  const r = await pool.query<{ id: number }>(
-    `INSERT INTO plan_workout_proposals
-       (user_uuid, plan_workout_id, workout_date_iso, action_kind,
-        action_payload, reason, evidence, source)
-     VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7::jsonb, $8)
-     RETURNING id`,
-    [OWNER_UUID, row.id, row.date_iso, actionKind,
-      JSON.stringify(payload), reason,
-      JSON.stringify({ ...evidence, planned_type: row.type, planned_distance_mi: row.distance_mi }),
-      SEED_SOURCE],
-  );
-  return r.rows[0].id;
+  const out = await writeActionProposal({
+    userUuid: OWNER_UUID,
+    action,
+    anchorWorkoutId: row.id,
+    anchorDateISO: row.date_iso,
+    reason,
+    evidence: { ...evidence, planned_type: row.type, planned_distance_mi: row.distance_mi },
+    /* Deliberately NOT `SEED_SOURCE`: the teardown at the top of `main` deletes
+     * every pending row for this runner whatever its source, so idempotence
+     * does not depend on the tag, and tagging a row the shipping writer wrote
+     * would make it look less real than it is. */
+    source: 'v5_roundtrip_seed_lane',
+    todayISO: row.date_iso,
+  });
+  if (!out.ok) refuse(`the shipping writer failed on the ${action.kind}: ${out.error.message}`);
+  if (!out.written) refuse(`the shipping writer withheld the ${action.kind}: ${out.because}`);
+  return out.proposalId;
 }
 
 async function main(): Promise<void> {
@@ -301,28 +321,24 @@ async function main(): Promise<void> {
     'One hard week is not evidence. Two more sessions at this control and the threshold dose moves.',
     { weekly_mi: 47.3, days_since_test: 41 });
 
-  /* ── WHY THIS ONE DOES NOT CALL ITS GENERATOR ──────────────────────────────
+  /* ── STILL A FIXTURE, AND NOW FOR ONE NARROW REASON ────────────────────────
    *
-   * `lib/brain/proposal/generate/from-safety.ts::safetyStopFrom` would build
-   * exactly this, and calling it would be the tidier code. It is deliberately
-   * not called, and the reason is the repo's own gate.
+   * `safetyStopFrom` is wired and live as of ACTIONCOMPLETE-2, so the old
+   * reason for not calling it — that a script import would retire a
+   * MODULE_ORPHANS entry recording a deliberately-unwired module — is gone with
+   * the entry.
    *
-   * `lib/audit/module-graph.ts::isEntryPoint` counts `web-v2/scripts/**` as a
-   * LIVE ROOT, so a seed importing that module would make it reachable — and
-   * `_generated_content_gate.test.ts` GUARD 5 would then fail its staleness
-   * check and demand the `MODULE_ORPHANS` entry be deleted. That entry is not
-   * bookkeeping: it records that the SAFETY_STOP generator is complete and
-   * DELIBERATELY UNWIRED while the canonical safety slice is in flight, and it
-   * expires "the moment a LIVE path calls it". A verification seed is not a
-   * live path, and letting a scratch-database tool retire that entry would
-   * make the gate report a wiring that does not exist.
+   * What remains is that calling it needs a `SafetyResolution`, and this seed
+   * has no injury to resolve. Building one here would mean typing out the
+   * safety owner's own verdict shape, which is a fixture of a DIFFERENT thing
+   * and a worse one: it would put a second description of an injury state in a
+   * script. The ACTION is the smaller fixture and the honest one.
    *
-   * So the action is written out here as a fixture. It is not a second
-   * implementation: `_action_completeness.test.ts` asserts the generator
-   * produces this exact shape from a STOP verdict — kind, direction, and a
-   * `because` that comes from the safety owner's own renderer ("Rest, not
-   * run") — so if the generator ever changes, that test moves and this fixture
-   * is what has to follow it.
+   * It is not a second implementation. `_action_completeness.test.ts` asserts
+   * the generator produces this exact shape from a STOP verdict — kind,
+   * direction, and a `because` that comes from the safety owner's own renderer
+   * ("Rest, not run") — so if the generator changes, that test moves and this
+   * follows it.
    */
   const stop: BrainAction = {
     schemaVersion: ACTION_SCHEMA_VERSION,

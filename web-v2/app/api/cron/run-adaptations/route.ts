@@ -56,6 +56,7 @@ import { sealAutomaticActions, ADAPTATION_SEAM_ID } from '@/lib/plan/adaptation-
 import { tryAdaptiveBump } from '@/lib/plan/adaptive-ramp';
 // VOLUMESEAM-1 · the demonstrated-volume-evidence lane. Proposal only.
 import { runVolumeEvidenceLane } from '@/lib/plan/volume-evidence-proposal';
+import { runActionProposalLane } from '@/lib/plan/action-proposal-lane';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
 import { recordCronSuccess } from '@/lib/ops/cron-ledger';
@@ -465,6 +466,49 @@ export async function POST(req: NextRequest) {
         ? 0
         : await runVolumeEvidenceLane(uid);
       if (volumeCards > 0) await bustBriefingCacheForEvent(uid, 'plan_swap');
+
+      /* ── ACTIONCOMPLETE-2 (2026-09-05) · THE TWO KINDS NO WRITER COULD CARRY
+       *
+       * HOLD and SAFETY_STOP existed as fully-formed members of the action
+       * union with a generator, a validator, a renderer, a ledger arm and a
+       * watch effect each — and no path in production could put either in front
+       * of anyone. `PROPOSABLE_KINDS` is a set of `AdaptationAction['kind']`,
+       * and neither is a member of that TYPE: `AdaptationAction` is the
+       * per-workout MUTATION vocabulary, and a hold and a stop are not
+       * mutations. So `scripts/v5-roundtrip-seed.ts` wrote them by hand, said
+       * so in its own header, and that was the only way either had ever been
+       * seen.
+       *
+       * `runActionProposalLane` is the live half. It re-detects nothing: the
+       * safety verdict comes from `resolveSafety`, the app's one canonical
+       * safety owner, and the hold comes from the SAME `actions` array this
+       * pass already holds. The seam is untouched — both kinds are RECORD_ONLY
+       * at the executor, so accepting one writes no plan row by design.
+       *
+       * NOT guarded on `pullbackDecided`, unlike the two lanes above, and the
+       * asymmetry is the point: those offer MORE WORK and must not go out on a
+       * night the engine judged easing warranted. A stop is the opposite of
+       * more work, and a hold is the engine declining to change anything.
+       * Suppressing a safety card because a shave was proposed the same evening
+       * would be the guard firing in exactly the case it exists to protect. */
+      const { runnerToday: actionLaneToday } = await import('@/lib/runtime/runner-tz');
+      const actionLane = await runActionProposalLane(uid, await actionLaneToday(uid), actions)
+        .catch((e: unknown) => {
+          console.error('[run-adaptations] action-proposal lane threw:', e);
+          return null;
+        });
+      if (actionLane === null) {
+        /* Rule 11 · a lane that threw is not a lane that found nothing. Said
+         * out loud so "no hold card tonight" can be told from "the lane
+         * never ran". */
+        console.error(`[run-adaptations] ${uid}: the action-proposal lane did not complete`);
+      } else if (actionLane.withheld.length > 0) {
+        console.log(
+          `[run-adaptations] ${uid}: action lane raised ${actionLane.raised} · withheld `
+          + actionLane.withheld.join(' | '),
+        );
+      }
+      if ((actionLane?.raised ?? 0) > 0) await bustBriefingCacheForEvent(uid, 'plan_swap');
 
       /* ── LIVESEQ-1 (2026-09-05) · THE SEQUENCE GATE GETS A LIVE ENTRY POINT
        *

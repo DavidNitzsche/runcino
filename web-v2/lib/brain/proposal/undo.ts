@@ -87,20 +87,41 @@ export function undoWritesFor(action: BrainAction): UndoPlan {
     case 'RESCHEDULE':
       return fromField(action.before, 'dateISO', 'date', (b) => ({ date_iso: b.dateISO as string }));
 
-    /* The session's geometry lives in `workout_spec`, `sub_label` and the
-     * derived pace, and `RowBefore` records none of the three. Reversing the
-     * `notes` half alone would leave a row whose sentence disagrees with its
-     * prescription, which is worse than a plain refusal — so this says no, and
-     * names the field that would have to be recorded for it to say yes. */
+    /* ── THE SESSION-GEOMETRY KINDS · UNDOCOMPLETE-1 (2026-09-05) ─────────
+     *
+     * These five REFUSED, all five for one reason: the shape they replaced
+     * lives in `workout_spec`, `sub_label` and the derived pace, and
+     * `RowBefore` recorded none of the three. That refusal was honest and it
+     * was the right answer to the wrong shape — so the shape changed.
+     * `RowBefore` now carries the five columns a session's geometry actually
+     * occupies, and the inverse restores them TOGETHER.
+     *
+     * TOGETHER is the whole point and the reason this is one arm and not five.
+     * `applyProgressionReshape` writes spec, sub_label and pace from ONE
+     * rendered shape precisely so the three cannot disagree; an undo that put
+     * back the spec and left the chip is the "is it 5 or 4 miles" defect
+     * running backwards. So `shapeRestore` demands the spec was recorded and
+     * refuses the whole undo when it was not — Rule 11, and the same refusal
+     * the four used to give unconditionally, now given only when it is true.
+     *
+     * A row written before this shape existed carries none of the five, reads
+     * `undefined`, and refuses exactly as it did yesterday. Nothing about the
+     * decisions already in production changes. */
     case 'DURATION_CHANGE':
     case 'REPETITION_CHANGE':
     case 'RECOVERY_INTERVAL_CHANGE':
     case 'QUALITY_DOSE_CHANGE':
+      return shapeRestore(action.before, 'the session shape');
+
+    /* The long run's structure is written as `sub_label` + `notes`
+     * (`plannedWrites`), so its inverse is those two and NOT the spec: a
+     * progressive-finish note does not re-author the prescription. Demanding a
+     * spec here would refuse an undo that is genuinely complete without one. */
     case 'LONG_RUN_STRUCTURE_CHANGE':
-      return notUndoable(
-        'the session shape it replaced was not recorded on the proposal, and putting back only the '
-        + 'sentence would leave the label disagreeing with the prescription',
-      );
+      return fromFields(action.before, ['subLabel', 'notes'], 'the long run shape', (b) => ({
+        sub_label: b.subLabel as string,
+        notes: b.notes as string,
+      }));
 
     /* A row this engine inserted has no id until it exists, and `before` is
      * empty by construction. The accept path knows the id it wrote; a pure
@@ -148,24 +169,24 @@ export function undoWritesFor(action: BrainAction): UndoPlan {
         : reverse(w);
     }
 
-    /* Both write only `notes`, so both reverse cleanly — provided the runner's
-     * own note is not what gets clobbered. `before` does not record `notes`, so
-     * the inverse restores the empty string rather than what was there, and
-     * that is a loss worth refusing over. */
+    /* Both write only `notes`. This refused because `RowBefore` did not record
+     * notes, so the inverse would have BLANKED the sentence rather than
+     * restoring it — a loss worth refusing over, and the refusal was correct
+     * for as long as the field did not exist. It does now, and a row that
+     * recorded no note still refuses by name. */
     case 'TAPER_CHANGE':
     case 'RECOVERY_CHANGE':
-      return notUndoable(
-        'the sentence this replaced was not recorded, so reversing it would blank the note rather '
-        + 'than restore it',
-      );
+      return fromFields(action.before, ['notes'], 'the sentence it replaced',
+        (b) => ({ notes: b.notes as string }));
 
     case 'CONDITIONAL':
       return { kind: 'nothing_to_undo', because: 'a conditional writes nothing until its assessment date' };
 
+    /* A field test REPLACES the session — type, spec, sub_label and the
+     * quality flag all move together — so its inverse is the whole shape plus
+     * the type, and `shapeRestore` already demands every one of them. */
     case 'FIELD_TEST':
-      return notUndoable(
-        'a field test rewrites the session it replaces and the proposal did not record that shape',
-      );
+      return shapeRestore(action.before, 'the session a field test replaced', { withType: true });
 
     case 'HOLD':
     case 'REFUSAL':
@@ -197,6 +218,76 @@ function reverse(writes: readonly PlannedWrite[]): UndoPlan {
 
 function notUndoable(because: string): UndoPlan {
   return { kind: 'not_undoable', because };
+}
+
+/**
+ * THE SESSION'S GEOMETRY, PUT BACK WHOLE.
+ *
+ * Five columns, restored together or not at all. Partial is not an option and
+ * that is the design rather than caution: `workout_spec`, `sub_label` and
+ * `pace_target_s_per_mi` are three renderings of ONE shape, and a row where
+ * they disagree is the defect the spec rebuild was written to end. Distance and
+ * duration ride with them because a dose change moves both.
+ *
+ * The SPEC is the field this insists on. A proposal that recorded a sub_label
+ * and no spec would restore the chip onto a prescription it no longer
+ * describes, which is worse than refusing, so the refusal names the spec.
+ */
+function shapeRestore(
+  before: readonly RowBefore[],
+  human: string,
+  opts: { readonly withType?: boolean } = {},
+): UndoPlan {
+  const writes: PlannedWrite[] = [];
+  for (const b of before) {
+    if (b.workoutSpec === undefined) {
+      return notUndoable(
+        `the proposal did not record ${human} it replaced, and putting back only the sentence `
+        + 'would leave the label disagreeing with the prescription',
+      );
+    }
+    if (opts.withType === true && b.type === undefined) {
+      return notUndoable(`the proposal did not record the session type ${human} replaced`);
+    }
+    const set: RowWrite['set'] = {
+      workout_spec: b.workoutSpec,
+      ...(opts.withType === true ? { type: b.type as string } : {}),
+      ...(b.subLabel === undefined ? {} : { sub_label: b.subLabel as string }),
+      ...(b.notes === undefined ? {} : { notes: b.notes as string }),
+      ...(b.paceTargetSecPerMi === undefined ? {} : { pace_target_s_per_mi: b.paceTargetSecPerMi }),
+      ...(b.distanceMi === undefined ? {} : { distance_mi: b.distanceMi }),
+      ...(b.durationMin === undefined ? {} : { duration_min: b.durationMin }),
+      ...(b.isQuality === undefined || b.isQuality === null ? {} : { is_quality: b.isQuality }),
+    };
+    writes.push({ op: 'update', planWorkoutId: b.planWorkoutId, set });
+  }
+  return reverse(writes);
+}
+
+/**
+ * Several recorded fields per row, restored together, or a refusal naming the
+ * first one that was never recorded.
+ *
+ * The plural sibling of `fromField` below. Separate rather than folded into it
+ * because the singular case reads better at its four call sites and because a
+ * one-field restore has no "together" property to defend.
+ */
+function fromFields(
+  before: readonly RowBefore[],
+  fields: readonly (keyof RowBefore)[],
+  human: string,
+  set: (b: RowBefore) => RowWrite['set'],
+): UndoPlan {
+  const writes: PlannedWrite[] = [];
+  for (const b of before) {
+    for (const f of fields) {
+      if (b[f] === undefined) {
+        return notUndoable(`the proposal did not record ${human} (${String(f)} was not stored)`);
+      }
+    }
+    writes.push({ op: 'update', planWorkoutId: b.planWorkoutId, set: set(b) });
+  }
+  return reverse(writes);
 }
 
 /** One recorded field per row, restored, or a refusal naming the missing field. */

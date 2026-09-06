@@ -237,8 +237,8 @@ export type V5ProposalDirection =
  *
  * A runner reading "PULL BACK · Take 17% off Thursday" needs to know whether
  * he is being ASKED, TOLD WHAT WOULD EARN IT, TOLD IT WILL BE RE-TAKEN LATER,
- * or TOLD IT ALREADY HAPPENED. Those are four different obligations and only
- * the first one has an answer he owes.
+ * TOLD IT ALREADY HAPPENED, or SIMPLY TOLD. Those are five different
+ * obligations and only the first one has an answer he owes.
  *
  *   proposal  · open, and waiting on him. Two buttons mean something.
  *   condition · CONDITIONAL in `EvidenceClass` terms: it carries an earning
@@ -247,8 +247,16 @@ export type V5ProposalDirection =
  *               Not a question yet, and pretending it is one asks him to
  *               answer something the engine has not finished asking.
  *   applied   · already accepted and in the plan. Historical, not actionable.
+ *   notice    · a JUDGEMENT, not a question. A hold ("the evidence does not
+ *               justify moving yet") and a safety stop ("training is withheld")
+ *               change nothing and ask nothing, so two buttons on one would be
+ *               the card asserting a question the engine never put. It exists
+ *               because ACTIONCOMPLETE-2 made those two kinds reachable in
+ *               production for the first time; before that nothing could raise
+ *               one and the standing had nobody to describe.
  */
-export type V5ProposalStanding = 'proposal' | 'condition' | 'deferral' | 'applied';
+export type V5ProposalStanding =
+  'proposal' | 'condition' | 'deferral' | 'applied' | 'notice';
 
 /** One option the engine weighed and did not take. */
 export interface V5ProposalOptionWire {

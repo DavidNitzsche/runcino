@@ -42,6 +42,12 @@ export interface RowWrite {
     is_quality: boolean;
     sub_label: string;
     notes: string;
+    /* UNDOCOMPLETE-1 · written ONLY by an undo, restoring the spec the
+     * proposal recorded verbatim. No forward action authors a spec here:
+     * `applyProgressionReshape` renders spec, sub_label and pace together from
+     * one shape so the three cannot disagree, and a second author of this
+     * column would be exactly the duplication BRAIN_CONSTITUTION forbids. */
+    workout_spec: Record<string, unknown> | null;
   }>>;
 }
 
