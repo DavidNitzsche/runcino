@@ -59,14 +59,98 @@
  */
 import {
   athleteEvidenceFor, detectStackedStress, detectSimultaneousStressAddition,
-  earningGateFor, heuristicRankScore, rankOptions, checkPromotion,
+  earningGateFor, heuristicRankScore, rankOptions, checkPromotion, adjudicate,
   type DemonstratedHistory, type PlannedWeek,
 } from './adjudication/adjudicate';
 import type {
-  ComparableSession, DecisionTrace, EvidenceClass, OptionAppraisal, PlanAdjudication,
+  ComparableSession, DecisionTrace, DoctrineCitation, DoctrineConflict, EvidenceClass,
+  OptionAppraisal, PlanAdjudication,
 } from './adjudication/contract';
 import type { RenderedHistory } from './history-shapes';
 import { coldStartFor, type RaceDistanceKey } from './adjudication/cold-start';
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * ARBITRATION-DOCTRINE-1 (2026-09-05) · A REAL DOCTRINE CONFLICT, CONSTRUCTED
+ * AND RESOLVED THROUGH `adjudicate()`, NOT AROUND IT
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * Until this, `doctrineResolution` was decorative everywhere this app has a
+ * population to check it against. `_promotion_reach.test.ts`'s own ratchet
+ * named the reason and named this file: "`adjudication-corpus.ts` writes
+ * `conflicts: []` on every trace it builds, so no composed block — and no
+ * live plan, as the read-only replay confirms with 0 of 7 — has ever given
+ * this dimension an item to judge ... retiring this entry means a real
+ * caller emitting a real conflict, which belongs to whoever wires citation
+ * arbitration into the composer."
+ *
+ * The conflict below is not manufactured for the test. It is the SAME
+ * override `traceForWeek` and `mpTraceForWeek` already apply two lines after
+ * this is called: "nothing is PUSHed inside a taper or a race week, ever."
+ * When the athlete's own evidence ranks PUSH first — a real, SUPPORTED or
+ * ALLOWED case for progressing — and the week is a taper or race week, two
+ * citations are genuinely pulling in opposite directions, and until now the
+ * code just picked one silently:
+ *
+ *   · PROGRESSIVE_BASELINE_DOCTRINE.md Q8 · "Progress strong capacities
+ *     mainly through workload before moving their pace." A GUIDELINE: it
+ *     describes the ordinary case, not an absolute.
+ *   · Research/00a-distance-running-training.md's Taper row · "Reduced
+ *     volume, intensity preserved" — and, doctrine's own gloss on the same
+ *     row, "taper by removing fatigue, not by completing unfinished
+ *     development." A HARD_CONSTRAINT: `checkPromotion`'s own
+ *     `taperIntegrity` dimension blocks ANY push inside a taper or race
+ *     week, no exception, which is this app's own evidence that the taper
+ *     citation is not merely a guideline here.
+ *
+ * `adjudicate()` resolves it on force alone — HARD_CONSTRAINT beats
+ * GUIDELINE by construction — so this can never become "quoting whichever
+ * sentence supports the proposal already made" (Rule 18): the two forces
+ * really are unequal, and `adjudicate()` never needs `becauseIfEqual` to say
+ * so.
+ *
+ * FALSIFIABLE: remove the call to `taperFreezeConflictIfEvidenceWouldPush`
+ * below (revert both call sites to `conflicts: []`) and `doctrineResolution`'s
+ * examined population in `_promotion_reach.test.ts` and `_sweep_allusers`
+ * drops back to zero — proving this construction is what was carrying it,
+ * not an unrelated change elsewhere. See the falsification log in the
+ * handback for the actual before/after counts.
+ */
+const PROGRESS_CITATION: DoctrineCitation = {
+  source: 'docs/PROGRESSIVE_BASELINE_DOCTRINE.md',
+  section: 'Q8 · Marathon-effort progression in the baseline',
+  says: 'Progress strong capacities mainly through workload before moving their pace.',
+  force: 'GUIDELINE',
+};
+
+const TAPER_FREEZE_CITATION: DoctrineCitation = {
+  source: 'Research/00a-distance-running-training.md',
+  section: 'Taper',
+  says: 'Taper: reduced volume, intensity preserved. Taper by removing fatigue, not by '
+    + 'completing unfinished development. checkPromotion\'s own taperIntegrity dimension '
+    + 'blocks any push inside a taper or race week, no exception, which is this app\'s own '
+    + 'evidence that this citation is not merely a guideline.',
+  force: 'HARD_CONSTRAINT',
+};
+
+/**
+ * Was there really something to adjudicate? Only when the athlete's own
+ * evidence would have ranked PUSH first — i.e. progression was genuinely
+ * supported — AND the week is a taper or race week, where it is overridden
+ * regardless. Everywhere else there is no tension: doctrine and the evidence
+ * agree, and manufacturing a conflict where none exists would be exactly the
+ * decorative promotion dimension this fix exists to stop being.
+ */
+function taperFreezeConflictIfEvidenceWouldPush(
+  evidenceWouldPush: boolean,
+  isTaperOrRaceWeek: boolean,
+): readonly DoctrineConflict[] {
+  if (!evidenceWouldPush || !isTaperOrRaceWeek) return [];
+  return [adjudicate(PROGRESS_CITATION, TAPER_FREEZE_CITATION)];
+}
+
+function citationsFor(conflicts: readonly DoctrineConflict[]): readonly DoctrineCitation[] {
+  return conflicts.flatMap((c) => c.between);
+}
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 0 · COUNTS ARE NUMBERS BEFORE THEY ARE ARITHMETIC
@@ -454,9 +538,16 @@ export function traceForWeek(args: {
   // assumed. Neither is a coaching judgement invented here: both are read off
   // `adjudicate.ts`, and both are exactly what `checkPromotion` blocks on.
   const mustArgue = stacked?.simultaneousPeak === true || addsBoth != null;
+  // ARBITRATION-DOCTRINE-1 · captured BEFORE the override below, so the
+  // conflict this file now constructs describes what the evidence actually
+  // said, not what it says after doctrine already overrode it.
+  const evidenceWouldPush = chosen === 'PUSH';
   // Nothing is PUSHed inside a taper or a race week, ever. That is the
   // dimension, not a preference.
   if (week.isTaper || week.isRaceWeek) chosen = 'HOLD';
+  const conflicts = taperFreezeConflictIfEvidenceWouldPush(
+    evidenceWouldPush, week.isTaper || week.isRaceWeek,
+  );
 
   /**
    * WHEN THE CALLER OWES A GATE.
@@ -540,8 +631,8 @@ export function traceForWeek(args: {
       ? `${athlete.why} ${mustArgue ? 'The week adds more than one stressor, so it carries a gate.' : ''}`.trim()
       : `${athlete.why} Held: ${week.isTaper || week.isRaceWeek ? 'nothing is advanced inside a taper or a race week.' : 'the supported hold outranks the push.'}`,
     rejected: ranked.slice(1).map((o) => ({ option: o.option, why: o.risk })),
-    conflicts: [],
-    citations: [],
+    conflicts,
+    citations: citationsFor(conflicts),
     // A cold start is ALWAYS re-taken, gate or no gate: the low confidence is
     // supposed to be temporary, and a posture nothing revisits makes it
     // permanent.
@@ -606,7 +697,13 @@ function mpTraceForWeek(args: {
   // working, and it is why this corpus reaches the UNKNOWN class without ever
   // reaching a PUSH on it. Stated rather than left to be inferred.
   let chosen = ranked[0].option;
+  // ARBITRATION-DOCTRINE-1 · same capture as `traceForWeek`, before the
+  // override below substitutes HOLD for what the evidence actually ranked.
+  const evidenceWouldPush = chosen === 'PUSH';
   if (week.isTaper || week.isRaceWeek) chosen = 'HOLD';
+  const conflicts = taperFreezeConflictIfEvidenceWouldPush(
+    evidenceWouldPush, week.isTaper || week.isRaceWeek,
+  );
 
   // Same rule as the volume decision: the dose is prescribed whatever this
   // decision preferred, so the gate is owed on the CLASS, not on the choice.
@@ -625,8 +722,8 @@ function mpTraceForWeek(args: {
     chosen,
     because: athlete.why,
     rejected: ranked.slice(1).map((o) => ({ option: o.option, why: o.risk })),
-    conflicts: [],
-    citations: [],
+    conflicts,
+    citations: citationsFor(conflicts),
     reassessOnISO: needsGate || athlete.coldStart !== null ? assessOnISO : null,
     earningGate: needsGate
       ? earningGateFor({
