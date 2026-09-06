@@ -378,7 +378,16 @@ describe('COVERAGE-1 · every kind has a real production caller, or a named exem
       + '(FAILEDEVAL-1) — retries the FAILING item under its OWN kind and never relabels it '
       + 'FAILED_EVALUATION, so no INSERT anywhere constructs this literal value. A caller invented '
       + 'only to clear this exemption would be decoration, which Rule 15 warns against as strongly '
-      + 'as an uncovered mechanism.',
+      + 'as an uncovered mechanism. '
+      + 'CHECKED AND REJECTED 2026-09-06 · the one candidate connection that looked plausible on '
+      + 'paper — `lib/brain/ledger/outcome.ts`\'s step 16 verdict (EXCESSIVE/UNDERDOSED) scheduling '
+      + 'a re-evaluation of the decision it judged — is barred by the owner\'s own instruction, read '
+      + 'in full before ruling this in or out: outcome.ts\'s header states "Do not automatically tune '
+      + 'coefficients from this yet. Build the measurement path," and outcome-sweep.ts\'s own '
+      + 'closing comment is "Read, not acted on. Nothing tunes off it, by instruction." Wiring a '
+      + 'verdict to scheduleReassessment would be exactly the automatic tuning that instruction '
+      + 'rules out, not a legitimate caller — so this is not a gap left by oversight, it is a '
+      + 'connection that was checked and correctly not built.',
   };
 
   it('DEFERRAL is wired through its own writer', () => {
@@ -419,5 +428,61 @@ describe('COVERAGE-1 · every kind has a real production caller, or a named exem
       });`;
     const m = sample.matchAll(/scheduleReassessment\(\{[\s\S]{0,400}?kind:\s*'([A-Z_]+)'/g);
     expect([...m].map((x) => x[1])).toEqual(['EARNING_GATE']);
+  });
+});
+
+/**
+ * STALEPLAN-1 (2026-09-06) · A REASSESSMENT AGAINST AN ARCHIVED PLAN IS
+ * RETIRED AT THE SAME MOMENT ITS THREE ACKSURVIVE-1 SIBLINGS ARE.
+ *
+ * `lib/plan/proposals-state.ts` already retires `plan_proposals`,
+ * `plan_workout_proposals` and `coach_intents` the instant the plan they
+ * point at is archived. `reassessment_schedule` was the missing fourth
+ * table with the identical shape — exactly the Rule-14 gap this file's
+ * own header warns a scan cannot see on its own ("A ROW WRITTEN BY
+ * SOMETHING ELSE" is out of this suite's reach, but a call site that never
+ * runs is not).
+ *
+ * ── ORACLE, PER RULE 18 ─────────────────────────────────────────────────
+ *
+ * Falsified by hand while writing this gate: commenting out the call in
+ * `generate.ts`'s `clearActivePlansFor` and re-running failed this suite
+ * naming that exact file, then the call was restored and the suite passed
+ * again (this round's own report).
+ */
+describe('STALEPLAN-1 · both clearActivePlansFor rebuild paths retire a dangling reassessment', () => {
+  const GENERATE = path.join(ROOT, 'lib/plan/generate.ts');
+  const SEED = path.join(ROOT, 'lib/plan/seed-from-onboarding.ts');
+
+  function wiredIn(file: string): boolean {
+    if (!existsSync(file)) return false;
+    const src = readFileSync(file, 'utf8');
+    // The call must sit inside clearActivePlansFor itself, not merely appear
+    // somewhere in a multi-thousand-line file — the same discriminating
+    // posture `rollingBoundaryKinds` above takes for its own indirect shape.
+    const fnMatch = src.match(/async function clearActivePlansFor\([\s\S]*?\n\}\n/);
+    if (!fnMatch) return false;
+    const body = fnMatch[0];
+    return body.includes('supersedeReassessmentsForArchivedPlans');
+  }
+
+  it('liveness · both files exist and are not stubs', () => {
+    for (const f of [GENERATE, SEED]) {
+      expect(existsSync(f), `${f} is missing`).toBe(true);
+      expect(readFileSync(f, 'utf8').length, `${f} is suspiciously short`).toBeGreaterThan(500);
+    }
+  });
+
+  it('generate.ts:clearActivePlansFor calls supersedeReassessmentsForArchivedPlans', () => {
+    expect(wiredIn(GENERATE), 'generate.ts no longer retires reassessment_schedule on rebuild').toBe(true);
+  });
+
+  it('seed-from-onboarding.ts:clearActivePlansFor calls supersedeReassessmentsForArchivedPlans', () => {
+    expect(wiredIn(SEED), 'seed-from-onboarding.ts no longer retires reassessment_schedule on reseed').toBe(true);
+  });
+
+  it('the scheduler exports the function both call sites import', () => {
+    const src = readFileSync(SCHEDULER, 'utf8');
+    expect(src.includes('export async function supersedeReassessmentsForArchivedPlans')).toBe(true);
   });
 });

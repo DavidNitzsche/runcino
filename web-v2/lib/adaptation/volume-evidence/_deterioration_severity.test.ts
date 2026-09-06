@@ -106,6 +106,7 @@ import {
   DECOUPLING_READABILITY_HEAT_LO_F,
   DECOUPLING_READABILITY_TERRAIN_HI_S_PER_MI,
   DECOUPLING_READABILITY_TERRAIN_LO_S_PER_MI,
+  steadyEffortReadabilityFrac,
   type DeteriorationResult,
   type SessionEnvironmentalContext,
 } from '@/lib/adaptation/canonical/deterioration';
@@ -703,10 +704,16 @@ const ctx = (o: {
   durationMin?: number | null;
   terrainDeltaSPerMi?: number | null;
   tempF?: number | null;
+  /** STEADYEFFORT-1 · omitted means "no prescription to check", which reads
+   *  as fully readable (1) — every existing call site in this file predates
+   *  this factor and keeps passing unchanged. */
+  steadyEffortFrac?: number | null;
 }): SessionEnvironmentalContext => ({
   analyzedDurationMin: o.durationMin == null ? absent('no moving time recorded') : measured(o.durationMin),
   terrainDeltaSPerMi: o.terrainDeltaSPerMi == null ? absent('no elevation signal') : measured(o.terrainDeltaSPerMi),
   tempF: o.tempF == null ? absent('no weather recorded') : measured(o.tempF),
+  steadyEffortFrac: o.steadyEffortFrac === undefined ? measured(1)
+    : o.steadyEffortFrac == null ? absent('no prescription to check') : measured(o.steadyEffortFrac),
 });
 
 describe('5A · decouplingReadabilityFrac · each factor, independently', () => {
@@ -766,6 +773,77 @@ describe('5A · decouplingReadabilityFrac · each factor, independently', () => 
     }));
     expect(r.value).toBeGreaterThan(0);
     expect(r.value).toBeLessThan(0.1);
+  });
+});
+
+describe('5A2 · steadyEffortReadabilityFrac · STEADYEFFORT-1, the precondition this file used to leave open', () => {
+  it('no prescription at all reads fully readable · Rule 11, absence is not evidence of a uniform run', () => {
+    const a = steadyEffortReadabilityFrac(null, 18);
+    const b = steadyEffortReadabilityFrac('', 18);
+    expect(a.ok && a.value).toBe(1);
+    expect(b.ok && b.value).toBe(1);
+  });
+
+  it('a pure easy prescription with no quality tail reads fully readable', () => {
+    const r = steadyEffortReadabilityFrac('LONG · easy', 18);
+    expect(r.ok && r.value).toBe(1);
+  });
+
+  it('THE CANONICAL CASE · an easy bulk then a quality tail exactly filling the final third reads ZERO', () => {
+    // 12mi run, "8mi @ E + 4mi @ M": the quality tail is exactly the final
+    // third (miles 8-12), the middle third (miles 4-8) is entirely easy. This
+    // is precisely the shape Q13 warns about — a fast-finish executed exactly
+    // as prescribed — and it must read as fully UNREADABLE for fatigue, not
+    // partially.
+    const r = steadyEffortReadabilityFrac('LONG · 8mi @ E + 4mi @ M', 12);
+    expect(r.ok && r.value).toBe(0);
+  });
+
+  it('a quality tail that only PARTLY overlaps the final third reads a PARTIAL discount, not a cliff · Rule 9', () => {
+    // 18mi run, "15mi @ E + 3mi @ M": quality starts at mile 15. Thirds are
+    // 6-mile each (0-6, 6-12, 12-18). The final third (12-18) is half quality
+    // (15-18) and half easy (12-15); the middle third (6-12) is fully easy.
+    // Continuous, not 0 or 1.
+    const r = steadyEffortReadabilityFrac('LONG · 15mi @ E + 3mi @ M', 18);
+    expect(r.ok && r.value).toBeCloseTo(0.5, 10);
+  });
+
+  it('a quality tail entirely BEFORE the final third (an odd but possible prescription) reads fully readable', () => {
+    // A tail shorter than a third and far enough from the finish that it
+    // never reaches the final-third window at all — no differential
+    // engagement between the two windows being compared.
+    const r = steadyEffortReadabilityFrac('LONG · 16mi @ E + 0.5mi @ M', 16.5);
+    // thirdMi = 5.5, so thirds are [0,5.5) [5.5,11) [11,16.5). Quality starts
+    // at 16. Final third [11,16.5) overlaps quality by 0.5/5.5; middle third
+    // overlaps by 0. Small but non-zero mismatch — not the "entirely before"
+    // case the comment above describes; kept as the honest boundary example
+    // rather than restated to fit a false claim.
+    expect(r.ok && r.value).toBeGreaterThan(0.85);
+    expect(r.ok && r.value).toBeLessThan(1);
+  });
+
+  it('BOTH windows equally engaged with the tail reads fully readable · the confound is a MISMATCH, not the tail\'s mere presence', () => {
+    // A quality tail so long it swallows both the middle and final thirds
+    // entirely — both windows are comparing quality-to-quality, which is
+    // still a meaningful (if different-baseline) fatigue question, not the
+    // "different prescribed phases" confound Q13 names.
+    const r = steadyEffortReadabilityFrac('LONG · 2mi @ E + 16mi @ M', 18);
+    expect(r.ok && r.value).toBe(1);
+  });
+
+  it('no total distance to place the segments against refuses honestly, not a fabricated 1 or 0', () => {
+    const r = steadyEffortReadabilityFrac('LONG · 15mi @ E + 3mi @ M', 0);
+    expect(r.ok).toBe(false);
+  });
+
+  it('FALSIFICATION-READY · a fast-finish long run composes into decouplingReadabilityFrac and discounts the reading to zero', () => {
+    // The end-to-end proof this section exists for: a session whose PACE and
+    // HR would show large "decoupling" purely because the runner executed a
+    // prescribed fast finish must not spend that decoupling as fatigue
+    // evidence once this factor is wired in.
+    const r = decouplingReadabilityFrac(ctx({ steadyEffortFrac: 0 }));
+    expect(r.value).toBe(0);
+    expect(r.detail).toContain('Q13');
   });
 });
 

@@ -95,7 +95,7 @@ import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
  * a second, quieter answer to two questions the canonical engine owns. */
 import { isHrReliable, buildThirds } from '@/lib/adaptation/canonical-shadow/live-input';
 import {
-  assessDeterioration, deteriorationPattern,
+  assessDeterioration, deteriorationPattern, steadyEffortReadabilityFrac,
   type DeteriorationResult, type SessionEnvironmentalContext,
 } from '@/lib/adaptation/canonical/deterioration';
 /* Rule 16 · `plan_phases.label` has ONE translator, and this is it. The first
@@ -428,7 +428,7 @@ export async function loadVolumeEvidence(
      * recovery jog as a collapsing session is how a guard that exists for key
      * sessions becomes a wall in front of the whole upward lane.
      */
-    const weekKeyRuns: RunData[] = [];
+    const weekKeyRuns: { run: RunData; subLabel: string | null }[] = [];
     for (let d = ws; d < weekEnd; d = addDays(d, 1)) {
       const day = resolved.get(d);
       if (day == null) continue;
@@ -437,7 +437,12 @@ export async function loadVolumeEvidence(
         if (p.matchedRun == null) continue;
         canonicalRunsRead += 1;
         weekRuns.push(p.matchedRun.data);
-        if (p.isLong || p.isQuality) weekKeyRuns.push(p.matchedRun.data);
+        if (p.isLong || p.isQuality) {
+          // STEADYEFFORT-1 · the matched prescription's own sub_label travels
+          // with its run, so the deterioration reading can tell a prescribed
+          // fast-finish/progression from a genuine late fade.
+          weekKeyRuns.push({ run: p.matchedRun.data, subLabel: p.subLabel });
+        }
         runs.push({
           activityId: p.matchedRun.runId,
           dateISO: d,
@@ -723,7 +728,15 @@ export function telemetryOf(runs: readonly RunData[]): Measured<HrTraceVerdict> 
  * an absent factor as fully readable, per its own doc, so this function's
  * job is only to say what IS known, never to fill a gap with an assumption.
  */
-function environmentalContextOf(r: RunData): SessionEnvironmentalContext {
+/**
+ * STEADYEFFORT-1 (2026-09-06) · `subLabel` is the matched `plan_workouts.
+ * sub_label` for this exact run, when one exists — the prescribed phase
+ * structure `steadyEffortReadabilityFrac` needs to tell a deliberate
+ * fast-finish/progression from a genuine fade. `null` for a supplemental run,
+ * a race, or any run whose prescription this caller did not carry forward —
+ * Rule 11: no prescription to check is not evidence the run was uniform.
+ */
+function environmentalContextOf(r: RunData, subLabel: string | null): SessionEnvironmentalContext {
   const durationSec = runMovingSec(r);
   const tempF = runTempF(r);
   // `resolveRunTerrain` reads the four elevation conventions `runs.data`
@@ -746,14 +759,17 @@ function environmentalContextOf(r: RunData): SessionEnvironmentalContext {
       ? measured(terrain.deltaSPerMi)
       : absent(`no usable terrain signal on this run (basis: ${terrain.basis})`),
     tempF: tempF != null ? measured(tempF) : absent('no weather recorded for this run'),
+    steadyEffortFrac: steadyEffortReadabilityFrac(subLabel, r.distanceMi ?? 0),
   };
 }
 
-export function deteriorationOf(keyRuns: readonly RunData[]): Measured<ReturnType<typeof deteriorationPattern>> {
-  const results: DeteriorationResult[] = keyRuns.map((r) => assessDeterioration(
-    buildThirds(r),
+export function deteriorationOf(
+  keyRuns: readonly { run: RunData; subLabel: string | null }[],
+): Measured<ReturnType<typeof deteriorationPattern>> {
+  const results: DeteriorationResult[] = keyRuns.map(({ run, subLabel }) => assessDeterioration(
+    buildThirds(run),
     { truncated: false, completeWorkPhasesCaptured: true, note: '' },
-    environmentalContextOf(r),
+    environmentalContextOf(run, subLabel),
   ));
   return measured(deteriorationPattern(results));
 }

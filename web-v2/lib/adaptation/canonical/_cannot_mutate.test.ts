@@ -566,11 +566,17 @@ const ALLOWLIST: readonly AllowedImport[] = [
    *
    * Two pure functions and one type. No `evaluate`, no lever, no `arbitrate`:
    * this file speaks the engine's verdict, it does not run it, which is the
-   * same posture as the volume-evidence door above. */
+   * same posture as the volume-evidence door above.
+   *
+   * STEADYEFFORT-1 (2026-09-06) added `steadyEffortReadabilityFrac`, a third
+   * pure function of the identical shape: it takes the matched prescription's
+   * `sub_label` and the run's distance, and returns how much the middle/final
+   * third comparison spans a PRESCRIBED pace change rather than a fade. No
+   * evaluator, no lever, no write — the same posture, one more function of it. */
   {
     file: ALLOWED_VOLUME_LOADER_FILE,
     module: '@/lib/adaptation/canonical/deterioration',
-    symbols: new Set(['assessDeterioration', 'deteriorationPattern', 'DeteriorationResult']),
+    symbols: new Set(['assessDeterioration', 'deteriorationPattern', 'DeteriorationResult', 'steadyEffortReadabilityFrac']),
   },
   /* DETERIORATION-SEVERITY-1 (2026-09-05) · THE GATE OVER THE SEVERITY RULE,
    * and it is a TEST FILE getting a grant, which is worth arguing rather than
@@ -600,14 +606,19 @@ const ALLOWLIST: readonly AllowedImport[] = [
    *
    * Three pure functions, one readability function, six named constants, and
    * one type, all total functions of their arguments. No `evaluate`, no
-   * lever, no `arbitrate`, and the file writes nothing. */
+   * lever, no `arbitrate`, and the file writes nothing.
+   *
+   * STEADYEFFORT-1 (2026-09-06) added `steadyEffortReadabilityFrac`, a fifth
+   * pure function of the same shape: the prescribed-phase-structure
+   * precondition Q13 names and this file's own header used to record as
+   * open, computed from a `sub_label` string and a distance, nothing else. */
   {
     file: ALLOWED_SEVERITY_GATE_FILE,
     module: '@/lib/adaptation/canonical/deterioration',
     symbols: new Set([
       'assessDeterioration', 'deteriorationPattern', 'paHrDecouplingFrac',
       'DeteriorationResult',
-      'decouplingReadabilityFrac',
+      'decouplingReadabilityFrac', 'steadyEffortReadabilityFrac',
       'DECOUPLING_READABILITY_DURATION_CEIL_MIN', 'DECOUPLING_READABILITY_DURATION_FLOOR_MIN',
       'DECOUPLING_READABILITY_HEAT_HI_F', 'DECOUPLING_READABILITY_HEAT_LO_F',
       'DECOUPLING_READABILITY_TERRAIN_HI_S_PER_MI', 'DECOUPLING_READABILITY_TERRAIN_LO_S_PER_MI',

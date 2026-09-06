@@ -101,3 +101,61 @@ export function classifyBlock(
   }
   return 'unclassified';
 }
+
+/**
+ * COLDSTART-PROMO-1 (2026-09-06) · THE DIAGNOSIS EARNS THE DISPOSITION.
+ *
+ * `classifyBlock` names a sentence FALSE. It does not, by itself, change what
+ * a REPORT built on `checkPromotion`'s output says for the plan that sentence
+ * belongs to — and that gap is exactly what the read-only production replay
+ * found: one of seven active plans has zero future weeks, `classifyBlock`
+ * already reads it correctly as "finished, not incoherent", and the replay
+ * still printed **BLOCKED** for it, because nothing between the diagnosis and
+ * the report ever asked the question this function is. `_promotion_replay
+ * .script.ts` is the one caller today, and it takes `mayPromote` /
+ * `blockedBecause` / `traces` off a `PlanAdjudication` it already has.
+ *
+ * DELIBERATELY NOT ADDED TO `PlanAdjudication`/`checkPromotion` ITSELF. That
+ * was the first draft, and it broke a guard nothing about the disposition
+ * question should have touched: `checkPromotion` (`adjudicate.ts`) is
+ * reachable from the live `run-adaptations` cron today, via
+ * `lib/adaptation/volume-evidence/{respond,weight}.ts`'s import of
+ * `STEP_SUPPORTED_MAX`/`VOLUME_ADDITION_THRESHOLD` — unrelated to promotion,
+ * but a real edge. `false-block.ts` is registered in
+ * `lib/audit/generated-content-registry.ts`'s `MODULE_ORPHANS` as
+ * `'runtime code must never import it'`, and having `adjudicate.ts` import
+ * this file would have made that literally false — `_generated_content_gate
+ * .test.ts`'s staleness guard caught it immediately (Rule 18: a gate that
+ * has never failed is a hypothesis; this one fired on the first real
+ * violation). Keeping `resolveDisposition` a free function that a REPORTER
+ * calls, rather than a field `checkPromotion` computes, keeps the promotion
+ * gate's live reachability exactly as it was.
+ *
+ * `mayPromote` is untouched by this and stays exactly as strict as it always
+ * was (`_false_block.test.ts`: "a finished block must still not promote") —
+ * this only tells a caller WHICH kind of not-promoted it is looking at.
+ *
+ * `'TERMINAL'` requires EVERY sentence in `blockedBecause` to be the
+ * no-future-weeks false block, not merely one of several. `checkPromotion`
+ * cannot currently produce a mixed set — every other blocking clause is
+ * gated on `traces.length > 0`, which is false whenever this one fires — but
+ * that is a structural fact about today's clauses, not a guarantee this
+ * function can lean on, so it reads defensively rather than assuming it.
+ * `_false_block.test.ts` calls this directly with a hand-built mixed set to
+ * prove the `every` (not `some`) is load-bearing, since `checkPromotion`
+ * itself cannot currently construct that shape to falsify it against.
+ */
+export type PlanDisposition = 'PROMOTED' | 'TERMINAL' | 'BLOCKED';
+
+export function resolveDisposition(
+  mayPromote: boolean,
+  blockedBecause: readonly string[],
+  traces: readonly DecisionTrace[],
+  futureWeeks: number,
+): PlanDisposition {
+  if (mayPromote) return 'PROMOTED';
+  const allTerminal = blockedBecause.length > 0 && blockedBecause.every(
+    (b) => classifyBlock(b, traces, futureWeeks) === 'FALSE · no future weeks left in this block',
+  );
+  return allTerminal ? 'TERMINAL' : 'BLOCKED';
+}

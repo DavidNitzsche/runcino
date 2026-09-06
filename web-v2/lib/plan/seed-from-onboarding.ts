@@ -497,9 +497,10 @@ function distributeVolume(
 // ─────────────────────────────────────────────────────────────────
 
 async function clearActivePlansFor(userId: string, tx: Queryable = pool): Promise<void> {
-  await tx.query(
+  const archived = await tx.query<{ id: string }>(
     `UPDATE training_plans SET archived_iso = NOW()
-      WHERE user_uuid = $1 AND archived_iso IS NULL`,
+      WHERE user_uuid = $1 AND archived_iso IS NULL
+      RETURNING id`,
     [userId],
   );
   // See generate.ts:clearActivePlansFor — a still-pending proposal against
@@ -514,6 +515,17 @@ async function clearActivePlansFor(userId: string, tx: Queryable = pool): Promis
     await supersedeWorkoutProposalsForArchivedPlans(tx, userId);
   } catch (e) {
     console.error('[clearActivePlansFor] workout-proposal supersede failed:',
+      e instanceof Error ? e.message : e);
+  }
+  /* STALEPLAN-1 (2026-09-06) · see generate.ts:clearActivePlansFor — a live
+   * reassessment_schedule item against whatever just got archived here is
+   * stale the moment this commits. Best effort: a reseed must never fail on
+   * this table's own audit stamp. */
+  try {
+    const { supersedeReassessmentsForArchivedPlans } = await import('@/lib/ops/reassessment-scheduler');
+    await supersedeReassessmentsForArchivedPlans(tx, userId, archived.rows.map((row) => row.id));
+  } catch (e) {
+    console.error('[clearActivePlansFor] reassessment supersede failed:',
       e instanceof Error ? e.message : e);
   }
   // Plan mutation → invalidate memoized lookup.

@@ -576,6 +576,84 @@ export async function resolveReassessment(args: {
   }
 }
 
+/**
+ * STALEPLAN-1 (2026-09-06) · A REASSESSMENT AGAINST A DEAD PLAN REFUSES,
+ * RATHER THAN SILENTLY RE-ASKING THE QUESTION LATER.
+ *
+ * `reassessment_schedule` is the missing fourth member of the ACKSURVIVE-1
+ * family. `lib/plan/proposals-state.ts` already retires `plan_proposals`,
+ * `plan_workout_proposals` and `coach_intents` the moment the plan they point
+ * at is archived — a rebuild (`clearActivePlansFor` in both `generate.ts` and
+ * `seed-from-onboarding.ts`) stamps the plan row's own archive timestamp and authors
+ * a new plan row underneath. Nothing did the same for this table: a live
+ * PENDING/DUE item still carries the OLD `plan_id`, and its `before_value`,
+ * `required_evidence` and `payload` all describe a plan that no longer
+ * exists. Left alone, the sweep would promote it to DUE on schedule and
+ * whichever engine eventually reads it back (Rule 22's open question — see
+ * this file's own header) would be re-asking a question about a dead plan,
+ * exactly the "reassessing against an archived/rebuilt plan" gap Rule 14
+ * names by pattern (`clearActivePlansFor` reading `user_uuid` alone was the
+ * original instance; this is a query that reads the right ROWS but never ran
+ * at all).
+ *
+ * Mark, don't delete, per this file's own `resolveReassessment` discipline:
+ * ABANDONED — the status this table's own comment reserves for "withdrawn by
+ * a runner action (a plan rebuild, an explicit undo)" — carrying
+ * `resulting_decision = 'PLAN_ARCHIVED'` so a reader of the history sees WHY
+ * it stopped rather than a row that silently vanished. Never RESOLVED or
+ * EXPIRED: nothing assessed it and it was not left unanswered by the runner,
+ * the plan under it was simply taken away.
+ *
+ * Scoped like its three siblings: any LIVE item whose `plan_id` names a plan
+ * this user has now archived. A kind whose `planVersion` is a synthetic
+ * string with no real plan row behind it (`workout-proposal:<id>:none`,
+ * `race:<id>:none`, `injury:<id>:none`) has `plan_id IS NULL` and is out of
+ * scope — there is nothing for it to go stale against, and forcing a match
+ * there would be the false-positive shape Rule 11 warns about, not a
+ * safety win.
+ *
+ * Called best-effort from both `clearActivePlansFor` implementations,
+ * alongside their existing `supersedeWorkoutProposalsForArchivedPlans` call
+ * — an archive must never fail because this table's own audit stamp broke.
+ *
+ * IT DOES NOT READ THE PLAN TABLE ITSELF. This file's own "the scheduler
+ * decides NOTHING" gate (below) asserts it never references a plan table at
+ * all, and a join here to detect archived-ness would be exactly that — a
+ * scheduler that has learned what a plan row looks like. So the CALLER, which
+ * already touches that table to archive a plan and already holds the ids
+ * `RETURNING id` handed back, states the population (Rule 14) and passes it
+ * in; this function only ever narrows `reassessment_schedule` by an id list
+ * it was given.
+ */
+export async function supersedeReassessmentsForArchivedPlans(
+  client: { query: typeof pool.query },
+  userUuid: string,
+  archivedPlanIds: readonly string[],
+): Promise<SchedulerResult<number>> {
+  if (archivedPlanIds.length === 0) return ok(0);
+  const probe = await scheduleTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return absent();
+  try {
+    const r = await client.query(
+      `UPDATE reassessment_schedule
+          SET status = 'ABANDONED',
+              resulting_decision = 'PLAN_ARCHIVED',
+              resulting_decision_detail =
+                'the plan this reassessment was queued against was archived (superseded by a '
+                || 'rebuild or a new authoring) before its assessment date arrived',
+              resolved_at = now(), updated_at = now()
+        WHERE user_uuid = $1::uuid
+          AND status IN ('PENDING', 'DUE')
+          AND plan_id = ANY($2::text[])`,
+      [userUuid, archivedPlanIds],
+    );
+    return ok(r.rowCount ?? 0);
+  } catch (e) {
+    return broke('superseding reassessments for archived plans failed', e);
+  }
+}
+
 /** Promote a PENDING item whose date has arrived. Idempotent by its guard. */
 export async function markDue(id: string): Promise<SchedulerResult<boolean>> {
   const probe = await scheduleTableExists();

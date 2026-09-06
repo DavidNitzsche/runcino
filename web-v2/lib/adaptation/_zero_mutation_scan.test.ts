@@ -176,12 +176,15 @@ const PERMITTED_EXTERNAL_IMPORTS: ReadonlyArray<{ file: string; module: string; 
   },
   {
     file: 'lib/plan/volume-evidence-loader.ts', module: '@/lib/adaptation/canonical',
-    names: ['assessDeterioration', 'deteriorationPattern', 'phaseFromAuthoredLabel'],
+    names: ['assessDeterioration', 'deteriorationPattern', 'phaseFromAuthoredLabel', 'steadyEffortReadabilityFrac'],
     why:
       'VOLUMESEAM-1 · the canonical DETERIORATION verdict, which is admission condition 3 for '
       + 'the volume lever. Two pure functions over thirds this file supplies; no evaluator, no '
       + 'lever, no proposal. `_cannot_mutate.test.ts` guard 4 carries the same grant with the '
-      + 'symbols enumerated, and is the stricter of the two.',
+      + 'symbols enumerated, and is the stricter of the two. STEADYEFFORT-1 (2026-09-06) added '
+      + '`steadyEffortReadabilityFrac`, a fourth pure function over the same shape: the '
+      + 'prescribed-phase-structure precondition, computed from the matched workout\'s own '
+      + '`sub_label` and total distance, still no evaluator, no lever, no write.',
   },
   {
     file: 'lib/plan/volume-evidence-loader.ts', module: '@/lib/adaptation/canonical-shadow',

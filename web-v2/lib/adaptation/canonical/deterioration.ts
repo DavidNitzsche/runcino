@@ -159,22 +159,28 @@
  *     replace a cited one is the tuning CLAUDE.md Rule 21 forbids in a new
  *     costume.
  *
- * ── STILL OPEN, NAMED RATHER THAN SILENTLY LEFT (Rule 20) ─────────────────
+ * ── STEADYEFFORT-1 (2026-09-06) · THE GAP ABOVE, CLOSED ────────────────────
  *
- * The STEADY-EFFORT precondition (fast-finish vs. genuine fade) is NOT
- * implemented here. Closing it properly needs per-third PACE INTENT — was
- * the final third prescribed to be faster, not just observed to be — which is
- * `ComparableThirds.comparable`'s job upstream and, per
- * `canonical-shadow/live-input.ts`'s own header, that flag is already a known
- * coarse proxy ("cannot detect a prescription that varies pace across the
- * run"). Building a true fix means the evidence layer parsing the PRESCRIBED
- * pace shape per third, which is a bigger change than this file's remit
- * tonight. What this file does instead, honestly labelled as a gap and not a
- * fix: nothing yet corrects for a deliberate fast finish specifically. A
- * fast-finish long run that also happens to run hot or hilly still gets the
- * heat/terrain readability discount; a fast-finish long run in perfect
- * conditions does not, and can still read as a severe fade. Recorded in the
- * report as a genuine open policy question rather than resolved unilaterally.
+ * David's own instruction: "Build the missing steady-effort precondition
+ * from the prescribed phase structure." `ComparableThirds.comparable` is
+ * still the coarse split-count proxy `canonical-shadow/live-input.ts`'s own
+ * header names, and closing THAT properly still needs the evidence layer to
+ * carry per-third pace intent, which remains a bigger change than this file
+ * owns. What closed instead, and what was actually asked for: a SEPARATE,
+ * continuous readability factor — `steadyEffortReadabilityFrac` below — built
+ * from the workout's own `sub_label` prescription string (already parsed
+ * elsewhere by `lib/plan/spec-builder.ts#extractLongSegments` for exactly
+ * this shape: "3mi @ M + 2mi @ T") rather than from anything observed in the
+ * run. It answers the question this file's header names directly: does the
+ * middle-third/final-third comparison span a segment PRESCRIBED at a
+ * different pace, and if so, how much of the mismatch is real. A fast-finish
+ * long run executed exactly as written now discounts to zero readability
+ * (`5A2`'s "THE CANONICAL CASE" test), composed multiplicatively alongside
+ * heat and terrain exactly like every other factor here (Rule 9 — no cliff:
+ * a tail that only partly overlaps the final third gets a PARTIAL discount,
+ * proven in the same test file). See the function's own doc for what it
+ * still does not handle (SEGLONG-1's mid-run separated segments) — an
+ * honest, lesser remaining gap, not the one this change closes.
  */
 import {
   DETERIORATION_PACE_SLOWDOWN_FRAC,
@@ -184,7 +190,7 @@ import {
   DETERIORATION_REPEATED_MIN_SESSIONS,
   DETERIORATION_SEVERITY_EXTREME_FRAC,
 } from './contract-constants';
-import type { ComparableThirds, Truncation, Measured } from './input';
+import { measured, absent, type ComparableThirds, type Truncation, type Measured } from './input';
 import { DECOUPLING_PROTOCOL_MIN_MINUTES } from '@/lib/training/aerobic-decoupling';
 import { MATERIAL_ADJUSTMENT_S_PER_MI } from '@/lib/terrain/grade-adjust';
 
@@ -283,6 +289,22 @@ export interface SessionEnvironmentalContext {
    * — control conditions." See `DECOUPLING_READABILITY_HEAT_LO_F`.
    */
   readonly tempF: Measured<number>;
+  /**
+   * STEADYEFFORT-1 (2026-09-06) · the precondition the file's own header
+   * named as open: was the comparison window itself run at one intended
+   * effort, or does it span a PRESCRIBED pace change? Built by
+   * `steadyEffortReadabilityFrac` below from the workout's own `sub_label`
+   * and total distance — the "prescribed phase structure" a fast-finish or
+   * progression long run carries — never from the run's own splits, which
+   * cannot distinguish "he sped up because that was the plan" from "he sped
+   * up because he was racing the last mile of an unstructured long run" and
+   * would answer the second by contaminating the first. Absent when no
+   * prescription is available to check against (a supplemental run, a race,
+   * a run with no matched plan_workouts row) — Rule 11: no prescription to
+   * violate is not evidence the prescription was uniform, but it is also not
+   * evidence it was not, so it costs nothing rather than guessing either way.
+   */
+  readonly steadyEffortFrac: Measured<number>;
 }
 
 /**
@@ -355,10 +377,104 @@ export interface DecouplingReadability {
 }
 
 /**
+ * STEADYEFFORT-1 (2026-09-06) · closes the precondition this file's own
+ * header named as open: "nothing yet corrects for a deliberate fast finish
+ * specifically." §12's protocol is implicitly a fixed-pace run; Q13 states
+ * the rule directly — "Do not infer deterioration from whole-run thirds when
+ * the workout contains different prescribed phases" — and until now nothing
+ * checked whether it did.
+ *
+ * DUPLICATED, DELIBERATELY, RATHER THAN IMPORTED. `lib/plan/spec-builder.ts#
+ * extractLongSegments` is the real parser and the one place this pattern is
+ * defined; this is a byte-for-byte transcription of its regex and its
+ * tail-anchored `recoveryMi`-folding rule, not a re-derivation. Importing the
+ * real one would draw an edge from `lib/adaptation/canonical/` (the shared,
+ * walled lower layer other engine files depend on) into `lib/plan/` (a
+ * consumer of `canonical/`), inverting the layering for one regex — the exact
+ * trade `clamp01`/`rampAcross` above already made the same call on. If
+ * `extractLongSegments`'s pattern ever changes, `_deterioration_severity.test.ts`
+ * §"STEADYEFFORT-1" pins both copies against the same fixture strings so a
+ * drift fails loudly rather than silently.
+ *
+ * WHAT THIS DOES NOT HANDLE, named per Rule 20: SEGLONG-1's mid-run separated
+ * segments (a session with quality blocks NOT anchored to the finish). The
+ * tail-length arithmetic below treats the whole matched distance as one
+ * contiguous zone ending at the run's finish, which is exactly right for the
+ * common fast-finish/progression shape this precondition exists to catch, and
+ * is a real but lesser approximation for the rarer "broken long run with
+ * quality in the middle" shape — a session like that would be treated as if
+ * its quality zone extended all the way to the finish, which UNDER-detects
+ * the confound (reads MORE readable than it should) for a session that in
+ * fact still has one. Recorded here as an open gap rather than silently
+ * assumed away.
+ */
+function steadyEffortLongSegments(
+  prescription: string | null,
+): Array<{ mi: number; recoveryMi?: number }> {
+  if (!prescription) return [];
+  const out: Array<{ mi: number; recoveryMi?: number }> = [];
+  const re = /(\d+(?:\.\d+)?)\s*mi\s*@\s*(HM|MP|M|T|E)\b/gi;
+  for (let m = re.exec(prescription); m; m = re.exec(prescription)) {
+    const mi = Number(m[1]);
+    if (!Number.isFinite(mi) || mi <= 0) continue;
+    if (m[2].toUpperCase() === 'E') {
+      const prev = out[out.length - 1];
+      if (prev) prev.recoveryMi = (prev.recoveryMi ?? 0) + mi;
+      continue;
+    }
+    out.push({ mi });
+  }
+  return out;
+}
+
+/**
+ * Does the middle-third/final-third comparison span a PRESCRIBED pace
+ * change? Continuous, not a boolean (Rule 9): returns how much of the
+ * final-third window overlaps the prescribed quality tail MINUS how much of
+ * the middle-third window does. A pure easy run, a race, or any prescription
+ * `steadyEffortLongSegments` cannot parse returns 1 (nothing to distrust —
+ * Rule 11, absence of a prescription to check is not evidence of a uniform
+ * one, but the only two honest options when the check cannot run are "assume
+ * uniform" and "refuse", and this factor only ever REDUCES trust, so refusing
+ * over silence would cost readings this precondition was never meant to
+ * touch). The canonical fast-finish case — an easy bulk then a quality tail —
+ * returns close to 0 when the tail lines up with the final third and not the
+ * middle third; a session with no differential engagement between the two
+ * windows (both fully easy, or both fully inside the tail) returns 1, because
+ * a comparison of two equally-loaded windows is not the confound Q13 warns
+ * about even when the run also happens to carry a prescribed tail elsewhere.
+ */
+export function steadyEffortReadabilityFrac(
+  subLabel: string | null,
+  totalDistanceMi: number,
+): Measured<number> {
+  if (!(totalDistanceMi > 0)) {
+    return absent('no total distance to place the prescribed segments against');
+  }
+  const segments = steadyEffortLongSegments(subLabel);
+  if (segments.length === 0) return measured(1);
+
+  const qualityTailMi = segments.reduce((s, seg) => s + seg.mi + (seg.recoveryMi ?? 0), 0);
+  const qualityStartMi = Math.max(0, totalDistanceMi - qualityTailMi);
+  const thirdMi = totalDistanceMi / 3;
+
+  const engagementFrac = (winStart: number, winEnd: number): number => {
+    const winLen = winEnd - winStart;
+    if (!(winLen > 0)) return 0;
+    const overlap = Math.max(0, Math.min(winEnd, totalDistanceMi) - Math.max(winStart, qualityStartMi));
+    return clamp01(overlap / winLen);
+  };
+
+  const middleEngagement = engagementFrac(thirdMi, 2 * thirdMi);
+  const finalEngagement = engagementFrac(2 * thirdMi, totalDistanceMi);
+  return measured(clamp01(1 - Math.abs(finalEngagement - middleEngagement)));
+}
+
+/**
  * How much to trust a `severityFrac` reading against §12's own bands, given
  * what is known about the session it came from.
  *
- * THREE INDEPENDENT FACTORS, MULTIPLIED — the same composition rule doctrine
+ * FOUR INDEPENDENT FACTORS, MULTIPLIED — the same composition rule doctrine
  * itself uses for heat-and-grade (`lib/terrain/grade-adjust.ts`'s own
  * `composeEffortFactor`, citing `Research/01` §"Combined conditions": "Add
  * adjustments multiplicatively, not additively"). Each factor ramps smoothly
@@ -401,6 +517,16 @@ export function decouplingReadabilityFrac(env: SessionEnvironmentalContext): Dec
     const r = 1 - rampAcross(DECOUPLING_READABILITY_HEAT_LO_F, DECOUPLING_READABILITY_HEAT_HI_F, f);
     value *= r;
     if (r < 1) notes.push(`${f.toFixed(0)}°F is in the range Research/03 §1 and §12 both cite as artefactually inflating decoupling`);
+  }
+
+  if (env.steadyEffortFrac.ok) {
+    const r = env.steadyEffortFrac.value;
+    value *= r;
+    if (r < 1) {
+      notes.push(`the prescription carries a quality tail that lines up more with one third than the `
+        + `other (engagement mismatch ${((1 - r) * 100).toFixed(0)}%), which Q13 names directly: "do not `
+        + `infer deterioration from whole-run thirds when the workout contains different prescribed phases"`);
+    }
   }
 
   return { value: clamp01(value), detail: notes.join('; ') };

@@ -547,6 +547,41 @@ function classifyContext(input: ClassifyEvidenceInput): EvidenceClassification['
   return { treadmill, heat, hills, pauses, missingTelemetry, flatlinedTelemetry };
 }
 
+/**
+ * CLASSIFYCTXWIRE-1 (2026-09-06) · a public, data-only door into
+ * `classifyContext` for a caller that has a `RunData` but none of the other
+ * `ClassifyEvidenceInput` fields (identity/race/safety), and does not need
+ * them — `classifyContext` above reads nothing from `input` except
+ * `input.data`, so every other field below is an inert placeholder, never
+ * read. This is NOT a second derivation: it is the same function, the same
+ * owners (`resolveRunTerrain`, `heatEffort`, `workTraceIsCredible`,
+ * `runFacts`), called through the one seam that already composes them.
+ *
+ * First (and, as of this change, only) caller:
+ * `lib/adaptation/canonical-shadow/live-input.ts#provenanceFor`, whose own
+ * header names the exact gap this closes — it built a live `Provenance` for
+ * the canonical adaptation engine's `admissibleForPaceAnchor` with ONLY the
+ * treadmill flag ever set, "never a guess at hills/wind/heat/altitude — an
+ * unclaimed flag is not evidence the session was clean". This function lets
+ * that caller ask the two of those four questions this codebase actually has
+ * a real, composed owner for (hills via terrain grade, heat via
+ * `heat-model.ts`) without duplicating either owner's logic inline.
+ */
+export function classifyRunContext(data: RunData): EvidenceClassification['context'] {
+  return classifyContext({
+    activityId: '',
+    dateISO: '',
+    data,
+    isCanonicalRow: true,
+    loserSiblingCount: 0,
+    resolvedDay: null,
+    rescheduleRows: null,
+    matchedRace: null,
+    raceReadOk: false,
+    safety: null,
+  });
+}
+
 function classifyRunnerState(input: ClassifyEvidenceInput): EvidenceClassification['runnerState'] {
   if (!input.safety) {
     const u = unknown('Safety signals (illness/injury/disruption) could not be read.');

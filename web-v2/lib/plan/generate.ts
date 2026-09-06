@@ -13262,9 +13262,10 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
  *  (busting pre-commit let a concurrent render re-cache the OLD plan
  *  mid-rebuild and serve it stale for the TTL). */
 async function clearActivePlansFor(client: PoolClient, userId: string, reason = 'regenerated'): Promise<void> {
-  await client.query(
+  const archived = await client.query<{ id: string }>(
     `UPDATE training_plans SET archived_iso = NOW(), archive_reason = $2
-      WHERE user_uuid = $1 AND archived_iso IS NULL`,
+      WHERE user_uuid = $1 AND archived_iso IS NULL
+      RETURNING id`,
     [userId, reason]
   );
   // The plan(s) just archived may have had their own still-pending
@@ -13283,6 +13284,18 @@ async function clearActivePlansFor(client: PoolClient, userId: string, reason = 
     await supersedeWorkoutProposalsForArchivedPlans(client, userId);
   } catch (e) {
     console.error('[clearActivePlansFor] workout-proposal supersede failed:',
+      e instanceof Error ? e.message : e);
+  }
+  /* STALEPLAN-1 (2026-09-06) · the fourth ACKSURVIVE-1 sibling: a live
+   * reassessment_schedule item still carrying this plan's old `plan_id`
+   * would otherwise get promoted to DUE and re-asked against a plan that no
+   * longer exists. Best effort, same posture as the workout-proposal call
+   * above — an archive must never fail on this table's own audit stamp. */
+  try {
+    const { supersedeReassessmentsForArchivedPlans } = await import('@/lib/ops/reassessment-scheduler');
+    await supersedeReassessmentsForArchivedPlans(client, userId, archived.rows.map((row) => row.id));
+  } catch (e) {
+    console.error('[clearActivePlansFor] reassessment supersede failed:',
       e instanceof Error ? e.message : e);
   }
 }

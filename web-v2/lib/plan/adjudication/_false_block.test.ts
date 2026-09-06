@@ -52,7 +52,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { checkPromotion, athleteEvidenceFor, heuristicRankScore, type PlannedWeek } from './adjudicate';
-import { classifyBlock } from './false-block';
+import { classifyBlock, resolveDisposition } from './false-block';
 import type { DecisionTrace, EvidenceClass, OptionAppraisal } from './contract';
 
 const WK: PlannedWeek = {
@@ -85,6 +85,36 @@ function held(pushClass: EvidenceClass, demonstratedMax: number | null): Decisio
     conflicts: [],
     citations: [],
     reassessOnISO: '2026-09-01',
+    earningGate: null,
+  };
+}
+
+/**
+ * The sibling of `held`: a PUSH the layer can actually rank, so a block built
+ * from it clears `progression` and every other dimension honestly. Needed to
+ * prove `disposition: 'PROMOTED'` on a real pass, not just infer it from
+ * `mayPromote` never going false in the other cases below.
+ */
+function pushed(): DecisionTrace {
+  return {
+    decisionId: `wk:${WK.weekStartISO}`,
+    dateISO: WK.weekStartISO,
+    what: 'weekly volume',
+    windowDays: 7,
+    athlete: athleteEvidenceFor({
+      what: 'a 30 mi week', asOfISO: WK.weekStartISO, prescribed: 30,
+      demonstratedMaxToday: 40, demonstratedMaxProjected: null,
+      comparables: [], historyWindow: 'the whole of 2026',
+    }),
+    stacked: null,
+    demand: null,
+    options: [opt('PUSH', 'SUPPORTED'), opt('HOLD', 'SUPPORTED'), opt('PULL_BACK', 'SUPPORTED')],
+    chosen: 'PUSH',
+    because: 'demonstrated max supports it',
+    rejected: [],
+    conflicts: [],
+    citations: [],
+    reassessOnISO: null,
     earningGate: null,
   };
 }
@@ -182,5 +212,81 @@ describe('ADJ-FALSE-1 · no future weeks left in this block', () => {
     expect(classifyBlock(sentenceFrom(r, 'wholeBlockCoherence'), r.traces, 1),
       'the silent zero — weeks existed and nobody looked — was excused as a false block')
       .toBe('unclassified');
+  });
+});
+
+/**
+ * COLDSTART-PROMO-1 (2026-09-06) · THE DIAGNOSIS EARNS THE DISPOSITION.
+ *
+ * `classifyBlock` correctly named the zero-future-weeks case a false block
+ * long before this landed — the case above proves that. What it did NOT do is
+ * change what a REPORT built on `checkPromotion`'s output says for that plan,
+ * which is the gap the read-only production replay found: one of seven active
+ * plans is finished, `classifyBlock` says so, and the replay still printed
+ * **BLOCKED** because nothing between the diagnosis and the report ever asked
+ * the question. `resolveDisposition` is that question.
+ *
+ * It is deliberately a FREE FUNCTION a reporter calls with `checkPromotion`'s
+ * own `mayPromote` / `blockedBecause` / `traces`, never a field added to
+ * `PlanAdjudication` itself — see `resolveDisposition`'s own doc comment in
+ * `false-block.ts` for why: `adjudicate.ts` is reachable from the live
+ * `run-adaptations` cron via the volume-evidence path, and `false-block.ts`
+ * is registered as never-imported-by-runtime-code. Wiring the field into
+ * `checkPromotion` would have made that literally false, and
+ * `_generated_content_gate.test.ts`'s staleness guard is what caught it.
+ *
+ * ── FALSIFICATION (Rule 18 §1), run before this landed ─────────────────────
+ *
+ *   · `resolveDisposition` hardcoded to `'BLOCKED'` whenever `mayPromote` is
+ *     false → "AssertionError: a finished block (0 future weeks) must report
+ *     TERMINAL, not BLOCKED: expected 'BLOCKED' to be 'TERMINAL'"
+ *   · the `blockedBecause.every(...)` check loosened to `.some(...)` → the
+ *     MIXED-SENTENCES case below (one real defect riding alongside the
+ *     no-future-weeks reading) started reporting TERMINAL: "AssertionError: a
+ *     real defect alongside the false block must still report BLOCKED, not
+ *     TERMINAL: expected 'TERMINAL' to be 'BLOCKED'". `checkPromotion` cannot
+ *     construct this shape itself today (see `resolveDisposition`'s own doc
+ *     comment), so this case calls it directly rather than going through the
+ *     gate — otherwise the `every`/`some` distinction would be untestable and,
+ *     per Rule 18, a hypothesis rather than a proven guard.
+ */
+describe('COLDSTART-PROMO-1 · disposition earns what classifyBlock diagnosed', () => {
+  it('TERMINAL · a plan whose weeks are all behind us, matching the false-block reading exactly', () => {
+    const r = checkPromotion([], { weeks: [] });
+    expect(r.mayPromote, 'disposition must never smuggle a promotion back in').toBe(false);
+    expect(resolveDisposition(r.mayPromote, r.blockedBecause, r.traces, 0)).toBe('TERMINAL');
+  });
+
+  it('BLOCKED · the silent zero (weeks existed, nobody traced) is a real defect, not finished', () => {
+    const r = checkPromotion([], { weeks: [WK] });
+    expect(resolveDisposition(r.mayPromote, r.blockedBecause, r.traces, 1),
+      'weeks existed and nobody adjudicated them — that is the defect wholeBlockCoherence '
+      + 'exists to own, and TERMINAL must never cover for it')
+      .toBe('BLOCKED');
+  });
+
+  it('BLOCKED · a real, non-empty progression failure is not finished either', () => {
+    // Same shape `_false_block.test.ts` above calls UNCLASSIFIED: a rankable
+    // PUSH that was declined. A real coaching defect, and disposition must
+    // agree with `classifyBlock` rather than paper over it.
+    const r = checkPromotion([held('SUPPORTED', 40)], { weeks: [WK] });
+    expect(r.mayPromote).toBe(false);
+    expect(resolveDisposition(r.mayPromote, r.blockedBecause, r.traces, 1)).toBe('BLOCKED');
+  });
+
+  it('PROMOTED · a block that passes every dimension reports PROMOTED', () => {
+    const r = checkPromotion([pushed()], { weeks: [WK] });
+    expect(r.mayPromote, `expected a clean pass, got: ${r.blockedBecause.join(' | ')}`).toBe(true);
+    expect(resolveDisposition(r.mayPromote, r.blockedBecause, r.traces, 1)).toBe('PROMOTED');
+  });
+
+  it('BLOCKED · a real defect riding alongside the no-future-weeks reading must not be excused', () => {
+    // `checkPromotion` cannot produce this mix today (every other clause
+    // needs traces.length > 0, which is false whenever the empty-block
+    // sentence fires) — called directly so the `every`, not `some`, in
+    // `resolveDisposition` is actually falsifiable rather than a hypothesis.
+    const overSentence = sentenceFrom(checkPromotion([], { weeks: [] }), 'wholeBlockCoherence');
+    const realDefect = 'taperIntegrity · 1 decision(s) PUSH inside a taper or race week: wk:x';
+    expect(resolveDisposition(false, [overSentence, realDefect], [], 0)).toBe('BLOCKED');
   });
 });

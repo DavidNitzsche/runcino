@@ -71,11 +71,12 @@ import {
   type CanonicalAdaptationInput, type CapacityBelief,
   type ComparableThirds, type EvaluationBoundary, type GradedSession,
   type LongRunObservation, type Measured, type Provenance, type WeekObservation,
-  type AuthoredPlanMode,
+  type AuthoredPlanMode, type PaceRepresentativenessFlag,
 } from '@/lib/adaptation/canonical/input';
 import { gradeStimulus, type StimulusInput } from '@/lib/adaptation/canonical/stimulus';
 import { workHrCeilingFor } from '@/lib/adaptation/canonical/work-hr-ceiling';
 import { workTraceIsCredible } from '@/lib/adaptation/canonical/hr-trace-credibility';
+import { classifyRunContext } from '@/lib/evidence/classify-evidence';
 /* The phase VOCABULARY and its one translation from the generator's own label.
  * Imported rather than re-implemented so this loader cannot coin a second
  * phase name (Rule 16). */
@@ -359,16 +360,28 @@ function sessionTests(w: PlanWorkoutRow): GradedSession['tests'] {
 function provenanceFor(run: RunData, activityId: string, dateISO: string): Provenance {
   const indoor = String((run as Record<string, unknown>).indoor ?? '').toLowerCase() === 'true'
     || (run as Record<string, unknown>).sportType === 'treadmill';
+  const paceFlags: PaceRepresentativenessFlag[] = indoor ? ['TREADMILL_UNCALIBRATED'] : [];
+  // CLASSIFYCTXWIRE-1 (2026-09-06) · this used to stop at treadmill, "never a
+  // guess at hills/wind/heat/altitude — an unclaimed flag is not evidence the
+  // session was clean". Two of those four now have a real, composed owner:
+  // `classifyRunContext` (`lib/evidence/classify-evidence.ts`) reads the SAME
+  // `resolveRunTerrain` / `heatEffort` this app already trusts elsewhere, on
+  // this activity's own `RunData` — no second terrain or heat model, the
+  // canonical evidence classifier's own `context` block, called through its
+  // one public data-only door. Wind and altitude still have no owner and are
+  // deliberately left unflagged, same posture as before. This only tightens
+  // `admissibleForPaceAnchor` (`admissibility.ts`) — weekly-load and
+  // long-run-durability admissibility never read `paceFlags` — so a run that
+  // used to silently price road pace despite material hills or heat now
+  // correctly stops qualifying as a pace anchor, without losing its volume or
+  // load credit (Q27: representativeness is lever-specific, not global).
+  const ctx = classifyRunContext(run);
+  if (!indoor && ctx.hills.kind === 'present') paceFlags.push('HILLY_WITHOUT_TRUSTED_GRADE_ADJUSTMENT');
+  if (ctx.heat.kind === 'present') paceFlags.push('HEAT_WITHOUT_SUPPORTED_ADJUSTMENT');
   return {
     activityId,
     dateISO,
-    // Conservative: only the ONE flag this loader can detect cheaply and
-    // confidently (treadmill), never a guess at hills/wind/heat/altitude —
-    // an unclaimed flag is not evidence the session was clean, and a
-    // fabricated one is worse than none. `qualifiesAsThresholdEvidence` /
-    // `qualifiesAsLongRunEvidence` (`admissibility.ts`) apply their own
-    // per-lever rules on top of whatever this array carries.
-    paceFlags: indoor ? ['TREADMILL_UNCALIBRATED'] : [],
+    paceFlags,
     truncation: { truncated: false, completeWorkPhasesCaptured: true, note: '' },
     treadmill: indoor,
   };

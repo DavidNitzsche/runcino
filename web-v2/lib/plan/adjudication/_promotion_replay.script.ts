@@ -60,7 +60,7 @@ import type { PlanAdjudication } from './contract';
 /* The false-block classifier is a MODULE, not a local helper, because a
  * classifier only exercisable against production is one nothing in CI can
  * falsify. `_false_block.test.ts` breaks it on purpose. */
-import { classifyBlock } from './false-block';
+import { classifyBlock, resolveDisposition, type PlanDisposition } from './false-block';
 import type { RenderedHistory } from '../history-shapes';
 /* Rule 14 · the canonical-row predicate has ONE definition and it is imported,
  * never re-typed. A verification query that re-rolls the reader's own filter
@@ -188,6 +188,8 @@ describe('checkPromotion · read-only replay against every active production pla
       const rows: string[] = [];
       let promotedNow = 0;
       let promotedLegacy = 0;
+      let terminalNow = 0;
+      let terminalLegacy = 0;
       let coldPlans = 0;
       let falseBlocksNow = 0;
       let falseBlocksBefore = 0;
@@ -328,6 +330,24 @@ describe('checkPromotion · read-only replay against every active production pla
 
         if (now.result.mayPromote) promotedNow += 1;
         if (before.result.mayPromote) promotedLegacy += 1;
+        /* COLDSTART-PROMO-1 · a TERMINAL plan is not a promotion and is not a
+         * failure either. Counted separately so "N of 7 promote" never has to
+         * carry a finished block as an unstated exception, and so a caller
+         * reading this report gets 7/7 accounted for by name.
+         *
+         * `resolveDisposition` stays a free function this REPORT calls, never
+         * a field on `PlanAdjudication` itself — see its own doc comment in
+         * `false-block.ts`: `checkPromotion` is reachable from the live
+         * `run-adaptations` cron, and `false-block.ts` is registered as never
+         * imported by runtime code. */
+        const nowDisposition = resolveDisposition(
+          now.result.mayPromote, now.result.blockedBecause, now.result.traces, weeks.length,
+        );
+        const beforeDisposition = resolveDisposition(
+          before.result.mayPromote, before.result.blockedBecause, before.result.traces, weeks.length,
+        );
+        if (nowDisposition === 'TERMINAL') terminalNow += 1;
+        if (beforeDisposition === 'TERMINAL') terminalLegacy += 1;
 
         /* FALSE BLOCKS · classified per sentence, under both readings. */
         const falseNow = now.result.blockedBecause
@@ -360,10 +380,16 @@ describe('checkPromotion · read-only replay against every active production pla
         const earliestReassess = reassessed
           .map((t) => t.reassessOnISO as string).sort()[0] ?? null;
 
+        /* Disposition label · PROMOTED reads YES (unchanged), TERMINAL reads
+         * as itself rather than folding into BLOCKED, so a finished plan is
+         * never displayed the same as a real defect. */
+        const dispLabel = (d: PlanDisposition): string => (
+          d === 'PROMOTED' ? 'YES' : d === 'TERMINAL' ? 'TERMINAL' : '**BLOCKED**'
+        );
         rows.push(`| ${p.id.slice(0, 14)} | ${mask(p.email)} | ${distance ?? '-'} | `
           + `${future.length} | ${peakWeeklyMi ?? 'absent'} | ${longestRunMi ?? 'absent'} | `
-          + `${isCold ? 'COLD' : 'has history'} | ${before.result.mayPromote ? 'YES' : '**BLOCKED**'} | `
-          + `${now.result.mayPromote ? 'YES' : '**BLOCKED**'} |`);
+          + `${isCold ? 'COLD' : 'has history'} | ${dispLabel(beforeDisposition)} | `
+          + `${dispLabel(nowDisposition)} |`);
 
         detail.push(`### ${p.id} (${distance ?? 'distance not known'})`);
         detail.push(`- classification: ${isCold ? 'COLD START' : 'has history'}`
@@ -373,9 +399,9 @@ describe('checkPromotion · read-only replay against every active production pla
         detail.push(`- required proposal / reassessment: ${gates.length} earning gate(s), `
           + `${reassessed.length} of ${now.result.traces.length} decisions carry a reassessment`
           + `${earliestReassess === null ? '' : `, earliest ${earliestReassess}`}`);
-        detail.push(`- BEFORE (${before.result.mayPromote ? 'promoted' : 'blocked'}): `
+        detail.push(`- BEFORE (${beforeDisposition.toLowerCase()}): `
           + `${before.result.blockedBecause.join(' | ') || 'nothing'}`);
-        detail.push(`- NOW (${now.result.mayPromote ? 'promoted' : 'blocked'}): `
+        detail.push(`- NOW (${nowDisposition.toLowerCase()}): `
           + `${now.result.blockedBecause.join(' | ') || 'nothing'}`);
         for (const [b, v] of falseBefore) detail.push(`- FALSE BLOCK (before): ${v} · ${b}`);
         for (const [b, v] of falseNow) detail.push(`- FALSE BLOCK (now): ${v} · ${b}`);
@@ -383,11 +409,17 @@ describe('checkPromotion · read-only replay against every active production pla
         detail.push('');
       }
 
-      console.log('| plan | account | distance | future weeks | peak wk | longest | history | promotes BEFORE | promotes NOW |');
+      console.log('| plan | account | distance | future weeks | peak wk | longest | history | disposition BEFORE | disposition NOW |');
       console.log('|---|---|---|---:|---:|---:|---|---|---|');
       for (const r of rows) console.log(r);
-      console.log(`\n**BEFORE (no cold-start policy): ${promotedLegacy} of ${plans.length} promote.**`);
-      console.log(`**NOW: ${promotedNow} of ${plans.length} promote.**`);
+      console.log(`\n**BEFORE (no cold-start policy): ${promotedLegacy} of ${plans.length} promote, `
+        + `${terminalLegacy} of ${plans.length} terminal (finished, not a failure), `
+        + `${plans.length - promotedLegacy - terminalLegacy} of ${plans.length} genuinely blocked.**`);
+      console.log(`**NOW: ${promotedNow} of ${plans.length} promote, ${terminalNow} of ${plans.length} `
+        + `terminal (finished, not a failure), `
+        + `${plans.length - promotedNow - terminalNow} of ${plans.length} genuinely blocked.**`);
+      console.log(`**${promotedNow + terminalNow} of ${plans.length} reach a valid disposition NOW `
+        + `(promoted or terminal) · a plan not counted here is neither.**`);
       console.log(`**${coldPlans} of ${plans.length} plans belong to accounts with no canonical runs.**`);
       console.log(`**FALSE blocks · before: ${falseBlocksBefore} · now: ${falseBlocksNow}.**\n`);
 
