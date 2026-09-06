@@ -641,4 +641,6 @@ export const ROUTE_CALLERS: Record<string, string> = {
     'Same shape as /api/plan/generate — the HTTP door onto lib/plan/replan-scenarios, used by hand and by the drift cron through the library.',
   'web-v2/app/api/tips/route.ts':
     'Half-built wire. native-v2/Faff/Faff/Models/Tips.swift exists as a decode model and API.swift never fetches it, so lib/training/form-tips.ts prose has no reader. Wire the fetch or delete both ends.',
+  'web-v2/app/api/plan/move/route.ts':
+    'MOVEREADJUDICATE-1 (2026-09-05). The orchestrated Move-a-Run surface: it asks lib/plan/reschedule.ts for candidates, re-adjudicates the destination through all nine checks, applies under RUNNER_ACCEPTED, ledgers and syncs. UNCALLED BY THE PHONE TODAY, and named here rather than hidden: native-v2 ViewsV5/RescheduleV5.swift still posts to /api/plan/reschedule, which moves the run correctly and does not re-adjudicate it. Repointing that sheet is a native change and a TestFlight build, which is a separate decision from landing the engine, so the honest state is "the coaching exists and one surface has not been moved onto it yet". This entry is what stops that becoming permanent, and lib/brain/orchestration/_move_readjudication.test.ts pins the mover count beside it. Delete this entry the moment the sheet is repointed.',
 };

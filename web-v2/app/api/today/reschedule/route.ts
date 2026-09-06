@@ -51,11 +51,23 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { planVersionOf } from '@/lib/plan/plan-version';
+import { readjudicateMove, verdictOf, allFindings } from '@/lib/brain/orchestration/move-orchestrator';
+import { checksThatCouldNotRun } from '@/lib/coaching-contract/move-readjudication';
+import { recordDecision } from '@/lib/brain/ledger/decision-ledger';
+import { PLAN_MUTATION_BOUNDARY_MODEL_VERSION } from '@/lib/brain/ledger/ledger-entry';
 
 interface Body {
   from_date?: string;
   to_date?: string;
   replace?: boolean;
+  /**
+   * MOVEREADJUDICATE-1 · move anyway over a REFUSED re-adjudication, once he
+   * has read the refusals. Absent means no, so the safe direction needs no
+   * argument. This is not a bypass of the authority seam — the class is still
+   * RUNNER_INITIATED and it is still his plan.
+   */
+  force?: boolean;
 }
 
 const ISO = /^\d{4}-\d{2}-\d{2}$/;
@@ -163,6 +175,38 @@ export async function POST(req: NextRequest) {
 
   const toWeek = await weekFor(toDate);
   if (!toWeek) return NextResponse.json({ error: 'no_plan_week_covers_target' }, { status: 400 });
+
+  // ── MOVEREADJUDICATE-1 (2026-09-05) · THE CANONICAL ORCHESTRATOR ─────────
+  //
+  // This route's own header called it "the older, dumber verb": the caller
+  // names both days and it moves the row, with no opinion. That was true, and
+  // `lib/plan/adaptation-log.ts` recorded the second half of the cost in its
+  // own Rule 22 note — "three other paths can move a workout and none of them
+  // writes here", so the engine's log was complete for the cron and blind to
+  // the app.
+  //
+  // Both halves close here. The nine checks run BEFORE the write, and the move
+  // is recorded in `plan_decision_ledger` after it. The mutation boundary's
+  // differential validator is unchanged and still runs underneath; this adds
+  // the readings it structurally cannot make -- demand across both weeks, the
+  // one-stressor-at-a-time sequence rule, the queues -- and a better date.
+  const readjudication = await readjudicateMove({
+    userUuid: userId,
+    todayISO: fromDate,
+    move: { planWorkoutId: source.id, fromISO: fromDate, toISO: toDate, optionId: null },
+  });
+  const verdict = verdictOf(readjudication);
+  if (verdict === 'REFUSED' && body?.force !== true) {
+    return NextResponse.json({
+      error: 'readjudication_refused',
+      // Rule 11 · the checks that could not run travel with the refusal, so a
+      // client cannot read silence as approval.
+      reason: allFindings(readjudication).filter((f) => f.severity === 'REFUSES').map((f) => f.what).join(' '),
+      findings: allFindings(readjudication),
+      could_not_run: checksThatCouldNotRun(readjudication),
+      better_date: readjudication.betterDate,
+    }, { status: 409 });
+  }
   const fromWeek = await weekFor(fromDate);
   const dowOf = (iso: string) => new Date(iso + 'T12:00:00Z').getUTCDay(); // 0=Sun..6=Sat
 
@@ -306,10 +350,61 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // The ledger, per Rule 21: what moved, in which direction, on what evidence.
+  // A move changes WHEN, not how much, so the direction is NEUTRAL for the same
+  // reason `adaptation-log.ts:directionOfAction` gives -- recording a reschedule
+  // as UP or DOWN would put noise into the exact count that log exists to make
+  // trustworthy.
+  const planVersion = planVersionOf({
+    id: plan.id,
+    last_adapted_at: (await pool.query<{ last_adapted_at: string | null }>(
+      `SELECT last_adapted_at::text AS last_adapted_at FROM training_plans WHERE id = $1`,
+      [plan.id],
+    )).rows[0]?.last_adapted_at ?? null,
+  });
+  const ledger = await recordDecision({
+    userUuid: userId,
+    planId: plan.id,
+    planLineageId: plan.id,
+    replacedPlanId: null,
+    planVersion,
+    scope: 'WORKOUT',
+    workoutIds: [source.id],
+    scopeFromISO: fromDate,
+    scopeToISO: toDate,
+    lever: 'SCHEDULE',
+    direction: 'NEUTRAL',
+    evidence: [{ readjudication: readjudication.checks, verdict, forced: body?.force === true }],
+    provenance: 'api/today/reschedule',
+    sourceMode: null,
+    beforeState: { dateISO: fromDate, type: source.type, distanceMi: Number(source.distance_mi) || 0 },
+    afterState: { dateISO: toDate, swapped: boundary.value?.swapped ?? null },
+    authority: 'RUNNER_INITIATED',
+    authorityVerdict: 'PERMITTED',
+    hold: null,
+    decision: 'APPLY',
+    proposalId: null,
+    proposal: null,
+    runnerResponse: 'ACCEPTED',
+    mutationOutcome: 'applied',
+    mutationViolations: [],
+    explanation: `Moved ${source.type} from ${fromDate} to ${toDate}. Re-adjudication: ${verdict}.`,
+    modelVersion: PLAN_MUTATION_BOUNDARY_MODEL_VERSION,
+    idempotencyKey: null,
+  });
+
   await bustBriefingCacheForEvent(userId, 'plan_swap');
 
   return NextResponse.json({
     ok: true,
+    plan_version: planVersion,
+    ledger: ledger.state,
+    readjudication: {
+      verdict,
+      findings: allFindings(readjudication),
+      could_not_run: checksThatCouldNotRun(readjudication),
+      better_date: readjudication.betterDate,
+    },
     moved: boundary.value?.moved,
     // NEVER-DELETE-1 · `replaced` is retained on the wire and is now always
     // null, because nothing is replaced any more. `swapped` says where the
