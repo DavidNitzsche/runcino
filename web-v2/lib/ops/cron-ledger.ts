@@ -226,6 +226,22 @@ export const CRON_JOBS: readonly CronJob[] = [
       + 'statement per runner, gated on max_hr_override IS NULL.',
   },
   {
+    id: 'pace-drift-monitor',
+    path: '/api/cron/pace-drift-monitor',
+    slotsUtcHour: [9],
+    staleAfterHours: 30,
+    timeoutMs: 60000,
+    // DECISION-1's own posture: reads whatever is currently persisted and
+    // currently pending, whichever cycle that turns out to be — it does not
+    // need run-adaptations to have already run today to produce a correct
+    // verdict, only a stale one it would correctly re-check tomorrow.
+    requires: [],
+    idempotenceEvidence:
+      'automatic-mutation-registry cron/pace-drift-monitor · idempotent: true · the only writes are '
+      + 'an ops_alerts row and the cron success stamp; nothing about a runner\'s plan or pace is ever '
+      + 'written by this job.',
+  },
+  {
     id: 'readiness-snapshot',
     path: '/api/cron/readiness-snapshot',
     slotsUtcHour: [8],

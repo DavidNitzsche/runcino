@@ -49,6 +49,13 @@ export type AlertKind = 'plan_convergence' | 'cron_fail' | 'cron_ok' | 'cron_sta
    * approved), and any genuine throw. Same "cron_ok does not mean this
    * mechanism did anything" reasoning as `canonical_shadow_exit` above. */
   | 'belief_store_pass'
+  /* DECISION-1 (2026-09-06) · `cron/pace-drift-monitor` — the scheduled
+   * replacement for `_cross_surface_contract.test.ts`'s excluded
+   * build-blocking pace check (DEPLOYFENCE-1). A live anchor disagreeing
+   * with the persisted plan is checked against `pace-drift-monitor.ts`'s
+   * six-field explain rule before this fires; it never fires for a drift a
+   * valid pending reprice proposal already accounts for. */
+  | 'pace_drift_unexplained'
   | 'unknown';
 export type AlertSeverity = 'info' | 'warn' | 'error' | 'critical';
 

@@ -286,6 +286,27 @@ export const AUTOMATIC_MUTATIONS: readonly AutomaticMutation[] = [
       + 'within the same minute.',
   },
 
+  // ── Monitoring only, no coaching state ────────────────────────────────────
+  {
+    id: 'cron/pace-drift-monitor',
+    route: 'app/api/cron/pace-drift-monitor/route.ts',
+    trigger: '0 9 * * *',
+    reach: 'append_or_fill',
+    changes: ['ops_alerts', 'cron_ledger (stamp only)'],
+    idempotent: true,
+    onPartialFailure: 'One try/catch per active plan; a read failure on one runner is recorded as its own '
+      + 'result entry and does not stop the loop. Writes nothing about the plan or the runner\'s pace — the '
+      + 'only writes are the alert row and the cron success stamp, both safe to double-write.',
+    runnerSees: 'invisible',
+    reversible: 'Nothing to reverse — it never touches any plan table. Alert rows are operational, not '
+      + 'runner-facing.',
+    note: 'DECISION-1 (2026-09-06) · the scheduled replacement for `_cross_surface_contract.test.ts`\'s '
+      + 'excluded build-blocking pace check. Compares the live pace resolvers against the persisted '
+      + '`authored_state.pace_recompute.anchors` stamp and checks any drift against `lib/audit/'
+      + 'pace-drift-monitor.ts#explainPaceDrift`\'s six named fields before deciding whether a pending '
+      + 'reprice proposal explains it — never a bare tolerance.',
+  },
+
   // ── The physiological constants ───────────────────────────────────────────
   {
     id: 'cron/max-hr-ratchet',

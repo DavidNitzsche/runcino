@@ -1,0 +1,70 @@
+# DECISION-1 (2026-09-06) · the scheduled replacement for
+# _cross_surface_contract.test.ts's excluded build-blocking pace check
+# (DEPLOYFENCE-1, scripts/check-generated-content.sh).
+#
+# The owner's own ruling: "Replace the excluded cross-surface build test
+# with scheduled monitoring that understands this state... Generic 'one
+# reanchor cycle of tolerance' is not approved." This is that schedule.
+#
+# The endpoint (web-v2/app/api/cron/pace-drift-monitor/route.ts) compares
+# every active plan's live-calculated pace anchors against what is persisted
+# in training_plans.authored_state.pace_recompute.anchors. A drift is not
+# automatically a defect — since REANCHORPROPOSES-1 a re-anchor is a
+# runner-gated proposal, so a persisted anchor can legitimately sit stale
+# until accepted — but every drift is checked against
+# web-v2/lib/audit/pace-drift-monitor.ts#explainPaceDrift's six named fields
+# (before value, after value, current plan version, evidence, creation and
+# expiration, proposal status) before being waved through. An unexplained
+# drift raises a real pace_drift_unexplained ops alert.
+#
+# Read-only against plan tables; the only write is the alert row itself and
+# the cron ledger stamp. Idempotent — re-running it re-checks the same live
+# state and produces the same verdict, never a second mutation.
+#
+# Schedule: 09:00 UTC daily = 02:00 PT — after run-adaptations (03:00 UTC)
+# and any repricing proposal it might raise that night have landed, so this
+# reads the SAME cycle's outcome rather than racing it (Rule 23: no ordering
+# guarantee is assumed beyond "runs daily"; the endpoint itself does not
+# depend on today's run-adaptations pass having completed — it reads
+# whatever is currently persisted and currently pending, whichever cycle
+# that turns out to be).
+#
+# Manual trigger: Actions tab > "Monitor pace drift" > Run workflow.
+
+name: Monitor pace drift
+
+on:
+  schedule:
+    - cron: '0 9 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Hit /api/cron/pace-drift-monitor
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "::error::CRON_SECRET secret not configured in this repo"
+            exit 1
+          fi
+
+          response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -w "\n__STATUS__:%{http_code}" \
+            --max-time 120 \
+            https://www.faff.run/api/cron/pace-drift-monitor)
+
+          body=$(echo "$response" | sed '$d')
+          status=$(echo "$response" | tail -n1 | sed 's/__STATUS__://')
+
+          echo "Status: $status"
+          echo "Body: $body"
+
+          if [ "$status" != "200" ]; then
+            echo "::error::Pace drift monitor failed with HTTP $status"
+            exit 1
+          fi

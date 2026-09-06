@@ -156,6 +156,18 @@ elif [ -x "$VITEST" ]; then
   #   npx vitest run lib/audit/_cross_surface_contract.test.ts
   # The underlying 429-vs-430 drift is NOT resolved by this change and remains
   # a genuinely open finding — see docs/reports/brain-2026-09-05/HANDBACK-*.md.
+  #
+  # DECISION-1 (2026-09-06) · this is no longer a bare exclusion. The owner's
+  # own ruling: "Replace the excluded cross-surface build test with scheduled
+  # monitoring that understands this state... Generic 'one reanchor cycle of
+  # tolerance' is not approved." `app/api/cron/pace-drift-monitor/route.ts`
+  # is that monitoring — it runs the SAME live-vs-persisted comparison on a
+  # schedule (not on every deploy) and checks each drift against `lib/audit/
+  # pace-drift-monitor.ts#explainPaceDrift`'s six named fields (before value,
+  # after value, current plan version, evidence, creation/expiration,
+  # proposal status) before deciding whether it is explained. A drift with no
+  # valid explaining proposal raises a real `pace_drift_unexplained` ops
+  # alert — never a silent pass on "it's close enough" or "one cycle is fine".
   if ! (cd "$ROOT/web-v2" && "$VITEST" run lib/audit --silent --exclude '**/_cross_surface_contract.test.ts'); then
     echo "GENERATED-CONTENT FAIL · a column, a module or a route has no reader (see above)."
     echo "  Wire it to the surface that should have it, or delete the writer. If neither is"

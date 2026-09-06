@@ -713,6 +713,30 @@ export async function POST(req: NextRequest) {
         console.error('[run-adaptations] sequence gate threw:', e);
       }
 
+      // ── ROLLINGBOUNDARY-EVAL-1 (2026-09-06) · THE MISSING EVALUATOR HALF ──
+      //
+      // LIVESEQ-2 above schedules the three rolling boundaries every night
+      // and stops — nothing anywhere re-asked one once it fell due, so the
+      // schedule's promise was never kept. This is that missing re-ask: it
+      // reads THIS runner's own due items (Rule 14 — scoped to `uid`, never
+      // a global sweep from inside a per-runner loop), gathers complete
+      // demand from real reads, and resolves each one. It never mutates a
+      // plan and never touches AUTOMATIC_ADAPTATION_AUTHORITY — see
+      // `rolling-boundary-evaluator.ts`'s own header for the full argument.
+      // Own try/catch, matching the belief-store/canonical-shadow/pace-
+      // shadow blocks elsewhere in this loop: a throw here costs only this
+      // runner's rolling-boundary pass.
+      try {
+        const [{ evaluateDueRollingBoundariesForUser }, { runnerToday: todayForUser }] = await Promise.all([
+          import('@/lib/plan/adjudication/rolling-boundary-evaluator'),
+          import('@/lib/runtime/runner-tz'),
+        ]);
+        const today = await todayForUser(uid);
+        await evaluateDueRollingBoundariesForUser(uid, today);
+      } catch (e) {
+        console.error('[run-adaptations] rolling-boundary evaluator threw:', e);
+      }
+
       // 2026-08-30 · the LTHR re-anchor USED TO BE HERE, and this is the
       // reason it is not any more.
       //
