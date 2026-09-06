@@ -37,10 +37,19 @@
  *   · `stackedStress` cannot fail on `STACKED_STRESSOR_THRESHOLD` being wrong,
  *     for the same reason the step bands above are unfailable.
  *
- * And with ZERO traces, six of the ten dimensions are vacuously true — there is
- * no violation in an empty set. Promotion is still blocked, by
- * `wholeBlockCoherence`'s "nothing was adjudicated at all", which is the
- * dimension that owns the silent zero.
+ * And with ZERO traces, most of the eleven dimensions are vacuously true —
+ * there is no violation in an empty set. Promotion is still blocked, by
+ * `wholeBlockCoherence`, which is the dimension that owns the silent zero.
+ *
+ * THAT SENTENCE USED TO BE THE WHOLE ADMISSION, and it was worth very little:
+ * it said a vacuous pass exists and gave a caller no way to tell one from a
+ * real pass. `PlanAdjudication.examined` now states, per dimension, the size
+ * of the eligible population it had — computed beside the filter that faults
+ * it, so a clause that stops running reports ZERO — and
+ * `_promotion_reach.test.ts` fails on any dimension no corpus block reaches.
+ * Measured on the seven live production plans, `doctrineResolution` is reached
+ * by NONE of them, because nothing in this engine emits a `DoctrineConflict`
+ * yet. That is a Rule 15 finding the old sentence could not have produced.
  *
  * They also cannot tell whether the HISTORY handed in is the right population.
  * The first CIM trace was wrong for exactly that reason and every test here
@@ -56,6 +65,7 @@ import type {
   StackedStress,
 } from './contract';
 import { MIN_COMPARABLES_FOR_CEILING_CLAIM, PROMOTION_DIMENSIONS } from './contract';
+import type { PromotionExamined } from './contract';
 import { coldStartClassFor, coldStartFaults, type ColdStartPosture } from './cold-start';
 import { describesEvidence, objectionToChoice } from '@/lib/brain/objective';
 
@@ -703,6 +713,18 @@ export function checkPromotion(
 
   const conditional = traces.filter((t) =>
     t.athlete.evidenceClass === 'CONDITIONAL' || t.athlete.evidenceClass === 'CONTRAINDICATED');
+  /**
+   * THE ELIGIBLE POPULATION for `athleteSpecificSupport`, kept beside the
+   * filters that fault it rather than recomputed later.
+   *
+   * A SUPPORTED decision cannot fail this dimension by any of its four
+   * clauses, so counting it as "examined" would report reach the dimension
+   * never had. What CAN fail it is a decision his own history does not
+   * support: CONDITIONAL, CONTRAINDICATED, or the honest absence UNKNOWN.
+   */
+  const unsupportedByHistory = traces.filter((t) =>
+    t.athlete.evidenceClass === 'CONDITIONAL' || t.athlete.evidenceClass === 'CONTRAINDICATED'
+    || t.athlete.evidenceClass === 'UNKNOWN');
 
   // Defect 6. A CONDITIONAL decision is fine, IF it carries a gate that says
   // how it can be earned and when that is checked. Marking it for reassessment
@@ -712,6 +734,9 @@ export function checkPromotion(
   const markedButUnexplained = conditional.filter((t) =>
     t.earningGate === null && t.reassessOnISO !== null);
 
+  // Only a trace the detector actually GRADED can fail `stackedStress`.
+  // `t.stacked === null` means nothing was stacked to look at.
+  const stackedGraded = traces.filter((t) => t.stacked != null);
   const stackedUnaddressed = traces.filter((t) =>
     t.stacked?.simultaneousPeak === true && t.chosen === 'PUSH');
 
@@ -735,6 +760,10 @@ export function checkPromotion(
    * supports the proposal already made", which is what `contract.ts` says this
    * type exists to stop, and it is expressible today.
    */
+  // Only a trace that CARRIES a conflict can fail `doctrineResolution`. A
+  // block with no doctrine conflict passes it vacuously, which is a different
+  // fact from passing it on argued conflicts.
+  const conflictBearing = traces.filter((t) => t.conflicts.length > 0);
   const unresolvedConflict = traces.filter((t) =>
     t.conflicts.some((c) => {
       if (c.because.trim() === '') return true;
@@ -834,8 +863,11 @@ export function checkPromotion(
   // through the supported path and its one test hand-built the object.
   const taperWeeks = new Set((ctx?.weeks ?? []).filter((w) => w.isTaper || w.isRaceWeek)
     .map((w) => w.weekStartISO));
-  const pushedInTaper = ctx == null ? [] : traces.filter((t) =>
-    t.chosen === 'PUSH' && taperWeeks.has(weekOf(t)));
+  // The eligible population is the decisions that LAND in a taper or race
+  // week. A block with no taper passes this dimension having looked at
+  // nothing, and `examined.taperIntegrity` is where that is said out loud.
+  const taperTraces = ctx == null ? [] : traces.filter((t) => taperWeeks.has(weekOf(t)));
+  const pushedInTaper = taperTraces.filter((t) => t.chosen === 'PUSH');
 
   /**
    * RULE 11 AT THE GATE · an honest absence is not support.
@@ -902,7 +934,13 @@ export function checkPromotion(
     .map((w) => w.weekStartISO));
   const allWeekStarts = new Set((ctx?.weeks ?? []).map((w) => w.weekStartISO));
   const identityFaults: string[] = [];
+  /* The eligible population, counted in the loop that faults it. With no
+   * `ctx`, or with a ctx carrying no weeks, NEITHER clause below can fire —
+   * the dimension is structurally silent and must say so rather than report a
+   * pass (Rule 18 §2). */
+  let identityExamined = 0;
   for (const t of traces) {
+    if (ctx != null && allWeekStarts.size > 0) identityExamined += 1;
     const wk = weekOf(t);
     if (raceWeekStarts.has(wk) && t.stacked?.longRunOverDemonstratedMax != null) {
       identityFaults.push(`${t.decisionId} · week ${wk} is a RACE week and its distance is being read as `
@@ -922,9 +960,15 @@ export function checkPromotion(
    * "Never empty." Nothing checked either sentence.
    */
   const provenanceFaults: string[] = [];
+  /* Counted per ATTRIBUTED NUMBER, not per trace, because that is the unit
+   * this dimension judges: two on every trace plus one per ranked option. A
+   * block of traces whose options were all left unranked gives this dimension
+   * far less to read than the trace count suggests. */
+  let provenanceExamined = 0;
   for (const t of traces) {
     const a = t.athlete;
     const checkAttr = (label: string, attr: Attributed<unknown>, want: Attributed<unknown>['provenance']) => {
+      provenanceExamined += 1;
       if (attr.provenance !== want) {
         provenanceFaults.push(`${t.decisionId} · ${label} is reported as ${attr.provenance}, not ${want}`);
       }
@@ -938,6 +982,11 @@ export function checkPromotion(
     for (const o of t.options) {
       const s = o.heuristicRankScore;
       if (s == null) {
+        // An UNRANKED option is still judged here — "was ranked at all" is one
+        // of this dimension's clauses — but it never reaches `checkAttr`, so
+        // it is counted on its own. Without this the count would understate
+        // the dimension's reach on exactly the blocks where it matters most.
+        provenanceExamined += 1;
         if (o.evidenceClass !== 'UNKNOWN') {
           provenanceFaults.push(`${t.decisionId} · the ${o.option} option is ${o.evidenceClass} but was `
             + 'not ranked at all, so the comparison the layer exists to make was not made');
@@ -962,11 +1011,11 @@ export function checkPromotion(
    * confidence. Both would promote silently under the other ten.
    */
   const coldStartComplaints: string[] = [];
-  let coldStartDecisions = 0;
+  let coldStartExamined = 0;
   for (const t of traces) {
     const posture = t.athlete.coldStart;
     if (posture === null) continue;
-    coldStartDecisions += 1;
+    coldStartExamined += 1;
     coldStartComplaints.push(...coldStartFaults({
       decisionId: t.decisionId,
       athlete: t.athlete,
@@ -1006,7 +1055,29 @@ export function checkPromotion(
     blocked.push(`doctrineResolution · ${unresolvedConflict.length} decision(s) carry an unadjudicated conflict`);
   }
   if (traces.length === 0) {
-    blocked.push('wholeBlockCoherence · nothing was adjudicated at all, which is not a pass (Rule 18)');
+    /**
+     * RULE 11 AT THE GATE'S OWN SENTENCE · "nobody looked" and "there was
+     * nothing to look at" are two facts, and until 2026-09-05 this printed one
+     * sentence for both.
+     *
+     * The read-only production replay is what surfaced it: one active plan has
+     * ZERO future weeks — every week of it is behind us — and it was blocked
+     * for being incoherent. It is not incoherent, it is finished. That is a
+     * FALSE BLOCK, and a false block is worse than a missing check, because it
+     * spends the reader's trust on a defect that is not there.
+     *
+     * BOTH still block, and that is deliberate: the empty-set pass is the hole
+     * this clause exists to own (Rule 18), and softening either branch to a
+     * promotion would reopen it. What changes is only that the sentence says
+     * WHICH of the two happened, so a caller can tell a plan nobody adjudicated
+     * from a plan with nothing left to adjudicate.
+     */
+    const weeksHandedIn = ctx == null ? null : ctx.weeks.length;
+    blocked.push(weeksHandedIn === 0
+      ? 'wholeBlockCoherence · this block has no weeks left to adjudicate, so nothing was '
+        + 'decided because there was nothing to decide. That is not a pass either, and it is '
+        + 'not a defect in the plan: it is a block that is over.'
+      : 'wholeBlockCoherence · nothing was adjudicated at all, which is not a pass (Rule 18)');
   }
   if (objectiveObjections.length > 0) {
     blocked.push(`progression · ${objectiveObjections.length} decision(s) decline to advance `
@@ -1057,10 +1128,51 @@ export function checkPromotion(
     coldStartHonesty: coldStartComplaints.length === 0,
   };
 
+  /**
+   * WHAT EACH DIMENSION HAD TO LOOK AT · Rule 18 §2, for all eleven.
+   *
+   * Every count is the ELIGIBLE POPULATION defined beside the filter that
+   * faults it — the items that could have produced a fault, never "traces
+   * seen". A zero means the dimension passed VACUOUSLY on this block.
+   *
+   * The two that are deliberately `traces.length`:
+   *
+   *   · `wholeBlockCoherence` reads the option set of EVERY trace, and its
+   *     other clause is the empty block itself.
+   *   · `progression` reads every trace: `anyAdvance` is a property of the
+   *     whole set, and the objective walk visits all of them.
+   *
+   * Both are still zero on an empty block, which is the case that matters:
+   * the two dimensions that own the silent zero must not report reach on it.
+   */
+  const examined: PromotionExamined = {
+    athleteSpecificSupport: unsupportedByHistory.length,
+    wholeBlockCoherence: traces.length,
+    recoverability: simultaneousAdditions.length,
+    progression: traces.length,
+    taperIntegrity: taperTraces.length,
+    doctrineResolution: conflictBearing.length,
+    stackedStress: stackedGraded.length,
+    earningGateTiming: traces.filter((t) => t.earningGate != null).length,
+    executionIdentity: identityExamined,
+    evidenceProvenance: provenanceExamined,
+    coldStartHonesty: coldStartExamined,
+  };
+
   // Belt and braces · a dimension added to the type but forgotten here would
   // otherwise silently read as passing.
+  //
+  // RULE 18 · `check[d] === undefined` on its own is NOT one of these, and
+  // saying so is the point: `PromotionCheck` types every dimension as
+  // `boolean`, so that comparison is structurally unfailable and proves only
+  // that the type-checker ran. The failable half is `examined`, which is a
+  // separate object and CAN be missing a key — a dimension added to the type
+  // and forgotten there reports `undefined` reach and is named here.
   for (const d of PROMOTION_DIMENSIONS) {
     if (check[d] === undefined) blocked.push(`${d} · not evaluated`);
+    if (examined[d] === undefined) {
+      blocked.push(`${d} · reports no eligible population, so nothing can say whether it ran`);
+    }
   }
 
   const earningGates = traces
@@ -1069,8 +1181,8 @@ export function checkPromotion(
 
   return {
     traces, check, mayPromote: blocked.length === 0, blockedBecause: blocked, earningGates,
-    // Rule 18 §2 · reported so a caller can tell "no cold-start decision was
-    // made" from "every one of them passed".
-    coldStartDecisions,
+    // Rule 18 §2 · reported so a caller can tell a dimension that passed from
+    // one that had nothing to fail on. For ALL ELEVEN, not just the cold start.
+    examined,
   };
 }

@@ -411,6 +411,43 @@ export interface PromotionCheck {
   readonly evidenceProvenance: boolean;
 }
 
+/**
+ * HOW MANY THINGS EACH DIMENSION COULD HAVE FAULTED, per dimension.
+ *
+ * ── WHY THIS EXISTS ────────────────────────────────────────────────────────
+ *
+ * `coldStartDecisions` used to be this number, for exactly one of the eleven
+ * dimensions, and its own doc comment said why it was needed: "a dimension
+ * that is vacuously true on an empty set is not evidence about the mechanism
+ * (Rule 18 §2)." That argument was never specific to cold starts. Nine of the
+ * other ten can be vacuously true the same way and were reported as passes
+ * with nothing distinguishing them from a dimension that actually looked at
+ * something — `taperIntegrity` on a block with no taper, `doctrineResolution`
+ * on a block with no conflict, `earningGateTiming` on a block with no gate.
+ *
+ * So the one-dimension field is replaced by the eleven-dimension one (Rule 16:
+ * one quantity, one name — `coldStartDecisions` and `examined.coldStartHonesty`
+ * were the same number under two names, and only one of them survives).
+ *
+ * ── WHAT THE NUMBER IS ─────────────────────────────────────────────────────
+ *
+ * The size of the ELIGIBLE POPULATION: the items that could have produced a
+ * fault in this dimension. Not "traces seen" — a trace a dimension cannot
+ * possibly fault is not evidence that the dimension ran. Each count is
+ * computed from the SAME filter the dimension's faults come out of, so a
+ * dimension whose clause is deleted or neutered reports ZERO here and the
+ * reach gate names it. `_promotion_reach.test.ts` is that gate.
+ *
+ * ── WHAT IT CANNOT TELL YOU (Rule 22) ──────────────────────────────────────
+ *
+ * It cannot tell a dimension that examined items and judged them correctly
+ * from one that examined items under a tautological predicate. `examined > 0`
+ * proves the dimension LOOKED; `_promotion_dimensions.test.ts` is what proves
+ * each one can independently FAIL. Neither is sufficient alone, and that is
+ * why both exist.
+ */
+export type PromotionExamined = Readonly<Record<keyof PromotionCheck, number>>;
+
 export interface PlanAdjudication {
   readonly traces: readonly DecisionTrace[];
   readonly check: PromotionCheck;
@@ -420,15 +457,14 @@ export interface PlanAdjudication {
   /** Every gate this plan is carrying, so nothing conditional is forgotten. */
   readonly earningGates: readonly EarningGate[];
   /**
-   * How many decisions were taken about a quantity this runner has never
-   * produced.
+   * How many items each dimension could have faulted. See `PromotionExamined`.
    *
-   * Reported rather than inferred, because `coldStartHonesty: true` on a block
-   * with NO cold-start decision and on a block where every one of them passed
-   * are different facts, and a dimension that is vacuously true on an empty set
-   * is not evidence about the mechanism (Rule 18 §2).
+   * A dimension whose count is 0 passed VACUOUSLY on this block: it is not
+   * evidence about the mechanism, and a caller that reports "eleven of eleven
+   * green" without saying which of them looked at anything is reporting a
+   * number it has not earned.
    */
-  readonly coldStartDecisions: number;
+  readonly examined: PromotionExamined;
 }
 
 /** Every dimension, so a caller cannot silently forget one. */

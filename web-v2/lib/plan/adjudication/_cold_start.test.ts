@@ -316,7 +316,7 @@ describe('a cold-start block promotes', () => {
     expect(adj.result.blockedBecause, adj.result.blockedBecause.join(' | ')).toEqual([]);
     expect(adj.result.mayPromote).toBe(true);
     // Rule 18 §2 · not vacuously true on an empty set.
-    expect(adj.result.coldStartDecisions).toBeGreaterThan(0);
+    expect(adj.result.examined.coldStartHonesty).toBeGreaterThan(0);
   });
 
   it('it advances · the thing the old policy could not do', () => {
@@ -345,6 +345,58 @@ describe('a cold-start block promotes', () => {
     // existed before are all still evaluated and all still true here.
     const c = run().result.check;
     for (const [k, v] of Object.entries(c)) expect(v, `${k} is false`).toBe(true);
+  });
+
+  it('…and it is said out loud which of them actually LOOKED at something', () => {
+    /* Rule 18 §2 · "all eleven green" on a cold-start block is worth exactly
+     * what the eleven looked at. A dimension with an empty eligible population
+     * passed VACUOUSLY, and this asserts the split rather than leaving a reader
+     * to assume the block was graded eleven ways.
+     *
+     * ── A FINDING, NOT A CONVENIENCE ───────────────────────────────────────
+     *
+     * The first draft of this test asserted `athleteSpecificSupport > 0` and
+     * `earningGateTiming > 0` as well, and both were RED. Neither is a bug and
+     * neither is a bad assertion — they are the honest consequence of the
+     * policy, and the reason they are written down here rather than quietly
+     * dropped:
+     *
+     * A cold start sized INSIDE the research allowance is ALLOWED. ALLOWED is
+     * not one of the classes `athleteSpecificSupport` can fault (those are
+     * CONDITIONAL, CONTRAINDICATED and UNKNOWN), and an ALLOWED prescription
+     * owes no earning gate, so `earningGateTiming` has no gate to time. Both
+     * dimensions are therefore STRUCTURALLY VACUOUS on a well-sized cold
+     * start, and the block is carried by `coldStartHonesty` plus the four that
+     * read every trace.
+     *
+     * The read-only production replay measures exactly this on the live
+     * population: `pln_bb0ee646c2` (11 ALLOWED weeks) reaches 7 of 11
+     * dimensions, and both of those two report vacuous. A cold start that
+     * reaches PAST the allowance is the opposite case — CONDITIONAL, gated,
+     * and both dimensions bite — which `pln_5e51f75b89` shows at 10 gates.
+     *
+     * So the assertion below is the set that must ALWAYS be reached, and the
+     * count is a floor rather than an equality, so a future change reaching
+     * MORE of them does not fail this.
+     */
+    const e = run().result.examined;
+    expect(e.coldStartHonesty, 'coldStartHonesty looked at nothing').toBeGreaterThan(0);
+    expect(e.evidenceProvenance, 'evidenceProvenance looked at nothing').toBeGreaterThan(0);
+    expect(e.wholeBlockCoherence, 'wholeBlockCoherence looked at nothing').toBeGreaterThan(0);
+    expect(e.progression, 'progression looked at nothing').toBeGreaterThan(0);
+    expect(e.executionIdentity, 'executionIdentity looked at nothing').toBeGreaterThan(0);
+    expect(e.taperIntegrity, 'the block tapers into a race and taperIntegrity saw none of it')
+      .toBeGreaterThan(0);
+
+    // The two that are vacuous BECAUSE the block is well sized, asserted so
+    // the reason is checked rather than remembered: every decision is ALLOWED.
+    for (const t of run().result.traces) expect(t.athlete.evidenceClass).toBe('ALLOWED');
+    expect(e.athleteSpecificSupport,
+      'an ALLOWED-only block gave athleteSpecificSupport something to fault, which means a '
+      + 'decision is no longer ALLOWED and the comment above has gone stale').toBe(0);
+    expect(e.earningGateTiming,
+      'an ALLOWED-only cold start issued an earning gate. That may well be right, but it '
+      + 'contradicts the reasoning written above and has to be re-argued, not absorbed').toBe(0);
   });
 });
 
