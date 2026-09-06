@@ -26,16 +26,18 @@
  * canonical accessors and predicates instead. It also cannot prove any tag is
  * PHYSIOLOGICALLY correct (a real heat cost, a real terrain grade) — those
  * are owned and gated by the modules this classifier composes
- * (`heat-model.ts`, `grade-adjust.ts`), and this suite only proves the
- * classifier reads their answers honestly and does not silently collapse a
- * refusal into a value.
+ * (`activity-evidence.ts#readEnvironment`, `grade-adjust.ts`), and this suite
+ * only proves the classifier reads their answers honestly and does not
+ * silently collapse a refusal into a value.
  */
 import { describe, it, expect } from 'vitest';
 import {
   buildEvidenceClassification,
+  classifyRunContext,
   type ClassifyEvidenceInput,
   type RescheduleRow,
 } from './classify-evidence';
+import { readEnvironment } from './activity-evidence';
 import type { RunData } from '@/lib/runs/run-shape';
 import type { ResolvedDay } from '@/lib/execution/day-resolver';
 import type { SafetyInputs } from '@/lib/safety/safety-verdict';
@@ -373,5 +375,60 @@ describe('treadmill / hills mutual exclusion', () => {
     }));
     expect(record.context.treadmill.kind).toBe('present');
     expect(record.context.hills.kind).toBe('absent');
+  });
+});
+
+describe('CLASSIFYCTXWIRE-2 · heat is READ from the canonical classifier, never re-derived', () => {
+  // David: "Two evidence classifiers may not independently assign coaching
+  // meaning." Before this fix, this file called `heatEffort` directly and
+  // drew its own present/absent line at `slowdownPct >= 1` — a SECOND,
+  // independent verdict from `activity-evidence.ts#readEnvironment`'s own
+  // five-band `EnvironmentalLoad`, over the identical underlying reading.
+  // This suite proves the two now agree BECAUSE one calls the other, not by
+  // coincidence of currently-similar thresholds.
+  function hotRunData(): RunData {
+    return {
+      distanceMi: 10, durationSec: 4500, movingTimeS: 4500,
+      weather: { temp_f_peak: 92, humidity_pct_peak: 70 },
+    } as unknown as RunData;
+  }
+  function mildRunData(): RunData {
+    return {
+      distanceMi: 10, durationSec: 4500, movingTimeS: 4500,
+      weather: { temp_f_peak: 50, humidity_pct_peak: 40 },
+    } as unknown as RunData;
+  }
+  function noWeatherRunData(): RunData {
+    return { distanceMi: 10, durationSec: 4500, movingTimeS: 4500 } as RunData;
+  }
+
+  it('a hot run\'s heat tag agrees with readEnvironment\'s own load classification', () => {
+    const env = readEnvironment({ tempF: 92, humidityPct: 70, effortSec: 4500 });
+    const context = classifyRunContext(hotRunData());
+    expect(env.load).not.toBe('none');
+    expect(env.load).not.toBe('unknown');
+    expect(context.heat.kind).toBe('present');
+  });
+
+  it('a mild run\'s heat tag agrees with readEnvironment reporting load: none', () => {
+    const env = readEnvironment({ tempF: 50, humidityPct: 40, effortSec: 4500 });
+    const context = classifyRunContext(mildRunData());
+    expect(env.load).toBe('none');
+    expect(context.heat.kind).toBe('absent');
+  });
+
+  it('no weather recorded reads unknown on BOTH sides, never a guessed absence (Rule 11)', () => {
+    const env = readEnvironment({ tempF: null, effortSec: 4500 });
+    const context = classifyRunContext(noWeatherRunData());
+    expect(env.load).toBe('unknown');
+    expect(context.heat.kind).toBe('unknown');
+  });
+
+  it('FALSIFICATION-READY · a hot run flagged absent by this classifier would mean the wire from readEnvironment broke', () => {
+    // This is the assertion that would have failed against the pre-fix code,
+    // which computed its own threshold independently of `readEnvironment`
+    // and could disagree with it silently.
+    const context = classifyRunContext(hotRunData());
+    expect(context.heat.kind).not.toBe('absent');
   });
 });

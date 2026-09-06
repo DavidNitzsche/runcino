@@ -168,9 +168,10 @@
  * carry per-third pace intent, which remains a bigger change than this file
  * owns. What closed instead, and what was actually asked for: a SEPARATE,
  * continuous readability factor — `steadyEffortReadabilityFrac` below — built
- * from the workout's own `sub_label` prescription string (already parsed
- * elsewhere by `lib/plan/spec-builder.ts#extractLongSegments` for exactly
- * this shape: "3mi @ M + 2mi @ T") rather than from anything observed in the
+ * from the workout's own `sub_label` prescription string (parsed by
+ * `lib/training/prescription-segments.ts#extractLongSegments` for exactly
+ * this shape: "3mi @ M + 2mi @ T" — see PARSER-SHARE-1 below for where that
+ * parser actually lives now) rather than from anything observed in the
  * run. It answers the question this file's header names directly: does the
  * middle-third/final-third comparison span a segment PRESCRIBED at a
  * different pace, and if so, how much of the mismatch is real. A fast-finish
@@ -181,6 +182,28 @@
  * proven in the same test file). See the function's own doc for what it
  * still does not handle (SEGLONG-1's mid-run separated segments) — an
  * honest, lesser remaining gap, not the one this change closes.
+ *
+ * ── PARSER-SHARE-1 (2026-09-06) · THE DUPLICATE ABOVE IS GONE ──────────────
+ *
+ * STEADYEFFORT-1 shipped `steadyEffortLongSegments` in this file as a
+ * byte-for-byte transcription of `lib/plan/spec-builder.ts#extractLongSegments`'s
+ * regex, arguing the same layering trade `clamp01`/`rampAcross` below already
+ * made: importing the real parser would draw an edge from this shared, walled
+ * engine layer INTO `lib/plan/`, a consumer of it. David overruled that call
+ * directly: "Do not keep a duplicated extractLongSegments regex. Move the
+ * prescription-shape parser into a neutral shared module and make both
+ * authoring and evidence interpretation consume it."
+ *
+ * That is what `lib/training/prescription-segments.ts` now is — a module
+ * below BOTH `lib/plan/` and `lib/adaptation/canonical/`, alongside this
+ * file's other cross-layer imports (`aerobic-decoupling.ts`,
+ * `grade-adjust.ts` below), so importing it here inverts nothing: the edge
+ * runs from this file OUT to a shared primitive, not from `lib/plan/` in.
+ * `steadyEffortReadabilityFrac` below calls its `extractLongSegments` export
+ * directly; the local duplicate function is deleted, so there is exactly one
+ * regex left to drift. `lib/training/_prescription_segments_parity.test.ts`
+ * proves this file's consumer and `spec-builder.ts`'s authoring consumer
+ * resolve the same prescription string to identical segment boundaries.
  */
 import {
   DETERIORATION_PACE_SLOWDOWN_FRAC,
@@ -193,6 +216,7 @@ import {
 import { measured, absent, type ComparableThirds, type Truncation, type Measured } from './input';
 import { DECOUPLING_PROTOCOL_MIN_MINUTES } from '@/lib/training/aerobic-decoupling';
 import { MATERIAL_ADJUSTMENT_S_PER_MI } from '@/lib/terrain/grade-adjust';
+import { extractLongSegments } from '@/lib/training/prescription-segments';
 
 /**
  * DETERIORATION-SEVERITY-1 · HOW BADLY, not only whether.
@@ -384,17 +408,21 @@ export interface DecouplingReadability {
  * the workout contains different prescribed phases" — and until now nothing
  * checked whether it did.
  *
- * DUPLICATED, DELIBERATELY, RATHER THAN IMPORTED. `lib/plan/spec-builder.ts#
- * extractLongSegments` is the real parser and the one place this pattern is
- * defined; this is a byte-for-byte transcription of its regex and its
- * tail-anchored `recoveryMi`-folding rule, not a re-derivation. Importing the
- * real one would draw an edge from `lib/adaptation/canonical/` (the shared,
- * walled lower layer other engine files depend on) into `lib/plan/` (a
- * consumer of `canonical/`), inverting the layering for one regex — the exact
- * trade `clamp01`/`rampAcross` above already made the same call on. If
- * `extractLongSegments`'s pattern ever changes, `_deterioration_severity.test.ts`
- * §"STEADYEFFORT-1" pins both copies against the same fixture strings so a
- * drift fails loudly rather than silently.
+ * PARSER-SHARE-1 (2026-09-06) · SHARED, NOT DUPLICATED. This used to carry
+ * its own byte-for-byte transcription of `lib/plan/spec-builder.ts#
+ * extractLongSegments`'s regex, arguing that importing the real one would
+ * draw an edge from this shared, walled lower layer into `lib/plan/`, a
+ * consumer of it. David overruled that call directly: "Do not keep a
+ * duplicated extractLongSegments regex. Move the prescription-shape parser
+ * into a neutral shared module and make both authoring and evidence
+ * interpretation consume it." `lib/training/prescription-segments.ts` is
+ * that module — one layer below both `lib/plan/` and this directory, so
+ * pulling `extractLongSegments` from it here inverts nothing (the same
+ * shape as this file's existing `aerobic-decoupling.ts` / `grade-adjust.ts`
+ * imports). `lib/training/_prescription_segments_parity.test.ts` proves this
+ * file's use of the parser and `spec-builder.ts`'s authoring use resolve one
+ * prescription string to identical segment boundaries, so a future change to
+ * the regex cannot silently diverge the two.
  *
  * WHAT THIS DOES NOT HANDLE, named per Rule 20: SEGLONG-1's mid-run separated
  * segments (a session with quality blocks NOT anchored to the finish). The
@@ -408,31 +436,13 @@ export interface DecouplingReadability {
  * fact still has one. Recorded here as an open gap rather than silently
  * assumed away.
  */
-function steadyEffortLongSegments(
-  prescription: string | null,
-): Array<{ mi: number; recoveryMi?: number }> {
-  if (!prescription) return [];
-  const out: Array<{ mi: number; recoveryMi?: number }> = [];
-  const re = /(\d+(?:\.\d+)?)\s*mi\s*@\s*(HM|MP|M|T|E)\b/gi;
-  for (let m = re.exec(prescription); m; m = re.exec(prescription)) {
-    const mi = Number(m[1]);
-    if (!Number.isFinite(mi) || mi <= 0) continue;
-    if (m[2].toUpperCase() === 'E') {
-      const prev = out[out.length - 1];
-      if (prev) prev.recoveryMi = (prev.recoveryMi ?? 0) + mi;
-      continue;
-    }
-    out.push({ mi });
-  }
-  return out;
-}
 
 /**
  * Does the middle-third/final-third comparison span a PRESCRIBED pace
  * change? Continuous, not a boolean (Rule 9): returns how much of the
  * final-third window overlaps the prescribed quality tail MINUS how much of
  * the middle-third window does. A pure easy run, a race, or any prescription
- * `steadyEffortLongSegments` cannot parse returns 1 (nothing to distrust —
+ * `extractLongSegments` cannot parse returns 1 (nothing to distrust —
  * Rule 11, absence of a prescription to check is not evidence of a uniform
  * one, but the only two honest options when the check cannot run are "assume
  * uniform" and "refuse", and this factor only ever REDUCES trust, so refusing
@@ -451,7 +461,9 @@ export function steadyEffortReadabilityFrac(
   if (!(totalDistanceMi > 0)) {
     return absent('no total distance to place the prescribed segments against');
   }
-  const segments = steadyEffortLongSegments(subLabel);
+  // PARSER-SHARE-1 · the shared parser's `tag` field is authoring-only
+  // information this reader has no use for; only `mi`/`recoveryMi` below.
+  const segments = extractLongSegments(subLabel);
   if (segments.length === 0) return measured(1);
 
   const qualityTailMi = segments.reduce((s, seg) => s + seg.mi + (seg.recoveryMi ?? 0), 0);

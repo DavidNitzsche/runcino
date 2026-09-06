@@ -47,6 +47,11 @@ import {
 // `lib/plan/catalogue-rx.ts#anchorsFor` also reads — so the zones the catalogue
 // is allowed to anchor and the zones this file can pace cannot diverge.
 import { resolveZoneAnchors, zonePaceSec } from './zone-anchors';
+// PARSER-SHARE-1 (2026-09-06) · the real definition of `extractLongSegments`
+// moved to this neutral shared module — see the re-export + doc comment
+// further down for why. Imported here (not just re-exported) because this
+// file's own long-segment pricing below still calls it directly.
+import { extractLongSegments } from '@/lib/training/prescription-segments';
 import { aerobicCeilingBpm, thresholdPassHrBpm, prescribedHrTargetBpm } from '@/lib/training/zones';
 import { roundTo } from '@/lib/format/run';
 import type { PaceZone } from '@/lib/workout-catalogue/types';
@@ -487,57 +492,27 @@ export function extractFinishSegment(
  * VARIETY-LONG-1 (2026-08-28) · EVERY race-pace segment of a long run's
  * prescription, in order.
  *
- * `Research/04` §4.3's progression long run walks TWO paces after its easy bulk
- * ("middle at strong E or M, final 1/4 to 1/3 at M to T"), which one
- * `finish_mi` cannot say. The generator writes it as
- * `"LONG · 3mi @ M + 2mi @ T"` and this reads all of the segments back — the
- * same one-carrier contract `extractFinishSegment` has always had, widened to a
- * list. A single-segment label returns a one-element list whose head is exactly
- * what `extractFinishSegment` returns (plus the `T` tag, which only the
- * multi-segment shape ever writes), so every single-segment consumer is
- * byte-identical.
+ * PARSER-SHARE-1 (2026-09-06) · MOVED, not merely re-exported for
+ * convenience. This function's real definition — and the full doc comment,
+ * including SEGLONG-1's easy-gap-folding rule — now lives in
+ * `lib/training/prescription-segments.ts`, a neutral module one layer below
+ * both `lib/plan/` (this file, the authoring consumer) and
+ * `lib/adaptation/canonical/` (the walled evidence-interpretation engine,
+ * which needs the identical parse for `deterioration.ts`'s
+ * `steadyEffortReadabilityFrac` and used to carry a byte-for-byte duplicate
+ * of this regex rather than import across the layering — see that module's
+ * header for why, and for why importing OUT of a shared module below both
+ * layers is the fix rather than either layer reaching into the other.
  *
- * Tags: 'HM' half-marathon pace · 'M' marathon pace (also written MP) ·
- * 'T' threshold. Only ever read against a LONG day's sub_label.
+ * This re-export keeps every existing `lib/plan/` caller
+ * (`dosing.ts`, `intensity-distribution.ts`, this file's own long-segment
+ * pricing below, `_seglong_authoring.test.ts`, `_variety_invariants.test.ts`,
+ * `lib/training/expand-spec.test.ts`) unchanged: same name, same import
+ * path, same behaviour. `lib/training/_prescription_segments_parity.test.ts`
+ * proves this and `deterioration.ts`'s consumer resolve one prescription
+ * string to identical segment boundaries.
  */
-export function extractLongSegments(
-  prescription?: string | null,
-): Array<{ mi: number; tag: 'HM' | 'M' | 'T'; recoveryMi?: number }> {
-  if (!prescription) return [];
-  const out: Array<{ mi: number; tag: 'HM' | 'M' | 'T'; recoveryMi?: number }> = [];
-  // SEGLONG-1 (2026-08-29) · `E` joins the alternation so a long run can carry
-  // easy running BETWEEN its quality blocks, not only in front of them.
-  //
-  // Until now every segment was contiguous and tail-anchored: the label named
-  // quality blocks, the expander put all the easy miles in one bulk phase up
-  // front, and the blocks ran back-to-back to the finish. That expresses a
-  // progression or a fast finish, and cannot express the shape doctrine calls
-  // a modified block (§11.1 Variations, "two segments separated by short
-  // rest") or the broken long run a coach writes as 15/12/10 min of LT with
-  // easy running between — repeated re-entry into threshold under accumulating
-  // fatigue, which is a different stimulus from one sustained block.
-  //
-  // Note what is NOT changed: an easy token is folded into the PRECEDING
-  // quality segment as its `recoveryMi` and never appended to `out`, so every
-  // existing consumer that sums `s.mi` as hard miles (dosing.ts's per-bucket
-  // charge, intensity-distribution.ts's easy/quality split) stays correct with
-  // no edit — the gap miles simply remain in the easy remainder, which is what
-  // they are. A leading easy token, before any quality block, is the opening
-  // bulk the expander already computes as the remainder, so it is dropped.
-  const re = /(\d+(?:\.\d+)?)\s*mi\s*@\s*(HM|MP|M|T|E)\b/gi;
-  for (let m = re.exec(String(prescription)); m; m = re.exec(String(prescription))) {
-    const mi = Number(m[1]);
-    if (!Number.isFinite(mi) || mi <= 0) continue;
-    const raw = m[2].toUpperCase();
-    if (raw === 'E') {
-      const prev = out[out.length - 1];
-      if (prev) prev.recoveryMi = (prev.recoveryMi ?? 0) + mi;
-      continue;
-    }
-    out.push({ mi, tag: raw === 'T' ? 'T' : raw.startsWith('H') ? 'HM' : 'M' });
-  }
-  return out;
-}
+export { extractLongSegments };
 
 // ── Time-based rep sets ──────────────────────────────────────────────────
 

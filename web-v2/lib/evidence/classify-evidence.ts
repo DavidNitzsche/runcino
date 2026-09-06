@@ -108,7 +108,7 @@ import {
 import { isTreadmillRow, resolveRunTerrain, type RunTerrainRow } from '@/lib/terrain/run-terrain';
 import { runFacts, MAX_PAUSED_SHARE } from '@/lib/runs/run-facts';
 import { workTraceIsCredible } from '@/lib/adaptation/canonical/hr-trace-credibility';
-import { heatEffort } from '@/lib/training/heat-model';
+import { readEnvironment } from '@/lib/evidence/activity-evidence';
 import { loadSafetyInputs } from '@/lib/safety/load-safety';
 import type { SafetyInputs } from '@/lib/safety/safety-verdict';
 import {
@@ -476,31 +476,34 @@ function classifyContext(input: ClassifyEvidenceInput): EvidenceClassification['
       ? present(terrain.note ?? `Terrain adjustment ${terrain.deltaSPerMi.toFixed(0)} s/mi, basis ${terrain.basis}.`)
       : absent('No material terrain adjustment for this run.');
 
+  // CLASSIFYCTXWIRE-2 (2026-09-06) · heat is READ from the canonical evidence
+  // classifier's own environmental assessment (`activity-evidence.ts#
+  // readEnvironment`), not computed a second time. Until this change this
+  // function called `heatEffort` directly and drew its OWN present/absent
+  // line at `slowdownPct >= 1`, independently of `readEnvironment`'s five-band
+  // `EnvironmentalLoad` (none/low/moderate/high/extreme, its own edges tuned
+  // for the HR-confound question `activity-evidence.ts` exists to answer).
+  // Same underlying physiological read, two independent verdicts — exactly
+  // the "two evidence classifiers assign coaching meaning independently"
+  // shape the owner ruled out. `readEnvironment` is the canonical read now;
+  // this function only TRANSLATES its `load` into this file's own
+  // present/absent/unknown vocabulary, it does not re-derive one.
   const weather = weatherFromRunData(input.data);
+  const env = readEnvironment({
+    tempF: weather.tempF,
+    humidityPct: weather.humidityPct,
+    conditions: weather.conditions,
+    cloudCoverPct: weather.cloudCoverPct,
+    indoor: treadmillOn,
+    effortSec: facts.timeSec,
+  });
   let heat: TagReading;
-  if (weather.tempF == null) {
-    heat = unknown('No temperature recorded for this activity.');
+  if (env.load === 'unknown') {
+    heat = unknown(env.reasons.join('; ') || 'Environmental load could not be assessed.');
+  } else if (env.load === 'none') {
+    heat = absent(`Estimated heat cost ${(env.slowdownPct ?? 0).toFixed(1)}% — not material (${env.load}).`);
   } else {
-    const durationS = facts.timeSec;
-    const effort = heatEffort({
-      tempF: weather.tempF,
-      humidityPct: weather.humidityPct,
-      conditions: weather.conditions,
-      cloudCoverPct: weather.cloudCoverPct,
-      durationS,
-      // Deliberately no VDOT — same posture as
-      // `lib/evidence/activity-evidence.ts`'s header: a capacity belief must
-      // never feed the read that could inform it. mid_pack (heatEffort's own
-      // default) is the honest population default for a LABEL, not a
-      // capacity-grading input.
-    });
-    if (!effort) {
-      heat = unknown('Heat effort could not be computed from the recorded weather.');
-    } else if (effort.slowdownPct >= 1) {
-      heat = present(`Estimated heat cost ${effort.slowdownPct.toFixed(1)}% at ${weather.tempF}°F effective ${effort.effectiveTempF.toFixed(0)}°F.`);
-    } else {
-      heat = absent(`Estimated heat cost ${effort.slowdownPct.toFixed(1)}% — not material.`);
-    }
+    heat = present(`Estimated heat cost ${(env.slowdownPct ?? 0).toFixed(1)}% at ${env.tempF}°F — canonical load '${env.load}'.`);
   }
 
   // `refused` is non-empty when `reconcileRun` already disbelieved a stored
@@ -554,8 +557,9 @@ function classifyContext(input: ClassifyEvidenceInput): EvidenceClassification['
  * them — `classifyContext` above reads nothing from `input` except
  * `input.data`, so every other field below is an inert placeholder, never
  * read. This is NOT a second derivation: it is the same function, the same
- * owners (`resolveRunTerrain`, `heatEffort`, `workTraceIsCredible`,
- * `runFacts`), called through the one seam that already composes them.
+ * owners (`resolveRunTerrain`, `activity-evidence.ts#readEnvironment`,
+ * `workTraceIsCredible`, `runFacts`), called through the one seam that
+ * already composes them.
  *
  * First (and, as of this change, only) caller:
  * `lib/adaptation/canonical-shadow/live-input.ts#provenanceFor`, whose own
