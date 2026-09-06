@@ -370,7 +370,10 @@ SELECT count(*) FROM training_plans;
 SELECT count(*) FROM plan_workouts;
 ```
 
-**Full inverse**
+**Full inverse** — but READ ADDENDUM 2 §H FIRST. This is the inverse for a
+table that has never been written to. Once it has, the drop destroys the only
+record of every decision since the apply, and there is an export step in front
+of it.
 
 ```sql
 DROP TABLE IF EXISTS plan_decision_ledger;
@@ -609,7 +612,7 @@ not a fault in the migration.
 | `167` errors partway | same | same |
 | both applied, app cannot write | ledger stays empty, `[ledger] table_absent` in logs | restart the service (or wait 60s for the re-probe, post-`MIGRATIONPROBE-1`) |
 | applied to the wrong database | tables exist where they should not | `DROP TABLE IF EXISTS plan_decision_ledger; DROP TABLE IF EXISTS reassessment_schedule;` — nothing references them, so the drop is clean |
-| decision to reverse entirely | — | the full inverse above. **No data loss to anything else**: neither table is referenced by a foreign key, and nothing existing was altered |
+| decision to reverse entirely | — | see ADDENDUM 2 §H, which replaces this row. "No data loss to anything else" was true and misleading: nothing OUTSIDE these two tables is touched, and everything INSIDE the ledger is lost unless it is exported first. §H.3 carries the export step and states what an archive still cannot recover |
 
 **There is no backfill.** Both tables start empty and accumulate forward. No
 historical decision is reconstructed into the ledger, and none should be:
@@ -630,3 +633,249 @@ this ledger exists to make impossible.
 **Applying these migrations enables nothing that writes a plan.** They create
 two tables that record and schedule. The authority seam is a separate switch and
 this does not move it.
+
+---
+
+# ADDENDUM 2 · 2026-09-05 · LEDGERATOMIC-1 and the rollback matrix
+
+The owner rejected this packet's earlier claim that rollback is "safe at any
+time". It is not one sentence. It is seven situations with seven different
+answers, and two of them are not clean. They are written out below, each with
+what it costs and what it does NOT recover.
+
+He also ruled on the thing that made the rollback question sharp:
+
+> "A plan mutation and its ledger record must be one atomic outcome. The system
+> may not: (1) mutate the plan, (2) fail to write the ledger, (3) log an error,
+> (4) return success."
+
+That was the shipped behaviour, and it is fixed before this packet goes back to
+him. What changed is in section I.
+
+## H · The rollback matrix
+
+Which row you are in is decided by two facts: has the table ever been WRITTEN
+to, and is the application code deployed.
+
+### H.1 · Pre-use rollback · both tables still empty · CLEAN
+
+The window between applying the DDL and the first mutation reaching the
+boundary. Nothing has been recorded, so nothing is lost.
+
+```sql
+-- verify you are actually in this row, do not assume it
+SELECT (SELECT count(*) FROM plan_decision_ledger)  AS ledger_rows,   -- must be 0
+       (SELECT count(*) FROM reassessment_schedule) AS schedule_rows; -- must be 0
+
+DROP TABLE IF EXISTS plan_decision_ledger;
+DROP TABLE IF EXISTS reassessment_schedule;
+```
+
+**Cost: none.** Nothing else references either table, no foreign key points at
+them, and nothing outside this feature reads them. The application returns to
+the `table_absent` branch it is running on today.
+
+**What it does not recover:** nothing, because nothing was recorded.
+
+### H.2 · Code rollback with the data left in place · CLEAN, AND THE DEFAULT
+
+Deploy the previous application build and leave both tables exactly where they
+are. This is the right first move for almost every problem, because it is
+reversible in both directions and loses nothing.
+
+```
+revert the deploy only. NO SQL AT ALL.
+```
+
+**Cost: none.** The old code does not name either table. The rows stop
+accumulating and stay readable by hand.
+
+**What it does not recover:** nothing. And it is the only row in this matrix
+that can be undone by simply deploying forward again.
+
+**Prefer this to H.3 unless the schema itself is the problem.**
+
+### H.3 · Post-use schema rollback · LOSSY UNLESS EXPORTED FIRST
+
+Dropping a table that has accumulated decisions destroys the only record of
+them. `plan_decision_ledger` has no foreign keys ON PURPOSE — a ledger's whole
+value is that it survives the rows it describes — and the same property means
+nothing else holds a copy. **Export before dropping, or the coaching history of
+every runner since the apply is gone.**
+
+```sql
+-- 1 · archive, in the same database, so the export cannot be lost in transit.
+CREATE TABLE plan_decision_ledger_archive_20260905 AS
+  SELECT * FROM plan_decision_ledger;
+CREATE TABLE reassessment_schedule_archive_20260905 AS
+  SELECT * FROM reassessment_schedule;
+
+-- 2 · prove the archive is complete BEFORE the drop. Counts, not eyeballs.
+SELECT (SELECT count(*) FROM plan_decision_ledger)                  AS live,
+       (SELECT count(*) FROM plan_decision_ledger_archive_20260905) AS archived;
+-- and the same pair for reassessment_schedule. They must be equal.
+
+-- 3 · and a copy off this database as well.
+
+-- 4 · only now
+DROP TABLE IF EXISTS plan_decision_ledger;
+DROP TABLE IF EXISTS reassessment_schedule;
+```
+
+**Cost:** the archive tables are additive and inert; the drop is not reversible
+without them.
+
+**What it does not recover, even with the archive:** the ledger's FUTURE. A
+re-apply creates an empty table, and `resolvePlanLineage` opens a NEW lineage
+for every plan, because rung 1 asks the ledger what lineage it already knows and
+the answer is now nothing. Every runner's history restarts at the re-apply. The
+archive stays readable but no longer joins forward.
+
+**There is no backfill and there must not be.** Reconstructing decisions nobody
+recorded means inventing provenance, which is the fabrication this ledger exists
+to make impossible.
+
+### H.4 · Only ONE migration applied · CLEAN, and it needs no repair
+
+The two tables are independent `CREATE TABLE`s with no foreign keys between
+them. Neither module reads the other's table.
+
+- **166 applied, 167 not:** decisions record; deferrals do not persist. The
+  scheduler answers `table_absent` and says so. This is a partially-improved
+  system, not a broken one.
+- **167 applied, 166 not:** deferrals persist; decisions do not record. The
+  boundary takes the `table_absent` branch and commits, which is exactly
+  production's behaviour today.
+
+**Recovery:** apply the other one, or drop the applied one per H.1/H.3. Nothing
+needs repairing in between, and there is no window in which the app is worse off
+than it is today.
+
+### H.5 · Indexes incomplete · SELF-REPAIRING, WITH ONE THAT IS NOT COSMETIC
+
+Postgres runs each statement in these files in its own implicit transaction, so
+a failure partway leaves the table created and some indexes missing. Every
+statement is `IF NOT EXISTS`.
+
+```sql
+-- what SHOULD be there: 6 on the ledger (5 + pkey), 5 on the schedule (4 + pkey)
+SELECT tablename, count(*) FROM pg_indexes
+ WHERE tablename IN ('plan_decision_ledger','reassessment_schedule')
+ GROUP BY tablename;
+```
+
+**Recovery: re-run the file.** The second pass creates only what is missing and
+touches no row. Proven on scratch: applied twice, exit 0, rows preserved.
+
+**What a missing index costs in the meantime** is CORRECTNESS on one of them,
+not just latency. `plan_decision_ledger_idempotency` is the UNIQUE index that
+`applyOnce` rests on — without it a duplicate accept is not refused, it is
+applied twice. The rest are read paths and cost only speed, on tables that are
+empty at this point anyway. So check that one BY NAME, never by count:
+
+```sql
+SELECT indexdef FROM pg_indexes WHERE indexname = 'plan_decision_ledger_idempotency';
+```
+
+### H.6 · The app deploys BEFORE the DDL · SAFE, SELF-HEALING WITHIN 60s
+
+The code probes `to_regclass` and branches on absence. Every mutation commits
+and logs `DECISION NOT RECORDED (table_absent)`; every deferral says it did not
+persist.
+
+The hazard here was `MIGRATIONPROBE-1`, already closed: the probe used to cache
+a negative answer for the life of the process, so a process started before the
+DDL would answer `table_absent` forever. It now caches only a DEFINITE answer,
+only `true` permanently, and re-probes a definite absence on a 60-second
+cooldown. A failed probe caches nothing at all.
+
+**Recovery: none needed.** Within 60 seconds of the DDL landing, running
+processes start writing. A service restart makes it immediate.
+
+**What is lost:** the decisions made in that window are not recorded. They are
+not recoverable and should not be reconstructed.
+
+### H.7 · The DDL lands BEFORE the app · SAFE, ZERO WINDOW · RECOMMENDED
+
+Nothing reads the tables until the code that names them deploys. There is no
+window at all.
+
+**Recovery: none needed.** This is the recommended order for exactly this
+reason: a rollout that needs nothing to heal beats one that heals.
+
+### H.8 · The one row that is NOT reversible by SQL alone
+
+Once `applyOnce` is switched on for a runner-facing accept, a rollback of
+migration 166 removes the unique index that makes that accept exactly-once. The
+boundary REFUSES rather than degrading — a once-only guarantee that quietly
+becomes at-least-once is a missing input disabling a safety mechanism (Rule 11)
+— so the accept button would start returning a refusal instead of
+double-applying.
+
+**That is the correct failure and it is still a user-visible outage.** So:
+**do not enable `applyOnce` on any production caller in the same change that
+applies the migration.** Let the table prove itself first. Nothing in the
+current code sets `applyOnce`; that is stated here as a known gap rather than
+left implicit.
+
+## I · What changed in the code before this packet was resubmitted
+
+`LEDGERATOMIC-1`. The boundary used to run `COMMIT`, then write the ledger row
+on a SECOND CONNECTION, then `console.error` the failure and return
+`{ ok: true }`. All four steps of the sequence the owner forbade.
+
+**Two lanes now, split on whether anything committed:**
+
+| decision | lane | connection | on failure |
+|---|---|---|---|
+| accompanies a COMMITTED mutation | `recordDecisionInTransaction` | the mutation's own transaction, before its COMMIT | throws · the mutation ROLLS BACK and returns `ledger_unwritten` |
+| records a REFUSAL | `recordDecision` | its own pool connection, after the ROLLBACK | logged · there was no mutation for it to be atomic with |
+
+The tension the owner named is real, and this is where it lands: **a refusal
+cannot be atomic with a mutation that never happened**, and writing it on the
+rolled-back transaction would erase it. So refusals keep the second connection
+and keep their three-state, never-throws contract. Everything that commits does
+not.
+
+**`table_absent` is not a failure**, and that distinction is what makes this
+deployable against production today. The table does not exist there, so lane A
+returns `table_absent` and the mutation commits, exactly as it does now. The
+moment migration 166 lands, the ledger becomes REQUIRED with no flag to flip and
+no code change.
+
+**Two members added to `mutation_outcome`'s CHECK** (`ledger_unwritten`,
+`duplicate`), which is free because the migration is unapplied. Both are facts
+the old list could only tell as a lie: without them a ledger-refused rollback
+would have to be filed as `not_attempted`, collapsing "the statement blew up"
+with "the record refused" — Rule 11, inside the one table built to keep facts
+apart. Section E's constraint count is unchanged: still 5 CHECKs on the ledger.
+
+**Gate:** `scripts/check-decision-ledger.sh` guard 4 and
+`lib/audit/_decision_ledger_gate.test.ts` GUARD 3 — every COMMIT preceded by an
+in-transaction write, order walked and not merely counted, both lanes present,
+and the transactional lane forbidden from returning a swallowable `failed`.
+Falsified in both directions.
+
+**Measurement:** `lib/plan/_ledger_atomicity.db.test.ts`, 14 tests against
+`faff_roundtrip_scratch`, covering all eight cases the owner listed. A
+BEFORE INSERT trigger makes the ledger fail for reasons unrelated to the row's
+contents, and a terminated backend models the process dying mid-mutation. Run
+against the unfixed code, 8 of them fail, including
+`expected [ 530, 500, 500 ] to deeply equal [ 500, 500, 500 ]` — the plan moved
+30 s/mi with zero applied ledger rows.
+
+**One defect this work found in the ledger itself,** which no amount of reading
+would have shown: a rolled-back mutation's refusal row carried the caller's
+idempotency key, and lane B inserts ON CONFLICT DO UPDATE. So the
+duplicate-accept refusal REWROTE the accept it was refusing — `applied` became
+`duplicate`, and the only record that the runner's plan had ever moved was gone.
+Lane B now drops the key: every row it writes is, by construction, a decision
+that changed nothing, and it is a distinct event from whatever holds that key.
+
+**And one hole in this packet's own evidence, found by falsifying it.** The db
+suites here are described as skipping "LOUDLY". The new one did not: run against
+a database with no fixture it printed `Tests 1 passed | 13 skipped` and not one
+word of the reason, because `console.warn` inside a passing test is swallowed by
+the reporter. It now writes to `process.stderr` directly and puts the verdict in
+the TEST NAME. `lib/brain/ledger/_decision_ledger.db.test.ts` still has the
+console.warn shape and the same hole — named here rather than fixed silently.

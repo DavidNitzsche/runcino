@@ -244,7 +244,13 @@
  * build if a writer appears outside this door.
  */
 import { mutationIsPermitted, type AuthorityClass } from '@/lib/brain/mutation/authority';
-import { recordDecision, resolvePlanLineage } from '@/lib/brain/ledger/decision-ledger';
+import {
+  recordDecision,
+  recordDecisionInTransaction,
+  markUndoneInTransaction,
+  resolvePlanLineage,
+  type LedgerExecutor,
+} from '@/lib/brain/ledger/decision-ledger';
 import {
   demandDelta,
   directionOfDelta,
@@ -252,6 +258,7 @@ import {
   scopeOfChange,
   PLAN_MUTATION_BOUNDARY_MODEL_VERSION,
   type LedgerDecision,
+  type LedgerEntry,
   type LedgerRunnerResponse,
   type LedgerSourceMode,
 } from '@/lib/brain/ledger/ledger-entry';
@@ -727,7 +734,25 @@ export type MutationOutcome =
   | 'undeclared_structural'
   | 'bypassed'
   | 'authorship_drift'
-  | 'no_plan';
+  | 'no_plan'
+  /**
+   * LEDGERATOMIC-1 · THE MUTATION WAS ROLLED BACK BECAUSE ITS RECORD COULD NOT
+   * BE WRITTEN. The owner's rule, verbatim: "If the ledger is the durable
+   * record of truth, a required ledger failure must prevent or roll back the
+   * mutation." This is what that looks like from the caller's side — a returned
+   * verdict, not a thrown surprise, so a per-runner cron loop keeps going.
+   *
+   * NOT the same as `not_attempted` (the mutation threw) and not the same as
+   * `rejected` (doctrine refused it). Three facts, three names.
+   */
+  | 'ledger_unwritten'
+  /**
+   * An exactly-once mutation whose idempotency key already carried a ledger
+   * row. Nothing was applied a second time and the FIRST row still stands.
+   * `ok` is false because this call changed nothing; the caller reads the
+   * outcome, not the boolean, to tell "already done" from "refused".
+   */
+  | 'duplicate';
 
 export interface MutatePlanOptions<T> {
   /** Owning runner. Used for context + the rejection record. */
@@ -810,6 +835,40 @@ export interface MutatePlanOptions<T> {
     modelVersion?: string;
     /** Makes a re-run of the same pass refresh its row rather than duplicate. */
     idempotencyKey?: string;
+    /**
+     * LEDGERATOMIC-1 · EXACTLY ONCE. Requires `idempotencyKey`.
+     *
+     * The default (`false`) is at-least-once and always has been: a caller that
+     * runs its mutation twice applies it twice, and the ledger row refreshes.
+     * That is right for a nightly pass re-deriving the same evidence and WRONG
+     * for a runner tapping Accept twice, or for a client retrying a request
+     * whose response was lost.
+     *
+     * With this set, the ledger's partial unique index over
+     * `(user_uuid, provenance, idempotency_key)` becomes the guard. The second
+     * transaction blocks on the index until the first commits, inserts nothing,
+     * and the boundary rolls its plan writes back with outcome `duplicate`. It
+     * is concurrency-safe rather than merely retry-safe, because the check and
+     * the mutation are the same transaction — a `SELECT` first would leave a
+     * race between the look and the write.
+     *
+     * REFUSES when the ledger table is absent, rather than degrading. A
+     * once-only guarantee that silently becomes at-least-once is a missing
+     * input disabling a safety mechanism (Rule 11), and the caller asked for
+     * the guarantee, not for best effort.
+     */
+    applyOnce?: boolean;
+    /**
+     * LEDGERATOMIC-1 · THIS MUTATION REVERSES AN EARLIER DECISION.
+     *
+     * The named row is stamped `undone_at` / `undo_reason` ON THIS
+     * TRANSACTION, so the plan going back and the decision being marked
+     * reversed are one outcome. If the row is missing or already undone the
+     * whole mutation rolls back — undoing the wrong decision is worse than not
+     * undoing at all, and a reversal recorded against a plan that never moved
+     * back is worse than both.
+     */
+    undoes?: { id: string; reason: string };
   };
   /** Extra context stored on the rejection record. */
   detail?: Record<string, unknown>;
@@ -884,11 +943,55 @@ export interface MutatePlanResult<T> {
  * including the crash. `check-decision-ledger.sh` guard 1 walks this function's
  * exits and fails when one of them does not.
  *
- * It writes on its own connection (`decision-ledger.ts` never takes a client),
- * because a rejected mutation rolls back and a row written inside that
- * transaction would roll back with it — leaving a ledger that records every
- * decision except the refusals.
+ * ── LEDGERATOMIC-1 (2026-09-05) · AND IT IS THE SAME OUTCOME AS THE MUTATION
+ *
+ * The original LEDGER-1 wrote every row on a second connection, and argued for
+ * it: a refusal recorded inside a rolled-back transaction would roll back with
+ * it, leaving a ledger that records every decision except the refusals.
+ *
+ * True of refusals. False of everything that COMMITS, and the owner named the
+ * consequence exactly: "A plan mutation and its ledger record must be one
+ * atomic outcome. The system may not: (1) mutate the plan, (2) fail to write
+ * the ledger, (3) log an error, (4) return success." That was the literal
+ * sequence — `await client.query('COMMIT')`, then `await land(...)`, then
+ * `console.error('DECISION NOT RECORDED')`, then `return { ok: true }`.
+ *
+ * So there are two lanes now, and the split is on a real distinction rather
+ * than a convenience:
+ *
+ *   `landInTx(...)` · BEFORE every COMMIT, on `client`. The row is a
+ *     PRECONDITION of the commit. It fails, the transaction rolls back, and
+ *     the mutation returns `ledger_unwritten`. There is no interval in which
+ *     the plan has moved and the ledger has not, so a process dying anywhere
+ *     in the sequence loses both or neither.
+ *
+ *   `land(...)` · AFTER every ROLLBACK, on `pool`. A refusal has no mutation
+ *     to be atomic with; recording it on the transaction that just rolled back
+ *     would erase it. This lane keeps LEDGER-1's contract exactly: three
+ *     states, never throws, a failure logged and the caller's own outcome
+ *     unmasked.
+ *
+ * `check-decision-ledger.sh` guard 1 walks the exits and fails when one records
+ * nothing; guard 4 walks the COMMITs and fails when one is not preceded by an
+ * in-transaction write.
  * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The mutation is being abandoned BECAUSE OF THE LEDGER, not because of
+ * doctrine and not because a statement blew up. Carried as its own error type
+ * so the catch-all can tell it from a caller bug and turn it into a returned
+ * verdict instead of re-throwing — a cron loop must survive it the same way it
+ * survives a rejection.
+ */
+class LedgerRefusedMutation extends Error {
+  constructor(
+    readonly kind: 'ledger_unwritten' | 'duplicate',
+    message: string,
+  ) {
+    super(message);
+    this.name = 'LedgerRefusedMutation';
+  }
+}
 
 interface LedgerLanding {
   userUuid: string;
@@ -922,15 +1025,105 @@ interface LedgerLanding {
  */
 async function landDecisionInLedger(l: LedgerLanding): Promise<string | null> {
   try {
+    const written = await recordDecision(await buildLedgerEntry(l));
+    if (written.state === 'written') return written.id;
+    console.error(
+      `[plan/mutate] DECISION NOT RECORDED (${written.state}) · source=${l.source} · `
+      + `outcome=${l.outcome} · ${written.why}`,
+    );
+    return null;
+  } catch (e) {
+    console.error(
+      `[plan/mutate] ledger write threw and was contained · source=${l.source} ·`,
+      e instanceof Error ? e.message : e,
+    );
+    return null;
+  }
+}
+
+/**
+ * LANE A · the ledger row as a PRECONDITION of the commit.
+ *
+ * Runs on the caller's open transaction. Every failure mode leaves the
+ * transaction unusable and raises `LedgerRefusedMutation`, which the boundary's
+ * catch turns into a rolled-back mutation with a named outcome. Nothing here
+ * is contained, deliberately: containment is what produced the four-step
+ * sequence this whole change exists to remove.
+ *
+ * `table_absent` is NOT a failure — it is the declared pre-migration state of
+ * production. The commit proceeds and the boundary says so at `console.warn`
+ * once per exit, exactly as it did before this change. The instant migration
+ * 166 lands the ledger becomes required with no flag to flip.
+ */
+async function landDecisionInTransaction(
+  tx: LedgerExecutor,
+  l: LedgerLanding,
+  onceOnly: boolean,
+  undoes: { id: string; reason: string } | undefined,
+): Promise<string | null> {
+  const entry = await buildLedgerEntry(l, tx);
+  let written;
+  try {
+    written = await recordDecisionInTransaction(tx, entry, { onceOnly });
+  } catch (e) {
+    throw new LedgerRefusedMutation(
+      'ledger_unwritten',
+      `the decision could not be recorded, so the mutation was rolled back · source=${l.source} · `
+      + `outcome=${l.outcome} · ${e instanceof Error ? e.message : String(e)}`,
+    );
+  }
+  if (written.state === 'duplicate') {
+    throw new LedgerRefusedMutation('duplicate', written.why);
+  }
+  if (written.state === 'table_absent') {
+    console.warn(
+      `[plan/mutate] DECISION NOT RECORDED (table_absent) · source=${l.source} · `
+      + `outcome=${l.outcome} · ${written.why}`,
+    );
+    if (undoes) {
+      // An undo with no table cannot be atomic with anything. Refuse rather
+      // than reverse a plan and leave the decision reading live.
+      throw new LedgerRefusedMutation(
+        'ledger_unwritten',
+        `this mutation reverses ledger row ${undoes.id}, and the ledger table does not exist on `
+        + 'this database, so the reversal cannot be recorded alongside the plan change.',
+      );
+    }
+    return null;
+  }
+  if (undoes) {
+    try {
+      await markUndoneInTransaction(tx, undoes.id, undoes.reason);
+    } catch (e) {
+      throw new LedgerRefusedMutation(
+        'ledger_unwritten',
+        `the undo stamp failed, so the plan reversal was rolled back with it · `
+        + `${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+  return written.id;
+}
+
+/**
+ * The row both lanes write. One construction, so the two cannot describe the
+ * same decision differently — Rule 16, applied to the ledger's own writer.
+ *
+ * `on` is the transaction when lane A calls it, so lineage is resolved against
+ * the same snapshot the row lands in.
+ */
+async function buildLedgerEntry(l: LedgerLanding, on?: LedgerExecutor): Promise<LedgerEntry> {
+  {
     const delta = demandDelta(l.before, l.after);
     const { scope, fromISO, toISO } = scopeOfChange(l.after, delta.changedWorkoutIds);
     const lineage = await resolvePlanLineage({
       userUuid: l.userUuid,
       planId: l.planId,
       replacedPlanId: l.replacedPlanId,
+      on,
     });
     const supplied = l.ledger?.explanation;
-    const written = await recordDecision({
+    return {
       userUuid: l.userUuid,
       planId: l.planId,
       planLineageId: lineage,
@@ -967,19 +1160,7 @@ async function landDecisionInLedger(l: LedgerLanding): Promise<string | null> {
       explanation: supplied ? `${supplied} · ${l.account}` : l.account,
       modelVersion: l.ledger?.modelVersion ?? PLAN_MUTATION_BOUNDARY_MODEL_VERSION,
       idempotencyKey: l.ledger?.idempotencyKey ?? null,
-    });
-    if (written.state === 'written') return written.id;
-    console.error(
-      `[plan/mutate] DECISION NOT RECORDED (${written.state}) · source=${l.source} · `
-      + `outcome=${l.outcome} · ${written.why}`,
-    );
-    return null;
-  } catch (e) {
-    console.error(
-      `[plan/mutate] ledger write threw and was contained · source=${l.source} ·`,
-      e instanceof Error ? e.message : e,
-    );
-    return null;
+    };
   }
 }
 
@@ -1025,7 +1206,10 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         outcome: 'not_attempted',
         violations: [verdict.because],
         account: `${verdict.because}. ${verdict.insteadDo ?? ''}`.trim(),
-        ledger: opts.ledger,
+        // No idempotency key, for the reason spelled out on `land` below: a
+        // lane B row never changed the plan, and refreshing the row of a
+        // mutation that DID would erase it.
+        ledger: opts.ledger ? { ...opts.ledger, idempotencyKey: undefined } : undefined,
       });
       throw new Error(
         `[mutate] REFUSED · ${opts.source} declared ${opts.authority} and ${verdict.because}. `
@@ -1122,13 +1306,13 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
   let ledgerBefore: readonly PlanWorkoutRow[] = [];
   let ledgerAfter: readonly PlanWorkoutRow[] = [];
 
-  const land = (
+  const landing = (
     decision: LedgerDecision,
     outcome: MutationOutcome | 'not_attempted',
     violations: readonly string[],
     account: string,
     planIdForRow: string | null,
-  ): Promise<string | null> => landDecisionInLedger({
+  ): LedgerLanding => ({
     userUuid: opts.userUuid,
     source: opts.source,
     authority: opts.authority,
@@ -1145,6 +1329,55 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     account,
     ledger: opts.ledger,
   });
+
+  /**
+   * LANE B · after a ROLLBACK. Own connection, never throws.
+   *
+   * ── IT DROPS THE IDEMPOTENCY KEY, AND THAT IS NOT A DETAIL ──────────────
+   *
+   * Found by test 5 of `_ledger_atomicity.db.test.ts` on its first run, and it
+   * would not have been found by reading the code. Lane B inserts
+   * `ON CONFLICT … DO UPDATE`, by design, so that a nightly pass re-deriving
+   * the same evidence refreshes its row instead of doubling Rule 21's census.
+   * A ROLLED-BACK mutation carrying the same key therefore OVERWRITES the row
+   * of the mutation that succeeded — the duplicate-accept refusal rewrote the
+   * accept it was refusing, turning `applied` into `duplicate` and erasing the
+   * only record that the runner's plan had ever moved.
+   *
+   * Every lane B row is, by construction, a decision that did NOT change the
+   * plan. It is a distinct event from whatever holds that key, so it gets no
+   * key and stands as its own row. The cost is that a pass rejected twice
+   * writes two refusals instead of refreshing one, which is the honest count:
+   * it was refused twice.
+   */
+  const land = (
+    decision: LedgerDecision,
+    outcome: MutationOutcome | 'not_attempted',
+    violations: readonly string[],
+    account: string,
+    planIdForRow: string | null,
+  ): Promise<string | null> => landDecisionInLedger({
+    ...landing(decision, outcome, violations, account, planIdForRow),
+    ledger: opts.ledger ? { ...opts.ledger, idempotencyKey: undefined } : undefined,
+  });
+
+  /**
+   * LANE A · before a COMMIT. The caller's transaction, and a precondition of
+   * it. Raises `LedgerRefusedMutation`, which the catch below turns into a
+   * rolled-back mutation carrying `ledger_unwritten` or `duplicate`.
+   */
+  const landInTx = (
+    decision: LedgerDecision,
+    outcome: MutationOutcome | 'not_attempted',
+    violations: readonly string[],
+    account: string,
+    planIdForRow: string | null,
+  ): Promise<string | null> => landDecisionInTransaction(
+    client,
+    landing(decision, outcome, violations, account, planIdForRow),
+    opts.ledger?.applyOnce === true,
+    opts.ledger?.undoes,
+  );
 
   try {
     await client.query('BEGIN');
@@ -1187,6 +1420,21 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     if (opts.bypass) {
       const value = await opts.apply(client, planId ?? '');
       if (touches !== 'authorship') producedPlanVersion = await stampAdapted(planId, value);
+      // Direction is UNKNOWN here and that is the honest answer, not a gap: the
+      // bypass runs its writes before any snapshot is taken, deliberately —
+      // it is the escape hatch for a backfill that must not pay for
+      // validation — so there is no before-state to measure against. A ledger
+      // row that said NEUTRAL would be asserting a measurement nobody made.
+      //
+      // LEDGERATOMIC-1 · a bypass skips VALIDATION, never the record. The row
+      // is written on this transaction before the commit, so even the escape
+      // hatch cannot move a plan without saying that it did.
+      await landInTx(
+        'APPLY', 'bypassed', [],
+        `marked bypass · ${opts.bypass.reason} · validation skipped, so no before-state was `
+        + 'read and the direction of this change is unmeasured rather than neutral',
+        planId,
+      );
       await client.query('COMMIT');
       console.warn(
         `[plan/mutate] BYPASS · source=${opts.source} plan=${planId ?? 'none'} · ${opts.bypass.reason}`,
@@ -1196,17 +1444,6 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         outcome: 'bypassed', violations: [], preExisting: [],
         detail: { ...(opts.detail ?? {}), bypass_reason: opts.bypass.reason },
       });
-      // Direction is UNKNOWN here and that is the honest answer, not a gap: the
-      // bypass runs its writes before any snapshot is taken, deliberately —
-      // it is the escape hatch for a backfill that must not pay for
-      // validation — so there is no before-state to measure against. A ledger
-      // row that said NEUTRAL would be asserting a measurement nobody made.
-      await land(
-        'APPLY', 'bypassed', [],
-        `marked bypass · ${opts.bypass.reason} · validation skipped, so no before-state was `
-        + 'read and the direction of this change is unmeasured rather than neutral',
-        planId,
-      );
       return { ok: true, outcome: 'bypassed', value, violations: [], preExisting: [], resolved: [], planId };
     }
 
@@ -1250,13 +1487,13 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     if (!afterPlanId) {
       // Authorship that produced no plan id — nothing was created. Commit
       // whatever ran (typically a no-op) and say so.
-      await client.query('COMMIT');
-      await land(
+      await landInTx(
         'APPLY', 'applied', [],
         'authorship ran and produced no plan id, so no plan was created. Nothing was '
         + 'prescribed and nothing changed.',
         null,
       );
+      await client.query('COMMIT');
       return { ok: true, outcome: 'applied', value, violations: [], preExisting: [], resolved: [], planId: null };
     }
 
@@ -1287,13 +1524,13 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         return fail('undeclared_structural', v, [], afterPlanId);
       }
       producedPlanVersion = await stampAdapted(afterPlanId, value);
-      await client.query('COMMIT');
-      await land(
+      await landInTx(
         'APPLY', 'applied', [],
         'derivations-only write applied · paces, spec, labels and notes moved and the '
         + 'structural fingerprint did not',
         afterPlanId,
       );
+      await client.query('COMMIT');
       return { ok: true, outcome: 'applied', value, violations: [], preExisting: [], resolved: [], planId: afterPlanId };
     }
 
@@ -1301,34 +1538,29 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
       // REPORT ONLY. Never rolls back — see DESIGN DECISION 2.
       //
       // The snapshot and the context are read on the transaction (so they see
-      // one consistent view of what was just written), but the VALIDATION runs
-      // after COMMIT and inside a try. Report-only has to mean report-only: a
-      // crash in the validator must not be able to take a runner's plan
-      // generation down with it. The pre-persist `validateComposedPlan` is
-      // still the gate that decides whether a plan is authored at all.
+      // one consistent view of what was just written), and the VALIDATION runs
+      // inside a try. Report-only has to mean report-only: a crash in the
+      // validator must not be able to take a runner's plan generation down with
+      // it. The pre-persist `validateComposedPlan` is still the gate that
+      // decides whether a plan is authored at all.
+      //
+      // LEDGERATOMIC-1 · the check used to run AFTER the commit, because
+      // "report-only" was implemented as "too late to matter". It now runs
+      // before, still inside its own try, and the containment is unchanged —
+      // a thrown validator leaves `drift` empty and the plan commits, exactly
+      // as it did. What changed is that the ledger row can now carry the drift
+      // verdict and be part of the same commit, instead of being written on a
+      // second connection afterwards where it could be lost.
       const authorCtx = await loadMutationContext(client, opts.userUuid, afterPlanId, opts.todayISO);
-      await client.query('COMMIT');
       let drift: string[] = [];
       try {
         drift = violationsOf(after, authorCtx);
       } catch (e) {
         console.error(
-          `[plan/mutate] authorship read-back check errored (plan committed regardless) · ` +
+          `[plan/mutate] authorship read-back check errored (plan commits regardless) · ` +
           `source=${opts.source} ·`,
           e instanceof Error ? e.message : e,
         );
-      }
-      if (drift.length > 0) {
-        console.warn(
-          `[plan/mutate] AUTHORSHIP DRIFT · source=${opts.source} plan=${afterPlanId} · ` +
-          `${drift.length} violation(s) present in the PERSISTED plan that the in-memory ` +
-          `validation did not see · committed (a rolled-back rebuild leaves the runner with no plan)`,
-        );
-        await recordMutationOutcome({
-          userUuid: opts.userUuid, planId: afterPlanId, source: opts.source,
-          outcome: 'authorship_drift', violations: drift, preExisting: [],
-          detail: { ...(opts.detail ?? {}), context_incomplete: authorCtx.contextIncomplete },
-        });
       }
       /* LEDGER-1 · THE ROW THAT MAKES A REBUILD PRESERVE THE LEDGER.
        *
@@ -1342,7 +1574,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
        * authorship, because a 14-week new block and four remaining weeks of an
        * old one are not comparable quantities and calling their difference a
        * coaching direction would put fiction into Rule 21's census. */
-      await land(
+      await landInTx(
         'APPLY', drift.length > 0 ? 'authorship_drift' : 'applied', drift,
         replacedPlanId
           ? `a new plan was authored, replacing ${replacedPlanId}, whose ledger lineage it `
@@ -1350,6 +1582,19 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
           : 'a new plan was authored and replaced nothing. This row opens its lineage.',
         afterPlanId,
       );
+      await client.query('COMMIT');
+      if (drift.length > 0) {
+        console.warn(
+          `[plan/mutate] AUTHORSHIP DRIFT · source=${opts.source} plan=${afterPlanId} · ` +
+          `${drift.length} violation(s) present in the PERSISTED plan that the in-memory ` +
+          `validation did not see · committed (a rolled-back rebuild leaves the runner with no plan)`,
+        );
+        await recordMutationOutcome({
+          userUuid: opts.userUuid, planId: afterPlanId, source: opts.source,
+          outcome: 'authorship_drift', violations: drift, preExisting: [],
+          detail: { ...(opts.detail ?? {}), context_incomplete: authorCtx.contextIncomplete },
+        });
+      }
       return {
         ok: true, outcome: drift.length > 0 ? 'authorship_drift' : 'applied',
         value, violations: [], preExisting: drift, resolved: [], planId: afterPlanId,
@@ -1384,14 +1629,14 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     }
 
     producedPlanVersion = await stampAdapted(afterPlanId, value);
-    await client.query('COMMIT');
-    await land(
+    await landInTx(
       'APPLY', 'applied', [],
       diff.resolved.length > 0
         ? `applied · it also repaired ${diff.resolved.length} pre-existing violation(s)`
         : 'applied · it introduced no doctrine violation the plan did not already carry',
       afterPlanId,
     );
+    await client.query('COMMIT');
     return {
       ok: true, outcome: 'applied', value,
       violations: [], preExisting: diff.preExisting, resolved: diff.resolved,
@@ -1400,6 +1645,42 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
   } catch (e) {
     try { await client.query('ROLLBACK'); }
     catch (rbErr) { releaseErr = rbErr instanceof Error ? rbErr : new Error(String(rbErr)); }
+
+    /* LEDGERATOMIC-1 · THE LEDGER ITSELF STOPPED THIS MUTATION.
+     *
+     * Not a caller bug and not a doctrine rejection, so it is a RETURNED
+     * verdict rather than a re-throw: a per-runner cron loop must survive it
+     * exactly the way it survives a rejection. The plan has already been rolled
+     * back whole — that is the guarantee, and it is the reason this branch can
+     * report `ledger_unwritten` truthfully rather than hedging.
+     *
+     * The row for it goes down LANE B, on a fresh connection, because the
+     * transaction it would have belonged to no longer exists. If that fails
+     * too, it is logged and the returned outcome still tells the truth: the
+     * plan did not move. */
+    if (e instanceof LedgerRefusedMutation) {
+      const outcome: MutationOutcome = e.kind;
+      const violations = [e.message];
+      console.error(
+        `[plan/mutate] ${e.kind === 'duplicate' ? 'DUPLICATE' : 'LEDGER UNWRITTEN'} · `
+        + `source=${opts.source} · the plan was rolled back whole · ${e.message}`,
+      );
+      await recordMutationOutcome({
+        userUuid: opts.userUuid, planId: opts.planId ?? null, source: opts.source,
+        outcome, violations, preExisting: [], detail: opts.detail ?? null,
+      });
+      await land(
+        'REFUSE', outcome, violations,
+        e.kind === 'duplicate'
+          ? 'this mutation repeats one already recorded under the same idempotency key, so it was '
+            + 'rolled back rather than applied a second time. The original decision stands.'
+          : 'the plan mutation was rolled back because its ledger record could not be written. '
+            + 'The plan did not move.',
+        opts.planId ?? null,
+      );
+      return fail(outcome, violations, [], opts.planId ?? null);
+    }
+
     /* LEDGER-1 · A CRASH IS A DECISION THAT DID NOT HAPPEN, AND THAT IS A FACT
      * WORTH KEEPING. Without this row, the difference between "the engine
      * considered this and declined" and "the engine tried and the statement
