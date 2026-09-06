@@ -6,9 +6,16 @@
  *     demand and +17.9% by mileage, and those are different answers to
  *     different questions — only one of them prices the long run and the
  *     quality minutes together.
- *   · The step allowance moves CONTINUOUSLY with completion (Rule 9). A hair's
- *     difference in what the runner completed must not produce a categorically
+ *   · Boundary 1's growth confidence moves CONTINUOUSLY through 10% and 15%
+ *     (Rule 9, and the owner's 2026-09-06 ruling, quoted in
+ *     `rolling-boundary.ts`'s own header): "do not use either 0.10 or 0.15 as
+ *     a binary threshold... no abrupt verdict change at 10% or 15%." A hair's
+ *     difference in growth or in context must not produce a categorically
  *     different plan.
+ *   · The 09-21 week's real +14.1% demand step is the owner's own acceptance
+ *     test: it must resolve as an EARNABLE, LOWER-CONFIDENCE PUSH under a
+ *     clean context, not an automatic reduction — see "the 09-21 week, the
+ *     owner's own acceptance case" below.
  *   · An unreadable input REFUSES rather than proceeding or reducing, and the
  *     safe direction differs by boundary — which is the point of having three.
  *   · No boundary ever names the long run or a race at boundary 1.
@@ -20,12 +27,44 @@
  *     already classified; this decides what to do about them.
  *   · Whether anything schedules these. Persisting the three dates is the
  *     reassessment scheduler's job and migration 167 is not applied.
+ *   · Whether the FIVE context weights (0.30/0.25/0.20/0.15/0.10) are the
+ *     right weights. They are stated, not derived from doctrine — there is no
+ *     citation for "how much should runway matter relative to fatigue" — and
+ *     what this suite fixes is that no single one of them can flip a verdict
+ *     on its own (a cliff wearing a weighted-average costume).
  */
 import { describe, it, expect } from 'vitest';
 import {
   priceWeek, demandBaseline, boundaryBeforeWeek, boundaryAfterQuality, boundaryAfterRace,
-  allowedStepFor, boundariesForWeek,
+  boundariesForWeek, demandGrowthBaseConfidence, demandStepConfidence, demandStepContextScore,
+  DEMAND_STEP_PUSH_CONFIDENCE_FLOOR, NEUTRAL_FATIGUE_SAFETY_CLEARANCE,
+  type DemandStepContext,
 } from './rolling-boundary';
+
+/** A context with nothing wrong anywhere — the "clean weeks, low ACWR, no
+ *  recent deterioration" case the owner names as what earns a push above the
+ *  soft band. Individual tests override one field at a time. */
+const CLEAN_CONTEXT: DemandStepContext = {
+  recentExecutionCleanliness: 1.0,
+  baselineFreedomFromDip: 1.0,
+  fatigueSafetyClearance: 1.0,
+  trainingPhaseOpenness: 1.0,
+  runwayOpenness: 1.0,
+};
+
+/** The context this evaluator ACTUALLY produces for the 09-21 week today:
+ *  fatigue/safety is honestly neutral (no reader wired), and the trailing
+ *  baseline window includes 09-07 — the 24.4-mile race week — so baseline
+ *  freedom-from-dip is 2 of 3, not a full 1.0. Everything else about that
+ *  block is clean: the preceding week (09-14) was fully completed, it is an
+ *  ordinary build week, and the block runs another five weeks past it. */
+const REALISTIC_0921_CONTEXT: DemandStepContext = {
+  recentExecutionCleanliness: 1.0,
+  baselineFreedomFromDip: 2 / 3,
+  fatigueSafetyClearance: NEUTRAL_FATIGUE_SAFETY_CLEARANCE,
+  trainingPhaseOpenness: 1.0,
+  runwayOpenness: 1.0,
+};
 
 const never = () => false;
 
@@ -70,68 +109,176 @@ describe('rolling boundary · demand is the measure', () => {
   });
 });
 
-describe('boundary 1 · before the week', () => {
+describe('demandGrowthBaseConfidence · the bare growth curve, calibrated to the ruling\'s own edges', () => {
+  it('reads ~1.0 well below the band — no growth, no hesitation', () => {
+    expect(demandGrowthBaseConfidence(0)).toBe(1);
+    expect(demandGrowthBaseConfidence(-0.2)).toBe(1);
+    expect(demandGrowthBaseConfidence(0.02)).toBeGreaterThan(0.99);
+  });
+
+  it('reads EXACTLY 0.85 at 10% and EXACTLY 0.15 at 15% — the two edges the ruling names', () => {
+    // Exact by construction: the logistic's scale is solved from these two
+    // points, so this is really a check that the constant is still wired up,
+    // not a coincidence of tuning.
+    expect(demandGrowthBaseConfidence(0.10)).toBeCloseTo(0.85, 6);
+    expect(demandGrowthBaseConfidence(0.15)).toBeCloseTo(0.15, 6);
+  });
+
+  it('reads exactly 0.5 at the band\'s own midpoint, 12.5%', () => {
+    expect(demandGrowthBaseConfidence(0.125)).toBeCloseTo(0.5, 6);
+  });
+
+  it('keeps falling smoothly past 15% rather than floor-ing at the edge', () => {
+    expect(demandGrowthBaseConfidence(0.20)).toBeLessThan(demandGrowthBaseConfidence(0.15));
+    expect(demandGrowthBaseConfidence(0.30)).toBeLessThan(demandGrowthBaseConfidence(0.20));
+    expect(demandGrowthBaseConfidence(0.30)).toBeGreaterThan(0);
+  });
+});
+
+describe('demandStepConfidence · the ruling\'s three zones, walked as ONE continuous line (Rule 9)', () => {
+  it('never jumps — no discontinuity anywhere from 0% to 25%, especially not at 10% or 15%', () => {
+    /* This is the walk item 4 of the task asks for by name: step the growth
+     * rate from 0 to 25% in small increments and assert the resulting
+     * confidence is monotonically non-increasing with no discontinuous jump
+     * anywhere. `rolling-boundary.ts`'s own header tells the story of the
+     * PREDECESSOR test that failed to catch exactly this: it walked the
+     * VERDICT, not the quantity, and a hard threshold satisfies "flips at
+     * most once" too. This walks `demandStepConfidence` itself. */
+    const STEP_SIZE = 0.0005; // 500 samples from 0% to 25%
+    const MAX_ALLOWED_JUMP_PER_STEP = 0.01; // generous vs. the ~0.0007 the smooth curve actually produces
+    let prev = demandStepConfidence(0, CLEAN_CONTEXT);
+    let sawBand10 = false;
+    let sawBand15 = false;
+    for (let step = STEP_SIZE; step <= 0.25 + 1e-9; step += STEP_SIZE) {
+      const cur = demandStepConfidence(Number(step.toFixed(6)), CLEAN_CONTEXT);
+      const jump = prev - cur;
+      expect(jump, `confidence jumped ${jump.toFixed(5)} between growth=${(step - STEP_SIZE).toFixed(4)} `
+        + `and growth=${step.toFixed(4)} — that is a cliff, and both sides of a cliff are legal `
+        + 'verdicts, which is exactly what a point-sampled gate cannot see')
+        .toBeLessThan(MAX_ALLOWED_JUMP_PER_STEP);
+      expect(cur, 'confidence must never RISE as growth increases').toBeLessThanOrEqual(prev + 1e-9);
+      if (Math.abs(step - 0.10) < STEP_SIZE) sawBand10 = true;
+      if (Math.abs(step - 0.15) < STEP_SIZE) sawBand15 = true;
+      prev = cur;
+    }
+    // Prove the walk actually crossed both named edges, not just the general
+    // neighbourhood — an empty walk or one that skips 0.10/0.15 exactly would
+    // pass the loop above trivially.
+    expect(sawBand10, 'the walk never actually sampled exactly 10% growth').toBe(true);
+    expect(sawBand15, 'the walk never actually sampled exactly 15% growth').toBe(true);
+    // And confidence still spans a real range across the walk, or the jump
+    // check above is satisfied by a constant that ignores growth entirely.
+    expect(demandStepConfidence(0, CLEAN_CONTEXT) - demandStepConfidence(0.25, CLEAN_CONTEXT))
+      .toBeGreaterThan(0.3);
+  });
+
+  it('strong context recovers SOME confidence past 15%, continuously — never a second cliff', () => {
+    const weak: DemandStepContext = {
+      recentExecutionCleanliness: 0, baselineFreedomFromDip: 0,
+      fatigueSafetyClearance: 0, trainingPhaseOpenness: 0, runwayOpenness: 0,
+    };
+    const strong: DemandStepContext = CLEAN_CONTEXT;
+    for (const step of [0.16, 0.20, 0.25, 0.35]) {
+      expect(demandStepConfidence(step, strong), `at ${(step * 100).toFixed(0)}% growth`)
+        .toBeGreaterThan(demandStepConfidence(step, weak));
+    }
+    // Even PERFECT context narrows the gap, it does not erase an enormous step.
+    expect(demandStepConfidence(0.60, CLEAN_CONTEXT)).toBeLessThan(DEMAND_STEP_PUSH_CONFIDENCE_FLOOR);
+  });
+
+  it('the context score itself is a weighted mean, not a hard AND — one weak field alone cannot zero it', () => {
+    const oneWeak: DemandStepContext = { ...CLEAN_CONTEXT, fatigueSafetyClearance: 0 };
+    expect(demandStepContextScore(oneWeak)).toBeGreaterThan(0.7);
+  });
+});
+
+describe('boundary 1 · before the week, decided on continuous confidence', () => {
   const base = demandBaseline([W0831, W0907, W0914], never);
-  const call = (completionRatio: number | null, allowed = 0.15) => boundaryBeforeWeek({
-    proposed: W0921, baseline: base, completionRatio, allowedStepShare: allowed,
+  const call = (completionRatio: number | null, context: DemandStepContext) => boundaryBeforeWeek({
+    proposed: W0921, baseline: base, completionRatio, context,
     targetWorkoutId: 'pw_tempo', targetDateISO: '2026-09-22',
   });
+  const DIRTY_CONTEXT: DemandStepContext = {
+    recentExecutionCleanliness: 0.3, baselineFreedomFromDip: 0.3,
+    fatigueSafetyClearance: 0.3, trainingPhaseOpenness: 0.5, runwayOpenness: 0.3,
+  };
 
-  it('proceeds when the step is inside what the completed week supports', () => {
-    expect(call(1.0).verdict).toBe('PROCEED');
+  it('proceeds as an earnable push when growth + a clean context clears the confidence bar', () => {
+    const d = call(1.0, CLEAN_CONTEXT);
+    expect(d.verdict).toBe('PROCEED');
+    expect(d.because).toContain('earnable push');
+    expect(d.mutation).toBeNull();
   });
 
-  it('reduces when it is not, and names a session that is not the long run', () => {
-    const d = call(0.5);
+  it('reduces when confidence does not clear the bar, and names a session that is not the long run', () => {
+    const d = call(0.5, DIRTY_CONTEXT);
     expect(d.verdict).toBe('REDUCE');
     expect(d.mutation?.planWorkoutId).toBe('pw_tempo');
     expect(d.mutation?.newType).toBe('easy');
   });
 
-  it('the ALLOWANCE moves continuously and monotonically · no cliff (Rule 9)', () => {
-    /* Walks the quantity, not the verdict. My first version of this test walked
-     * the VERDICT and asserted it flipped at most once — and a hard threshold
-     * satisfies that too, so replacing the continuous line with
-     * `completionRatio >= 0.95 ? share : 0` PASSED. Falsifying it is what
-     * found that, and it is the exact failure Rule 9's audit describes: both
-     * sides of a cliff are legal, so sampling points cannot see one.
-     *
-     * The derivative is what has to be bounded. A 1% change in what he
-     * completed may not move the allowance by more than about 1% of the share. */
-    const SHARE = 0.15;
-    let prev = allowedStepFor(0.50, SHARE);
-    for (let r = 0.51; r <= 1.0001; r += 0.01) {
-      const cur = allowedStepFor(Number(r.toFixed(2)), SHARE);
-      const jump = Math.abs(cur - prev);
-      expect(jump, `the allowance jumped ${jump.toFixed(4)} for a 1% change in completion at `
-        + `r=${r.toFixed(2)} — that is a cliff, and both sides of it are legal plans`)
-        .toBeLessThan(SHARE * 0.02);
-      expect(cur, 'completing more must never allow less').toBeGreaterThanOrEqual(prev);
-      prev = cur;
-    }
-    // And it still spans a real range, or the check above is satisfied by a
-    // constant that ignores completion entirely.
-    expect(allowedStepFor(1.0, SHARE) - allowedStepFor(0.5, SHARE)).toBeGreaterThan(0.05);
-  });
-
-  it('the verdict still turns over across the range', () => {
-    expect(call(0.5).verdict).toBe('REDUCE');
-    expect(call(1.0).verdict).toBe('PROCEED');
-  });
-
-  it('refuses on an unreadable completion rather than assuming it was met', () => {
-    const d = call(null);
+  it('refuses on an unreadable completion rather than assuming it was met, regardless of context', () => {
+    const d = call(null, CLEAN_CONTEXT);
     expect(d.verdict).toBe('REFUSE');
     expect(d.mutation).toBeNull();
   });
 
   it('refuses rather than cutting the long run when nothing else can give', () => {
     const d = boundaryBeforeWeek({
-      proposed: W0921, baseline: base, completionRatio: 0.5, allowedStepShare: 0.15,
+      proposed: W0921, baseline: base, completionRatio: 0.5, context: DIRTY_CONTEXT,
       targetWorkoutId: null, targetDateISO: null,
     });
     expect(d.verdict).toBe('REFUSE');
     expect(d.because).toContain('long run');
+  });
+
+  it('a hair of context movement moves confidence, not the verdict category, near the bar', () => {
+    // Rule 9 applied to the CONTEXT axis, not just the growth axis: nudging
+    // one input by a fraction must not be able to flip PROCEED/REDUCE unless
+    // it was already sitting exactly on the 0.5 line — and even there the
+    // underlying confidence itself must move by a proportional hair, not a mile.
+    const base1 = demandStepConfidence(0.14113, REALISTIC_0921_CONTEXT);
+    const nudged: DemandStepContext = {
+      ...REALISTIC_0921_CONTEXT, recentExecutionCleanliness: REALISTIC_0921_CONTEXT.recentExecutionCleanliness - 0.01,
+    };
+    const base2 = demandStepConfidence(0.14113, nudged);
+    expect(Math.abs(base1 - base2)).toBeLessThan(0.01);
+  });
+
+  describe('the 09-21 week · the owner\'s own acceptance case', () => {
+    /* "The 9/21 week at +14.1% demand remains an earnable, lower-confidence
+     * PUSH — not an automatic reduction." Verbatim from the ruling. The
+     * context below is not hand-picked to make this pass — it is what
+     * `rolling-boundary-evaluator.ts` actually computes for this exact week:
+     * the preceding week (09-14) was fully completed (recentExecutionCleanliness
+     * 1.0), fatigue/safety has no reader wired so reads the honest neutral,
+     * the proposed week is an ordinary build week (trainingPhaseOpenness 1.0),
+     * five more authored weeks follow it (runwayOpenness 1.0), and the
+     * trailing baseline window includes one race week out of three
+     * (baselineFreedomFromDip 2/3). */
+    it('resolves PROCEED — an earnable push, not a reduction', () => {
+      const d = call(1.0, REALISTIC_0921_CONTEXT);
+      expect(d.verdict).toBe('PROCEED');
+      expect(d.because).toContain('14.1%');
+    });
+
+    it('and it is a LOWER-CONFIDENCE push, not a confident one — below what a fully clean week earns', () => {
+      const realisticConfidence = demandStepConfidence(0.14113, REALISTIC_0921_CONTEXT);
+      const cleanConfidence = demandStepConfidence(0.14113, CLEAN_CONTEXT);
+      expect(realisticConfidence).toBeGreaterThanOrEqual(DEMAND_STEP_PUSH_CONFIDENCE_FLOOR);
+      expect(realisticConfidence).toBeLessThan(cleanConfidence);
+      // "Lower-confidence" is meaningful, not a rounding artifact.
+      expect(cleanConfidence - realisticConfidence).toBeGreaterThan(0.02);
+    });
+
+    it('the SAME growth step reduces once the surrounding context turns genuinely poor', () => {
+      // Same +14.1% demand step, same baseline, same target — only the
+      // context changes. This is the falsifying half of the acceptance case:
+      // if this ALSO proceeded regardless of context, the model would not be
+      // reading context at all.
+      const d = call(1.0, DIRTY_CONTEXT);
+      expect(d.verdict).toBe('REDUCE');
+    });
   });
 });
 

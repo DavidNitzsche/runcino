@@ -35,6 +35,17 @@
  * produces; this file reads the actions it is HANDED and runs no detection of
  * its own.
  *
+ * LONG RUN STRUCTURE. `lib/brain/proposal/evidence/long-run-structure.ts`
+ * (LONGRUNSTRUCTURE-1, 2026-09-06) runs ITS OWN detection, unlike SAFETY and
+ * HOLD above — the long run's progression axis has no reshape resolution to
+ * ride on, since `resolveWeekProgression`'s `SessionFamily` never walks a
+ * long run. This is the one section of this file that queries `plan_workouts`
+ * for itself, and it produces a `LONG_RUN_STRUCTURE_CHANGE` on real evidence
+ * or a `HOLD` naming why not — `write.ts` withholds the former under the
+ * 2026-09-02 reshape ruling exactly as it does for the progression pass's own
+ * four session-geometry kinds, which is a decision about SHOWING the card,
+ * not about whether the evidence behind it is real.
+ *
  * ══════════════════════════════════════════════════════════════════════════
  * WHY A HOLD IS WORTH A CARD AT ALL (Rule 17 asked and answered)
  *
@@ -86,7 +97,10 @@ import { rowOrNull } from '@/lib/db/read';
 import { resolveSafety } from '@/lib/safety/load-safety';
 import { safetyStopFrom } from '@/lib/brain/proposal/generate/from-safety';
 import { actionFromAdaptation } from '@/lib/brain/proposal/generate/from-adaptation';
+import { actionFromLongRunStructure } from '@/lib/brain/proposal/generate/from-long-run-structure';
+import { loadLongRunStructureEvidence } from '@/lib/brain/proposal/evidence/long-run-structure';
 import { writeActionProposal } from '@/lib/brain/proposal/write';
+import { readLiveRows, beforeFromLive } from '@/lib/brain/proposal/staleness';
 import type { AdaptationAction } from './adapt';
 import type { BrainAction, RowBefore } from '@/lib/brain/proposal/action';
 
@@ -180,6 +194,48 @@ export async function runActionProposalLane(
   } else {
     const out = await raise(userUuid, todayISO, anchor, held.action, held.why);
     if (out === null) raised += 1; else withheld.push(`HOLD: ${out}`);
+  }
+
+  /* ── 3 · THE LONG RUN'S OWN AXIS · LONGRUNSTRUCTURE-1 (2026-09-06) ────────
+   *
+   * `lib/brain/proposal/evidence/long-run-structure.ts` is the reader
+   * `facets.ts`'s ratchet named missing for `LONG_RUN_STRUCTURE_CHANGE`: has
+   * the runner's recent long runs earned a race-pace finish. This is the
+   * GENERATOR's live caller — the reader is real and the anchor is the long
+   * run it is actually about, never the generic `anchor` above, because a
+   * card about the long run that hangs on Tuesday's tempo would be the wrong
+   * fact attached to the right sentence (Rule 16).
+   *
+   * `write.ts`'s `WRITER_REFUSES` withholds this kind under the 2026-09-02
+   * reshape ruling, so `raise()` below reports it withheld rather than
+   * raised — the same honest outcome the four RESHAPE_GAP kinds already get
+   * from the progression pass. That is not a bug in this wiring; it is the
+   * PROPOSAL_WRITER gap staying exactly as gapped as it was, while the
+   * GENERATOR and EVIDENCE_SOURCE gaps beside it close for real. */
+  const longRunCandidate = await loadLongRunStructureEvidence(userUuid, todayISO);
+  if (longRunCandidate === null) {
+    withheld.push('no upcoming long run to evaluate the structure axis on');
+  } else {
+    const live = await readLiveRows(userUuid, [longRunCandidate.planWorkoutId]);
+    const row = live.get(longRunCandidate.planWorkoutId);
+    if (row === undefined) {
+      withheld.push('LONG_RUN_STRUCTURE: the candidate long run is no longer live');
+    } else {
+      const before = beforeFromLive(live);
+      const longRunAction = actionFromLongRunStructure(longRunCandidate.evidence, before);
+      if (longRunAction === null) {
+        withheld.push(`LONG_RUN_STRUCTURE: ${longRunCandidate.evidence.reason}`);
+      } else {
+        const longRunAnchor: AnchorRow = {
+          planWorkoutId: row.planWorkoutId, dateISO: row.dateISO,
+          type: row.type, distanceMi: row.distanceMi,
+        };
+        const because = longRunAction.kind === 'HOLD' ? longRunAction.because
+          : longRunCandidate.evidence.reason;
+        const out = await raise(userUuid, todayISO, longRunAnchor, longRunAction, because);
+        if (out === null) raised += 1; else withheld.push(`LONG_RUN_STRUCTURE: ${out}`);
+      }
+    }
   }
 
   return { raised, withheld };

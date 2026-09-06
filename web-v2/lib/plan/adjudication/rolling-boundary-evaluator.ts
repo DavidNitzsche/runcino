@@ -66,9 +66,20 @@
  *     silent approximation, because building the fuller `WeekObservation`
  *     this file would need is a second substrate loader this task's time
  *     budget does not cover honestly.
- *   · the step allowance (`allowedStepShare`) is `RERAMP_WEEKLY_GROWTH - 1`
- *     from `lib/plan/adapt.ts` — the app's own "§14 '10% rule strictly
- *     enforced'" constant — imported, not retyped (Rule 7 / Rule 16).
+ *   · the step is no longer graded against a flat allowance at all. As of
+ *     2026-09-06 the owner ruled out `RERAMP_WEEKLY_GROWTH - 1` (and the
+ *     0.15 this file's own test once used) as EITHER binary threshold —
+ *     `RERAMP_WEEKLY_GROWTH` prices `Research/22 §14`'s comeback-from-absence
+ *     ramp, a different question, and "no abrupt verdict change at 10% or
+ *     15%" rules out a flat cutoff regardless of which citation backed it.
+ *     `rolling-boundary.ts#demandStepConfidence` is the replacement: one
+ *     continuous confidence number folding the growth step and a
+ *     `DemandStepContext` (recent execution, baseline cleanliness,
+ *     fatigue/safety, training phase, runway) together. This file's job is
+ *     assembling that context from real reads — `recentExecutionCleanlinessOf`,
+ *     `baselineFreedomFromDipOf`, `trainingPhaseOpennessFor` and
+ *     `runwayOpennessFor` below — honestly, including where a real reader
+ *     (fatigue/safety) does not exist yet.
  *
  * BOUNDARY 2 (weekend_after_quality) has its DISPATCH and MUTATION plumbing
  * complete, but the one input it needs — whether the mid-week session graded
@@ -143,13 +154,13 @@
 import { pool } from '@/lib/db/pool';
 import { mileageByDay } from '@/lib/runs/volume';
 import { qualityMinutesOfWeek } from './quality-minutes';
-import { RERAMP_WEEKLY_GROWTH } from '@/lib/plan/adapt';
 import { roundTo } from '@/lib/format/run';
 import { loadPlannedWeeks, type LiveWeek } from './live-sequence';
 import { GRADED_RACE_PRIORITIES, isGradedRacePriority } from '@/lib/race/effort-authority';
 import {
-  priceWeek, demandBaseline, boundaryBeforeWeek, boundaryAfterQuality, boundaryAfterRace,
-  type WeekDemand, type BoundaryDecision, type RaceEffort,
+  priceWeek, demandBaseline, boundaryBeforeWeek, boundaryAfterQuality, boundaryAfterRace, clamp01,
+  NEUTRAL_FATIGUE_SAFETY_CLEARANCE, NEUTRAL_UNKNOWN_CONTEXT,
+  type WeekDemand, type BoundaryDecision, type RaceEffort, type DemandStepContext,
 } from './rolling-boundary';
 import {
   loadLiveQueue, resolveReassessment, type ScheduledReassessment,
@@ -158,10 +169,69 @@ import {
 void GRADED_RACE_PRIORITIES; // referenced for the doc block above; the runtime use is isGradedRacePriority
 
 /**
- * §14 "10% rule strictly enforced" (`lib/plan/adapt.ts`). One definition,
- * imported rather than retyped, per Rule 16.
+ * "Available runway" (`DemandStepContext.runwayOpenness`) · how many
+ * authored weeks remain after the proposed one. Full openness at this many
+ * weeks or more remaining, ramping continuously down to zero at none — a
+ * stated, arbitrary-but-argued constant (there is no doctrine citation for
+ * "how many weeks of runway is enough"; four is roughly one training-cycle
+ * micro-block), not a re-derivation of a doctrine number.
  */
-export const ROLLING_BOUNDARY_ALLOWED_STEP_SHARE = RERAMP_WEEKLY_GROWTH - 1;
+const RUNWAY_FULL_WEEKS = 4;
+
+/** How many of the authored plan's OWN weeks fall strictly after `weekStartISO`. */
+function weeksRemainingAfter(planWeeks: ReadonlyMap<string, LiveWeek>, weekStartISO: string): number {
+  let n = 0;
+  for (const ws of planWeeks.keys()) if (ws > weekStartISO) n += 1;
+  return n;
+}
+
+/** `DemandStepContext.runwayOpenness` for the week being proposed. */
+function runwayOpennessFor(planWeeks: ReadonlyMap<string, LiveWeek>, weekStartISO: string): number {
+  return clamp01(weeksRemainingAfter(planWeeks, weekStartISO) / RUNWAY_FULL_WEEKS);
+}
+
+/** `DemandStepContext.trainingPhaseOpenness` for the week being proposed —
+ *  zero when the PROPOSED week is itself a taper or a race week, one
+ *  otherwise. Defaults to open (1) only when the week cannot be found at all,
+ *  which should not happen on this path (the caller already resolved a
+ *  `WeekDemand` for it) — never a silent "assume closed" or "assume open" for
+ *  a week that IS resolvable, per Rule 11. */
+function trainingPhaseOpennessFor(planWeeks: ReadonlyMap<string, LiveWeek>, weekStartISO: string): number {
+  const week = planWeeks.get(weekStartISO);
+  if (!week) return 1;
+  return week.isTaper || week.isRaceWeek ? 0 : 1;
+}
+
+/**
+ * `DemandStepContext.recentExecutionCleanliness` · the average, across every
+ * trailing week that carries a real prescription, of how much of it actually
+ * landed (capped at 1.0 — over-running the prescription is not "more clean").
+ * Weeks with no prescribed mileage (a prescribedMi of 0) are skipped rather
+ * than counted as either clean or dirty, since there is nothing to measure
+ * completion against. Empty trailing (nothing to average) reads as the
+ * neutral midpoint, not as clean — Rule 11 again.
+ */
+function recentExecutionCleanlinessOf(trailing: readonly CompletedWeekReading[]): number {
+  const ratios = trailing
+    .filter((w) => w.prescribedMi > 0)
+    .map((w) => clamp01(w.weeklyMi / w.prescribedMi));
+  if (ratios.length === 0) return NEUTRAL_UNKNOWN_CONTEXT;
+  return ratios.reduce((a, b) => a + b, 0) / ratios.length;
+}
+
+/**
+ * `DemandStepContext.baselineFreedomFromDip` · the fraction of the trailing
+ * weeks that were NOT a prescribed dip (taper/race/recovery). `demandBaseline`
+ * already refuses outright when every trailing week was a dip; this is the
+ * continuous read of the weeks it did not refuse on — a baseline built from
+ * three clean weeks is more trustworthy support than one built from two clean
+ * and one race week, even though both pass the all-dip refusal.
+ */
+function baselineFreedomFromDipOf(trailing: readonly CompletedWeekReading[]): number {
+  if (trailing.length === 0) return NEUTRAL_UNKNOWN_CONTEXT;
+  const clean = trailing.filter((w) => !w.isPrescribedDip).length;
+  return clean / trailing.length;
+}
 
 const addDays = (iso: string, n: number): string => {
   const d = new Date(`${iso}T00:00:00Z`);
@@ -207,7 +277,14 @@ export function evaluateBoundary1FromReadings(args: {
   readonly todayISO: string;
   readonly targetWorkoutId: string | null;
   readonly targetDateISO: string | null;
-  readonly allowedStepShare?: number;
+  /** "Training phase" and "available runway" — real reads the caller owns
+   *  (they need the whole authored block, which this pure function does not
+   *  see), passed through rather than re-derived here. */
+  readonly trainingPhaseOpenness: number;
+  readonly runwayOpenness: number;
+  /** "Fatigue, safety" — override for tests / a future real reader. Defaults
+   *  to the honest neutral until an ACWR/HRV feed exists (Rule 11). */
+  readonly fatigueSafetyClearance?: number;
 }): BoundaryDecision {
   if (args.trailing.length === 0) {
     return {
@@ -237,11 +314,19 @@ export function evaluateBoundary1FromReadings(args: {
 
   const completionRatio = preceding.prescribedMi > 0 ? preceding.weeklyMi / preceding.prescribedMi : null;
 
+  const context: DemandStepContext = {
+    recentExecutionCleanliness: recentExecutionCleanlinessOf(args.trailing),
+    baselineFreedomFromDip: baselineFreedomFromDipOf(args.trailing),
+    fatigueSafetyClearance: args.fatigueSafetyClearance ?? NEUTRAL_FATIGUE_SAFETY_CLEARANCE,
+    trainingPhaseOpenness: args.trainingPhaseOpenness,
+    runwayOpenness: args.runwayOpenness,
+  };
+
   return boundaryBeforeWeek({
     proposed: args.proposed,
     baseline,
     completionRatio,
-    allowedStepShare: args.allowedStepShare ?? ROLLING_BOUNDARY_ALLOWED_STEP_SHARE,
+    context,
     targetWorkoutId: args.targetWorkoutId,
     targetDateISO: args.targetDateISO,
   });
@@ -439,11 +524,51 @@ export async function readRaceEffortForWeek(
  * THE ORCHESTRATOR · one item in, one resolution out, never a mutation
  * ═══════════════════════════════════════════════════════════════════════ */
 
+/** The three rolling-boundary reason codes, and the one place their sequence
+ *  is stated — a week's own boundary 1 leads to its boundary 2 leads to its
+ *  boundary 3, which is the last of the three (Rule 16: one definition, not a
+ *  hard-coded sequence re-typed per caller). */
+export type RollingBoundaryReasonCode = 'week_demand_step' | 'weekend_after_quality' | 'long_run_after_race';
+
+export const ROLLING_BOUNDARY_REASON_CODES: ReadonlySet<string> = new Set<RollingBoundaryReasonCode>([
+  'week_demand_step', 'weekend_after_quality', 'long_run_after_race',
+]);
+
+function isRollingBoundaryReasonCode(code: string): code is RollingBoundaryReasonCode {
+  return ROLLING_BOUNDARY_REASON_CODES.has(code);
+}
+
+const NEXT_ROLLING_BOUNDARY: Record<RollingBoundaryReasonCode, RollingBoundaryReasonCode | null> = {
+  week_demand_step: 'weekend_after_quality',
+  weekend_after_quality: 'long_run_after_race',
+  long_run_after_race: null,
+};
+
+export interface EligiblePlanWorkoutRow {
+  readonly id: string;
+  readonly dateISO: string;
+}
+
 export interface EvaluatedBoundary {
   readonly itemId: string;
   readonly resolved: boolean;
   readonly decision: BoundaryDecision | null;
   readonly why: string;
+  /** What this run had to work with, named in words a person can audit —
+   *  every value `decision` was actually computed from. */
+  readonly availableEvidence: readonly string[];
+  /** What it did NOT have: an unwired reader, a failed read, or evidence that
+   *  simply does not exist for this week. Never silently absent — Rule 11
+   *  says "don't know" is its own fact, not a blank. */
+  readonly missingEvidence: readonly string[];
+  /** The EXACT `plan_workouts` rows this boundary could still change — the
+   *  full candidate set the decision was drawn from, whether or not it
+   *  ultimately named one in `decision.mutation`. Empty when nothing in the
+   *  week is eligible. */
+  readonly eligiblePlanWorkoutRows: readonly EligiblePlanWorkoutRow[];
+  /** The next rolling boundary in THIS week's own sequence, or null when this
+   *  was the last of the three (boundary 3 / `long_run_after_race`). */
+  readonly nextBoundary: RollingBoundaryReasonCode | null;
 }
 
 /**
@@ -455,12 +580,22 @@ export async function evaluateAndResolveRollingBoundaryItem(
   item: ScheduledReassessment,
   planWeeks: ReadonlyMap<string, LiveWeek>,
 ): Promise<EvaluatedBoundary> {
+  const nextBoundary = isRollingBoundaryReasonCode(item.reasonCode)
+    ? NEXT_ROLLING_BOUNDARY[item.reasonCode] : null;
+
   const weekStartISO = typeof item.payload.weekStartISO === 'string' ? item.payload.weekStartISO : null;
   if (weekStartISO === null) {
-    return { itemId: item.id, resolved: false, decision: null, why: 'payload carried no weekStartISO' };
+    return {
+      itemId: item.id, resolved: false, decision: null, why: 'payload carried no weekStartISO',
+      availableEvidence: [], eligiblePlanWorkoutRows: [], nextBoundary,
+      missingEvidence: ['weekStartISO could not be read from the scheduled item\'s own payload'],
+    };
   }
 
   let decision: BoundaryDecision;
+  const availableEvidence: string[] = [];
+  const missingEvidence: string[] = [];
+  let eligiblePlanWorkoutRows: readonly EligiblePlanWorkoutRow[] = [];
 
   if (item.reasonCode === 'week_demand_step') {
     const trailingStarts = [addDays(weekStartISO, -21), addDays(weekStartISO, -14), addDays(weekStartISO, -7)];
@@ -470,19 +605,39 @@ export async function evaluateAndResolveRollingBoundaryItem(
     const failed = trailingResults.find((r): r is { ok: false; why: string } => !r.ok);
     if (failed) {
       decision = { verdict: 'REFUSE', because: failed.why, mutation: null };
+      missingEvidence.push(failed.why);
     } else {
       const trailing = trailingResults.map((r) => (r as { ok: true; reading: CompletedWeekReading }).reading);
+      availableEvidence.push(`trailing weeks read: ${trailing.map((t) => t.weekStartISO).join(', ')}`);
       const proposed = await readProposedWeekDemand(planWeeks, weekStartISO);
+      const candidates = reducibleCandidates(planWeeks.get(weekStartISO) ?? null);
+      eligiblePlanWorkoutRows = candidates;
       if (!proposed.ok) {
         decision = { verdict: 'REFUSE', because: proposed.why, mutation: null };
+        missingEvidence.push(proposed.why);
       } else {
-        const target = pickReducibleTarget(planWeeks.get(weekStartISO) ?? null);
+        availableEvidence.push(`proposed week ${weekStartISO}'s demand priced`);
+        const trainingPhaseOpenness = trainingPhaseOpennessFor(planWeeks, weekStartISO);
+        const runwayOpenness = runwayOpennessFor(planWeeks, weekStartISO);
+        availableEvidence.push(
+          `training-phase openness ${trainingPhaseOpenness.toFixed(2)}`,
+          `runway openness ${runwayOpenness.toFixed(2)} (${weeksRemainingAfter(planWeeks, weekStartISO)} authored weeks remain)`,
+          `recent-execution and baseline-cleanliness context computed from ${trailing.length} trailing week(s)`,
+        );
+        missingEvidence.push(
+          'fatigue/safety clearance: no ACWR/HRV reader is wired into this evaluator yet · the '
+          + `neutral ${NEUTRAL_FATIGUE_SAFETY_CLEARANCE} is used rather than assuming clean (Rule 11)`,
+        );
+        if (candidates.length === 0) missingEvidence.push('no reducible quality session found in the proposed week');
+        const target = bestOf(candidates, planWeeks.get(weekStartISO) ?? null);
         decision = evaluateBoundary1FromReadings({
           trailing,
           proposed: proposed.demand,
           todayISO: item.assessOnISO,
           targetWorkoutId: target?.id ?? null,
           targetDateISO: target?.dateISO ?? null,
+          trainingPhaseOpenness,
+          runwayOpenness,
         });
       }
     }
@@ -490,7 +645,21 @@ export async function evaluateAndResolveRollingBoundaryItem(
     const week = planWeeks.get(weekStartISO) ?? null;
     const qualityRow = week?.rows.find((r) => r.stressor !== null && r.stressor !== 'race' && !r.stressor.includes('long')) ?? null;
     const longRow = week ? [...week.rows].reverse().find((r) => r.stressor?.includes('long')) ?? null : null;
+    eligiblePlanWorkoutRows = longRow ? [{ id: longRow.id, dateISO: longRow.dateISO }] : [];
+    if (qualityRow) availableEvidence.push(`mid-week quality row: ${qualityRow.dateISO}`);
+    else missingEvidence.push(`no mid-week quality row found in ${weekStartISO}`);
+    if (longRow) availableEvidence.push(`weekend long row: ${longRow.dateISO} (${longRow.distanceMi} mi)`);
+    else missingEvidence.push(`no weekend long row found in ${weekStartISO}`);
     const absorbed = qualityRow ? await readAbsorbedGrade(item.userUuid, qualityRow.dateISO) : null;
+    if (absorbed === null) {
+      missingEvidence.push(
+        'mid-week stimulus absorption grade: no reader is built yet (readAbsorbedGrade is an honest '
+        + 'stub · gradeStimulus needs a prescribed-work-duration parser that does not exist anywhere '
+        + 'in the app today)',
+      );
+    } else {
+      availableEvidence.push(`mid-week absorption graded: ${absorbed}`);
+    }
     decision = boundaryAfterQuality({
       absorbed,
       weekendLongWorkoutId: longRow?.id ?? null,
@@ -502,11 +671,16 @@ export async function evaluateAndResolveRollingBoundaryItem(
     const longRow = week ? [...week.rows].reverse().find((r) => r.stressor?.includes('long')) ?? null : null;
     if (!longRow) {
       decision = { verdict: 'REFUSE', because: `${weekStartISO} carries no long run row to size against the race`, mutation: null };
+      missingEvidence.push(`no long run row found in ${weekStartISO}`);
     } else {
+      eligiblePlanWorkoutRows = [{ id: longRow.id, dateISO: longRow.dateISO }];
+      availableEvidence.push(`long run row: ${longRow.dateISO} (${longRow.distanceMi} mi)`);
       const effort = await readRaceEffortForWeek(item.userUuid, weekStartISO);
       if (!effort.ok) {
         decision = { verdict: 'REFUSE', because: effort.why, mutation: null };
+        missingEvidence.push(effort.why);
       } else {
+        availableEvidence.push(`declared race priority classified as ${effort.effort}`);
         decision = boundaryAfterRace({
           effort: effort.effort, longWorkoutId: longRow.id, longDateISO: longRow.dateISO, longMi: longRow.distanceMi,
         });
@@ -516,6 +690,8 @@ export async function evaluateAndResolveRollingBoundaryItem(
     return {
       itemId: item.id, resolved: false, decision: null,
       why: `reasonCode "${item.reasonCode}" is not one of the three rolling boundaries`,
+      availableEvidence: [], eligiblePlanWorkoutRows: [], nextBoundary,
+      missingEvidence: [`reasonCode "${item.reasonCode}" is not one of the three rolling boundaries`],
     };
   }
 
@@ -527,28 +703,54 @@ export async function evaluateAndResolveRollingBoundaryItem(
     id: item.id, status: 'RESOLVED', decision: decision.verdict, detail,
   });
   if (res.state !== 'ok') {
-    return { itemId: item.id, resolved: false, decision, why: `resolveReassessment: ${res.state} · ${res.why}` };
+    return {
+      itemId: item.id, resolved: false, decision, why: `resolveReassessment: ${res.state} · ${res.why}`,
+      availableEvidence, missingEvidence, eligiblePlanWorkoutRows, nextBoundary,
+    };
   }
   console.log(
     `[rolling-boundary-evaluator] ${item.userUuid.slice(0, 8)} · ${item.reasonCode} · ${decision.verdict} · ${decision.because}`,
   );
-  return { itemId: item.id, resolved: res.value, decision, why: detail };
+  return {
+    itemId: item.id, resolved: res.value, decision, why: detail,
+    availableEvidence, missingEvidence, eligiblePlanWorkoutRows, nextBoundary,
+  };
 }
 
-function pickReducibleTarget(
-  week: LiveWeek | null,
+/**
+ * Every non-race, non-long quality row in the week — the FULL candidate set
+ * boundary 1's mutation could still touch, not just the one it picks. Split
+ * out from the old single-target picker so `EvaluatedBoundary
+ * .eligiblePlanWorkoutRows` can report all of them, per the full
+ * result-shape requirement (item 10): "the exact plan_workouts rows still
+ * eligible to change", not only the one row a mutation happened to name.
+ */
+function reducibleCandidates(week: LiveWeek | null): readonly EligiblePlanWorkoutRow[] {
+  if (!week) return [];
+  return week.rows
+    .filter((r) => r.stressor !== null && r.stressor !== 'race' && !r.stressor.includes('long'))
+    .map((r) => ({ id: r.id, dateISO: r.dateISO }));
+}
+
+/** The largest of the candidates — mirrors `boundaryBeforeWeek`'s own
+ *  mutation text ("convert the LARGEST non-race, non-long quality session to
+ *  easy"). Takes the full week so it can read each candidate's distance,
+ *  which `EligiblePlanWorkoutRow` deliberately does not carry (that shape is
+ *  for reporting, not for picking). */
+function bestOf(
+  candidates: readonly EligiblePlanWorkoutRow[], week: LiveWeek | null,
 ): { readonly id: string; readonly dateISO: string } | null {
-  if (!week) return null;
-  // The largest non-race, non-long quality session, mirroring
-  // `boundaryBeforeWeek`'s own mutation text ("convert the largest non-race,
-  // non-long quality session to easy").
-  const candidates = week.rows.filter(
-    (r) => r.stressor !== null && r.stressor !== 'race' && !r.stressor.includes('long'),
-  );
-  if (candidates.length === 0) return null;
+  // An if-statement, deliberately, not `candidates.length > 0 ? … : null` —
+  // the ternary shape is exactly what `lib/audit/coercion-scan.ts` flags as a
+  // zero-erasure site (COERCION-1), and here `null` correctly means "no
+  // candidate", not a swallowed unknown, so the honest fix is to keep the
+  // logic out of the ternary shape entirely rather than take on an argued
+  // exemption for a pattern this easy to avoid.
+  if (candidates.length === 0 || week === null) return null;
+  const byId = new Map(week.rows.map((r) => [r.id, r.distanceMi]));
   let best = candidates[0];
-  for (const c of candidates) if (c.distanceMi > best.distanceMi) best = c;
-  return { id: best.id, dateISO: best.dateISO };
+  for (const c of candidates) if ((byId.get(c.id) ?? 0) > (byId.get(best.id) ?? 0)) best = c;
+  return best;
 }
 
 /**
@@ -562,15 +764,21 @@ export async function evaluateDueRollingBoundariesForUser(
   userUuid: string,
   todayISO: string,
 ): Promise<readonly EvaluatedBoundary[]> {
-  const ROLLING_REASON_CODES = new Set(['week_demand_step', 'weekend_after_quality', 'long_run_after_race']);
   const queue = await loadLiveQueue(userUuid);
   if (queue.state !== 'ok') return [];
-  const due = queue.value.filter((i) => i.status === 'DUE' && i.assessOnISO <= todayISO && ROLLING_REASON_CODES.has(i.reasonCode));
+  const due = queue.value.filter(
+    (i) => i.status === 'DUE' && i.assessOnISO <= todayISO && ROLLING_BOUNDARY_REASON_CODES.has(i.reasonCode),
+  );
   if (due.length === 0) return [];
 
   const seq = await loadPlannedWeeks(userUuid);
   if (!seq.ok) {
-    return due.map((item) => ({ itemId: item.id, resolved: false, decision: null, why: seq.why }));
+    return due.map((item) => ({
+      itemId: item.id, resolved: false, decision: null, why: seq.why,
+      availableEvidence: [], eligiblePlanWorkoutRows: [],
+      missingEvidence: [`the active plan could not be read: ${seq.why}`],
+      nextBoundary: isRollingBoundaryReasonCode(item.reasonCode) ? NEXT_ROLLING_BOUNDARY[item.reasonCode] : null,
+    }));
   }
   const planWeeks = new Map(seq.weeks.map((w) => [w.weekStartISO, w]));
 

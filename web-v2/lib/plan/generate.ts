@@ -2388,7 +2388,15 @@ async function recentQualityPerWeek(
  * can honestly be derived. Those keep the legacy permissive path. A runner we
  * CAN measure gets their measured number, however small.
  */
-async function derivedTrainingDaysPerWeek(userId: string, todayISO: string): Promise<number | null> {
+/* EXPORTED 2026-09-06 (ADDFREQ-EVIDENCE-1) · `lib/brain/proposal/evidence-
+ * facet.ts`'s `EVIDENCE_REGISTRY` names this as the reader behind
+ * `ADD_WORKOUT` and `FREQUENCY_CHANGE`'s frequency question ("how many days a
+ * week is this runner actually absorbing"). It was already the canonical
+ * answer to that question — Rule-8-filtered, rank-3-over-16-weeks, live on the
+ * authoring path since DERIVEDFREQ-1 — and simply was not exported for
+ * anything outside this file to cite. No behaviour changes; this is visibility
+ * only. */
+export async function derivedTrainingDaysPerWeek(userId: string, todayISO: string): Promise<number | null> {
   const { isoDaysBefore } = await import('@/lib/runs/volume');
   const WINDOW_DAYS = RAMP_BASE_LOOKBACK_WEEKS * 7;
   const r = await rowOrNull<{ days: string | null }>(

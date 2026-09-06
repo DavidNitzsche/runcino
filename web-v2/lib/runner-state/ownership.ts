@@ -890,6 +890,26 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
       notRoutedBecause: 'Building the reader is engine work with a corpus '
         + 'consequence, and Rule 15 says the fixture type has to be able to '
         + 'express the input before the mechanism can be tested at all.',
+      /**
+       * VERIFIED 2026-09-06 (closure pass, no owner built). Still no owner:
+       * `lib/execution/reconstruct.ts#actualStimulus` computes exactly the
+       * per-run shape a minimal reader would aggregate over
+       * ({domain, workMi, workMinutes}, one call per completed run), but
+       * nothing walks history and takes a MAX by domain — that aggregator
+       * genuinely does not exist anywhere in the tree. NOT built here: doing
+       * it honestly needs a decision this session cannot make alone —
+       * whether it is a lifetime max, a rolling-window max (and what
+       * window), and whether Rule 8's taper/recovery exclusion applies to a
+       * MAX read the way it applies to a MEAN one (the corollary says a
+       * spike-anchor question stays literal; a habit question is filtered —
+       * "biggest session ever completed" reads as the former, but nobody
+       * has argued it). Building it wrong would be worse than the refusal:
+       * `athleteEvidenceFor`'s cold-start branch already gates correctly on
+       * `demonstratedMaxToday === null` (Rule 11 verified — the slot reads
+       * as absent, never coerced to zero), so every reader that reaches for
+       * this belief today gets the same honest refusal rather than each
+       * inventing its own guess. That is the state Rule 11 calls valid.
+       */
     },
     movesUpOn: [
       {
@@ -1678,6 +1698,22 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
       notRoutedBecause: 'Naming one resolver means picking one vocabulary, '
         + 'and the vocabularies are not translations of each other. That is '
         + 'a Plan Generator decision with reach into the workout library.',
+      /**
+       * VERIFIED 2026-09-06 (closure pass, no owner built). Re-checked the
+       * one candidate the task named directly:
+       * `lib/plan/catalogue-rx.ts#doctrinePhasesForWeek` is NOT a missed
+       * canonical owner — it takes `enginePhase` as a CALLER-SUPPLIED
+       * argument (a vocabulary mapper, engine's 4 labels -> doctrine's 5),
+       * never resolving "today's phase" from a date or week index itself.
+       * Confirmed accurate against ownership.ts's own description of it. No
+       * other candidate found under lib/plan, lib/coach or
+       * lib/workout-catalogue that resolves a CURRENT phase from a date
+       * rather than converting one already given. Still no owner, and the
+       * five-reader / two-week-index-resolution finding above stands
+       * unchanged: building `resolveCurrentPhase` means picking a
+       * vocabulary among three that are not translations of each other,
+       * which is the Plan Generator's call, not a registry entry.
+       */
     },
     movesUpOn: [],
     movesDownOn: [],

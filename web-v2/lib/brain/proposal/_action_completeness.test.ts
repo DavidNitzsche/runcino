@@ -108,6 +108,8 @@ import { actionFromAdaptation } from './generate/from-adaptation';
 import { actionFromReprice } from './generate/from-reprice';
 import { refusalFromSeal, holdFor } from './generate/from-seal';
 import { safetyStopFrom } from './generate/from-safety';
+import { actionFromLongRunStructure } from './generate/from-long-run-structure';
+import { resolveLongRunStructureEvidence } from './evidence/long-run-structure';
 
 /** `web-v2/`, so the registry's repo-relative paths resolve. */
 const WEB = join(__dirname, '..', '..', '..');
@@ -964,7 +966,11 @@ describe('GUARD 2 · GENERATOR · every kind is emitted by something live', () =
     // Falsifiable, and deliberately an equality rather than a floor: closing a
     // gap must be a deliberate edit to this line, so nobody can quietly ADD a
     // generator without also arguing it, and nobody can quietly lose one.
-    expect(emitted.length, `emitted kinds: ${emitted.join(', ')}`).toBe(13);
+    // 13 → 14 (LONGRUNSTRUCTURE-1, 2026-09-06): LONG_RUN_STRUCTURE_CHANGE now
+    // has a real generator (`lib/brain/proposal/generate/from-long-run-
+    // structure.ts`), reached live from `action-proposal-lane.ts`'s third
+    // section.
+    expect(emitted.length, `emitted kinds: ${emitted.join(', ')}`).toBe(14);
   });
 
   /* ── the generators, driven for real ─────────────────────────────────── */
@@ -1101,6 +1107,70 @@ describe('GUARD 2 · GENERATOR · every kind is emitted by something live', () =
     // The sentence comes from the safety owner's own renderer, so no second
     // description of one injury can appear.
     expect(stop!.kind === 'SAFETY_STOP' && stop!.because).toContain('Rest, not run');
+  });
+
+  it('the long-run structure reader proposes a finish only when the last two long runs held together', () => {
+    const cleanSample = (dateISO: string) => ({
+      dateISO,
+      prescribedMi: 16,
+      completedMi: 16,
+      middlePaceSecPerMi: 540,
+      finalPaceSecPerMi: 538,
+      middleHrBpm: 150,
+      finalHrBpm: 151,
+    });
+
+    const clean = resolveLongRunStructureEvidence({
+      nextLongRunSubLabel: null,
+      nextLongRunMi: 16,
+      recent: [cleanSample('2026-08-24'), cleanSample('2026-08-31')],
+    });
+    expect(clean.decision).toBe('PROPOSE');
+    expect(clean.proposedSubLabel).toMatch(/^LONG · \dmi @ M$/);
+    const proposed = actionFromLongRunStructure(clean, [BEFORE]);
+    expect(proposed?.kind).toBe('LONG_RUN_STRUCTURE_CHANGE');
+    expect(proposed?.direction).toBe('MORE');
+
+    // Already carries a segment · this axis has already moved, so HOLD.
+    const already = resolveLongRunStructureEvidence({
+      nextLongRunSubLabel: 'LONG · 4mi @ M',
+      nextLongRunMi: 16,
+      recent: [cleanSample('2026-08-24'), cleanSample('2026-08-31')],
+    });
+    expect(already.decision).toBe('HOLD');
+    expect(actionFromLongRunStructure(already, [BEFORE])?.kind).toBe('HOLD');
+
+    // A deteriorated finish is exactly what a harder finish would test hardest.
+    const deteriorated = resolveLongRunStructureEvidence({
+      nextLongRunSubLabel: null,
+      nextLongRunMi: 16,
+      recent: [
+        cleanSample('2026-08-24'),
+        {
+          ...cleanSample('2026-08-31'),
+          finalPaceSecPerMi: 590,
+          middleHrBpm: 148,
+          finalHrBpm: 162,
+        },
+      ],
+    });
+    expect(deteriorated.decision).toBe('HOLD');
+    expect(actionFromLongRunStructure(deteriorated, [BEFORE])?.kind).toBe('HOLD');
+
+    // Not enough long runs on record · a data problem, not a coaching call.
+    const thin = resolveLongRunStructureEvidence({
+      nextLongRunSubLabel: null,
+      nextLongRunMi: 16,
+      recent: [cleanSample('2026-08-31')],
+    });
+    expect(thin.decision).toBe('REFUSE');
+    expect(actionFromLongRunStructure(thin, [BEFORE])).toBeNull();
+
+    // No upcoming long run at all · nothing to attach a finish to.
+    const none = resolveLongRunStructureEvidence({
+      nextLongRunSubLabel: null, nextLongRunMi: 0, recent: [],
+    });
+    expect(none.decision).toBe('HOLD');
   });
 });
 

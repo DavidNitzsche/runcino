@@ -490,10 +490,23 @@ export const QUANTITY_OWNERSHIP: Readonly<Record<QuantityId, QuantityOwnership>>
           + 'than the composer will pay for. The two agree exactly below the '
           + 'hinge, which is why it has never been visible on a mid-mileage '
           + 'runner.',
-        closesWhen: 'sessionAllowanceMi is deleted and the selector reads '
-          + 'atPaceSessionCapMi. It is one call and it is safe; it is not '
-          + 'done here only because the selector\'s affordability gate is '
-          + 'corpus-tested and belongs to the workout-library owner.',
+        closesWhen: 'CORRECTED 2026-09-06 (DOSE-OWNER-1) · this used to read '
+          + '"one call and it is safe." It is not, and the unsafety was '
+          + 'measured rather than assumed: routing sessionAllowanceMi to '
+          + 'atPaceSessionCapMi makes `3x3mi-at-hm` (Research/04 §14.3, 9 mi '
+          + 'at HM pace, `race_specific` family) permanently unreachable — '
+          + '`_reachability.test.ts` names it by slug. `capFamilyOf` prices '
+          + 'every `race_specific`/`marathon_specific` entry against the '
+          + 'plain threshold/interval/repetition cell, but AT_PACE_SESSION_MI '
+          + '\'s absolute band (§5.1\'s "4-8 mi") is stated for CRUISE '
+          + 'INTERVALS specifically, not the whole zone — so the OWNER itself '
+          + 'over-generalises for exactly the two families this divergence\'s '
+          + '`why` does not mention. Closing this needs `atPaceSessionCapMi` '
+          + '(or `capFamilyOf`) to distinguish "this cap family\'s zone" from '
+          + '"this cap family\'s flagship workout" first — a doctrine-scope '
+          + 'call, not a wiring one. See `lib/workout-catalogue/select.ts '
+          + '#sessionAllowanceMi`\'s own header for the attempted-and-reverted '
+          + 'migration.',
       },
     ],
   },

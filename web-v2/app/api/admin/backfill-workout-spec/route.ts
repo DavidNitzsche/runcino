@@ -260,6 +260,38 @@ export async function POST(req: NextRequest) {
       const writeSpecs = async (tx: { query: typeof pool.query }): Promise<number> => {
         let n = 0;
         for (const row of rows) {
+          // GOALPACELEAK-1 (2026-09-06) · `goalPaceSPerMi` reaches
+          // `buildWorkoutSpec` UNCONDITIONALLY, whatever `row.type` is. The
+          // comment two lines up (and `spec-builder.ts`'s own parameter doc,
+          // "Only the 'race' branch reads it") says that is safe — it is not:
+          // `spec-builder.ts`'s marathon-pace branch
+          // (`marathonPaceSPerMi({ tPaceSec, easyAnchorTSec, goalPaceSPerMi })`,
+          // reached whenever this route's positional call carries no `anchors`
+          // argument, which it never does) reads it too, for every `type ===
+          // 'long'` row with an MP finish. That is the goal reaching a
+          // TRAINING pace — Constitution §G, the exact shape
+          // `lib/runner-state/quantity-owners.ts` MARATHON_PACE_DOSE names as
+          // "the LAST GOAL-SHAPED SIDE DOOR in the engine" — and
+          // `check-goal-pace-leak.sh`'s text scan cannot see it: the pattern
+          // matches `goalPaceSPerMi:` in an object literal, and this call
+          // passes it positionally.
+          //
+          // `type === 'race'` is the ONLY branch in `spec-builder.ts` this
+          // route legitimately needs the goal for (`case 'race':`'s abort
+          // anchor, Constitution §J — a race day IS priced from the stated
+          // goal). Every other type gets `null`, which is `buildWorkoutSpec`'s
+          // own documented default and byte-identical to what every other
+          // anchorless caller in the engine already passes
+          // (`generate.ts`/`progression-pass.ts`/`seed-from-onboarding.ts` all
+          // pass `null` here — this route was the one place that did not).
+          //
+          // Not currently live-exploitable: this file's own 2026-08-24 audit
+          // found every null-spec row on an active plan is `type='rest'`
+          // (skipped below regardless), so today's run touches zero 'long'
+          // rows. Fixed anyway because the NEXT null-spec 'long' row this
+          // route ever backfills should not silently write a goal-derived
+          // marathon pace into a training plan's persisted record.
+          const goalPaceForRow = row.type === 'race' ? goalPaceSPerMi : null;
           // THE canonical builder — same call shape the generator uses
           // (lib/plan/generate.ts, persistPlan).
           const { spec } = buildWorkoutSpec(
@@ -269,7 +301,7 @@ export async function POST(req: NextRequest) {
             lthr,
             row.sub_label,
             maxHr,
-            goalPaceSPerMi,
+            goalPaceForRow,
           );
           if (spec === null) continue;   // null-spec types (rest/cross/strength) — leave as NULL
           if (!dry) {

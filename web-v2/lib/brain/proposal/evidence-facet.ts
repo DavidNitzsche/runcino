@@ -111,16 +111,53 @@ export const EVIDENCE_REGISTRY: Readonly<Record<ActionKind, EvidenceRef | null>>
   REPETITION_CHANGE: PROGRESSION('the rep count the weekly gate resolved for this session'),
   RECOVERY_INTERVAL_CHANGE: PROGRESSION('the jog between reps the weekly gate resolved'),
   QUALITY_DOSE_CHANGE: PROGRESSION('total minutes at pace, as the weekly gate resolved them'),
-  LONG_RUN_STRUCTURE_CHANGE: null,
+  /* CLOSED 2026-09-06 (LONGRUNSTRUCTURE-1). A verdict on the long run's own
+   * SHAPE — completion and late-session fade on the last two long runs — which
+   * is the same conceptual question `PROGRESSION_GATE` already names for the
+   * three quality families, on a different session type the quality gate
+   * cannot reach. Built independently of the distance lever's own bar
+   * (`lib/adaptation/canonical/levers/long-run.ts`) rather than importing it:
+   * `lib/brain/**` may reach `lib/adaptation/canonical/**` only through
+   * `lib/brain/orchestration/canonical-phase.ts`, so this reader restates the
+   * same doctrine numbers by value instead — see the module's own header. */
+  LONG_RUN_STRUCTURE_CHANGE: {
+    family: 'PROGRESSION_GATE',
+    module: 'lib/brain/proposal/evidence/long-run-structure.ts',
+    symbol: 'resolveLongRunStructureEvidence',
+    measures: 'whether the last two long runs were completed and held their effort to the finish, '
+      + 'and whether the upcoming one already carries a race-pace segment',
+  },
   WORKOUT_TYPE_CHANGE: {
     family: 'DETECTION_PASS',
     module: 'lib/plan/adapt.ts',
     symbol: 'detectAdaptations',
     measures: 'a readiness or fatigue reading that says this session should not be quality today',
   },
-  ADD_WORKOUT: null,
+  /* CLOSED 2026-09-06 (ADDFREQ-EVIDENCE-1). `derivedTrainingDaysPerWeek` was
+   * already the canonical, Rule-8-filtered answer to "how many days a week is
+   * this runner actually absorbing" — the rank-3-over-16-weeks reader
+   * `lib/runner-state/ownership.ts`'s RUN_FREQUENCY_TOLERANCE entry names as
+   * canonical for exactly this question, live on the authoring path since
+   * 2026-08-30 and simply never exported for a proposal reader to cite. This
+   * closes the EVIDENCE_SOURCE gap only: nothing yet compares this reading
+   * against what the plan currently schedules and turns the gap into a
+   * session (the GENERATOR gap, below and in `facets.ts`, is the composer-
+   * wiring blocker and is unaffected by this). */
+  ADD_WORKOUT: {
+    family: 'VOLUME_EVIDENCE',
+    module: 'lib/plan/generate.ts',
+    symbol: 'derivedTrainingDaysPerWeek',
+    measures: 'the rank-3 highest distinct-run-day count over the last 16 seven-day blocks — a '
+      + 'Rule 8-filtered ceiling on how many days a week this runner actually runs',
+  },
   REMOVE_WORKOUT: null,
-  FREQUENCY_CHANGE: null,
+  FREQUENCY_CHANGE: {
+    family: 'VOLUME_EVIDENCE',
+    module: 'lib/plan/generate.ts',
+    symbol: 'derivedTrainingDaysPerWeek',
+    measures: 'the rank-3 highest distinct-run-day count over the last 16 seven-day blocks — the same '
+      + 'reading ADD_WORKOUT cites, compared against the plan\'s currently authored day count',
+  },
   RESCHEDULE: {
     family: 'DETECTION_PASS',
     module: 'lib/plan/adapt.ts',

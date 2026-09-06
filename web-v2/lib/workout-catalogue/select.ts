@@ -189,6 +189,41 @@ export function capFamilyOf(entry: CatalogueEntry): CapFamily | null {
  * mi/wk runner be handed §11.4's pre-fatigue MP work, "8 mi easy + immediate 8
  * mi MP": sixteen miles, eighty percent of the runner's week, and inside the
  * bound. `_select.test.ts` caught it. A bound that permits that is not a bound.
+ *
+ * DOSE-OWNER-1 (2026-09-06) · TRIED AND REVERTED — SEE THIS COMMENT BEFORE
+ * TRYING AGAIN. `lib/runner-state/quantity-owners.ts` THRESHOLD_DOSE names
+ * `lib/prescription/levers.ts#atPaceSessionCapMi` OWNER and this function
+ * SECOND, because this spends only doctrine's percentage cap
+ * (`AT_PACE_WEEKLY_SHARE_CAP`) and never the absolute band beside it
+ * (`AT_PACE_SESSION_MI`, §5.1/§6.1/§7.1's "4-8 mi" / "3-6 mi" / "0.99-4.97
+ * mi" cells), and its own `closesWhen` calls routing this function to the
+ * owner "one call and it is safe."
+ *
+ * It is not safe as written, and the unsafety is a real doctrine-scope
+ * finding rather than a wiring slip. Routing this to `atPaceSessionCapMi`
+ * made `3x3mi-at-hm` (§14.3 "Half-specific", 3×3 mi at HM pace = 9 mi,
+ * `race_specific` family) permanently unreachable
+ * (`_reachability.test.ts`): `capFamilyOf` prices every `race_specific`
+ * entry against the THRESHOLD cell, and `AT_PACE_SESSION_MI.threshold.max`
+ * is 8 mi. But §5.1's own "4-8 mi" cell is stated for CRUISE INTERVALS
+ * specifically, not for the threshold zone as a whole, and §14.3's
+ * race-pace-practice sessions are a documented, distinct entry ("Long-rep
+ * stamina") the composer is meant to reach. `atPaceSessionCapMi` conflates
+ * "this cap family's zone" with "this cap family's flagship workout", which
+ * is fine for the plain threshold/interval/repetition slots this file's own
+ * quality-day caller (`lib/prescription/levers.ts#atPaceSessionCapMi`
+ * reachedBy) prices, and wrong for `race_specific` and `marathon_specific`
+ * entries riding the same cap family.
+ *
+ * Left as `AT_PACE_WEEKLY_SHARE_CAP[cap]` (the percentage half only) rather
+ * than migrated, because picking the wrong owner is worse than an open
+ * divergence: the correct fix is either (a) `atPaceSessionCapMi` taking the
+ * family AND a flag for "is this the flagship workout of the family", so
+ * `race_specific`/`marathon_specific` entries skip the absolute band, or (b)
+ * `capFamilyOf` pricing those two families separately from plain
+ * threshold/interval — both are doctrine-scope calls, not a registry entry.
+ * Recorded in `lib/runner-state/quantity-owners.ts` THRESHOLD_DOSE's
+ * `acceptedDivergence` rather than closed.
  */
 export function sessionAllowanceMi(entry: CatalogueEntry, weeklyMi: number): number {
   const cap = capFamilyOf(entry);

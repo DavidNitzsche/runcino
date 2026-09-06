@@ -17,7 +17,15 @@
  *   (c) confidence decays with the STORE's own staleness (proven purely in
  *       `_belief_store.test.ts`; this file additionally proves the round
  *       trip through a REAL stored row rather than a hand-built one).
+ *   (d) COLD-START GRADUATION · the narrower claim (a) explicitly disclaims
+ *       (see Rule 22 below): a runner who was cold (zero `runs` rows, a
+ *       measured-zero SUSTAINABLE_WEEKLY_VOLUME) BEFORE a plan rebuild, and
+ *       has real training history AFTER it, keeps the same `plan_lineage_id`
+ *       AND has the belief itself move off the cold-start zero onto the real
+ *       number — proving a fresh read after the rebuild actually replaces the
+ *       stale provisional reading rather than freezing it (Rule 10).
  *
+
  * ── IT NEVER TOUCHES PRODUCTION, AND IT SAYS SO WHEN IT SKIPS ──────────────
  *
  * Same guard as `lib/plan/_ledger_atomicity.db.test.ts`: `DATABASE_URL` must
@@ -50,6 +58,12 @@
  *   file's rebuild proof always writes at least one belief while the
  *   intermediate plan is active, which is exactly the case that gap does not
  *   cover.
+ *
+ * Claim (d) narrows the "no rich history" limit stated above, ON PURPOSE, for
+ * the ONE transition it exists to prove: cold-start-to-established across a
+ * rebuild. It still proves nothing about a rich history that predates the
+ * FIRST plan, nor about a runner who stays cold across a rebuild for reasons
+ * other than lacking data (claim (a) already covers the stays-cold case).
  */
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
@@ -129,6 +143,36 @@ async function archivePlan(planId: string): Promise<void> {
   );
 }
 
+/**
+ * Claim (d) · real, ordinary training — no race, no cutback, nothing for
+ * `isPrescribedNonNormal` to exclude — so `sustainedWeeklyMileage` (the
+ * `SUSTAINABLE_WEEKLY_VOLUME` owner, `lib/training/normal-window.ts`) reads
+ * every one of these days as representative. `MIN_SUSTAINED_WEEKS` (6, ==
+ * `2 * SUSTAINED_WEEK_RANK`) needs six full representative weeks; this seeds
+ * eight for margin, ending the day before `endISOExclusive`.
+ *
+ * Field shapes are `mileageByDay`'s own (`lib/runs/volume.ts`): `data.date`
+ * (`YYYY-MM-DD`) and `data.distanceMi` (number), no `mergedIntoId` key so the
+ * one canonical-row predicate (`CANONICAL_ROW_SQL`) admits every row.
+ */
+async function seedRealRunHistory(endISOExclusive: string, weeks = 8, milesPerDay = 5): Promise<void> {
+  const end = new Date(`${endISOExclusive}T00:00:00.000Z`);
+  const days = weeks * 7;
+  for (let i = 1; i <= days; i++) {
+    const d = new Date(end);
+    d.setUTCDate(d.getUTCDate() - i);
+    const dateISO = d.toISOString().slice(0, 10);
+    // Random-ish bigint id · `runs.id` carries no sequence default on the
+    // scratch schema, and this suite never reads it back by value.
+    const id = Math.floor(Math.random() * 1_000_000_000) + i;
+    await pool.query(
+      `INSERT INTO runs (id, user_uuid, data)
+       VALUES ($1, $2::uuid, $3::jsonb)`,
+      [id, RUNNER, JSON.stringify({ date: dateISO, distanceMi: milesPerDay })],
+    );
+  }
+}
+
 describe('BELIEF-STORE-1 · schema, lineage, and the rebuild-survival proof', () => {
   beforeAll(async () => {
     if (!REACHABLE) return;
@@ -138,6 +182,7 @@ describe('BELIEF-STORE-1 · schema, lineage, and the rebuild-survival proof', ()
   afterAll(async () => {
     if (!REACHABLE || !RUNNER) return;
     await pool.query(`DELETE FROM ${RUNNER_BELIEFS_TABLE} WHERE user_uuid = $1::uuid`, [RUNNER]);
+    await pool.query('DELETE FROM runs WHERE user_uuid = $1::uuid', [RUNNER]);
     await pool.query('DELETE FROM training_plans WHERE user_uuid = $1::uuid', [RUNNER]);
     await pool.query('DELETE FROM users WHERE id = $1::uuid', [RUNNER]);
   });
@@ -224,6 +269,68 @@ describe('BELIEF-STORE-1 · schema, lineage, and the rebuild-survival proof', ()
       // does not carry the bigserial id on its `StoredBelief` shape.)
       expect(historyIds.size).toBeGreaterThan(0);
       expect(allBeliefIds.size).toBe(before.writtenBeliefIds.length + after.writtenBeliefIds.length);
+    },
+  );
+
+  when(
+    'FALSIFICATION (d) · COLD-START GRADUATION · lineage survives AND the belief moves off the '
+    + 'cold-start zero once real training exists, across the SAME rebuild',
+    async () => {
+      await seedRunner();
+      const planA = await seedActivePlan(TODAY);
+
+      // ── BEFORE · genuinely cold, zero `runs` rows ──────────────────────
+      const beforeCtx = await resolveRunnerLineage(pool, RUNNER);
+      const lineageBefore = beforeCtx.planLineageId;
+      expect(lineageBefore).toBe(planA);
+
+      const before = await updateRunnerBeliefs(pool, RUNNER, TODAY);
+      const volBefore = before.beliefs.SUSTAINABLE_WEEKLY_VOLUME;
+      expect(volBefore.reading.ok).toBe(true);
+      if (volBefore.reading.ok) expect(volBefore.reading.value.best).toBe(0);
+
+      // ── GRADUATION · the runner actually trains. Eight representative
+      // weeks at 35 mi/wk, no race on file, nothing for the normal-window
+      // filter to exclude. ──────────────────────────────────────────────
+      await seedRealRunHistory(TODAY, 8, 5);
+
+      // ── THE REBUILD · triggered by the graduation, same shape as (a) ───
+      await archivePlan(planA);
+      const planB = await seedActivePlan(TODAY);
+      expect(planB).not.toBe(planA);
+
+      // ── AFTER · lineage survived the rebuild ───────────────────────────
+      const afterCtx = await resolveRunnerLineage(pool, RUNNER);
+      expect(afterCtx.planLineageId).toBe(lineageBefore);
+
+      // ── AND the belief moved off the cold-start zero onto the real
+      // number — a fresh read after the rebuild REPLACES the stale
+      // provisional reading rather than freezing it (Rule 10). The measured
+      // value is order-statistic (rank 3 of the observed weeks), not a
+      // simple mean, so this asserts the qualitative claim the graduation
+      // is about — a real, non-zero, non-refused reading — rather than
+      // recomputing the exact rank-3 arithmetic here (that belongs to
+      // `sustainedWeeklyMileage`'s own test suite). ──────────────────────
+      const after = await updateRunnerBeliefs(pool, RUNNER, TODAY);
+      expect(after.planLineageId).toBe(lineageBefore);
+      const volAfter = after.beliefs.SUSTAINABLE_WEEKLY_VOLUME;
+      expect(volAfter.reading.ok, 'eight weeks of real training must produce a real reading, not a refusal').toBe(true);
+      if (volAfter.reading.ok) {
+        expect(volAfter.reading.value.best,
+          'the belief must move OFF the cold-start zero once real training exists').toBeGreaterThan(0);
+        // 5 mi/day x 7 days = 35 mi/wk is what every seeded week actually
+        // ran; a rank-3 order statistic over eight identical weeks is that
+        // exact figure, so this is a real number check, not a loose bound.
+        expect(volAfter.reading.value.best).toBeCloseTo(35, 0);
+      }
+
+      // The store's own lineage history spans the cold-start reading AND
+      // the graduated one, under the SAME lineage id — the belief history
+      // does not fork just because the runner's evidence changed kind.
+      const history = await readLineageHistory(pool, RUNNER, lineageBefore);
+      expect(history.length).toBeGreaterThanOrEqual(
+        before.writtenBeliefIds.length + after.writtenBeliefIds.length,
+      );
     },
   );
 

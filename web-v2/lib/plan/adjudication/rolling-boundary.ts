@@ -49,6 +49,44 @@
  * · It does not decide whether the demand model's coefficients are right. They
  *   are crude and their own header admits it. What it fixes is comparing the
  *   same quantity on both sides (Rule 16), which counting stressors did not.
+ *
+ * ── 2026-09-06 · BOUNDARY 1 REDESIGNED AS CONTINUOUS CONFIDENCE, NOT A GATE ──
+ *
+ * The version of this file that shipped 2026-09-05 sized the allowed step as
+ * `allowedStepShare * completionRatio` — continuous in completion, per Rule 9,
+ * but still gated by a single flat `allowedStepShare`. That constant was a
+ * placeholder (`RERAMP_WEEKLY_GROWTH - 1` = 0.10) fighting this file's own
+ * illustrative test (0.15), and the two disagreed on the one week that
+ * mattered: the 09-21 week's real +14.1% demand step reads PROCEED at 0.15 and
+ * REDUCE at 0.10. Two numbers deciding one verdict is a Rule 16 defect wearing
+ * a tuning-constant costume, and `RERAMP_WEEKLY_GROWTH` was the wrong citation
+ * regardless of which value survived — it prices `Research/22 §14`'s COMEBACK
+ * ramp (70% of a pre-absence average, climbing back after a layoff), not
+ * ordinary in-block progression for a runner who never left. The owner's
+ * ruling, verbatim: "RERAMP_WEEKLY_GROWTH may not own ordinary build-week
+ * progression; it answers a different question."
+ *
+ * The ruling that replaces it: demand growth up to 10% is normally
+ * supportable when recent execution and recovery are clean; from 10% to 15%
+ * confidence decreases CONTINUOUSLY and the push becomes increasingly
+ * conditional; above 15% requires unusually strong athlete-specific support.
+ * No abrupt verdict change at 10% or 15%, ever — Rule 9 by name.
+ *
+ * The bands themselves are not invented for this file. `Research/00a` §"The
+ * 10% rule — reconsidered" is the citation: the flat "≤10%/week" rule "is not
+ * strongly supported by recent evidence" (an RCT let novices ramp +24% over 8
+ * weeks with no elevated injury rate against +10% over 12, and "weekly
+ * mileage change correlated weakly with injury" in the same 5,200-runner
+ * cohort) — which is doctrine's own argument that 10% is the START of a soft
+ * caution zone, not a wall. The same document's ACWR table, four lines above
+ * it, is the CI-precedented shape this file borrows: named control points
+ * (0.8, 1.3, 1.5) with a continuous response running through them — the exact
+ * reading CLAUDE.md Rule 9 already applied to ACWR. And its single-session
+ * spike rule (>110% of the prior-30-day longest run → ~64% higher injury
+ * risk, >130% → higher still) is doctrine's own template for "above a line,
+ * only an exceptional case still proceeds" — the shape ">15% needs unusually
+ * strong support" borrows. See `demandGrowthBaseConfidence` and
+ * `demandStepConfidence` below for the implementation.
  */
 
 import { projectPlanLoad, type ProjectedPlanLoad } from './canonical-demand';
@@ -130,21 +168,168 @@ export interface ProposedMutation {
 }
 
 /**
+ * The five continuous inputs the ruling names — "training phase, available
+ * runway, fatigue, safety and recent absorption remain inputs" — as ONE
+ * confidence context, never a second cliff stacked on the first.
+ *
+ * Every field is [0,1] and every field is a genuine reading or an HONESTLY
+ * NEUTRAL placeholder (Rule 11): "don't know" must read as 0.5, not as 1.0
+ * (assumed clean) and not as 0.0 (assumed dangerous) — either assumption would
+ * be inventing evidence.
+ */
+export interface DemandStepContext {
+  /** "Recent absorption" · how cleanly the runner has actually been landing
+   *  what was prescribed across the trailing window — 1.0 if every trailing
+   *  week met or exceeded its prescription, decaying toward 0 the more they
+   *  fell short. This is the "run of clean weeks" the ruling names. */
+  readonly recentExecutionCleanliness: number;
+  /** How undiluted the baseline itself is — 1.0 when none of the trailing
+   *  weeks were a prescribed dip (taper/race/recovery), lower as more of them
+   *  were. `demandBaseline` already refuses outright when ALL of them were;
+   *  this is the continuous read of the weeks it did NOT refuse on. */
+  readonly baselineFreedomFromDip: number;
+  /** "Fatigue, safety" · low ACWR, no recent deterioration, in the ruling's
+   *  own phrasing. NOT YET WIRED to a real reader — no ACWR/HRV feed reaches
+   *  this file as of 2026-09-06 (see `rolling-boundary-evaluator.ts`'s own
+   *  header for the boundary-2 precedent of naming a gap rather than hiding
+   *  it). `NEUTRAL_FATIGUE_SAFETY_CLEARANCE` is the honest placeholder until
+   *  one exists — 0.5, never 1.0, so an unknown never silently reads as safe. */
+  readonly fatigueSafetyClearance: number;
+  /** "Training phase" · 1.0 in an ordinary build/base week, 0.0 when the
+   *  PROPOSED week is itself a taper or a race week (a volume push has no
+   *  business there — that is the phase pushing back, not this file). */
+  readonly trainingPhaseOpenness: number;
+  /** "Available runway" · how much authored block remains ahead of this week
+   *  to make use of a bigger step and absorb it, not just this week in
+   *  isolation. Scoped to the currently authored block (weeks still ahead in
+   *  `loadPlannedWeeks`'s read) rather than to a race-calendar lookup, which
+   *  would be a second, un-audited query this file's own header already
+   *  argues against building blind — a stated scoping choice, not a silent
+   *  approximation. */
+  readonly runwayOpenness: number;
+}
+
+/** Rule 11's explicit "don't know", for any `DemandStepContext` field a
+ *  caller cannot yet actually read — 0.5, never 1.0 (assumed clean) and never
+ *  0.0 (assumed dangerous), because either would be inventing evidence. */
+export const NEUTRAL_UNKNOWN_CONTEXT = 0.5;
+/** The specific case the ruling names: "fatigue, safety" has no real
+ *  ACWR/HRV reader wired into this evaluator as of 2026-09-06. Kept as its
+ *  own named constant (same value) so a call site reads as "this dimension
+ *  is unbuilt", not as a generic fallback. */
+export const NEUTRAL_FATIGUE_SAFETY_CLEARANCE = NEUTRAL_UNKNOWN_CONTEXT;
+
+/**
+ * Blends the five continuously — a WEIGHTED MEAN, not a hard AND, so no
+ * single flat input can zero out the others in one step (that would just be
+ * a differently-shaped cliff). Weights favour what the runner has actually
+ * been doing (execution, 0.30) and what condition he is in right now
+ * (fatigue/safety, 0.25) over the more structural reads (phase 0.20, runway
+ * 0.15, baseline cleanliness 0.10) — sums to 1.0.
+ */
+export function demandStepContextScore(c: DemandStepContext): number {
+  return clamp01(
+    clamp01(c.recentExecutionCleanliness) * 0.30
+    + clamp01(c.fatigueSafetyClearance) * 0.25
+    + clamp01(c.trainingPhaseOpenness) * 0.20
+    + clamp01(c.runwayOpenness) * 0.15
+    + clamp01(c.baselineFreedomFromDip) * 0.10,
+  );
+}
+
+/** The 10-15% band's own midpoint · the logistic's centre, not a step. */
+const DEMAND_GROWTH_BAND_LOWER = 0.10;
+const DEMAND_GROWTH_BAND_UPPER = 0.15;
+const DEMAND_GROWTH_BAND_CENTER = (DEMAND_GROWTH_BAND_LOWER + DEMAND_GROWTH_BAND_UPPER) / 2; // 0.125
+
+/**
+ * Solved so the logistic reads ~0.85 confidence AT exactly 10% growth and
+ * ~0.15 AT exactly 15% — the two edges the ruling names — with everything
+ * between and beyond following smoothly and symmetrically from the same
+ * curve. `Math.log((1-0.15)/0.15)` is the logit of 0.15; the scale is the
+ * distance from the band's edge to its centre divided by that logit, which is
+ * what makes both edges land where the ruling puts them from one formula.
+ */
+const DEMAND_GROWTH_LOGISTIC_SCALE =
+  (DEMAND_GROWTH_BAND_UPPER - DEMAND_GROWTH_BAND_CENTER) / Math.log((1 - 0.15) / 0.15);
+
+/**
+ * The bare confidence a demand-growth step earns BEFORE any athlete-specific
+ * context is applied. Smooth (C-infinity), strictly decreasing for step > 0,
+ * ~1.0 well below the band, ~0.85 at 10%, ~0.5 at the band's own midpoint,
+ * ~0.15 at 15%, asymptotic toward 0 beyond it — never a step function, and
+ * never negative or above 1.
+ */
+export function demandGrowthBaseConfidence(step: number): number {
+  if (!(step > 0)) return 1;
+  const z = (step - DEMAND_GROWTH_BAND_CENTER) / DEMAND_GROWTH_LOGISTIC_SCALE;
+  return 1 / (1 + Math.exp(z));
+}
+
+/**
+ * How much of a large step's lost confidence UNUSUALLY STRONG athlete-
+ * specific support can still earn back — continuously, never a second cliff.
+ *
+ * Capped BELOW `DEMAND_STEP_PUSH_CONFIDENCE_FLOOR` (0.45 < 0.5) on purpose,
+ * not just below 1: as `step` grows without bound, `demandGrowthBaseConfidence`
+ * decays toward 0, so the recovered confidence approaches
+ * `CONTEXT_MAX_RECOVERY * score` — and capping that below the PUSH floor means
+ * even PERFECT context (`score` = 1) can never wave an arbitrarily large step
+ * through on its own. "Unusually strong support" narrows the gap for a step
+ * that is merely past the soft band; it does not make an unbounded step size
+ * irrelevant. Support earns back real confidence well past 15% (see the test
+ * that compares strong vs. weak context at 16-35% growth) — it just never
+ * reaches the point where growth itself stops mattering at all.
+ */
+const CONTEXT_MAX_RECOVERY = 0.45;
+
+/**
+ * THE confidence a demand-growth step earns, folding the bare growth curve
+ * and the athlete's own context into one number. Still strictly decreasing in
+ * `step` for any fixed context (context only ever narrows the gap toward 1,
+ * proportionally to how much confidence remains to recover), so the
+ * monotonicity Rule 9 demands survives regardless of how supportive the
+ * context is.
+ */
+export function demandStepConfidence(step: number, context: DemandStepContext): number {
+  const base = demandGrowthBaseConfidence(step);
+  const score = demandStepContextScore(context);
+  return clamp01(base + CONTEXT_MAX_RECOVERY * score * (1 - base));
+}
+
+/** The bar a step's confidence must clear to PROCEED as an earnable push
+ *  rather than being offered a reduction. A control point, per Rule 9's own
+ *  reading of ACWR's 1.3/1.5 — the RESPONSE either side of it is continuous
+ *  (`demandStepConfidence` itself), this is just where PROCEED vs REDUCE is
+ *  read off that continuous line. */
+export const DEMAND_STEP_PUSH_CONFIDENCE_FLOOR = 0.5;
+
+/**
  * BOUNDARY 1 · before the week. Assessed the day the week is authored to start.
  *
  * The question: is this week's DEMAND still a reasonable step on what the
  * runner has actually completed?
  *
- * Continuous, per Rule 9. There is no "46.8 or failure" cliff — the completed
- * mileage is read as a proportion, and a week completed at 90% supports a
- * proportionally smaller step rather than falling off an edge. A hair's
- * difference in what he ran must not produce a categorically different plan.
+ * Continuous confidence, per Rule 9 and the owner's 2026-09-06 ruling (see the
+ * file header). There is no 10%-or-15% cliff: `demandStepConfidence` reads a
+ * single continuous number from the growth step and the runner's own context,
+ * and the verdict is where that number crosses `DEMAND_STEP_PUSH_CONFIDENCE
+ * _FLOOR` — a hair's difference in growth or in context moves confidence by a
+ * hair, never the verdict by a mile.
  */
 export function boundaryBeforeWeek(args: {
   readonly proposed: WeekDemand;
   readonly baseline: Baseline;
+  /** Rule 11's known/unknown gate ONLY — null means the immediately preceding
+   *  week's completion could not be read at all, which refuses outright
+   *  regardless of context. Its MAGNITUDE, when known, is deliberately not
+   *  re-folded into the confidence math here a second time: the caller
+   *  already carries that signal (and the fuller trailing-window trend it
+   *  belongs to) inside `context.recentExecutionCleanliness`. Two inputs
+   *  computed from the same completion data would be Rule 16's "one
+   *  quantity, two names" the moment they were allowed to disagree. */
   readonly completionRatio: number | null;
-  readonly allowedStepShare: number;
+  readonly context: DemandStepContext;
   readonly targetWorkoutId: string | null;
   readonly targetDateISO: string | null;
 }): BoundaryDecision {
@@ -160,27 +345,39 @@ export function boundaryBeforeWeek(args: {
     };
   }
   const step = args.proposed.load.demandIndex / args.baseline.demandIndex - 1;
-  const allowed = allowedStepFor(args.completionRatio, args.allowedStepShare);
-  if (step <= allowed) {
+  if (step <= 0) {
+    return {
+      verdict: 'PROCEED',
+      because: `demand does not rise on the highest of the trailing three weeks `
+        + `(${args.baseline.fromWeekISO})`,
+      mutation: null,
+    };
+  }
+  const confidence = demandStepConfidence(step, args.context);
+  if (confidence >= DEMAND_STEP_PUSH_CONFIDENCE_FLOOR) {
     return {
       verdict: 'PROCEED',
       because: `demand rises ${pct(step)} on the highest of the trailing three weeks `
-        + `(${args.baseline.fromWeekISO}), inside the ${pct(allowed)} this completion supports`,
+        + `(${args.baseline.fromWeekISO}) at ${pct(confidence)} confidence · an earnable push, `
+        + `not an automatic one`,
       mutation: null,
     };
   }
   if (args.targetWorkoutId === null || args.targetDateISO === null) {
     return {
       verdict: 'REFUSE',
-      because: `demand rises ${pct(step)} against ${pct(allowed)} allowed, and no session in `
-        + 'the week can be reduced without cutting the long run or a race',
+      because: `demand rises ${pct(step)} on ${args.baseline.fromWeekISO} at only `
+        + `${pct(confidence)} confidence (below the ${pct(DEMAND_STEP_PUSH_CONFIDENCE_FLOOR)} bar `
+        + 'to earn it), and no session in the week can be reduced without cutting the long run '
+        + 'or a race',
       mutation: null,
     };
   }
   return {
     verdict: 'REDUCE',
-    because: `demand rises ${pct(step)} on ${args.baseline.fromWeekISO}, past the `
-      + `${pct(allowed)} this completion supports`,
+    because: `demand rises ${pct(step)} on ${args.baseline.fromWeekISO} at only `
+      + `${pct(confidence)} confidence · below the ${pct(DEMAND_STEP_PUSH_CONFIDENCE_FLOOR)} bar `
+      + 'this completion and context earn',
     mutation: {
       planWorkoutId: args.targetWorkoutId,
       dateISO: args.targetDateISO,
@@ -309,25 +506,20 @@ export function boundaryAfterRace(args: {
 }
 
 /**
- * How much of the authored step this completion supports.
+ * Shared clamp, EXPORTED so callers building a `DemandStepContext` from real
+ * reads (the evaluator's job) can clamp their own inputs with the same
+ * function this file uses internally, rather than a second copy of `n < 0 ? 0
+ * : n > 1 ? 1 : n` drifting from this one.
  *
- * EXPORTED so the continuity gate can walk THIS rather than the verdict, and
- * that distinction is the whole of Rule 9. My first gate walked the verdict
- * across the boundary and asserted it flipped at most once — and a hard
- * threshold satisfies that too, so replacing this line with
- * `completionRatio >= 0.95 ? share : 0` passed the test. Which is precisely
- * what Rule 9's own audit says of every other gate in this engine: "every gate
- * samples the output space at POINTS and asks whether each point is legal.
- * That is exactly the check a discontinuity passes, because both sides of a
- * cliff are legal plans. Nothing sampled the derivative."
- *
- * A verdict is discrete by nature. The quantity behind it must not be.
+ * `allowedStepFor` — the single flat `allowedStepShare * completionRatio`
+ * gate this file used through 2026-09-05 — is REMOVED, not deprecated
+ * alongside the new model. It was the exact "one number decides" shape the
+ * owner's 2026-09-06 ruling replaces (see the file header); keeping it as an
+ * unused export would be the "// legacy, don't use" comment
+ * `DOCTRINE_ENFORCEMENT_AND_CLEAN_IMPLEMENTATION.md` forbids, one document
+ * removed.
  */
-export function allowedStepFor(completionRatio: number, allowedStepShare: number): number {
-  return allowedStepShare * clamp01(completionRatio);
-}
-
-const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
+export const clamp01 = (n: number): number => (n < 0 ? 0 : n > 1 ? 1 : n);
 const pct = (n: number): string => `${(n * 100).toFixed(1)}%`;
 
 /* ══════════════════════════════════════════════════════════════════════════

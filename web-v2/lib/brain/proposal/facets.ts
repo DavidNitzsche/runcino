@@ -257,7 +257,38 @@ export const GENERATOR_REGISTRY: Readonly<Record<ActionKind, GeneratorRef | null
     liveCaller: 'app/api/cron/run-adaptations/route.ts',
     when: 'the weekly progression gate moves total minutes at pace',
   },
-  LONG_RUN_STRUCTURE_CHANGE: null,
+  /* CLOSED 2026-09-06 (LONGRUNSTRUCTURE-1). The blocker named here was never
+   * effort — it was that no reader answered whether a race-pace finish had
+   * been EARNED, and `resolveWeekProgression`'s `SessionFamily` never walks a
+   * long run for the placeholder `long_run_duration` arm in
+   * `from-progression.ts` to reach. `lib/brain/proposal/evidence/
+   * long-run-structure.ts` is that reader — Research/04 §4.3's structure and
+   * §4.5's numeric finish band, read against completion and late-fade checks
+   * on the same two most recent long runs the distance lever
+   * (`evaluateLongRun`) grades. NOT the same CODE as that lever: the first cut
+   * imported `assessDeterioration`/`qualifiesAsLongRunEvidence` straight from
+   * `lib/adaptation/canonical/**`, and `_cannot_mutate.test.ts` /
+   * `_never_mutates_plan.test.ts` / `_move_readjudication.test.ts`'s "lib/brain
+   * reaches the canonical engine through ONE file" all correctly failed on it
+   * — `lib/brain/**` may reach that engine only through
+   * `lib/brain/orchestration/canonical-phase.ts`, which exports exactly one
+   * function. The evidence file's own header explains the independent,
+   * simpler re-implementation this became instead, built from
+   * `lib/runs/run-shape.ts` primitives with the same doctrine citations.
+   * `from-long-run-structure.ts` translates the verdict and
+   * `action-proposal-lane.ts`'s new third section is the live caller. The
+   * PROPOSAL_WRITER gap below is untouched: `write.ts` still refuses this kind
+   * under the 2026-09-02 reshape ruling, which is a decision about SHOWING the
+   * card and has nothing to do with whether real evidence now sits behind
+   * it. */
+  LONG_RUN_STRUCTURE_CHANGE: {
+    module: 'lib/brain/proposal/generate/from-long-run-structure.ts',
+    symbol: 'actionFromLongRunStructure',
+    callSite: 'lib/plan/action-proposal-lane.ts',
+    liveCaller: 'app/api/cron/run-adaptations/route.ts',
+    when: 'the long-run structure reader finds the last two long runs completed and held together late, '
+      + 'with no race-pace segment already on the upcoming one',
+  },
   WORKOUT_TYPE_CHANGE: {
     module: 'lib/brain/proposal/generate/from-adaptation.ts',
     symbol: 'actionFromAdaptation',
@@ -474,20 +505,13 @@ export const FACET_GAPS: readonly FacetGap[] = [
       + 'inside an existing session. RE-CHECKED 2026-09-05 (round 2): the mechanical half of the old '
       + 'claim is stale — `generate.ts`\'s `specForComposedDay`/`persistedDayShape` (extracted '
       + '2026-08-24) ARE a single-day, composer-authored spec entry point; nothing here still needs '
-      + 'a whole-week recompose to author one row. What is still missing, and is the real blocker, is '
-      + 'upstream of authoring: no live caller invokes that entry point outside `composePlan` itself, '
-      + 'and — the harder half — no EVIDENCE_SOURCE reader answers "should there be a session here '
-      + 'that is not" (see the EVIDENCE_SOURCE gap below). Closed by that reader plus wiring the '
-      + 'existing entry point to it, at which point the ACCEPT_EXECUTOR and UNDO gaps below close '
-      + 'with it.',
-  },
-  {
-    kind: 'ADD_WORKOUT', facet: 'EVIDENCE_SOURCE',
-    because:
-      'No reader in this engine answers "should there be a session here that is not". The volume '
-      + 'lane measures a surplus against sessions that EXIST and spends it by resizing them; the '
-      + 'frequency question is asked once at onboarding and never re-taken. Closing this means a '
-      + 'reader that owns weekly demand shape, which is the same owner FREQUENCY_CHANGE waits on.',
+      + 'a whole-week recompose to author one row. RE-CHECKED AGAIN 2026-09-06: the EVIDENCE_SOURCE '
+      + 'half below is now ALSO closed — `derivedTrainingDaysPerWeek` answers "how many days a week '
+      + 'does he actually run" and is exported and registered. What remains is narrower than either '
+      + 'prior note claimed: no live caller invokes the composer\'s single-day entry point outside '
+      + '`composePlan` itself, and nothing compares the now-available reading against the plan\'s '
+      + 'currently scheduled non-rest days to DECIDE a day should be added — that comparison, plus the '
+      + 'entry-point wiring, is what would close this and the ACCEPT_EXECUTOR/UNDO gaps below with it.',
   },
   {
     kind: 'ADD_WORKOUT', facet: 'PROPOSAL_WRITER',
@@ -555,17 +579,13 @@ export const FACET_GAPS: readonly FacetGap[] = [
     because:
       'profile.weekly_frequency is read at AUTHORING and never re-decided by an adaptation pass. '
       + 'Rule 11 records what that cost once already: the column is NULL for 8 of 16 production '
-      + 'profiles and the null silently disabled thirteen mechanisms. Changing a runner frequency '
-      + 'mid-block is a real lever nobody owns yet, and it is a WEEK-shaped decision, so it belongs '
-      + 'to whoever owns weekly demand rather than to the per-workout pass.',
-  },
-  {
-    kind: 'FREQUENCY_CHANGE', facet: 'EVIDENCE_SOURCE',
-    because:
-      'weekly-demand.ts owns the week-shaped question and produces a DEMAND, not a day count; '
-      + 'nothing anywhere reads "how many days a week is this runner actually absorbing" as a '
-      + 'quantity a plan could be re-shaped around. Rule 8 makes it harder than it looks: a frequency '
-      + 'measured across a taper is not his normal, so the reader has to be a filtered one.',
+      + 'profiles and the null silently disabled thirteen mechanisms. CLOSED 2026-09-06: '
+      + '`derivedTrainingDaysPerWeek` now answers the EVIDENCE_SOURCE half (see EVIDENCE_REGISTRY) — '
+      + 'the same Rule-8-filtered reading ADD_WORKOUT cites. What remains is a mid-block DECISION '
+      + 'nobody owns yet: comparing that reading against the plan\'s currently authored day count and '
+      + 'turning a mismatch into adds or removes is a WEEK-shaped decision, so it belongs to whoever '
+      + 'owns weekly demand rather than to the per-workout pass, and it closes together with '
+      + 'ADD_WORKOUT\'s own GENERATOR gap since the upward half of this lever is realised as adds.',
   },
   {
     kind: 'FREQUENCY_CHANGE', facet: 'PROPOSAL_WRITER',
@@ -641,27 +661,10 @@ export const FACET_GAPS: readonly FacetGap[] = [
       + 'because refusing out loud is a behaviour and refusing to have one is not.',
   },
 
-  /* ── LONG_RUN_STRUCTURE_CHANGE ─────────────────────────────────────────── */
-  {
-    kind: 'LONG_RUN_STRUCTURE_CHANGE', facet: 'GENERATOR',
-    because:
-      'The progression pass is the only thing in the engine that reshapes a session, and its '
-      + 'SessionFamily is exactly threshold | interval | repetition — it never walks a long run. So '
-      + 'ProgressionLever contains long_run_duration and nothing pulls it, which is Rule 15 in one '
-      + 'line: a lever no corpus can reach is untested however many archetypes pass. '
-      + 'from-progression.ts carries the arm anyway so a future pass that DOES resolve the lever gets '
-      + 'the right kind rather than falling through to a quality dose. Closed by giving the long run '
-      + 'its own progression target, which is a real coaching feature (last-N-at-MP, progressive '
-      + 'finish) and not a wiring change.',
-  },
-  {
-    kind: 'LONG_RUN_STRUCTURE_CHANGE', facet: 'EVIDENCE_SOURCE',
-    because:
-      'Nothing measures long-run EXECUTION as a shape question. resolveWeekProgression reads control, '
-      + 'consistency and late-session fade for the three quality families and never for the long run, '
-      + 'so there is no reading that could say a progressive finish has been earned. This is the same '
-      + 'missing coaching feature as the generator above and closes with it, not separately.',
-  },
+  /* ── LONG_RUN_STRUCTURE_CHANGE GENERATOR + EVIDENCE_SOURCE ────────────────
+   * CLOSED 2026-09-06 (LONGRUNSTRUCTURE-1) — see GENERATOR_REGISTRY above for
+   * the module/reader and the argued reason. The PROPOSAL_WRITER gap for this
+   * kind stands unchanged, above, under the reshape ruling. */
 
   /* ── RACE_TARGET_CHANGE ────────────────────────────────────────────────── */
   {
@@ -697,10 +700,19 @@ export const FACET_GAPS: readonly FacetGap[] = [
   {
     kind: 'TAPER_CHANGE', facet: 'EVIDENCE_SOURCE',
     because:
-      'Taper depth is a doctrine constant per race distance, not a measurement: nothing in this '
-      + 'engine reads a runner and answers "this taper should be deeper". A reader would have to '
-      + 'measure freshness response across tapers, and Rule 8 forbids using the taper window itself '
-      + 'as the evidence, so the data to build one is not currently gathered.',
+      'RE-VERIFIED 2026-09-06: the depth table itself is real and citable — `Research/08` §9.1\'s '
+      + '"Volume reduction (peak week)" column (25-70% by distance) and §9.2\'s marathon per-week bands '
+      + '(80-90% / 60-70% / 40-50% of peak) — so this is not a doctrine gap, it is an ADAPTIVE-reader '
+      + 'gap: nothing in this engine reads a runner and answers "this taper should sit deeper in that '
+      + 'band than authored". The two candidate inputs for such a reader both fail the same test '
+      + 'tonight: `weekly-demand.ts`\'s observational demand index states in its own header that it '
+      + '"must not be wired into a plan mutation" per `docs/PLAN_SIMPLIFICATION_DOCTRINE.md`, and '
+      + 'whether a runner-gated PROPOSAL crosses that line is exactly the kind of authority-model '
+      + 'question the 2026-09-05 directive says is not this auditor\'s to resolve unilaterally; and '
+      + 'Rule 8 forbids measuring "how did the taper feel" from inside the taper window itself, so a '
+      + 'freshness-across-tapers reader would need a signal this engine does not currently gather. '
+      + 'Inventing one to close this cell would be exactly the "no physiology option-menus" violation '
+      + 'CLAUDE.md warns against.',
   },
   {
     kind: 'TAPER_CHANGE', facet: 'PROPOSAL_WRITER',
@@ -727,9 +739,19 @@ export const FACET_GAPS: readonly FacetGap[] = [
     kind: 'RECOVERY_CHANGE', facet: 'EVIDENCE_SOURCE',
     because:
       'postRaceRecoveryWeeks sizes the window from the race distance and priority at authoring time, '
-      + 'and nothing re-reads the runner to ask whether it was enough. The reading that would close '
-      + 'this is recovery-response evidence after a hard effort, which the readiness layer computes '
-      + 'per day and nobody aggregates across a window.',
+      + 'and nothing re-reads the runner to ask whether it was enough. RE-CHECKED 2026-09-06 against '
+      + '`lib/adaptation/canonical/deterioration.ts`, the sibling workstream\'s in-flight "subsequent '
+      + 'recovery" work named as a possible feed for this reader: as of tonight it exports exactly one '
+      + 'family of signal — `assessDeterioration`/`paHrDecouplingFrac`, Pa:HR decoupling WITHIN one '
+      + 'session\'s own thirds — and nothing about how a runner\'s readiness moves ACROSS the days '
+      + 'after a hard effort. That is a different question (single-session execution quality vs. a '
+      + 'multi-day recovery TRAJECTORY) and building the latter by re-purposing the former would be '
+      + 'exactly the kind of measurement substitution Rule 16 forbids. `docs/'
+      + 'PLAN_SIMPLIFICATION_DOCTRINE.md` also removed decision authority from sleep, HRV and resting '
+      + 'HR app-wide, which narrows what a real reader could even be built from to the readiness '
+      + 'layer\'s existing calendar-and-training-load signals — a real reader may still be buildable '
+      + 'there, but it is a new, not-yet-scoped aggregation across a window, not a wiring change, and '
+      + 'not something to build from the wrong existing primitive to move this cell.',
   },
   {
     kind: 'RECOVERY_CHANGE', facet: 'PROPOSAL_WRITER',
