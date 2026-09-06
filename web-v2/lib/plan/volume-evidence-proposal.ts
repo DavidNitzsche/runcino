@@ -306,6 +306,9 @@ export function decideVolumeRaise(w: VolumeEvidenceWindow): VolumeDecision {
     distanceFloorMi: w.distanceFloorMi,
     templatePeakBandMi: w.templatePeakBandMi,
     progressionFraction: recompute.accumulation.progressionFraction,
+    /* DETERIORATION-SEVERITY-1 · carried for the runner's SENTENCE only. The
+     * discount is already inside `progressionFraction`; this says why. */
+    deteriorationWeight: reading.capacity.deteriorationWeight,
     stepsTakenThisCycle: w.stepsTakenThisCycle,
     nextBoundaryISO: w.nextBoundaryISO,
   });

@@ -48,11 +48,13 @@
  *
  *   CONTINUOUS, therefore ramped   the size of the surplus; the following
  *                                  week's completion fraction; the age of the
- *                                  evidence.
+ *                                  evidence; how far the worst session in the
+ *                                  week fell away (DETERIORATION-SEVERITY-1).
  *   CATEGORICAL, therefore not     merged / not merged; the resolver tiered
  *                                  the run or did not; pain was reported or
  *                                  was not; the plan authored the week as
- *                                  recovery or did not.
+ *                                  recovery or did not; TWO OR MORE sessions
+ *                                  deteriorated, which is a count.
  *
  * A boolean input has no neighbourhood, so it cannot have a cliff, and dressing
  * one as a ramp would be decoration rather than correctness.
@@ -89,6 +91,7 @@ import {
 import {
   absorptionWeight,
   creditedSurplusFrac,
+  deteriorationConfidenceWeight,
   PROGRESSION_UNLOCK_FRAC,
   PROVISIONAL_ABSORPTION_WEIGHT,
   progressionFractionFromUnits,
@@ -112,8 +115,8 @@ export interface CapacityEvidence {
   readonly surplusFrac: Measured<number>;
   /**
    * The size half of the credit, in fractions of prescribed volume, AFTER the
-   * GPS noise gate and the per-week saturation. Zero for a week whose surplus
-   * is inside measurement error.
+   * GPS noise gate, the per-week saturation and the deterioration discount.
+   * Zero for a week whose surplus is inside measurement error.
    */
   readonly creditedFrac: number;
   /**
@@ -123,6 +126,24 @@ export interface CapacityEvidence {
    * quietly becomes two quantities (Rule 16).
    */
   readonly confirmationWeight: number;
+  /**
+   * DETERIORATION-SEVERITY-1 · how much of this week's credit survived the
+   * worst session in it, in [0, 1]. Exactly
+   * `deteriorationConfidenceWeight(pattern.worstSeverityFrac)`, held as a named
+   * field so a caller does not have to find it by string in `factors`.
+   *
+   * 1 means nothing was withheld on this axis, and that covers two different
+   * situations on purpose: no session fell away, or no session could be read
+   * (`RULE_21_THRESHOLD_LEDGER` row 8 · unreadable withholds nothing and grants
+   * nothing). Which of the two it was is in the matching `factors` entry's
+   * `why`, because that is the sentence a reader needs and a bare number
+   * cannot carry it.
+   *
+   * ON A REFUSAL IT IS 1 AND MEANS NOTHING. `units` is already zero there, so
+   * there was no credit for this factor to discount; read it only alongside a
+   * non-zero `units`.
+   */
+  readonly deteriorationWeight: number;
   /**
    * WHAT THIS WEEK CONTRIBUTES. Equal to `creditedFrac`: the evidence exists as
    * soon as the running happened and the categorical gates passed.
@@ -244,6 +265,9 @@ const zeroCapacity = (
   surplusFrac,
   creditedFrac: 0,
   confirmationWeight: 0,
+  /* 1 rather than 0: this factor withheld nothing, something else refused the
+   * week. See the field's own doc comment. */
+  deteriorationWeight: 1,
   units: 0,
   confirmedUnits: 0,
   provisionalUnits: 0,
@@ -337,12 +361,41 @@ export function weighCapacity(
 
   /* ── the CONTINUOUS half ───────────────────────────────────────────── */
 
-  const credited = creditedSurplusFrac(surplusFracValue);
+  const creditedBeforeDeterioration = creditedSurplusFrac(surplusFracValue);
   factors.push({
     name: 'creditedSurplusFrac',
-    value: credited,
+    value: creditedBeforeDeterioration,
     why: `${roundTo(surplusFracValue * 100)} per cent over prescription, after the GPS noise `
       + 'gate and the per-week saturation.',
+  });
+
+  /* DETERIORATION-SEVERITY-1 · HOW BADLY THE WORST SESSION FELL AWAY.
+   *
+   * A CAPACITY factor and never a fatigue one. Q13's sentence is about
+   * CONFIDENCE — "one deteriorated session reduces confidence" — and confidence
+   * is a property of what the week PROVES the runner can carry. The miles
+   * themselves still happened, so `readFatigue` below does not read this and
+   * must not: Rule 8's corollary keeps the absorbed-load channel reading the
+   * literal number whatever the sessions inside it looked like.
+   *
+   * `admit.ts` has already refused the disqualifying cases (repeated, extreme,
+   * unmeasurable), so what reaches here is a milder fall and the ramp is what
+   * prices it. A pattern with no readable session at all weighs 1, which is
+   * the posture `RULE_21_THRESHOLD_LEDGER` row 8 argues for: unreadable
+   * withholds nothing and grants nothing. */
+  const worstSeverity = conditions.deterioration.ok
+    ? conditions.deterioration.value.worstSeverityFrac
+    : null;
+  const deteriorationWeight = deteriorationConfidenceWeight(worstSeverity);
+  const credited = creditedBeforeDeterioration * deteriorationWeight;
+  factors.push({
+    name: 'deteriorationConfidenceWeight',
+    value: deteriorationWeight,
+    why: worstSeverity == null
+      ? 'No session in this week could be read for late deterioration, so nothing is '
+        + 'withheld and nothing is granted.'
+      : `The worst session in this week finished at ${roundTo(worstSeverity * 100)} per cent `
+        + 'pace-to-heart-rate decoupling.',
   });
 
   /* Absorption. THREE facts, never one (Rule 11):
@@ -396,6 +449,7 @@ export function weighCapacity(
     surplusFrac,
     creditedFrac: credited,
     confirmationWeight,
+    deteriorationWeight,
     units,
     confirmedUnits,
     provisionalUnits,

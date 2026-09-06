@@ -64,12 +64,22 @@
  *   a run the resolver could not tier            contributes to NEITHER channel
  *   pain or injury reported                      zero capacity
  *   unplanned recovery taken                     zero capacity
- *   a session that deteriorated                  zero capacity
+ *   TWO sessions deteriorated (Q13 "repeated")   zero capacity
  *   a Rule 8 non-normal week                     zero capacity, FATIGUE STILL
  *
- * Only the three genuinely CONTINUOUS quantities were ramped, because only
- * they could have a cliff in the first place: the size of the surplus, the
- * following week's completion fraction, and the age of the evidence.
+ * Four genuinely CONTINUOUS quantities are ramped, because only they could
+ * have a cliff in the first place: the size of the surplus, the following
+ * week's completion fraction, the age of the evidence, and how badly the worst
+ * session in the week fell away.
+ *
+ * DETERIORATION-SEVERITY-1 (2026-09-05) moved the fifth row of that first list
+ * from one column to the other. It used to read "a session that deteriorated ·
+ * zero capacity", and that was the defect: `docs/PROGRESSIVE_BASELINE_DOCTRINE
+ * .md` Q13 says in as many words that one deteriorated session "must not
+ * independently block progression unless the deterioration is extreme", and a
+ * SESSION'S SEVERITY IS NOT A BOOLEAN. What stayed categorical is the part
+ * that genuinely is: a COUNT of sessions (Q13's "repeated" is ≥2), and the
+ * point where the severity curve has already reached zero anyway.
  *
  * ── RULE 22 · WHAT A GATE OVER THIS FILE CANNOT FAIL ON ───────────────────
  *
@@ -101,11 +111,20 @@ import { roundTo } from '@/lib/format/run';
 // `PER_WEEK_CREDIT_CEILING_FRAC` for the argument.
 import { VOLUME_ADDITION_THRESHOLD } from '@/lib/plan/adjudication/adjudicate';
 import {
+  DETERIORATION_DECOUPLING_FRAC,
+  DETERIORATION_SEVERITY_EXTREME_FRAC,
   THRESHOLD_EVIDENCE_WINDOW_DAYS,
   THRESHOLD_EVIDENCE_WINDOW_DAYS_TIGHT,
   VOLUME_MIN_CONSECUTIVE_WEEKS,
   VOLUME_WEEK_COMPLETION_MIN_FRAC,
 } from './contract';
+
+/* DETERIORATION-SEVERITY-1 · re-exported under their OWN names rather than
+ * aliased, because an alias is a second name for one quantity (Rule 16). The
+ * re-export is what puts them in this module's namespace, which is what the
+ * `COEFFICIENTS` completeness check walks: a doctrine number this file's curves
+ * depend on must carry a provenance entry like every other. */
+export { DETERIORATION_DECOUPLING_FRAC, DETERIORATION_SEVERITY_EXTREME_FRAC };
 
 /* ══════════════════════════════════════════════════════════════════════════
  * THE PROVENANCE VOCABULARY
@@ -213,11 +232,34 @@ export const PER_WEEK_CREDIT_CEILING_FRAC = VOLUME_ADDITION_THRESHOLD;
  *     = 3
  *     = VOLUME_MIN_CONSECUTIVE_WEEKS
  *
- * so the minimum number of weeks that can unlock a full step is EXACTLY the
+ * so the FEWEST weeks that could ever unlock a full step is EXACTLY the
  * contract's own "≥3 consecutive non-cutback weeks", arrived at from a
  * different document. The gate asserts that identity by reading all three out
  * of their own sources; if any of them moves, the gate fails and somebody has
  * to re-argue the calibration rather than discover it.
+ *
+ * ── AND THE PART THAT SENTENCE USED TO GET WRONG (corrected 2026-09-05) ────
+ *
+ * It said the minimum "IS" three weeks, full stop. That is arithmetic about
+ * this ratio and NOT a claim about the ledger, and read as a claim about the
+ * ledger it is false. `accumulateCapacityEvidence` multiplies every week by
+ * two more factors before summing it: `absorptionWeight`, so a week whose
+ * successor has not been run yet contributes `PROVISIONAL_ABSORPTION_WEIGHT`
+ * of itself, and `recencyWeight`, so a week older than
+ * `EVIDENCE_FULL_CREDIT_DAYS` contributes less and one at
+ * `EVIDENCE_WINDOW_DAYS` contributes nothing.
+ *
+ * Both bite in the ordinary case. Three 5-per-cent weeks read the day after
+ * the third ends are 7, 14 and 21 days old, all inside the tight window, so
+ * recency costs nothing and only the newest week's provisional absorption
+ * does. Read one week later they are 14, 21 and 28 days old and the FIRST WEEK
+ * HAS AGED OUT ENTIRELY, leaving two thirds of a step.
+ *
+ * So: three weeks is the floor, not the expectation. Both figures are now
+ * asserted in `_continuous_evidence.test.ts` rather than described here, and
+ * that is the point — Rule 20's corollary is that a header comment asserting
+ * an invariant is documentation and not enforcement, and this paragraph is
+ * only worth reading because the case underneath it can fail.
  */
 export const PROGRESSION_UNLOCK_FRAC = 0.15;
 
@@ -274,6 +316,73 @@ export const ABSORPTION_FLOOR_FRAC = 0.90;
  * revisits this should revisit it as a coaching question, not a arithmetic one.
  */
 export const PROVISIONAL_ABSORPTION_WEIGHT = 0.5;
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3b · DETERIORATION · "one deteriorated session reduces confidence; it must
+ *      not independently block progression unless the deterioration is
+ *      extreme"
+ *
+ * DETERIORATION-SEVERITY-1 · THE SECOND CLIFF OF EXACTLY THE SAME SHAPE AS THE
+ * FIRST, and the owner found it the same way.
+ *
+ * `admit.ts` condition 3 refused an entire week on `deterioratedCount > 0`,
+ * while `canonical/deterioration.ts`'s own roll-up sentence read "One session
+ * showed late deterioration, which reduces confidence without blocking
+ * progression". Two files, one question, opposite answers (Rule 16), and the
+ * doctrine both of them cite says the second one. Measured cost: it was the
+ * ONLY reason 2026-06-15 — the one week on the reference account carrying a
+ * real admissible surplus — contributed nothing through the live path.
+ *
+ * The resolution is the one CONTINUOUS-EVIDENCE-1 already used twice: the
+ * DEGREE question leaves the categorical gate and becomes a curve, and the
+ * gate keeps only the part that is genuinely categorical.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/**
+ * How much of a week's credit survives the worst session in it, given that
+ * session's Pa:HR decoupling.
+ *
+ *   · at or below 5%    1. `Research/03` §12: "Strong aerobic endurance;
+ *                       sustainable". Doctrine's own word for that band, so a
+ *                       session inside it costs nothing.
+ *   · 5% to 8%          ramps 1 down to 0 across §12's "Acceptable;
+ *                       approaching aerobic limit" row.
+ *   · at or above 8%    0. §12: "Endurance gap; build base before
+ *                       progressing". Doctrine saying, in its own words, that
+ *                       a progression is not licensed here.
+ *   · null              1, and that is the one place this function is NOT
+ *                       conservative. See below.
+ *
+ * ── WHY IT IS APPLIED TO EVERY READABLE SESSION, NOT ONLY FLAGGED ONES ────
+ *
+ * Because the alternative is a cliff, and it is a measurable one. Q13's second
+ * signal fires at "pace within ~2% but HR rises >~6 bpm". Take a session at
+ * exactly 2% slower with heart rate up 6 bpm from 150: it is CLEAN. Nudge the
+ * heart rate to 6.1 bpm and it is DETERIORATED, while its decoupling moved by
+ * 0.03 of a percentage point. A factor gated on the VERDICT would drop from 1
+ * to about 0.6 on that hair. A factor that reads only the decoupling does not
+ * notice the boundary at all, which is precisely CLAUDE.md Rule 9's
+ * instruction to walk the quantity rather than the verdict.
+ * `_deterioration_severity.test.ts` walks that exact boundary and measures the
+ * step the rejected design would have had.
+ *
+ * ── RULE 11 · WHY `null` IS 1 AND NOT 0 ──────────────────────────────────
+ *
+ * `null` means no session in the window was readable — a truncated watch file,
+ * thirds that are not comparable, no heart rate. That is "we could not tell",
+ * and this engine's standing answer to "could not tell" on the deterioration
+ * axis is to withhold nothing and grant nothing: `admit.ts` has never blocked
+ * on `unknownCount`, and `RULE_21_THRESHOLD_LEDGER` row 8 carries the
+ * argument, which is that cutting a runner's plan on a session nobody could
+ * read costs him the block while withholding a raise costs him a week. This
+ * function therefore returns 1 and the REFUSAL is made elsewhere, by
+ * `admit.ts`, in the one case where it matters: a session that is KNOWN to
+ * have deteriorated but whose severity is unreadable is UNREADABLE, not mild.
+ * That split is the whole of Rule 11 on this axis and it is asserted rather
+ * than described.
+ *
+ * The function itself is with the other curves, below `absorptionWeight`.
+ */
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 4 · RECENCY · so that evidence ageing out of the window is not a cliff
@@ -418,6 +527,32 @@ export const COEFFICIENTS: readonly Coefficient[] = [
       + 'assumption because the borrowing is the arguable part, not the digits.',
   },
   {
+    name: 'DETERIORATION_DECOUPLING_FRAC',
+    value: DETERIORATION_DECOUPLING_FRAC,
+    provenance: 'CALCULATED_PHYSIOLOGY',
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| Decoupling % | Meaning |',
+    says:
+      'The ceiling of the band Research/03 §12 calls "Strong aerobic endurance; sustainable". '
+      + 'A session at or below it costs a week nothing, because doctrine says in its own '
+      + 'words that it held together. It is numerically the engine\'s own '
+      + 'DETERIORATION_DECOUPLING_FRAC, which is Q13\'s pace-to-HR decoupling flag, imported '
+      + 'under its own name rather than re-typed.',
+  },
+  {
+    name: 'DETERIORATION_SEVERITY_EXTREME_FRAC',
+    value: DETERIORATION_SEVERITY_EXTREME_FRAC,
+    provenance: 'CALCULATED_PHYSIOLOGY',
+    doc: 'Research/03-heart-rate-zones.md',
+    anchor: '| Decoupling % | Meaning |',
+    says:
+      'The floor of the band Research/03 §12 calls "Endurance gap; build base before '
+      + 'progressing". This is where Q13\'s undefined word EXTREME is actually written down: '
+      + 'doctrine states that a progression is not licensed at this decoupling, so the '
+      + 'confidence curve reaches zero here and one session at or past it may block on its '
+      + 'own.',
+  },
+  {
     name: 'EVIDENCE_WINDOW_DAYS',
     value: EVIDENCE_WINDOW_DAYS,
     provenance: 'CALCULATED_PHYSIOLOGY',
@@ -508,6 +643,22 @@ export function creditedSurplusFrac(surplusFrac: number): number {
  */
 export function absorptionWeight(followingWeekCompletionFrac: number): number {
   return rampAcross(ABSORPTION_FLOOR_FRAC, ABSORPTION_CONFIRMED_FRAC, followingWeekCompletionFrac);
+}
+
+/**
+ * How much of a week's credit survives the worst session in it.
+ *
+ * THE ARGUMENT IS IN SECTION 3b ABOVE and is not repeated here (Rule 17): the
+ * two doctrine edges, why the factor reads every readable session rather than
+ * only flagged ones, and why `null` weighs 1 rather than 0.
+ */
+export function deteriorationConfidenceWeight(severityFrac: number | null): number {
+  if (severityFrac == null || !Number.isFinite(severityFrac)) return 1;
+  return 1 - rampAcross(
+    DETERIORATION_DECOUPLING_FRAC,
+    DETERIORATION_SEVERITY_EXTREME_FRAC,
+    severityFrac,
+  );
 }
 
 /**

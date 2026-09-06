@@ -1499,6 +1499,52 @@ A block that cannot flex is a printout, so the adjustment layer IS the product:
 
 ---
 
+## 2026-09-05 · One deteriorated session discounts a week, it does not refuse it
+
+**The conflict.** `lib/adaptation/canonical/deterioration.ts` wrote, for exactly
+one deteriorated session, *"One session showed late deterioration, which reduces
+confidence without blocking progression."* `lib/adaptation/volume-evidence/
+admit.ts` condition 3 then refused the whole week on `deterioratedCount > 0`.
+Two answers to one question, and `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q13
+states the first: one deteriorated session *"must not independently block
+progression unless the deterioration is extreme or that session was the direct
+prerequisite."*
+
+**Where "extreme" is actually written down.** Q13 never defines it.
+`Research/03-heart-rate-zones.md` §12 does, over the same quantity Q13's own
+third signal thresholds: `<5%` sustainable, `5-8%` acceptable, `8-10%`
+*"Endurance gap; build base before progressing"*, `>10%` worse. So a fade costs
+nothing at or below 5 per cent Pa:HR decoupling, costs everything at or above 8,
+and the engine interpolates across the band doctrine itself calls a transition.
+Both edges are read out of the document at gate time, never hardcoded twice.
+
+**What blocks and what discounts.** Blocking survives in three cases and all
+three are categorical: Q13's own repeated-session COUNT (two or more), a fade at
+or past the endurance-gap edge, and a fade that is known to have happened but
+whose size could not be measured (Rule 11, known-bad-but-unmeasurable is not
+mild, on the axis where guessing mild grants a raise). Everything milder is
+admitted and discounted continuously.
+
+**The factor reads every readable session, not only flagged ones**, and that is
+what makes the pipeline continuous. Gated on the verdict instead, a session a
+hair either side of Q13's second signal would swing the week's credit by 70
+percentage points; the walk measures a slope of 3.5e4 against a bound of 40.
+
+**Replayed on the owner's real history, and it did not fire.** His 2026-06-15
+week (47.3 mi against 45.5 prescribed, the only week on the account with a real
+admissible surplus) measures **8.043 per cent** Pa:HR decoupling on its worst key
+session, four hundredths of a point past doctrine's edge. It is still refused.
+That is the correct result and it is reported rather than tuned away: what
+changed is that the refusal now cites doctrine instead of contradicting it, and
+that missing the edge by a hair now costs a hair rather than everything.
+
+**Enforced by** `lib/adaptation/volume-evidence/_deterioration_severity.test.ts`
+(constructed cases in both directions, the band read out of `Research/03`, three
+continuity walks) and `_falsify_deterioration_severity.script.ts` (eight planted
+defects, each named by the gate, restored byte for byte).
+
+---
+
 ## Standing constraints referenced above
 
 - Paces come from evidence. The goal stays visible and never distorts training.

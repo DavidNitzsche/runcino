@@ -12,7 +12,7 @@ accepts. This probe does not even do that: it stops before the write.
 
 - completed weeks folded: **17**
 - canonical runs resolved: **82**
-- merged rows excluded by `NOT (data ? 'mergedIntoId')`: **112**
+- merged rows excluded by `CANONICAL_ROW_SQL` (`lib/runs/volume.ts`): **112**
 - plan versions on the account: **49** (the plan that OWNED each date is used)
 - races with a real result, driving Rule 8's windows: **6**
 - active plan: `pln_7636bcc0a201bf2d` · phase **BUILD** · future weeks **13**
@@ -45,7 +45,7 @@ accepts. This probe does not even do that: it stops before the write.
 | 2026-05-25 | 44 | 39.7 | 0 | NOT_SUPPORTED | NOT MET · EXECUTION_IDENTITY_TRUSTWORTHY: 0 mi of admissible surplus against 44 mi prescribed is inside the 1 per cent a GPS watch can misreport on its own, so it says nothing about the runner. | 0.00000 | 0% | 0 |
 | 2026-06-01 | 44.5 | 44.9 | refused | NOT_SUPPORTED | `CUTBACK_WEEK` | 0.00000 | 0% | 0.4 |
 | 2026-06-08 | 45.5 | 40.1 | 0 | NOT_SUPPORTED | NOT MET · EXECUTION_IDENTITY_TRUSTWORTHY: 0 mi of admissible surplus against 45.5 mi prescribed is inside the 1 per cent a GPS watch can misreport on its own, so it says nothing about the runner. | 0.00000 | 0% | 0 |
-| 2026-06-15 | 45.5 | 47.3 | 1.8 | NOT_SUPPORTED | NOT MET · NO_MATERIAL_DETERIORATION: A session in this week deteriorated: One session showed late deterioration, which reduces confidence without blocking progression. | 0.00000 | 0% | 1.8 |
+| 2026-06-15 | 45.5 | 47.3 | 1.8 | NOT_SUPPORTED | NOT MET · NO_MATERIAL_DETERIORATION: The worst session in this week finished at 8.04 per cent pace-to-heart-rate decoupling. Doctrine calls that an endurance gap and answers it by building base before progressing. | 0.00000 | 0% | 1.8 |
 | 2026-06-22 | 49.5 | 28 | 0 | NOT_SUPPORTED | NOT MET · EXECUTION_IDENTITY_TRUSTWORTHY: 0 mi of admissible surplus against 49.5 mi prescribed is inside the 1 per cent a GPS watch can misreport on its own, so it says nothing about the runner. | 0.00000 | 0% | 0 |
 | 2026-06-29 | 55.5 | 0 | 0 | NOT_SUPPORTED | NOT MET · EXECUTION_IDENTITY_TRUSTWORTHY: 0 mi of admissible surplus against 55.5 mi prescribed is inside the 1 per cent a GPS watch can misreport on its own, so it says nothing about the runner. | 0.00000 | 0% | 0 |
 | 2026-07-06 | 45.5 | 43.2 | refused | NOT_SUPPORTED | `CUTBACK_WEEK` | 0.00000 | 0% | 0 |
@@ -57,6 +57,44 @@ accepts. This probe does not even do that: it stops before the write.
 | 2026-08-17 | 17 | 28.4 | refused | NOT_SUPPORTED | `AUTHORED_RECOVERY_BLOCK` | 0.00000 | 0% | 11.4 |
 | 2026-08-24 | 38 | 34.8 | refused | NOT_SUPPORTED | `AUTHORED_RECOVERY_BLOCK` | 0.00000 | 0% | 0 |
 | 2026-08-31 | 46.5 | 45.8 | 0 | NOT_SUPPORTED | NOT MET · EXECUTION_IDENTITY_TRUSTWORTHY: 0 mi of admissible surplus against 46.5 mi prescribed is inside the 1 per cent a GPS watch can misreport on its own, so it says nothing about the runner. | 0.00000 | 0% | 0 |
+
+### The deterioration axis, exactly · Research/03 §12
+
+Doctrine's two edges: a fade costs nothing at or below **5 per cent** Pa:HR decoupling ("Strong aerobic endurance; sustainable") and costs everything at or above **8 per cent** ("Endurance gap; build base before progressing").
+
+| week | key sessions read | deteriorated | unreadable | worst Pa:HR decoupling | credit kept |
+|---|---|---|---|---|---|
+| 2026-05-11 | 0 | 0 | 0 | no readable session | 100% |
+| 2026-05-18 | 0 | 0 | 0 | no readable session | 100% |
+| 2026-05-25 | 0 | 0 | 0 | no readable session | 100% |
+| 2026-06-01 | 0 | 0 | 0 | no readable session | 100% |
+| 2026-06-08 | 3 | 2 | 0 | 10.743% | 0% |
+| 2026-06-15 | 3 | 1 | 0 | 8.043% | 0% |
+| 2026-06-22 | 3 | 0 | 0 | 6.061% | 64.6% |
+| 2026-06-29 | 0 | 0 | 0 | no readable session | 100% |
+| 2026-07-06 | 3 | 0 | 1 | 3.135% | 100% |
+| 2026-07-13 | 1 | 0 | 1 | no readable session | 100% |
+| 2026-07-20 | 2 | 0 | 0 | 8.127% | 0% |
+| 2026-07-27 | 0 | 0 | 0 | no readable session | 100% |
+| 2026-08-03 | 1 | 0 | 0 | 2.286% | 100% |
+| 2026-08-10 | 2 | 1 | 1 | 6.993% | 33.6% |
+| 2026-08-17 | 0 | 0 | 0 | no readable session | 100% |
+| 2026-08-24 | 1 | 1 | 0 | 8.024% | 0% |
+| 2026-08-31 | 3 | 2 | 1 | 12.305% | 0% |
+
+- weeks with a readable key session: **9**
+- of those, weeks at or past doctrine's endurance-gap edge: **5**
+
+**DECISION FOR THE OWNER · 5 of 9 weeks with a
+readable key session sit at or past the endurance-gap edge.** That is a high share,
+and it has two readings that lead opposite ways. Either these long runs really are
+finishing at the aerobic limit, which is a coaching fact worth acting on rather than
+a threshold to move. Or the transfer is too harsh: `Research/03` §12 states its
+bands for a steady 60-90 minute run compared FIRST HALF against SECOND HALF, and
+Q13 compares the MIDDLE third against the FINAL third, which excludes the warm-up
+and therefore compares a harder window against a harder window. Nothing in this
+repo can tell those two apart, and moving the edge to make the numbers nicer is
+exactly the tuning CLAUDE.md Rule 21 forbids. It is written down instead.
 
 ## What the cron would do tonight
 
@@ -113,28 +151,29 @@ week. A lever that spends surplus has nothing to spend, and no threshold anywher
 the pipeline is what produced that. Saying "the lane did not fire" without saying
 this would be the confident-and-wrong reading Rule 22 warns about.
 
-## Two things the owner should decide, and neither is an agent's call
+## One thing the owner should decide, and one thing that was resolved
 
-**1 · `admit.ts` blocks on ONE deteriorated session; the canonical owner's own
-sentence says one does not block.** `deteriorationPattern` in
-`lib/adaptation/canonical/deterioration.ts` writes, for exactly one deteriorated
-session: *"One session showed late deterioration, which reduces confidence without
-blocking progression."* `admit.ts` condition 3 then refuses the whole week on
-`deterioratedCount > 0`. Those two statements cannot both be right, and the
-disagreement is not academic: it is the single reason 2026-06-15 — the only week on
-this account carrying a real admissible surplus — contributes nothing.
+**RESOLVED · DETERIORATION-SEVERITY-1.** The earlier run of this probe recorded a
+contradiction: `deteriorationPattern` said one deteriorated session *"reduces
+confidence without blocking progression"* while `admit.ts` refused the whole week
+on `deterioratedCount > 0`. `docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q13 states the
+first, and adds an escape it never defined: one session may block *"unless the
+deterioration is extreme"*.
 
-A continuous answer exists and would match what CONTINUOUS-EVIDENCE-1 already did
-for absorption: let one deteriorated session REDUCE the credit rather than zero it,
-and keep the hard block at `repeated` (two or more), which is where
-`DETERIORATION_REPEATED_MIN_SESSIONS` already draws doctrine's line.
+`Research/03-heart-rate-zones.md` §12 defines it, for the same quantity Q13's own
+third signal thresholds. One deteriorated session now DISCOUNTS a week
+continuously across §12's own band table and blocks only when the fade is past
+the endurance-gap edge, when it is repeated (Q13's two sessions), or when its size
+could not be measured at all (Rule 11: known-bad-but-unmeasurable is not mild).
 
-**It has deliberately NOT been changed in this pass.** Changing an admission
-threshold so that the lane fires is exactly the tuning CLAUDE.md Rule 21 forbids
-("never manufacture push by weakening a guard"), and it moves a constant the
-canonical engine owns. It is written down here instead.
+**And it did not make his week fire, which is the honest result.** 2026-06-15's
+worst key session measures the value in the table above, and it is past §12's
+8 per cent edge. The week is still refused. What changed is that it is refused for
+a reason doctrine states rather than by a rule doctrine forbids, and that missing
+the edge by a hair now costs a hair rather than everything: the credit curve
+reaches zero AT the edge, so a week either side of it is worth about the same.
 
-**2 · An OVERRUN cutback week.** 2026-06-01: 44.9 mi run against 44.5 prescribed, in
+**STILL OPEN · An OVERRUN cutback week.** 2026-06-01: 44.9 mi run against 44.5 prescribed, in
 a week the plan marked a cutback, refused for that reason. Rule 8 is unambiguous
 that a week the engine authored small is not evidence about the runner's normal.
 But a cutback is not a taper: he was not told to rest, he was told to run less, and

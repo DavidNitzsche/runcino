@@ -48,6 +48,36 @@
  * runner, which is the direction Rule 22 says to check for, and both carry a
  * citation rather than a preference.
  *
+ * ── DETERIORATION-SEVERITY-1 (2026-09-05) · CONDITION 3 IS NO LONGER A WALL ─
+ *
+ * This clause used to refuse a whole week on `deterioratedCount > 0`, while
+ * `canonical/deterioration.ts` — the owner of that verdict — wrote, for the
+ * same case, "One session showed late deterioration, which reduces confidence
+ * without blocking progression". Two answers to one question, and doctrine
+ * (`docs/PROGRESSIVE_BASELINE_DOCTRINE.md` Q13) states the second:
+ *
+ *     "One deteriorated session reduces confidence; it must not independently
+ *      block progression unless the deterioration is extreme or that session
+ *      was the direct prerequisite."
+ *
+ * It was also the only reason 2026-06-15 — the sole week on the reference
+ * account with a real admissible surplus — contributed nothing through the
+ * live path. Condition 3 now asks FOUR questions in order, and only the first
+ * three can refuse:
+ *
+ *   severity unreadable   UNREADABLE. Rule 11: known-bad-but-unmeasurable is
+ *                         not mild, and this is the axis where guessing mild
+ *                         grants a raise.
+ *   repeated (Q13, >=2)   NOT_MET. A count is categorical; unchanged.
+ *   extreme (Research/03  NOT_MET. Q13's own escape, at the decoupling where
+ *   §12, >=8% Pa:HR)      doctrine says "build base before progressing".
+ *   anything milder       MET, and DISCOUNTED continuously by
+ *                         `deteriorationConfidenceWeight` in `./weight.ts`.
+ *
+ * The DEGREE left this gate entirely, exactly as the surplus magnitude did in
+ * CONTINUOUS-EVIDENCE-1. This file no longer has an opinion about how bad is
+ * bad; it has an opinion about what is disqualifying.
+ *
  * ── RULE 22 · WHAT THIS FILE'S GATE CANNOT FAIL ON ────────────────────────
  *
  * · It cannot fail on a WRONG GRADE or a WRONG DETERIORATION VERDICT. Every
@@ -80,7 +110,12 @@ import type { StimulusGrade } from '@/lib/adaptation/canonical/stimulus';
 // That placement is what lets a pipeline with hard gates in it still be
 // continuous end to end, and it is asserted in `_continuity_walk.test.ts`
 // rather than claimed here (Rule 20).
-import { ABSORPTION_FLOOR_FRAC, GPS_DISTANCE_ERROR_LO_FRAC } from './weight';
+import {
+  ABSORPTION_FLOOR_FRAC,
+  DETERIORATION_SEVERITY_EXTREME_FRAC,
+  deteriorationConfidenceWeight,
+  GPS_DISTANCE_ERROR_LO_FRAC,
+} from './weight';
 import { roundTo } from '@/lib/format/run';
 import {
   GRADES_THAT_COUNT_AS_EVIDENCE,
@@ -295,20 +330,72 @@ export function admitSurplus(input: AdmissionInput): SurplusAdmission {
   const gradeSupport = input.keySessionGrades.filter((g) => GRADES_THAT_COUNT_AS_EVIDENCE.has(g));
   const establishedNothing = input.keySessionGrades.length > 0 && gradeSupport.length === 0;
 
+  const det = input.deterioration.ok ? input.deterioration.value : null;
+  const worst = det?.worstSeverityFrac ?? null;
+  const severityUnreadable = det != null && det.deterioratedCount > 0 && worst == null;
+  const extreme = worst != null && worst + 1e-9 >= DETERIORATION_SEVERITY_EXTREME_FRAC;
+
   if (!input.deterioration.ok) {
     conditions.push(unreadable(
       'NO_MATERIAL_DETERIORATION',
       `Session execution could not be read: ${whyText(input.deterioration.why)}`,
     ));
+  } else if (severityUnreadable) {
+    /* DETERIORATION-SEVERITY-1 · RULE 11, AND THE ONE BRANCH THAT MAKES THE
+     * REST OF THIS SAFE.
+     *
+     * A session is KNOWN to have deteriorated and HOW BADLY could not be
+     * measured. Reading that as mild would be the exact collapse Rule 11
+     * names: "don't know" spent as "measured small", on the axis where being
+     * wrong grants a raise. `deterioration.ts` makes this unreachable today
+     * (every DETERIORATED branch there needs a readable heart rate, so it
+     * always carries a severity), and the branch stays because that is an
+     * invariant of a file this one does not own — a direct caller, or a future
+     * signal that fires without heart rate, reaches it immediately. */
+    conditions.push(unreadable(
+      'NO_MATERIAL_DETERIORATION',
+      'A session in this week deteriorated and how far it fell could not be measured, '
+      + 'so there is no way to say whether it was mild or extreme.',
+    ));
   } else if (input.deterioration.value.repeated) {
+    /* Q13, verbatim: "'Repeated' means >=2 relevant SESSIONS in the window."
+     * A COUNT is categorical — a boolean input has no hair to slip on — so
+     * this is not a Rule 9 cliff and it is unchanged. */
     conditions.push(notMet(
       'NO_MATERIAL_DETERIORATION',
       `Sessions fell away late repeatedly: ${input.deterioration.value.detail}`,
     ));
-  } else if (input.deterioration.value.deterioratedCount > 0) {
+  } else if (extreme) {
+    /* DETERIORATION-SEVERITY-1 · Q13's FIRST ESCAPE, now measurable. One
+     * session may block "unless the deterioration is extreme", and
+     * `Research/03` §12 is where extreme is written down: at 8% Pa:HR
+     * decoupling doctrine's own table says "build base before progressing".
+     *
+     * WHY THIS GATE IS NOT ITSELF A CLIFF, and it is the same property step 0b
+     * rests on: it sits exactly where the curve behind it already equals zero.
+     * `deteriorationConfidenceWeight(DETERIORATION_SEVERITY_EXTREME_FRAC)` is
+     * 0, so a week a hair either side of this line delivers a hair of evidence
+     * either way. `_deterioration_severity.test.ts` walks across it.
+     *
+     * AND THE COROLLARY, WHICH IS WHY THIS IS NOT A RULE 21 TIGHTENING: this
+     * clause changes the REASON and never the number. The credited fraction at
+     * this severity is already exactly zero, so admitting the week and
+     * refusing it produce the same `units`. What the refusal buys is a
+     * decision record that names doctrine's instruction instead of reporting a
+     * silent zero, which is Rule 11's whole complaint about zeroes.
+     *
+     * IT IS GATED ON SEVERITY, NOT ON THE VERDICT, and that is deliberate: a
+     * session can be graded CLEAN by Q13's three signals and still sit past
+     * §12's endurance-gap edge, and it happens on real data (2026-07-20 on the
+     * reference account, 8.127 per cent, zero sessions flagged). The sentence
+     * therefore reports the MEASUREMENT rather than claiming a session "fell
+     * away", because saying a session fell away over a window the grader
+     * called clean would be a surface contradicting itself (Rule 16). */
     conditions.push(notMet(
       'NO_MATERIAL_DETERIORATION',
-      `A session in this week deteriorated: ${input.deterioration.value.detail}`,
+      `The worst session in this week finished at ${(worst! * 100).toFixed(2)} per cent `
+      + 'pace-to-heart-rate decoupling. Doctrine calls that an endurance gap and answers it '
+      + 'by building base before progressing.',
     ));
   } else if (gradeBlockers.length > 0) {
     // Q38: PARTIAL is "not enough of the intended session to receive the full
@@ -327,6 +414,23 @@ export function admitSurplus(input: AdmissionInput): SurplusAdmission {
     conditions.push(notMet(
       'NO_MATERIAL_DETERIORATION',
       'Key sessions ran in this week and none of them established the intended stimulus.',
+    ));
+  } else if (det != null && det.deterioratedCount > 0) {
+    /* DETERIORATION-SEVERITY-1 · Q13's actual instruction: "One deteriorated
+     * session reduces confidence; it must not independently block progression
+     * unless the deterioration is extreme or that session was the direct
+     * prerequisite." Not extreme (checked above), not repeated (checked
+     * above), so it is ADMITTED and DISCOUNTED. The discount is a number, it
+     * is `deteriorationConfidenceWeight` in `./weight.ts`, and it is applied
+     * by `weighCapacity` — this clause does not have a second opinion about
+     * the degree, because two opinions about one quantity is Rule 16. It
+     * states the discount so the decision record says why the evidence was
+     * credited at less than face value rather than leaving a reader to infer
+     * it from a smaller number. */
+    const kept = Math.round(deteriorationConfidenceWeight(worst) * 100);
+    conditions.push(met(
+      'NO_MATERIAL_DETERIORATION',
+      `${det.detail} ${kept} per cent of this week's evidence is kept.`,
     ));
   } else {
     conditions.push(met(

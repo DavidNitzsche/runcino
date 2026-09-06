@@ -241,7 +241,12 @@ const conditionsWith = (followingFrac: number | null): Omit<AdmissionInput, 'wee
   telemetry: absent<HrTraceVerdict>('no heart-rate question on a distance lever'),
   deterioration: measured({
     repeated: false, deterioratedCount: 0, unknownCount: 0, cleanCount: 3,
-    detail: 'clean',
+    // DETERIORATION-SEVERITY-1 · a MEASURED clean week, not an unread one. Three
+    // sessions held together at 1 per cent Pa:HR decoupling, which is inside
+    // Research/03 §12's "Strong aerobic endurance; sustainable" row, so the
+    // deterioration factor is exactly 1 and this walk still measures the axis
+    // it means to measure.
+    worstSeverityFrac: 0.01, detail: 'clean',
   }),
   keySessionGrades: [],
   painOrInjuryReported: measured(false),
@@ -420,6 +425,7 @@ describe('CONTINUOUS-EVIDENCE-1 · the continuity walk (CLAUDE.md Rule 9)', () =
         absorbedWeeklyMiUnfiltered: 47, moves: [],
       };
       return respondToVolumeEvidence({
+        deteriorationWeight: capacity.deteriorationWeight,
         asOfISO: '2026-06-22',
         athleteId: 'walk',
         planVersion: 'v1',
