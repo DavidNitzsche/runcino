@@ -588,14 +588,29 @@ const ALLOWLIST: readonly AllowedImport[] = [
    * had a cliff there. Re-deriving either in the test would prove the
    * re-derivation correct and nothing else (Rule 18).
    *
-   * Three pure functions and one type, all total functions of their arguments.
-   * No `evaluate`, no lever, no `arbitrate`, and the file writes nothing. */
+   * PAHR-QUANTITY-1 (2026-09-05) added `decouplingReadabilityFrac` and its six
+   * named edges to this same grant, same argument: the suite's PART 5 proves
+   * each of the three environmental factors ramps where its OWN citation says
+   * it should (the confounder-table floor, §12's protocol ceiling, the
+   * materiality floor `grade-adjust.ts` already owns, the steady-state ceiling
+   * `aerobic-decoupling.ts` already owns, the comfort floor, §1's heat
+   * trigger), which is a claim about the real edges and not about a copy of
+   * them. All seven additions are pure and total; nothing here gained an
+   * `evaluate`, a lever, or a write.
+   *
+   * Three pure functions, one readability function, six named constants, and
+   * one type, all total functions of their arguments. No `evaluate`, no
+   * lever, no `arbitrate`, and the file writes nothing. */
   {
     file: ALLOWED_SEVERITY_GATE_FILE,
     module: '@/lib/adaptation/canonical/deterioration',
     symbols: new Set([
       'assessDeterioration', 'deteriorationPattern', 'paHrDecouplingFrac',
       'DeteriorationResult',
+      'decouplingReadabilityFrac',
+      'DECOUPLING_READABILITY_DURATION_CEIL_MIN', 'DECOUPLING_READABILITY_DURATION_FLOOR_MIN',
+      'DECOUPLING_READABILITY_HEAT_HI_F', 'DECOUPLING_READABILITY_HEAT_LO_F',
+      'DECOUPLING_READABILITY_TERRAIN_HI_S_PER_MI', 'DECOUPLING_READABILITY_TERRAIN_LO_S_PER_MI',
     ]),
   },
   /* VOLUMESEAM-1 · `plan_phases.label` has ONE translator and it lives here.

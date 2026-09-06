@@ -78,6 +78,24 @@
  * CONTINUOUS-EVIDENCE-1. This file no longer has an opinion about how bad is
  * bad; it has an opinion about what is disqualifying.
  *
+ * ── PAHR-QUANTITY-1 (2026-09-05) · "EXTREME" NOW ALSO ASKS "CAN THIS BE
+ *    TRUSTED" ──────────────────────────────────────────────────────────────
+ *
+ * `Research/03` §12's own protocol requires a steady 60-90 minute run, out of
+ * the heat, on flat-enough ground, before its 5%/8% bands mean anything at
+ * all — see `deterioration.ts`'s PAHR-QUANTITY-1 section for the full
+ * comparison against what this engine actually measures (middle third versus
+ * final third, no duration floor, no terrain or heat correction). `extreme`
+ * therefore no longer compares `worst` to the edge directly; it asks whether
+ * `deteriorationConfidenceWeight(worst, worstReadability)` has reached its
+ * floor of exactly zero, which happens only when the session is BOTH at or
+ * past the edge AND fully readable. A hot, hilly, or too-short session
+ * sitting past 8% on the raw thirds number now discounts CONTINUOUSLY through
+ * `worstReadability` rather than triggering this categorical refusal — see
+ * decision 4/5 in the same section for why that is not a weakening of the
+ * cited threshold, only of trusting a reading its own citation would not
+ * vouch for.
+ *
  * ── RULE 22 · WHAT THIS FILE'S GATE CANNOT FAIL ON ────────────────────────
  *
  * · It cannot fail on a WRONG GRADE or a WRONG DETERIORATION VERDICT. Every
@@ -144,6 +162,18 @@ import {
  */
 export const TRUSTWORTHY_IDENTITY_TIERS: ReadonlySet<string> =
   new Set(['exact', 'legacy_type', 'supplemental']);
+
+/**
+ * PAHR-QUANTITY-1 · floating-point slack for "the confidence weight reached
+ * its floor of exactly zero", used only by the `extreme` categorical gate
+ * below. A local constant rather than a reused one: `contract-constants.ts`'s
+ * `COMPLETION_FRACTION_EPSILON` is argued specifically for a completion-
+ * fraction-versus-bar comparison and reusing it here for a different
+ * quantity would be citing an argument that was not made about this one.
+ * Same magnitude as this file's own prior inline `1e-9` for the same reason
+ * that value had: nothing this engine can propose moves a weight by less.
+ */
+const WEIGHT_FLOOR_EPSILON = 1e-9;
 
 export interface AdmissionInput {
   readonly week: WeekSurplus;
@@ -333,7 +363,23 @@ export function admitSurplus(input: AdmissionInput): SurplusAdmission {
   const det = input.deterioration.ok ? input.deterioration.value : null;
   const worst = det?.worstSeverityFrac ?? null;
   const severityUnreadable = det != null && det.deterioratedCount > 0 && worst == null;
-  const extreme = worst != null && worst + 1e-9 >= DETERIORATION_SEVERITY_EXTREME_FRAC;
+  /* PAHR-QUANTITY-1 · the readability PAIRED with `worst`, defaulting to 1 for
+   * a `DeteriorationPattern` built before this change (Rule 16: one field,
+   * one meaning, and an absent one means "nothing checked this yet", not
+   * "this session was contaminated"). */
+  const worstReadability = det?.worstSeverityReadabilityFrac ?? 1;
+  /* THE GATE SITS WHERE THE CURVE IS ALREADY ZERO — generalised from ONE axis
+   * to TWO. Before this change `extreme` compared `worst` against the edge
+   * directly, which is correct only because `deteriorationConfidenceWeight`
+   * reaches exactly zero there. Now that the weight also depends on
+   * readability, comparing `worst` alone would refuse a week on a reading
+   * §12's own preconditions do not support (a hot, hilly, or too-short
+   * session sitting past 8% on the RAW thirds number) even though that
+   * reading's WEIGHT never reached zero. So the categorical refusal is
+   * re-expressed as "the curve this session's severity feeds is at its
+   * floor", which is the SAME invariant `_deterioration_severity.test.ts`
+   * part 3B already asserts, extended to the input it did not have before. */
+  const extreme = worst != null && deteriorationConfidenceWeight(worst, worstReadability) <= WEIGHT_FLOOR_EPSILON;
 
   if (!input.deterioration.ok) {
     conditions.push(unreadable(
@@ -427,7 +473,7 @@ export function admitSurplus(input: AdmissionInput): SurplusAdmission {
      * states the discount so the decision record says why the evidence was
      * credited at less than face value rather than leaving a reader to infer
      * it from a smaller number. */
-    const kept = Math.round(deteriorationConfidenceWeight(worst) * 100);
+    const kept = Math.round(deteriorationConfidenceWeight(worst, worstReadability) * 100);
     conditions.push(met(
       'NO_MATERIAL_DETERIORATION',
       `${det.detail} ${kept} per cent of this week's evidence is kept.`,

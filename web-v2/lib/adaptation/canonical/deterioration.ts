@@ -60,6 +60,121 @@
  * needs it has to supply it; no caller does today, so that escape is unused
  * and a prerequisite session currently blocks only on severity or repetition
  * like any other.
+ *
+ * ── PAHR-QUANTITY-1 (2026-09-05) · DOES §12 MEASURE WHAT THIS FILE MEASURES ─
+ *
+ * Ordered overnight, verbatim: "First establish whether Research/03 §12
+ * measures the SAME QUANTITY as the app." It does not, on two of four axes,
+ * and the file already said so honestly before this change — the verdict here
+ * is what to DO about that, not a discovery that it was wrong.
+ *
+ *   FORMULA        SAME, exactly, not to first order. `paHrDecouplingFrac`
+ *                  below is `(paceFin/paceMid)*(hrFin/hrMid) - 1`, and
+ *                  substituting `speed = 1/pace` into §12's own
+ *                  `(EF1/EF2 - 1)` with `EF = speed/HR` reduces to that exact
+ *                  product. `_deterioration_severity.test.ts` §1 asserts this
+ *                  independently from the doc's own units. No divergence.
+ *
+ *   WINDOW         DIFFERENT. §12: "Compare first vs. second half of a steady
+ *                  aerobic run (60–90 min)." This file, per Q13's own text:
+ *                  middle third against final third, excluding the first
+ *                  (warm-up). Halving a run WITH a warm-up folds the slow
+ *                  opening miles into the "before" side; thirding it removes
+ *                  them from the comparison entirely. Neither is wrong for
+ *                  its own purpose — Q13's purpose is "did this session fall
+ *                  apart at the end", §12's is "is this runner's aerobic
+ *                  engine holding at a fixed effort" — but they are not
+ *                  interchangeable, and nothing in this repo can derive one
+ *                  from the other after the fact.
+ *
+ *   DURATION FLOOR DIFFERENT, and this is the one this file did NOT already
+ *                  say. §12 requires the compared run to BE 60-90 minutes.
+ *                  `lib/training/aerobic-decoupling.ts` — the app's OTHER,
+ *                  pre-existing Pa:HR implementation, built independently for
+ *                  the durability/decoupling-trend surfaces — enforces
+ *                  exactly this floor via `DECOUPLING_PROTOCOL_MIN_MINUTES`
+ *                  (imported below, not re-typed: Rule 16). Until this change
+ *                  nothing in the canonical engine's thirds path enforced any
+ *                  duration floor at all — `buildThirds` only requires 6
+ *                  splits, which is 6 minutes for a 1:00/mi runner. A fade
+ *                  measured on a 25-minute tempo run was being compared
+ *                  against a band table §12 states for a 60-90 minute steady
+ *                  effort, silently.
+ *
+ *   STEADY-EFFORT  DIFFERENT, same discovery. §12's protocol is implicitly a
+ *   PRECONDITION    FIXED-PACE run (a drift TEST). `computeAerobicDecoupling`
+ *                  enforces this too — it refuses when its two windows differ
+ *                  by more than 20 s/mi, because a progression, fartlek or
+ *                  race is a DELIBERATE pace change, not drift, and comparing
+ *                  the two would price effort as fatigue. The thirds path has
+ *                  no equivalent: a fast-finish long run (a normal,
+ *                  Daniels-doctrine prescription — see `Research/00a`) will
+ *                  show a large third-to-third "decoupling" that is the
+ *                  runner executing the workout as written.
+ *
+ *   TERRAIN/HEAT   NEITHER implementation corrects for either before
+ *                  computing decoupling. §12 itself: "Heat adds 2-5%
+ *                  artefactually — control conditions." A hilly final third
+ *                  reads as fatigue for the same reason a fast-finish reads
+ *                  as fatigue: the metric cannot tell a harder EFFORT from a
+ *                  harder session.
+ *
+ * ── THE CALL, ARGUED RATHER THAN DECLARED ─────────────────────────────────
+ *
+ * Per the owner's decision 4: keep citing §12's 8% exactly (already true —
+ * `DETERIORATION_SEVERITY_EXTREME_FRAC` still reads it verbatim, unmoved) and
+ * do not make it a binary refusal (already true, `deteriorationConfidenceWeight`
+ * ramps). Per decision 5, this file now determines the transfer rather than
+ * assuming it, and picks (a)+(b) from the three options rather than (c):
+ *
+ *   · The FORMULA needs no correction — it is the same quantity, proven, not
+ *     asserted.
+ *   · The WINDOW is NOT reconciled to half-vs-half, because Q13 does not ask
+ *     §12's question. Q13 asks "did this specific session fall apart late",
+ *     which is inherently a THIRDS question — collapsing it to halves would
+ *     average the fade into the front half and could hide it. The 5%/8%
+ *     NUMBERS transfer (the formula is identical and the physiology a given
+ *     ratio represents does not depend on which two windows produced it); the
+ *     VALIDITY PRECONDITIONS §12 states for trusting that ratio at all do not
+ *     transfer automatically and are what were missing.
+ *   · So the fix is (a): close the precondition gap. Every reading this file
+ *     now returns for `severityFrac` carries a continuous
+ *     `readabilityFrac` alongside it — `decouplingReadabilityFrac` below —
+ *     built from exactly §12's own stated preconditions (duration,
+ *     ATTEMPTED via `analyzedDurationMin`; steady effort NOT attempted, see
+ *     the open item at the bottom of this section; heat and terrain, both
+ *     ATTEMPTED). It is POLICY_ASSUMPTION where the ramp shape or an edge is
+ *     chosen (the 30-minute floor, the 20 s/mi terrain ceiling, the 60°F
+ *     comfort floor) and CALCULATED_PHYSIOLOGY where a doctrine number is
+ *     reused verbatim (the 60-minute ceiling, the 77°F/25°C heat trigger, the
+ *     4 s/mi terrain materiality floor) — see `decouplingReadabilityFrac`'s
+ *     own doc for the ledger. `weight.ts`'s `deteriorationConfidenceWeight`
+ *     folds readability in MULTIPLICATIVELY against the existing severity
+ *     ramp, so a session this file cannot vouch for costs LESS, continuously,
+ *     never more, and never categorically nothing-or-everything.
+ *   · Bands are NOT re-derived from scratch (rejecting option (c)): a
+ *     from-scratch derivation would need exactly the athlete-specific
+ *     baseline data (his own decoupling distribution, at his own paces, in
+ *     his own conditions) that does not exist yet, and inventing bands to
+ *     replace a cited one is the tuning CLAUDE.md Rule 21 forbids in a new
+ *     costume.
+ *
+ * ── STILL OPEN, NAMED RATHER THAN SILENTLY LEFT (Rule 20) ─────────────────
+ *
+ * The STEADY-EFFORT precondition (fast-finish vs. genuine fade) is NOT
+ * implemented here. Closing it properly needs per-third PACE INTENT — was
+ * the final third prescribed to be faster, not just observed to be — which is
+ * `ComparableThirds.comparable`'s job upstream and, per
+ * `canonical-shadow/live-input.ts`'s own header, that flag is already a known
+ * coarse proxy ("cannot detect a prescription that varies pace across the
+ * run"). Building a true fix means the evidence layer parsing the PRESCRIBED
+ * pace shape per third, which is a bigger change than this file's remit
+ * tonight. What this file does instead, honestly labelled as a gap and not a
+ * fix: nothing yet corrects for a deliberate fast finish specifically. A
+ * fast-finish long run that also happens to run hot or hilly still gets the
+ * heat/terrain readability discount; a fast-finish long run in perfect
+ * conditions does not, and can still read as a severe fade. Recorded in the
+ * report as a genuine open policy question rather than resolved unilaterally.
  */
 import {
   DETERIORATION_PACE_SLOWDOWN_FRAC,
@@ -69,7 +184,9 @@ import {
   DETERIORATION_REPEATED_MIN_SESSIONS,
   DETERIORATION_SEVERITY_EXTREME_FRAC,
 } from './contract-constants';
-import type { ComparableThirds, Truncation } from './input';
+import type { ComparableThirds, Truncation, Measured } from './input';
+import { DECOUPLING_PROTOCOL_MIN_MINUTES } from '@/lib/training/aerobic-decoupling';
+import { MATERIAL_ADJUSTMENT_S_PER_MI } from '@/lib/terrain/grade-adjust';
 
 /**
  * DETERIORATION-SEVERITY-1 · HOW BADLY, not only whether.
@@ -115,6 +232,180 @@ export function paHrDecouplingFrac(
   return (finalPaceSecPerMi / middlePaceSecPerMi) * (finalHrBpm / middleHrBpm) - 1;
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * PAHR-QUANTITY-1 · READABILITY · does §12's protocol actually apply here
+ *
+ * Local `clamp01`/`rampAcross`, DELIBERATELY DUPLICATED rather than imported
+ * from `volume-evidence/weight.ts`. That file already has the identical pair
+ * and importing them would be the tidier move, but it would also point an
+ * import arrow from `canonical/` (the lower, shared layer — consumed by the
+ * lever files, the shadow live-input loader, and this directory) AT
+ * `volume-evidence/` (a consumer of `canonical/`), inverting the layering
+ * for two one-line functions. Two lines of duplication is cheaper than a
+ * backwards edge in the import graph.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
+const rampAcross = (lo: number, hi: number, x: number): number => {
+  if (!(hi > lo)) return x >= hi ? 1 : 0;
+  return clamp01((x - lo) / (hi - lo));
+};
+
+/**
+ * What §12's own protocol requires before a decoupling reading means
+ * anything, for the ONE session `assessDeterioration` is about to judge.
+ * Every field `Measured<>`, per Rule 11: a run with no elevation signal at
+ * all must not read as "definitely flat", and a run with no weather must not
+ * read as "definitely cool". Absence costs nothing — see
+ * `decouplingReadabilityFrac`'s own doc for why that is deliberate.
+ */
+export interface SessionEnvironmentalContext {
+  /**
+   * The whole run's duration, minutes. §12: "a steady aerobic run (60-90
+   * min)". Measured off the run's own moving time, same as
+   * `aerobic-decoupling.ts`'s own duration read — see
+   * `DECOUPLING_READABILITY_DURATION_CEIL_MIN`.
+   */
+  readonly analyzedDurationMin: Measured<number>;
+  /**
+   * The terrain adjustment `lib/terrain/grade-adjust.ts::runGradeAdjustment`
+   * computed for the WHOLE run, seconds per mile, signed (negative = net
+   * climb cost, positive = net descent gift). This file does not know which
+   * THIRD the hills fell in — that needs per-split grade, which
+   * `buildThirds` does not carry today — so a material whole-run terrain
+   * adjustment is read as "the thirds comparison cannot be trusted to tell
+   * hills from fatigue", not corrected away. See
+   * `DECOUPLING_READABILITY_TERRAIN_LO_S_PER_MI`.
+   */
+  readonly terrainDeltaSPerMi: Measured<number>;
+  /**
+   * Ambient temperature, °F, for the run. §12: "Heat adds 2-5% artefactually
+   * — control conditions." See `DECOUPLING_READABILITY_HEAT_LO_F`.
+   */
+  readonly tempF: Measured<number>;
+}
+
+/**
+ * §12's protocol duration floor, imported rather than re-typed (Rule 16):
+ * `lib/training/aerobic-decoupling.ts` already carries this exact number,
+ * cited to the exact same passage, gating the app's OTHER, half-vs-half
+ * Pa:HR reading. One number, one citation, two files that both need it.
+ */
+export const DECOUPLING_READABILITY_DURATION_CEIL_MIN = DECOUPLING_PROTOCOL_MIN_MINUTES;
+
+/**
+ * POLICY_ASSUMPTION · the ramp's lower edge. `Research/03-heart-rate-zones.md`
+ * §1's confounder table scopes cardiac drift itself to "Cardiac drift (>30 min
+ * steady) ... +5-15% over 60 min" — under thirty minutes there has not been
+ * time for genuine drift to develop at all, so a reading from a shorter run is
+ * not "a smaller sample of the same thing", it is a different phenomenon
+ * (noise, or a warm-up artefact) wearing the same number. THIRTY is the
+ * confounder table's own floor; choosing it as the ramp's start (rather than,
+ * say, zero) is the chosen part, and the citation is real.
+ */
+export const DECOUPLING_READABILITY_DURATION_FLOOR_MIN = 30;
+
+/**
+ * CALCULATED_PHYSIOLOGY · the terrain floor below which a whole-run terrain
+ * adjustment is not worth doubting a decoupling reading over. Imported from
+ * `grade-adjust.ts` rather than re-typed: it is that file's own materiality
+ * floor for surfacing a terrain adjustment AT ALL ("roughly the width of GPS
+ * pace noise on a single mile"), so a run below it carries no more terrain
+ * signal than measurement noise already contributes.
+ */
+export const DECOUPLING_READABILITY_TERRAIN_LO_S_PER_MI = MATERIAL_ADJUSTMENT_S_PER_MI;
+
+/**
+ * POLICY_ASSUMPTION · the terrain ceiling, at and above which readability
+ * from terrain alone is treated as exhausted. Twenty seconds per mile is
+ * `lib/training/aerobic-decoupling.ts`'s OWN steady-state sanity bound — the
+ * point at which that file's half-vs-half reading refuses outright rather
+ * than trust a comparison across two windows that plainly were not run at the
+ * same effort. Reused here as a ceiling rather than a refusal point, because
+ * a ramp needs two edges and this repo already has one number that means
+ * "here the comparison stops being trustworthy" for exactly this shape of
+ * question.
+ */
+export const DECOUPLING_READABILITY_TERRAIN_HI_S_PER_MI = 20;
+
+/**
+ * POLICY_ASSUMPTION · the heat floor below which ambient temperature is
+ * treated as fully comfortable. Chosen, not cited: doctrine states a trigger
+ * (below) but not a comfort floor, and 60°F is an ordinary, unremarkable
+ * training temperature by any of this repo's own heat-adjustment tables
+ * (`lib/weather/heat-adjustment.ts`).
+ */
+export const DECOUPLING_READABILITY_HEAT_LO_F = 60;
+
+/**
+ * CALCULATED_PHYSIOLOGY · the heat ceiling. `Research/03-heart-rate-zones.md`
+ * §1's confounder table: "Heat (≥25°C) Rises +5-20 bpm", and §12 itself:
+ * "Heat adds 2-5% artefactually — control conditions." 25°C is 77°F. At or
+ * above it, heat readability is treated as exhausted.
+ */
+export const DECOUPLING_READABILITY_HEAT_HI_F = 77;
+
+export interface DecouplingReadability {
+  /** In [0, 1]. 1 = nothing found that should reduce trust in this severity
+   *  reading. 0 = every checked precondition is fully violated. */
+  readonly value: number;
+  /** Which preconditions were short, in plain language, or the empty string
+   *  when none were. */
+  readonly detail: string;
+}
+
+/**
+ * How much to trust a `severityFrac` reading against §12's own bands, given
+ * what is known about the session it came from.
+ *
+ * THREE INDEPENDENT FACTORS, MULTIPLIED — the same composition rule doctrine
+ * itself uses for heat-and-grade (`lib/terrain/grade-adjust.ts`'s own
+ * `composeEffortFactor`, citing `Research/01` §"Combined conditions": "Add
+ * adjustments multiplicatively, not additively"). Each factor ramps smoothly
+ * from 1 (fully readable) to 0 (that precondition fully violated), so the
+ * product is continuous in every input — Rule 9 — and reaches exactly 0 only
+ * when a factor's own violation is complete, never on a hair.
+ *
+ * RULE 11 · a field this file does not have an answer for costs NOTHING. An
+ * absent duration, absent terrain reading or absent temperature is not
+ * evidence the session was short, hilly or hot — it is evidence nobody
+ * recorded the fact, and the honest response to "we don't know" on a factor
+ * that only ever REDUCES trust is to leave that factor at 1, not to guess a
+ * discount from silence. This mirrors `hr-trace-credibility.ts`'s own stated
+ * rule for sparse samples: "an absence of grounds to refuse is not grounds to
+ * refuse."
+ */
+export function decouplingReadabilityFrac(env: SessionEnvironmentalContext): DecouplingReadability {
+  let value = 1;
+  const notes: string[] = [];
+
+  if (env.analyzedDurationMin.ok) {
+    const d = env.analyzedDurationMin.value;
+    const r = rampAcross(DECOUPLING_READABILITY_DURATION_FLOOR_MIN, DECOUPLING_READABILITY_DURATION_CEIL_MIN, d);
+    value *= r;
+    if (r < 1) {
+      notes.push(`${d.toFixed(0)} min is short of Research/03 §12's `
+        + `${DECOUPLING_READABILITY_DURATION_CEIL_MIN}-minute steady-run floor`);
+    }
+  }
+
+  if (env.terrainDeltaSPerMi.ok) {
+    const t = Math.abs(env.terrainDeltaSPerMi.value);
+    const r = 1 - rampAcross(DECOUPLING_READABILITY_TERRAIN_LO_S_PER_MI, DECOUPLING_READABILITY_TERRAIN_HI_S_PER_MI, t);
+    value *= r;
+    if (r < 1) notes.push(`terrain was worth about ${t.toFixed(0)} s/mi over the whole run, which the thirds comparison cannot place`);
+  }
+
+  if (env.tempF.ok) {
+    const f = env.tempF.value;
+    const r = 1 - rampAcross(DECOUPLING_READABILITY_HEAT_LO_F, DECOUPLING_READABILITY_HEAT_HI_F, f);
+    value *= r;
+    if (r < 1) notes.push(`${f.toFixed(0)}°F is in the range Research/03 §1 and §12 both cite as artefactually inflating decoupling`);
+  }
+
+  return { value: clamp01(value), detail: notes.join('; ') };
+}
+
 /**
  * Three states, not a boolean. Rule 11: a session that held together and a
  * session nobody could read are opposite facts, and only one of them is
@@ -145,6 +436,17 @@ export interface DeteriorationResult {
    * claimed here (Rule 20).
    */
   readonly severityFrac: number | null;
+  /**
+   * PAHR-QUANTITY-1 · how much to trust `severityFrac` against §12's own
+   * bands, in [0, 1]. OPTIONAL ON THE TYPE ONLY, so the fixtures constructed
+   * directly (rather than through `assessDeterioration`) across this repo's
+   * existing test suites keep typechecking unchanged. A real reading from
+   * `assessDeterioration` always sets it; a caller reading a fixture that
+   * omits it should treat the absence as 1 (fully readable — the pre-
+   * PAHR-QUANTITY-1 default, since nothing was checking this before). See
+   * `decouplingReadabilityFrac` for what it is built from.
+   */
+  readonly readabilityFrac?: number;
   readonly detail: string;
 }
 
@@ -156,16 +458,27 @@ export interface DeteriorationResult {
  * is a runner easing down, which is not deterioration. Requiring "HR equal or
  * higher" is what separates fatigue from a cool-down, and dropping it would
  * make every well-executed progression run look like a collapse.
+ *
+ * PAHR-QUANTITY-1 · `env` is OPTIONAL and additive. Every existing caller
+ * (the three lever files under `levers/`, still calling the two-argument
+ * form) gets EXACTLY today's behaviour: `readabilityFrac` comes back `1`,
+ * which is what `deteriorationConfidenceWeight`'s new default parameter also
+ * assumes, so an unmigrated caller's output is bit-for-bit unchanged. Only
+ * `lib/plan/volume-evidence-loader.ts::deteriorationOf` supplies it today.
  */
 export function assessDeterioration(
   thirds: ComparableThirds,
   truncation: Truncation,
+  env?: SessionEnvironmentalContext,
 ): DeteriorationResult {
+  const readability = env == null ? 1 : decouplingReadabilityFrac(env).value;
+
   if (truncation.truncated) {
     return {
       verdict: 'UNKNOWN',
       signals: [],
       severityFrac: null,
+      readabilityFrac: readability,
       detail:
         'The activity was truncated, so the late portion was not captured. '
         + 'Absence of a recorded decline is not evidence the session held together.',
@@ -177,6 +490,7 @@ export function assessDeterioration(
       verdict: 'UNKNOWN',
       signals: [],
       severityFrac: null,
+      readabilityFrac: readability,
       detail:
         'The session does not contain comparable work across its thirds, so a '
         + 'late-session comparison would not mean anything.',
@@ -188,6 +502,7 @@ export function assessDeterioration(
       verdict: 'UNKNOWN',
       signals: [],
       severityFrac: null,
+      readabilityFrac: readability,
       detail: 'Pace for the middle or final third could not be read.',
     };
   }
@@ -234,6 +549,7 @@ export function assessDeterioration(
       verdict: 'DETERIORATED',
       signals,
       severityFrac,
+      readabilityFrac: readability,
       detail: `Late-session deterioration · ${signals.join(', ')}`
         + `${severityFrac == null ? '' : ` · Pa:HR decoupling ${(severityFrac * 100).toFixed(1)} per cent`}.`,
     };
@@ -247,6 +563,7 @@ export function assessDeterioration(
       verdict: 'UNKNOWN',
       signals: [],
       severityFrac: null,
+      readabilityFrac: readability,
       detail:
         'Pace held through the final third, but heart rate could not be read, '
         + 'so two of the three deterioration signals could not be evaluated.',
@@ -257,6 +574,7 @@ export function assessDeterioration(
     verdict: 'CLEAN',
     signals: [],
     severityFrac,
+    readabilityFrac: readability,
     detail: 'The session held together to the finish.',
   };
 }
@@ -298,6 +616,16 @@ export interface DeteriorationPattern {
    * being handed a zero that looks like a measurement.
    */
   readonly worstSeverityFrac: number | null;
+  /**
+   * PAHR-QUANTITY-1 · the `readabilityFrac` PAIRED WITH `worstSeverityFrac` —
+   * not the minimum across the window, and not an average. The question this
+   * answers is "how much should the worst reading above cost", so it needs
+   * the readability of THAT SPECIFIC SESSION, not of some other session in
+   * the window that happened to be less trustworthy. Optional on the type for
+   * the same fixture-compatibility reason as `DeteriorationResult
+   * .readabilityFrac`; absent means 1 (the pre-PAHR-QUANTITY-1 default).
+   */
+  readonly worstSeverityReadabilityFrac?: number;
   readonly detail: string;
 }
 
@@ -343,9 +671,15 @@ export function deteriorationPattern(
   const repeated = deterioratedCount >= DETERIORATION_REPEATED_MIN_SESSIONS;
 
   const readable = results
-    .map((r) => r.severityFrac)
-    .filter((s): s is number => s != null);
-  const worstSeverityFrac = readable.length === 0 ? null : Math.max(...readable);
+    .filter((r): r is DeteriorationResult & { severityFrac: number } => r.severityFrac != null);
+  // PAHR-QUANTITY-1 · pick the (severity, readability) PAIR by severity, not
+  // the two fields independently — see the field's own doc for why a min or
+  // an average would answer a different question.
+  const worst = readable.length === 0
+    ? null
+    : readable.reduce((a, b) => (b.severityFrac > a.severityFrac ? b : a));
+  const worstSeverityFrac = worst == null ? null : worst.severityFrac;
+  const worstSeverityReadabilityFrac = worst == null ? 1 : (worst.readabilityFrac ?? 1);
 
   const worstPct = worstSeverityFrac == null
     ? null
@@ -357,6 +691,7 @@ export function deteriorationPattern(
     unknownCount,
     cleanCount,
     worstSeverityFrac,
+    worstSeverityReadabilityFrac,
     detail: repeated
       ? `${deterioratedCount} sessions in the window showed late deterioration`
         + `${worstPct == null ? '' : `, the worst at ${worstPct} Pa:HR decoupling`}.`
