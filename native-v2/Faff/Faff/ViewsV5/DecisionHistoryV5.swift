@@ -55,6 +55,20 @@ struct DecisionHistoryV5: View {
     /// V5UNDO-1 · take back an accepted decision. Nil in a preview and nil for
     /// a surface that has nothing to write to.
     var onUndo: ((V5Decision) -> Void)? = nil
+    /// ACCEPTVOICE-1 (2026-09-05) · the server's own reason a take-back was
+    /// declined, drawn as `Alert` ABOVE the record it is about.
+    ///
+    /// The 409 case — "something else has moved this session since" — used to
+    /// set `state = .failed`, which replaces the whole loaded history with
+    /// `OutageBodyV5`. So a coach that answered clearly was rendered as a
+    /// coach we could not reach, and the rows the runner was reading
+    /// vanished. Three different endings (a thrown transport error, a 409
+    /// refusal, any other non-2xx) all landed on one case, which is exactly
+    /// what this file's own Rule 11 header forbids one screen above.
+    ///
+    /// A refusal keeps the record on screen. Only a read we could not do at
+    /// all is an outage.
+    var undoRefusal: String? = nil
 
     var body: some View {
         ScrollView {
@@ -78,6 +92,9 @@ struct DecisionHistoryV5: View {
                         Silence(reason: "Your coach has not proposed a change yet. "
                                 + "When it does, the decision and what became of it show up here.")
                     case .ready(let rows):
+                        if let undoRefusal {
+                            Alert(text: undoRefusal)
+                        }
                         ForEach(groups(rows), id: \.title) { g in
                             ListGroup(header: g.title) {
                                 ForEach(g.rows) { d in

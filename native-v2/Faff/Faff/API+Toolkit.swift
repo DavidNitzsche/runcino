@@ -184,7 +184,11 @@ extension API {
             "hk_uuid": hkUUID,
         ]
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (_, http) = try await API.authedSend(req)
+        // REQUESTSTORM-2 · background HK ingest — a failure here throws to
+        // `syncStrengthFromHK`, which counts it and leaves no fingerprint so
+        // the next sync retries. It does not raise the global "can't reach
+        // faff" banner. See `API.authedSend`'s `announcesReachability`.
+        let (_, http) = try await API.authedSend(req, announcesReachability: false)
         return (200..<300).contains(http.statusCode)
     }
 
@@ -209,7 +213,8 @@ extension API {
         comps.queryItems = [URLQueryItem(name: "hk_uuid", value: hkUUID)]
         var req = URLRequest(url: comps.url!)
         req.httpMethod = "DELETE"
-        let (_, http) = try await API.authedSend(req)
+        // REQUESTSTORM-2 · same reasoning as postStrengthFromHK above.
+        let (_, http) = try await API.authedSend(req, announcesReachability: false)
         return (200..<300).contains(http.statusCode)
     }
 

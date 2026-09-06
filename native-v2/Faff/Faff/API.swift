@@ -291,7 +291,35 @@ enum API {
     /// bearer + do 401 handling so write paths share the same session contract
     /// as reads. Returns the (Data, HTTPURLResponse) tuple — caller decides
     /// what to do with the body / status.
-    static func authedSend(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// `announcesReachability` · REQUESTSTORM-2 (2026-09-05)
+    ///
+    /// Whether a transport failure on THIS request is allowed to raise the
+    /// global "can't reach faff" banner. Default true, so every existing
+    /// caller keeps the behaviour it has.
+    ///
+    /// Pass `false` for BACKGROUND HOUSEKEEPING the runner did not ask for
+    /// and is not looking at — the HealthKit sample and strength ingest
+    /// pushes. The banner is a claim about the screen in front of the
+    /// runner: "what you are reading may not be current." A failed upload of
+    /// yesterday's sleep minutes is not that claim, and it was being made in
+    /// the same voice, with far more chances to fire: one foreground import
+    /// posted 21 health chunks plus 5 strength sessions, so a single
+    /// unlucky one of 26 background writes flashed the banner for six
+    /// seconds (`RootTabView`'s auto-hide) over a perfectly current screen.
+    /// The owner, TestFlight 282: "See the banner but then it went away."
+    ///
+    /// This suppresses ONE thing and nothing else — Rule 11, three facts
+    /// stay three facts. The error still THROWS to the caller, the failure
+    /// is still recorded in `RequestDiagnosticsLog` with its real outcome,
+    /// and `StuckConnectionMonitor` still counts it, because whether the
+    /// connection POOL is dead is a question about the pool and not about
+    /// who was asking. Only the runner-facing global assertion is withheld.
+    static func authedSend(
+        _ request: URLRequest,
+        announcesReachability: Bool = true
+    ) async throws -> (Data, HTTPURLResponse) {
         var req = request
         // TIMEOUT-1 (2026-09-04) · "a request that connects but never
         // responds must leave loading and enter a retryable failure state."
@@ -372,8 +400,14 @@ enum API {
             if API.isStuckConnectionSignal(error) {
                 await StuckConnectionMonitor.shared.recordStuckSignal()
             }
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .faffReachabilityLost, object: nil)
+            // REQUESTSTORM-2 · see `announcesReachability` in this function's
+            // header. Background ingest fails silently HERE and loudly
+            // everywhere else that matters: it still throws, and it is still
+            // in the diagnostics log two lines above.
+            if announcesReachability {
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .faffReachabilityLost, object: nil)
+                }
             }
             throw error
         }

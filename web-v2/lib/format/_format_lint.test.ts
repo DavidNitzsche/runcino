@@ -93,8 +93,8 @@ const ALLOW: Record<string, string> = {
     "The `Math.round(x*10)/10` is ANCHORFIT-1 mirroring `weeklyAvgFromWindow` and `resolvePeakWeekly` so a simulated runner's anchors are byte-identical to the production readers'. It is engine arithmetic standing in for a database read, not a rendered number.",
   "app/api/cron/notifications/route.ts":
     "API ROUTE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
-  "app/api/ingest/health/route.ts":
-    "API ROUTE · an open-coded `Math.round(x*10)/10` (the poster rounding). Queued; not on the poster/recap path where the split was visible.",
+  "lib/health/active-energy-batch.ts":
+    "NOT A DISTANCE, A PACE OR A CLOCK. REQUESTSTORM-2 (2026-09-05) moved this rounding here out of app/api/ingest/health/route.ts, whose entry is deleted in the same change because the code left it. It rounds a day's KILOCALORIE total to one decimal on its way into health_samples.value — a stored number, not a rendered one, and lib/format/run.ts has no kcal formatter to route it through. Routing it through the distance formatter would be a category error, not a migration.",
   "app/api/race/[slug]/autofill/route.ts":
     "API ROUTE · a fixed-one-decimal distance (the recap rounding). Queued; not on the poster/recap path where the split was visible.",
   "app/api/runs/[id]/recap/route.ts":

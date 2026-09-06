@@ -145,6 +145,15 @@ enum ProposalStandingV5 {
 
 struct ProposalCardV5: View {
     let proposal: V5Proposal
+    /// ACCEPTVOICE-1 · true while THIS card's answer is in flight.
+    ///
+    /// Owned by the parent, like everything else here, so the card still
+    /// holds no state and stays previewable. It exists because a tap used to
+    /// produce no visible change whatsoever for the length of a round trip —
+    /// up to the 12 seconds `API.authedSend` allows — and a button that looks
+    /// identical before and after being pressed is indistinguishable from one
+    /// that is not wired up. Which is what these were.
+    var answering: Bool = false
     /// Accept or dismiss. The parent owns the network call and the refresh,
     /// so this view stays previewable and holds no state of its own.
     let onAnswer: (_ accept: Bool) -> Void
@@ -184,15 +193,18 @@ struct ProposalCardV5: View {
             HStack(spacing: V5.S.s10) {
                 if standing.isAnswerable {
                     Button { onAnswer(true) } label: {
-                        pill("Do it", weight: .semibold, ink: V5.textPrimary,
+                        pill(answering ? "Sending" : "Do it", weight: .semibold,
+                             ink: V5.textPrimary,
                              fill: direction.color.opacity(0.22))
                     }
                     .buttonStyle(V5PressStyle())
+                    .disabled(answering)
 
                     Button { onAnswer(false) } label: {
                         pill("Leave it", ink: V5.textSecondary, fill: V5.materialControl)
                     }
                     .buttonStyle(V5PressStyle())
+                    .disabled(answering)
                 }
 
                 Button(action: onDetails) {
