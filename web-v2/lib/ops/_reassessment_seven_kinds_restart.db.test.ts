@@ -187,6 +187,14 @@ describe('RESTART-1 · all seven kinds written, then read by a connection that n
           `SELECT * FROM reassessment_schedule WHERE user_uuid = $1::uuid ORDER BY kind`,
           [RUNNER],
         );
+        // `SELECT *` deliberately, so this proves every column the migration
+        // declares round-trips, not only the ones a curated column list
+        // happens to name. The cost: `pg`'s raw driver returns `date` and
+        // `timestamptz` columns as JS `Date` objects rather than the ISO
+        // strings the app's own `SELECT_COLUMNS` casts them to, so dates are
+        // read back through this helper rather than a bare `String(...)`.
+        const isoDate = (v: unknown): string =>
+          v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
         expect(r.rows, 'not all seven rows survived to be read by a fresh connection')
           .toHaveLength(REASSESSMENT_KINDS.length);
 
@@ -211,8 +219,8 @@ describe('RESTART-1 · all seven kinds written, then read by a connection that n
           expect((row!.payload as { proofKind?: string }).proofKind).toBe(kind);
           expect((row!.required_evidence as unknown[]).length).toBe(1);
           expect((row!.evidence as unknown[]).length).toBe(1);
-          expect(String(row!.assess_on_iso).slice(0, 10)).toBe('2026-09-07');
-          expect(String(row!.overdue_after_iso).slice(0, 10)).toBe('2026-09-10');
+          expect(isoDate(row!.assess_on_iso)).toBe('2026-09-07');
+          expect(isoDate(row!.overdue_after_iso)).toBe('2026-09-10');
           expect(row!.status).toBe('PENDING');
           expect(row!.idempotency_key).toBe(`restart-proof:${kind}`);
         }
