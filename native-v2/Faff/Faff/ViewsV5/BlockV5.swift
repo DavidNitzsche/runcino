@@ -424,11 +424,43 @@ struct BlockV5: View {
     /// hidden rather than shown-and-refusing when the block has none, because
     /// a door that always opens onto "there is nothing prescribed" is worse
     /// than no door.
+    /// ── MOVABLEDAY-1 (2026-09-06) · TWO BUGS, AND THE ROW VANISHED
+    ///
+    /// David, physical device, TestFlight 282: "Skip/move option is gone."
+    ///
+    /// 1 · `guard let type = day.type` DROPPED EVERY DAY WHEN THE FIELD WAS
+    ///     ABSENT. `type` is optional for one stated reason — "so a stale
+    ///     cached payload from before this field existed still decodes" — and
+    ///     his phone was serving a 105-day cache. Every day failed the guard,
+    ///     the resolver returned nil, and the row HID ITSELF. Rule 11: "this
+    ///     day's display type was not cached" is not "this day cannot be
+    ///     moved", and the collapse removed the only door to rescheduling.
+    ///
+    /// 2 · THE COMPARISON WAS CASE-WRONG. `type` is documented one file over
+    ///     as "Title-case display type — Easy / Threshold / Rest". It was
+    ///     compared against `"rest"` and `"race"`, which no payload ever
+    ///     sends, so on a FRESH cache the resolver would have happily offered
+    ///     to move a rest day. The two bugs hid each other: with a stale cache
+    ///     it returned nothing, and with a fresh one it would have returned
+    ///     the wrong thing.
+    ///
+    /// A day is movable if it is in the future, has a date, and CARRIES WORK.
+    /// Mileage is the fact; the display type is a label, and a label that is
+    /// missing must not remove a capability.
     private var nextMovableDayISO: String? {
         for week in model.weeks {
             for day in week.days where day.isFuture {
-                guard let iso = day.dateISO, let type = day.type else { continue }
-                if type != "rest" && type != "race" { return iso }
+                guard let iso = day.dateISO else { continue }
+                if day.race { continue }
+                // Trust the type only when it is present, and compare the way
+                // the payload actually spells it.
+                if let type = day.type {
+                    let t = type.lowercased()
+                    if t == "rest" || t == "race" { continue }
+                }
+                // No prescribed distance is a rest day whatever it is called.
+                if day.miles <= 0 { continue }
+                return iso
             }
         }
         return nil
