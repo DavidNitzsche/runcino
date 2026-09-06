@@ -279,7 +279,72 @@ export function evaluateWeeklyVolume(input: WeeklyVolumeInput): LeverVerdict {
 
   /* ── Completion ────────────────────────────────────────────────────────── */
 
-  const completions = nonCutback.map((w) => ({
+  /**
+   * ── NOPRESCRIPTION-1 (2026-09-06) · A WEEK NOBODY PRESCRIBED IS NOT A WEEK
+   *    COMPLETED AT ZERO PERCENT.
+   *
+   * This read `: 0` on the else branch, so a week with `prescribedMi === 0`
+   * scored a completion fraction of ZERO and fell through to `contradictory`
+   * as "completed at 0%, below the 95% bar".
+   *
+   * Found on the FIRST production run of the canonical shadow after
+   * `DATABASE_URL_RO` was configured. The owner's live record:
+   *
+   *   2026-08-10   ran 23.2 mi   recorded "completed at 0%"
+   *   2026-08-17   ran 28.4 mi   recorded "completed at 0%"
+   *   2026-08-24   ran 34.8 mi   completed at 91%
+   *
+   * The active plan's first prescribed week is 2026-08-24, so the two earlier
+   * weeks have no prescription to be measured against — and both were read as
+   * total failures. Three contradictory weeks, zero included evidence, raw
+   * confidence 0, and the verdict was REGRESS: ease his weekly volume from
+   * 46.5 to 44.2 miles, on the strength of two weeks he had run.
+   *
+   * Rule 11, on the one axis where the collapse argues for less training. The
+   * most recent COMPLETE week (2026-08-31) had him at 45.8 of 46.5 prescribed,
+   * 98.5%, and it never reached the window.
+   *
+   * A week with nothing prescribed is now EXCLUDED, with a reason, and never
+   * counted as a shortfall. If that leaves too few weeks to read, the refusal
+   * below fires — which is the correct answer and was always available.
+   */
+  const measurable = nonCutback.filter((w) => {
+    if (w.prescribedMi > 0) return true;
+    excludedList.push({
+      activityId: `week:${w.weekStartISO}`,
+      dateISO: w.weekStartISO,
+      reason: 'NO_PRESCRIPTION_FOR_THIS_WEEK',
+      detail: 'This week sits before the active plan begins, so nothing was prescribed for it. '
+        + 'That is not the same as a week the runner failed to complete.',
+      stillAdmissibleFor: ['weekly volume', 'consistency', 'time on feet'],
+    });
+    return false;
+  });
+
+  if (measurable.length < VOLUME_MIN_CONSECUTIVE_WEEKS) {
+    return nonMoving({
+      lever: LEVER,
+      decision: 'REFUSE',
+      beforeValue: before,
+      excluded: excludedList,
+      windowDays,
+      confidence: conf(
+        `Only ${measurable.length} of the last ${VOLUME_MIN_CONSECUTIVE_WEEKS} weeks carried a prescription.`,
+        'Weekly volume is read as completion against what was asked, so a week with nothing '
+        + 'asked of it cannot contribute either way.',
+      ),
+      reason:
+        `Weekly volume stays at ${miText(before)}. `
+        + `Only ${measurable.length} of the last ${VOLUME_MIN_CONSECUTIVE_WEEKS} weeks had a `
+        + 'prescription to be measured against; the rest sit before this plan began.',
+      whatWouldChangeIt: [
+        `A further ${VOLUME_MIN_CONSECUTIVE_WEEKS - measurable.length} prescribed week(s) `
+        + 'completed, which would fill the window.',
+      ],
+    });
+  }
+
+  const completions = measurable.map((w) => ({
     week: w,
     frac: w.completedMi.ok && w.prescribedMi > 0 ? w.completedMi.value / w.prescribedMi : 0,
   }));

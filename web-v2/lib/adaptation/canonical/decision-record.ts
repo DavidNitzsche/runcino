@@ -95,7 +95,14 @@ export type ExclusionReason =
   | 'WRONG_LEVER_FOR_THIS_SESSION'
   | 'DATA_UNREADABLE'
   | 'PRESCRIBED_RECOVERY_OR_TAPER'
-  | 'SINGLE_EXCEPTIONAL_PERFORMANCE';
+  | 'SINGLE_EXCEPTIONAL_PERFORMANCE'
+  /**
+   * NOPRESCRIPTION-1 (2026-09-06) · the week predates the active plan, so
+   * nothing was asked of it. "No prescription exists" and "he ran none of what
+   * was prescribed" are opposite facts about a runner, and collapsing them was
+   * producing a downward adaptation from weeks he had actually run.
+   */
+  | 'NO_PRESCRIPTION_FOR_THIS_WEEK';
 
 export interface ExcludedEvidence {
   readonly activityId: string;
