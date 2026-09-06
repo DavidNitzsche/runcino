@@ -55,6 +55,12 @@ import {
   type ComposedWeekLike, type CorpusAdjudication,
 } from '../adjudication-corpus';
 import type { RaceDistanceKey } from './cold-start';
+import { PROMOTION_DIMENSIONS } from './contract';
+import type { PlanAdjudication } from './contract';
+/* The false-block classifier is a MODULE, not a local helper, because a
+ * classifier only exercisable against production is one nothing in CI can
+ * falsify. `_false_block.test.ts` breaks it on purpose. */
+import { classifyBlock } from './false-block';
 import type { RenderedHistory } from '../history-shapes';
 /* Rule 14 · the canonical-row predicate has ONE definition and it is imported,
  * never re-typed. A verification query that re-rolls the reader's own filter
@@ -144,6 +150,15 @@ function distanceOf(
   return null;
 }
 
+/** The eleven, rendered as reached-or-vacuous. Rule 18 §2, per plan. */
+function dimensionLine(r: PlanAdjudication): string {
+  return PROMOTION_DIMENSIONS.map((d) => {
+    const n = r.examined[d];
+    const mark = r.check[d] ? (n > 0 ? 'PASS' : 'vacuous') : 'FAIL';
+    return `${d}=${mark}(${n})`;
+  }).join(' · ');
+}
+
 describe('checkPromotion · read-only replay against every active production plan', () => {
   it('reports how many active plans promote, under both policies', async () => {
     const client = new pg.Client({
@@ -174,6 +189,12 @@ describe('checkPromotion · read-only replay against every active production pla
       let promotedNow = 0;
       let promotedLegacy = 0;
       let coldPlans = 0;
+      let falseBlocksNow = 0;
+      let falseBlocksBefore = 0;
+      /* Reach, summed across every live plan · which dimensions actually
+       * looked at anything on the population this app really has. */
+      const reachTotals = new Map<string, number>(PROMOTION_DIMENSIONS.map((d) => [d, 0]));
+      const reachPlans = new Map<string, number>(PROMOTION_DIMENSIONS.map((d) => [d, 0]));
       const detail: string[] = [];
 
       for (const p of plans) {
@@ -255,7 +276,12 @@ describe('checkPromotion · read-only replay against every active production pla
         const isCold = peakWeeklyMi === null || longestRunMi === null;
         if (isCold) coldPlans += 1;
 
-        const run = (reading: 'COLD_START' | 'LEGACY_NO_COLD_START'): CorpusAdjudication | null => {
+        /* Non-nullable BY CONSTRUCTION. `adjudicateComposedBlock` refuses a
+         * null history, and this branch never hands it one — so the refusal is
+         * re-raised rather than absorbed into a nullable the reporting below
+         * would have to keep testing for. Rule 11: a refusal that reaches the
+         * report as "n/a" is indistinguishable from a plan nobody looked at. */
+        const run = (reading: 'COLD_START' | 'LEGACY_NO_COLD_START'): CorpusAdjudication => {
           if (!isCold) {
             // A runner WITH history goes through the ordinary path, which the
             // cold-start policy does not touch — so both readings are the same
@@ -268,13 +294,18 @@ describe('checkPromotion · read-only replay against every active production pla
               maxStressorsInAWeek: 3,
               longRunComparables: [],
             } as unknown as RenderedHistory;
-            return adjudicateComposedBlock({
+            const adj = adjudicateComposedBlock({
               rendered,
               weeks,
               blockStartISO: weeks[0]?.startISO ?? today,
               windowDescribed: 'canonical runs, 2026 to date',
               raceDistance: distance,
             });
+            if (adj === null) {
+              throw new Error(`${p.id} · adjudicateComposedBlock refused a history this branch `
+                + 'built as non-null. That is a contradiction, not a verdict.');
+            }
+            return adj;
           }
           return adjudicateColdStartBlock({
             weeks,
@@ -284,26 +315,72 @@ describe('checkPromotion · read-only replay against every active production pla
           });
         };
 
-        const now = weeks.length === 0 ? null : run('COLD_START');
-        const before = weeks.length === 0 ? null : run('LEGACY_NO_COLD_START');
+        /* THE ZERO-WEEK PLAN IS RUN, NOT SKIPPED.
+         *
+         * The first version of this harness short-circuited `weeks.length === 0`
+         * to `null` and printed "n/a". That is the harness quietly making the
+         * gate's own verdict disappear — the same silent-bypass shape the cold
+         * start itself is forbidden to be. The gate DOES have a verdict here
+         * (`wholeBlockCoherence · nothing was adjudicated at all`) and it is a
+         * FALSE block, which is a finding worth printing rather than hiding. */
+        const now = run('COLD_START');
+        const before = run('LEGACY_NO_COLD_START');
 
-        if (now?.result.mayPromote) promotedNow += 1;
-        if (before?.result.mayPromote) promotedLegacy += 1;
+        if (now.result.mayPromote) promotedNow += 1;
+        if (before.result.mayPromote) promotedLegacy += 1;
+
+        /* FALSE BLOCKS · classified per sentence, under both readings. */
+        const falseNow = now.result.blockedBecause
+          .map((b) => [b, classifyBlock(b, now.result.traces, weeks.length)] as const)
+          .filter(([, v]) => v !== 'unclassified');
+        const falseBefore = before.result.blockedBecause
+          .map((b) => [b, classifyBlock(b, before.result.traces, weeks.length)] as const)
+          .filter(([, v]) => v !== 'unclassified');
+        falseBlocksNow += falseNow.length;
+        falseBlocksBefore += falseBefore.length;
+
+        for (const d of PROMOTION_DIMENSIONS) {
+          const n = now.result.examined[d];
+          reachTotals.set(d, (reachTotals.get(d) ?? 0) + n);
+          if (n > 0) reachPlans.set(d, (reachPlans.get(d) ?? 0) + 1);
+        }
+
+        /* COLD-START CLASSIFICATION · per quantity, which is the whole point of
+         * the policy: a runner cold on the long run and not on volume is cold
+         * on the LONG RUN ONLY. Read off the traces rather than restated. */
+        const coldQuantities = new Set(now.result.traces
+          .map((t) => t.athlete.coldStart?.quantity)
+          .filter((q): q is NonNullable<typeof q> => q != null));
+        const classes = new Map<string, number>();
+        for (const t of now.result.traces) {
+          classes.set(t.athlete.evidenceClass, (classes.get(t.athlete.evidenceClass) ?? 0) + 1);
+        }
+        const gates = now.result.earningGates;
+        const reassessed = now.result.traces.filter((t) => t.reassessOnISO !== null);
+        const earliestReassess = reassessed
+          .map((t) => t.reassessOnISO as string).sort()[0] ?? null;
 
         rows.push(`| ${p.id.slice(0, 14)} | ${mask(p.email)} | ${distance ?? '-'} | `
           + `${future.length} | ${peakWeeklyMi ?? 'absent'} | ${longestRunMi ?? 'absent'} | `
-          + `${isCold ? 'COLD' : 'has history'} | ${before === null ? 'n/a' : before.result.mayPromote ? 'YES' : '**BLOCKED**'} | `
-          + `${now === null ? 'n/a' : now.result.mayPromote ? 'YES' : '**BLOCKED**'} |`);
+          + `${isCold ? 'COLD' : 'has history'} | ${before.result.mayPromote ? 'YES' : '**BLOCKED**'} | `
+          + `${now.result.mayPromote ? 'YES' : '**BLOCKED**'} |`);
 
-        if (now !== null) {
-          detail.push(`### ${p.id} (${distance ?? 'distance not known'})`);
-          detail.push(`- cold-start decisions: ${now.result.coldStartDecisions} of ${now.result.traces.length} traces`);
-          detail.push(`- BEFORE (${before?.result.mayPromote ? 'promoted' : 'blocked'}): `
-            + `${before?.result.blockedBecause.join(' | ') || 'nothing'}`);
-          detail.push(`- NOW (${now.result.mayPromote ? 'promoted' : 'blocked'}): `
-            + `${now.result.blockedBecause.join(' | ') || 'nothing'}`);
-          detail.push('');
-        }
+        detail.push(`### ${p.id} (${distance ?? 'distance not known'})`);
+        detail.push(`- classification: ${isCold ? 'COLD START' : 'has history'}`
+          + `${coldQuantities.size === 0 ? '' : ` · cold on ${[...coldQuantities].join(', ')}`}`
+          + ` · ${now.result.examined.coldStartHonesty} of ${now.result.traces.length} traces are cold-start decisions`);
+        detail.push(`- evidence classes: ${[...classes].map(([k, v]) => `${k}=${v}`).join(' ') || 'none'}`);
+        detail.push(`- required proposal / reassessment: ${gates.length} earning gate(s), `
+          + `${reassessed.length} of ${now.result.traces.length} decisions carry a reassessment`
+          + `${earliestReassess === null ? '' : `, earliest ${earliestReassess}`}`);
+        detail.push(`- BEFORE (${before.result.mayPromote ? 'promoted' : 'blocked'}): `
+          + `${before.result.blockedBecause.join(' | ') || 'nothing'}`);
+        detail.push(`- NOW (${now.result.mayPromote ? 'promoted' : 'blocked'}): `
+          + `${now.result.blockedBecause.join(' | ') || 'nothing'}`);
+        for (const [b, v] of falseBefore) detail.push(`- FALSE BLOCK (before): ${v} · ${b}`);
+        for (const [b, v] of falseNow) detail.push(`- FALSE BLOCK (now): ${v} · ${b}`);
+        detail.push(`- dimensions: ${dimensionLine(now.result)}`);
+        detail.push('');
       }
 
       console.log('| plan | account | distance | future weeks | peak wk | longest | history | promotes BEFORE | promotes NOW |');
@@ -311,7 +388,17 @@ describe('checkPromotion · read-only replay against every active production pla
       for (const r of rows) console.log(r);
       console.log(`\n**BEFORE (no cold-start policy): ${promotedLegacy} of ${plans.length} promote.**`);
       console.log(`**NOW: ${promotedNow} of ${plans.length} promote.**`);
-      console.log(`**${coldPlans} of ${plans.length} plans belong to accounts with no canonical runs.**\n`);
+      console.log(`**${coldPlans} of ${plans.length} plans belong to accounts with no canonical runs.**`);
+      console.log(`**FALSE blocks · before: ${falseBlocksBefore} · now: ${falseBlocksNow}.**\n`);
+
+      console.log('## The eleven dimensions, on the population this app actually has\n');
+      console.log('| dimension | plans that reached it | items examined |');
+      console.log('|---|---:|---:|');
+      for (const d of PROMOTION_DIMENSIONS) {
+        console.log(`| ${d} | ${reachPlans.get(d)} of ${plans.length} | ${reachTotals.get(d)} |`);
+      }
+      console.log('\nA dimension reached by zero plans passed VACUOUSLY on every one of them: it is '
+        + 'decorative for this population, whatever its unit tests say (Rule 15).\n');
       for (const d of detail) console.log(d);
     } finally {
       await client.end();

@@ -13,7 +13,7 @@
  *
  * So this file does one thing per dimension, and does it the only way that
  * proves independence: it makes EXACTLY ONE dimension false and asserts that
- * ALL NINE OTHERS STAY TRUE. A test that only asserts `mayPromote === false`
+ * ALL TEN OTHERS STAY TRUE. A test that only asserts `mayPromote === false`
  * cannot tell a dimension that works from a dimension that is being failed by
  * its neighbour.
  *
@@ -35,6 +35,7 @@
  *   earningGateTiming      → 5 failed
  *   executionIdentity      → 2 failed
  *   evidenceProvenance     → 5 failed
+ *   coldStartHonesty       → 5 failed  · added 2026-09-05, see below
  *
  * And the two that matter most, because they are the fixes rather than the
  * new checks — the code restored to its PRE-FIX form, not stubbed:
@@ -43,6 +44,27 @@
  *     → 2 failed · both taper cases, exactly the hole
  *   detectStackedStress grading a race week's long run again
  *     → 1 failed · "expected 0.4555555555555555 to be null"
+ *
+ * ── THE ELEVENTH, AND WHY THIS PARAGRAPH EXISTS (2026-09-05) ───────────────
+ *
+ * `coldStartHonesty` shipped on 2026-09-05 with the count assertion below
+ * bumped to eleven and NO CASE IN THIS FILE. The comment beside that literal
+ * says the count is bumped by hand "in the same change that adds the cases for
+ * it", and the cases were never added — so the one dimension nothing here
+ * could separate was the newest one, in the file whose entire purpose is
+ * separation. Five cases now cover it, and both directions were falsified:
+ *
+ *   `coldStartFaults(...)` never pushed into `coldStartComplaints` →
+ *     5 failed, each "coldStartHonesty did NOT fail on a case built to break
+ *     exactly it: expected true to be false"
+ *   the SUPPORTED clause deleted from `coldStartFaults` →
+ *     "expected '' to contain 'ALLOWED is the strongest class available…'"
+ *   the cold-start cap removed from `athleteEvidenceFor` (so a cold start
+ *     really can reach SUPPORTED) →
+ *     "coldStartHonesty · 11 cold-start decision(s) are not honest about what
+ *      is missing: wk:2026-09-14 · a cold-start prescription is classed
+ *      SUPPORTED. Nothing this runner has done supports it, and ALLOWED is the
+ *      strongest class available. | …"
  *
  * ── WHAT THIS FILE CANNOT FAIL ON (CLAUDE.md Rule 22) ──────────────────────
  *
@@ -70,6 +92,7 @@ import {
   type DemonstratedHistory, type PlannedWeek,
 } from './adjudicate';
 import { PROMOTION_DIMENSIONS } from './contract';
+import { coldStartFor } from './cold-start';
 import type {
   ComparableSession, DecisionTrace, DoctrineCitation, EvidenceClass, OptionAppraisal,
   PromotionCheck, StackedStress,
@@ -167,7 +190,7 @@ function expectOnly(
 }
 
 describe('ADJ-DIM-1 · the baseline promotes, so every failure below is the change', () => {
-  it('a clean two-week block promotes on all ten dimensions', () => {
+  it('a clean two-week block promotes on all eleven dimensions', () => {
     const r = checkPromotion([trace(W1), trace(W2)], { weeks: [W1, W2] });
     const failed = PROMOTION_DIMENSIONS.filter((d) => !r.check[d]);
     expect(failed, `the baseline is not clean: ${r.blockedBecause.join(' | ')}`).toEqual([]);
@@ -592,6 +615,142 @@ describe('ADJ-DIM-1 · executionIdentity', () => {
     ], { weeks: [W1, W2] });
     expectOnly(r, 'executionIdentity');
     expect(r.blockedBecause.join(' ')).toMatch(/not a week of this block/);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * coldStartHonesty · THE ELEVENTH, WHICH THIS FILE WAS MISSING
+ *
+ * Added 2026-09-05. The eleventh dimension landed with the count assertion
+ * above bumped to 11 and NO case here — and this file's whole contract is one
+ * independently-failable case per dimension. So `coldStartHonesty` was the one
+ * dimension nothing proved could fail without taking a neighbour down with it,
+ * in the file that exists to prove exactly that. `_cold_start.test.ts` covers
+ * `coldStartFaults` in isolation and asserts `checkPromotion` names the
+ * dimension, but its trace is hand-built and it never checks INDEPENDENCE.
+ *
+ * The block is its own two weeks rather than W1/W2, because a cold start needs
+ * a prescription INSIDE the research allowance to stay ALLOWED — at 48 and 50
+ * mi against a 40 mi marathon beginner ceiling every week would be CONDITIONAL
+ * and `athleteSpecificSupport` would fail alongside, which is precisely the
+ * non-independence this file exists to catch.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+const CW1: PlannedWeek = {
+  weekStartISO: '2026-09-07', weeklyMi: 30, longestMi: 9,
+  stressors: ['threshold'], mpMi: 0, isTaper: false, isRaceWeek: false,
+};
+const CW2: PlannedWeek = {
+  weekStartISO: '2026-09-14', weeklyMi: 31, longestMi: 9,
+  stressors: ['threshold'], mpMi: 0, isTaper: false, isRaceWeek: false,
+};
+
+/** An honest cold-start posture: reassessed BEFORE the week it sizes. */
+const honestPosture = () => coldStartFor({
+  quantity: 'WEEKLY_VOLUME', distance: 'marathon',
+  demonstratedMaxToday: null, reassessOnISO: '2026-09-01',
+})!;
+
+function coldTrace(week: PlannedWeek, posture = honestPosture()): DecisionTrace {
+  return {
+    decisionId: `wk:${week.weekStartISO}`,
+    dateISO: week.weekStartISO,
+    what: `weekly volume · ${week.weeklyMi} mi`,
+    windowDays: 7,
+    athlete: athleteEvidenceFor({
+      what: `a ${week.weeklyMi} mi week`, asOfISO: week.weekStartISO, prescribed: week.weeklyMi,
+      // A cold start · absent, never a measured zero (Rule 11).
+      demonstratedMaxToday: null, demonstratedMaxProjected: null,
+      comparables: [], historyWindow: 'no completed runs on this account',
+      coldStart: posture,
+    }),
+    stacked: null,
+    demand: null,
+    options: [opt('PUSH', 'ALLOWED'), opt('HOLD', 'ALLOWED'), opt('PULL_BACK', 'ALLOWED')],
+    chosen: 'PUSH',
+    because: 'research permits an opening week here and nothing he has run argues against it',
+    rejected: [],
+    conflicts: [],
+    citations: [],
+    reassessOnISO: '2026-09-01',
+    earningGate: null,
+  };
+}
+
+describe('ADJ-DIM-1 · coldStartHonesty', () => {
+  it('LIVENESS · the honest cold-start block promotes, on all eleven', () => {
+    const r = checkPromotion([coldTrace(CW1), coldTrace(CW2)], { weeks: [CW1, CW2] });
+    const failed = PROMOTION_DIMENSIONS.filter((d) => !r.check[d]);
+    expect(failed, `the cold-start baseline is not clean: ${r.blockedBecause.join(' | ')}`).toEqual([]);
+    expect(r.mayPromote).toBe(true);
+    // …and the dimension genuinely looked at both weeks, so every case below
+    // is failing something that was actually running (Rule 18 §2).
+    expect(r.examined.coldStartHonesty).toBe(2);
+    // Nothing here is SUPPORTED. ALLOWED is the ceiling for a cold start.
+    for (const t of r.traces) expect(t.athlete.evidenceClass).toBe('ALLOWED');
+  });
+
+  it('BLOCKS a cold start reassessed AFTER the week it sizes, and ONLY that', () => {
+    const late = {
+      ...honestPosture(),
+      reassessOnISO: '2026-12-01',
+      calibration: honestPosture().calibration.map((c) => ({ ...c, byISO: '2026-12-01' })),
+    };
+    expectOnly(
+      checkPromotion([coldTrace(CW1), coldTrace(CW2, late)], { weeks: [CW1, CW2] }),
+      'coldStartHonesty',
+    );
+  });
+
+  it('BLOCKS a cold start with NO calibration, and ONLY that', () => {
+    const none = { ...honestPosture(), calibration: [] };
+    expectOnly(
+      checkPromotion([coldTrace(CW1), coldTrace(CW2, none)], { weeks: [CW1, CW2] }),
+      'coldStartHonesty',
+    );
+  });
+
+  it('BLOCKS a cold start whose confidence is not stated LOW, and ONLY that', () => {
+    // The literal `'LOW'` is the type, so the only way to reach this clause is
+    // a cast — which is exactly what a caller building the posture by hand
+    // would do, and the reason the check is at the gate rather than trusted
+    // from the type (Rule 20: a rule with no gate is a hypothesis).
+    const loud = { ...honestPosture(), confidence: 'HIGH' } as unknown as ReturnType<typeof honestPosture>;
+    expectOnly(
+      checkPromotion([coldTrace(CW1), coldTrace(CW2, loud)], { weeks: [CW1, CW2] }),
+      'coldStartHonesty',
+    );
+  });
+
+  it('A COLD START MAY NEVER REACH SUPPORTED · the ceiling, at the gate', () => {
+    /* The clause the owner named: ALLOWED is the ceiling by construction.
+     * `athleteEvidenceFor` caps it, so reaching SUPPORTED needs a hand-built
+     * `AthleteEvidence` — and the gate has to catch that rather than trusting
+     * the constructor, because a second caller is exactly how a cap gets
+     * bypassed. */
+    const t = coldTrace(CW2);
+    const supported: DecisionTrace = {
+      ...t,
+      athlete: { ...t.athlete, evidenceClass: 'SUPPORTED' },
+    };
+    const r = checkPromotion([coldTrace(CW1), supported], { weeks: [CW1, CW2] });
+    expectOnly(r, 'coldStartHonesty');
+    expect(r.blockedBecause.join(' ')).toContain('ALLOWED is the strongest class available');
+  });
+
+  it('BLOCKS a cold start that also reports a demonstrated maximum, and ONLY that', () => {
+    const t = coldTrace(CW2);
+    const contradictory: DecisionTrace = {
+      ...t,
+      athlete: {
+        ...t.athlete,
+        demonstratedMaxToday: { value: 42, provenance: 'ATHLETE_EVIDENCE', basis: 'a week he ran' },
+      },
+    };
+    expectOnly(
+      checkPromotion([coldTrace(CW1), contradictory], { weeks: [CW1, CW2] }),
+      'coldStartHonesty',
+    );
   });
 });
 
