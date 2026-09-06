@@ -165,12 +165,8 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
   },
   {
     n: 16, name: 'Evaluate the later outcome',
-    owner: null, ownerExports: null,
-    state: 'NOT_BUILT',
-    blocker: 'nothing re-reads a decision after its reassessment date to record whether it '
-      + 'turned out to be right. The ledger has the columns and the scheduler can raise the '
-      + 'date; no code closes the loop between them. This is the step that would make the '
-      + 'engine able to learn from being wrong, and it does not exist.',
+    owner: 'lib/brain/ledger/outcome-sweep.ts', ownerExports: 'sweepDecisionOutcomes',
+    state: 'WIRED',
   },
 ];
 
@@ -180,10 +176,28 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
  * Counted rather than asserted, so "we wired one more" is a number in a diff
  * and not a sentence in a report. A step sliding back to UNWIRED fails here.
  */
-export const WIRED_STEP_PIN = 8;
+/**
+ * STEP16-1 (2026-09-06) · 8 → 9, and this one IS earned rather than claimed.
+ * The nightly cron imports `sweepDecisionOutcomes` and calls it per runner; the
+ * reachability check below walks the real import graph from every route, so a
+ * step declared WIRED that no route reaches fails here.
+ *
+ * What it does NOT claim: that verdicts are being produced today. Migrations
+ * 166 and 168 are unapplied, so the sweep answers `table_absent` and says so.
+ * Reachable and blocked on approval is a different state from unwired, and the
+ * blocker is named in the packet rather than hidden behind this number.
+ */
+export const WIRED_STEP_PIN = 9;
 
-/** NOT_BUILT may only FALL. A step becoming fiction again is a regression. */
-export const NOT_BUILT_PIN = 1;
+/**
+ * NOT_BUILT may only FALL. A step becoming fiction again is a regression.
+ *
+ * STEP16-1 (2026-09-06) · 1 → 0. Step 16 exists: `assessOutcome` classifies a
+ * decision against what followed it, `observeAftermath` reads the window, and
+ * `sweepDecisionOutcomes` runs nightly from `run-adaptations`. It tunes
+ * nothing, by instruction — it is the measurement path.
+ */
+export const NOT_BUILT_PIN = 0;
 
 export const wiredCount = (): number =>
   ORCHESTRATION_STEPS.filter((s) => s.state === 'WIRED').length;

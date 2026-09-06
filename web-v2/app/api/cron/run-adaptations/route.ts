@@ -466,6 +466,41 @@ export async function POST(req: NextRequest) {
         : await runVolumeEvidenceLane(uid);
       if (volumeCards > 0) await bustBriefingCacheForEvent(uid, 'plan_swap');
 
+      /* ── STEP16-1 (2026-09-06) · DID THE LAST DECISION WORK?
+       *
+       * The sixteenth orchestration step, and the one that did not exist. The
+       * ledger records what was decided; nothing re-read a decision afterwards
+       * to say whether it turned out to be right, so the engine could not tell
+       * a change that helped from one that cost the runner a week.
+       *
+       * It measures and records. It tunes NOTHING — the owner's instruction is
+       * explicit ("Do not automatically tune coefficients from this yet. Build
+       * the measurement path"), and an engine that started moving its own
+       * constants off a path nobody had audited would be a worse failure than
+       * one that could not measure at all.
+       *
+       * While migrations 166 and 168 are unapplied this answers `table_absent`,
+       * which is reported rather than counted as a clean sweep. */
+      try {
+        const [{ sweepDecisionOutcomes }, { observeAftermath }, { runnerToday: today16 }] =
+          await Promise.all([
+            import('@/lib/brain/ledger/outcome-sweep'),
+            import('@/lib/brain/ledger/observe-aftermath'),
+            import('@/lib/runtime/runner-tz'),
+          ]);
+        const swept = await sweepDecisionOutcomes(await today16(uid), observeAftermath);
+        if (swept.state === 'ok' && swept.evaluated > 0) {
+          console.log(
+            `[run-adaptations] judged ${swept.evaluated} past decision(s) · `
+            + `${JSON.stringify(swept.byVerdict)}`,
+          );
+        } else if (swept.state !== 'ok') {
+          console.log(`[run-adaptations] outcome sweep ${swept.state} · ${swept.why}`);
+        }
+      } catch (e) {
+        console.error('[run-adaptations] outcome sweep threw:', e);
+      }
+
       /* ── LIVESEQ-1 (2026-09-05) · THE SEQUENCE GATE GETS A LIVE ENTRY POINT
        *
        * Every check above this line samples the plan at POINTS — is this day

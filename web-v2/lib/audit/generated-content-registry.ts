@@ -95,6 +95,26 @@ export const INFRASTRUCTURE_TABLES = new Set([
 ]);
 
 export const GENERATED_CONTENT_REGISTRY: GeneratedColumn[] = [
+  // ── step 16 · whether a decision worked ────────────────────────────────────
+  {
+    id: 'plan_decision_outcome.verdict',
+    verdict: 'internal',
+    holds: 'PRODUCTIVE / EXCESSIVE / UNDERDOSED / UNRESOLVED — the engine\'s judgement on '
+      + 'whether a coaching decision turned out to be right, written by a sweep days after '
+      + 'the decision itself.',
+    reason: 'Read by `outcomeCensus` in lib/brain/ledger/outcome-sweep.ts, which is the '
+      + 'measurement path\'s own report — Rule 21\'s census one level on, asking not "did it '
+      + 'push" but "was it right to". Deliberately NOT surfaced to a runner yet, on the '
+      + 'owner\'s own instruction: '
+      + '"Do not automatically tune coefficients from this yet. Build the measurement path." '
+      + 'It is read today by nothing but the sweep\'s own idempotency check and by an operator '
+      + 'querying the table. Showing a runner "the engine thinks its last decision was '
+      + 'EXCESSIVE" before the measurement has been audited against real history would be '
+      + 'asking him to trust a number nobody has checked. When the path is trusted this '
+      + 'becomes `surfaced` and the sentence a runner reads is `verdict_because`, not this '
+      + 'enum. The open decision is whose call that is and when.',
+  },
+
   // ── the plan's own words ───────────────────────────────────────────────────
   {
     id: 'plan_phases.rationale',
