@@ -4,11 +4,27 @@
  * ══════════════════════════════════════════════════════════════════════════
  * WHAT THIS ASSERTS
  *
- * That every one of the twenty-one `BrainAction` kinds has ALL ELEVEN of the
- * things a lever needs before it is real — generator, validator, serializer,
- * renderer, explanation, accept executor, mutation, ledger writer, undo
- * posture, watch behaviour, integration test — or a ratchet entry in
- * `facets.ts` saying which one is missing and why.
+ * That every one of the twenty-one `BrainAction` kinds has ALL FOURTEEN of the
+ * things a lever needs before it is real — evidence source, generator,
+ * validator, serializer, PROPOSAL WRITER, renderer, explanation, accept
+ * executor, mutation, ledger writer, DECLINE behaviour, undo posture, watch
+ * behaviour, integration test — or a ratchet entry in `facets.ts` saying which
+ * one is missing and why.
+ *
+ * ══════════════════════════════════════════════════════════════════════════
+ * WHAT THE ELEVEN-FACET VERSION OF THIS GATE COULD NOT SEE (2026-09-05)
+ *
+ * It reported HOLD and SAFETY_STOP as fully complete. Both were: generated,
+ * validated, serialized, rendered, executable, ledgered, watched. And NO
+ * PRODUCTION PATH COULD PUT EITHER IN FRONT OF ANYONE — `writeWorkoutProposals`
+ * takes `AdaptationAction[]`, and neither kind is a member of that type,
+ * because neither is a mutation. `scripts/v5-roundtrip-seed.ts` wrote them by
+ * hand and said so in its own header. Eleven green cells, one unreachable
+ * lever, and this file certified it.
+ *
+ * That is the reason PROPOSAL_WRITER exists, and it is the reason a facet list
+ * is a hypothesis rather than a proof (Rule 22): fourteen is also a list
+ * somebody wrote down.
  *
  * `_action_schema_gate.test.ts` next door proves every kind maps to writes and
  * draws a headline, and states in its own Rule 22 note exactly what it cannot
@@ -55,11 +71,13 @@ import {
   ACTION_SCHEMA_VERSION,
   type ActionKind,
   type BrainAction,
+  type LiveRow,
 } from './action';
 import { plannedWrites, isNonMutatingKind } from './execute';
 import { validateAction } from './validate';
 import { serializeAction, deserializeAction } from './serialize';
 import { undoWritesFor } from './undo';
+import { beforeFromLive } from './staleness';
 import { ledgerFacetsOf } from './ledger-facet';
 import { watchBehaviorOf, watchIsApplicable } from './watch-facet';
 import { executorFor } from './executor-map';
@@ -69,10 +87,17 @@ import {
   FACET_GAPS,
   FACET_OWNER_FILE,
   GENERATOR_REGISTRY,
+  PROPOSAL_WRITER_REGISTRY,
+  ORIGINAL_ELEVEN_FACETS,
+  ORIGINAL_ELEVEN_GAP_CEILING,
+  WRITER_MUST_REFUSE,
   facetGapFor,
   facetCoverage,
   type Facet,
 } from './facets';
+import { EVIDENCE_REGISTRY } from './evidence-facet';
+import { declineBehaviorOf, isDeclinable } from './decline-facet';
+import { WRITER_REFUSES, rowKindOf } from './write';
 import {
   LEDGER_DECISIONS,
   LEDGER_LEVERS,
@@ -87,6 +112,17 @@ import { safetyStopFrom } from './generate/from-safety';
 /** `web-v2/`, so the registry's repo-relative paths resolve. */
 const WEB = join(__dirname, '..', '..', '..');
 
+/**
+ * THE FULLY-RECORDED SNAPSHOT.
+ *
+ * UNDOCOMPLETE-1 (2026-09-05) added the five SHAPE fields. They are what makes
+ * the UNDO facet answerable for the session-geometry kinds, and they are here
+ * rather than in a second fixture because the completeness question is "can
+ * this facet work", and the honest answer for a proposal written by
+ * `beforeFromLive` today is yes. A row written before those columns were
+ * recorded still refuses, and `refuses when the field it would restore was
+ * never recorded` below is the case that proves it.
+ */
 const BEFORE = {
   planWorkoutId: 'pw_1',
   dateISO: '2026-09-22',
@@ -94,6 +130,11 @@ const BEFORE = {
   distanceMi: 9.5,
   paceTargetSecPerMi: 430,
   planVersion: 'v7',
+  durationMin: 62,
+  isQuality: true,
+  subLabel: '4 x 8 min @ T',
+  notes: 'threshold, controlled',
+  workoutSpec: { reps: 4, rep_minutes: 8, recovery_minutes: 2, zone: 'threshold' },
 } as const;
 
 const base = { schemaVersion: ACTION_SCHEMA_VERSION, before: [BEFORE] } as const;
@@ -263,6 +304,29 @@ describe('GUARD 0 · the completeness matrix covers every kind and every facet',
     // Liveness: a matrix that has stopped being mostly filled is a regression
     // worth failing on, not a number to notice later.
     expect(c.present).toBeGreaterThan(c.cells * 0.85);
+  });
+
+  it('keeps the ratchet meaningful across the facet widening', () => {
+    /* THE ONE WAY THE GAP TOTAL MAY LEGITIMATELY RISE, AND ITS GUARD.
+     *
+     * Adding EVIDENCE_SOURCE, PROPOSAL_WRITER and DECLINE added 63 cells and
+     * therefore added gaps, so `FACET_GAPS.length` alone stopped being a
+     * ratchet the moment the facet list grew. A new facet must not be able to
+     * cover a regression on an old one, so the count on the ORIGINAL eleven is
+     * pinned separately: it went 23 to 14 in the same pass, and this number may
+     * only ever come down.
+     *
+     * `toBeLessThanOrEqual` rather than an equality on purpose: closing an old
+     * gap should not require editing this line, and the ceiling failing is what
+     * a regression looks like. */
+    const onOriginal = FACET_GAPS.filter((g) => ORIGINAL_ELEVEN_FACETS.includes(g.facet));
+    expect(
+      onOriginal.length,
+      `the original eleven facets now carry ${onOriginal.length} gaps against a ceiling of `
+      + `${ORIGINAL_ELEVEN_GAP_CEILING}: ${onOriginal.map((g) => `${g.kind}/${g.facet}`).join(', ')}`,
+    ).toBeLessThanOrEqual(ORIGINAL_ELEVEN_GAP_CEILING);
+    // Liveness: a filter that matched nothing would pass the ceiling trivially.
+    expect(onOriginal.length).toBeGreaterThan(0);
   });
 });
 
@@ -574,6 +638,218 @@ describe('GUARD 1 · UNDO · every kind says whether the runner can take it back
     } as BrainAction;
     expect(undoWritesFor(noPace).kind).toBe('not_undoable');
   });
+
+  it('puts a session\'s GEOMETRY back whole, or refuses naming the spec', () => {
+    /* UNDOCOMPLETE-1 · the largest cluster this matrix ever carried. Seven
+     * kinds could be applied and never reversed, all for one reason: the shape
+     * they replaced lived in `workout_spec`, `sub_label`, `notes`,
+     * `duration_min` and `is_quality`, and `RowBefore` recorded none of the
+     * five. The refusal was honest and it was the right answer to the wrong
+     * shape.
+     *
+     * WHOLE is the property under test, not merely "some write happens".
+     * `applyProgressionReshape` writes spec, sub_label and pace from ONE
+     * rendered shape precisely so the three cannot disagree; an undo that put
+     * back the spec and left the chip is that defect running backwards. */
+    for (const kind of ['DURATION_CHANGE', 'REPETITION_CHANGE',
+      'RECOVERY_INTERVAL_CHANGE', 'QUALITY_DOSE_CHANGE'] as ActionKind[]) {
+      const plan = undoWritesFor(SPECIMENS[kind]);
+      expect(plan.kind, `${kind} still cannot be reversed`).toBe('reverse');
+      if (plan.kind !== 'reverse') continue;
+      const w = plan.writes[0];
+      expect(w.op).toBe('update');
+      if (w.op !== 'update') continue;
+      expect(w.set.workout_spec, `${kind} restored no spec`).toEqual(BEFORE.workoutSpec);
+      expect(w.set.sub_label, `${kind} restored the spec and left the chip`).toBe(BEFORE.subLabel);
+      expect(w.set.pace_target_s_per_mi, `${kind} restored the spec and left the pace`)
+        .toBe(BEFORE.paceTargetSecPerMi);
+    }
+
+    // And a field test, which replaces the TYPE as well.
+    const ft = undoWritesFor(SPECIMENS.FIELD_TEST);
+    expect(ft.kind).toBe('reverse');
+    if (ft.kind === 'reverse' && ft.writes[0].op === 'update') {
+      expect(ft.writes[0].set.type).toBe(BEFORE.type);
+      expect(ft.writes[0].set.workout_spec).toEqual(BEFORE.workoutSpec);
+    }
+
+    /* THE REFUSAL IS STILL THERE, and it is what makes this a fix rather than a
+     * loosening. A proposal that recorded a chip and no spec would restore the
+     * label onto a prescription it no longer describes, so the refusal names
+     * the spec — the field, not a flat "cannot undo". */
+    const noSpec: BrainAction = {
+      ...SPECIMENS.QUALITY_DOSE_CHANGE,
+      before: [{ planWorkoutId: 'pw_1', subLabel: '4 x 8 min @ T' }],
+    } as BrainAction;
+    const refused = undoWritesFor(noSpec);
+    expect(refused.kind).toBe('not_undoable');
+    if (refused.kind === 'not_undoable') {
+      expect(refused.because).toContain('label disagreeing with the prescription');
+    }
+  });
+
+  it('restores a note rather than blanking it, and refuses when none was recorded', () => {
+    // TAPER_CHANGE and RECOVERY_CHANGE write only `notes`. They refused because
+    // reversing would have written the empty string over the runner's own
+    // sentence, which is a loss worth refusing over — and was, until `notes`
+    // was recorded.
+    for (const kind of ['TAPER_CHANGE', 'RECOVERY_CHANGE'] as ActionKind[]) {
+      const plan = undoWritesFor(SPECIMENS[kind]);
+      expect(plan.kind, `${kind} still cannot be reversed`).toBe('reverse');
+      if (plan.kind === 'reverse' && plan.writes[0].op === 'update') {
+        expect(plan.writes[0].set.notes).toBe(BEFORE.notes);
+      }
+    }
+    const noNote: BrainAction = {
+      ...SPECIMENS.TAPER_CHANGE, before: [{ planWorkoutId: 'pw_1' }],
+    } as BrainAction;
+    expect(undoWritesFor(noNote).kind).toBe('not_undoable');
+  });
+
+  it('the SHIPPING snapshot records everything the undo restores', () => {
+    /* THE HOLE THIS CLOSES, found by falsification 21.
+     *
+     * Every undo assertion above runs against SPECIMENS this file writes, and
+     * they record the whole session. Deleting the `workoutSpec` line from
+     * `beforeFromLive` — the function that builds the `before` every real
+     * proposal actually carries — passed all of them. Which means the UNDO
+     * facet could read GREEN while every proposal in production was
+     * un-undoable, and nothing anywhere would say so.
+     *
+     * That is Rule 15 exactly: a mechanism the corpus cannot reach is untested
+     * however many cases pass, and a fixture that is richer than the live path
+     * is a corpus that cannot reach the defect. So this drives the SHIPPING
+     * snapshot rather than the fixture. */
+    const live = new Map<string, LiveRow>([['pw_1', {
+      planWorkoutId: 'pw_1',
+      dateISO: BEFORE.dateISO,
+      type: BEFORE.type,
+      distanceMi: BEFORE.distanceMi,
+      paceTargetSecPerMi: BEFORE.paceTargetSecPerMi,
+      planVersion: BEFORE.planVersion,
+      durationMin: BEFORE.durationMin,
+      isQuality: BEFORE.isQuality,
+      subLabel: BEFORE.subLabel,
+      notes: BEFORE.notes,
+      workoutSpec: BEFORE.workoutSpec,
+    }]]);
+    const snapshot = beforeFromLive(live);
+    expect(snapshot.length).toBe(1);
+
+    let reversible = 0;
+    for (const kind of ALL_ACTION_KINDS) {
+      if (facetGapFor(kind, 'UNDO') != null) continue;
+      const fromSnapshot = { ...SPECIMENS[kind], before: snapshot } as BrainAction;
+      const plan = undoWritesFor(fromSnapshot);
+      expect(
+        plan.kind,
+        `${kind} can be undone from a hand-written specimen and NOT from the snapshot the `
+        + 'shipping writer records, so its undo would refuse for every real proposal',
+      ).not.toBe('not_undoable');
+      reversible += 1;
+    }
+    // Liveness: a loop that skipped every kind would pass silently.
+    expect(reversible, 'the snapshot walk covered no kinds').toBeGreaterThan(10);
+
+    /* AND THE READ THAT FEEDS IT. `beforeFromLive` can only record what
+     * `readLiveRows` selected, and a `LiveRow` built here proves nothing about
+     * the SQL. Checked as text because the query needs a database. */
+    const reader = readOwned('lib/brain/proposal/staleness.ts');
+    for (const col of ['duration_min', 'is_quality', 'sub_label', 'notes', 'workout_spec']) {
+      expect(reader, `readLiveRows does not select ${col}, so no proposal can record it`)
+        .toContain(`pw.${col}`);
+    }
+  });
+
+  it('the undo applier can actually write every column an undo produces', () => {
+    /* Rule 20's shape: a computed inverse nothing can apply is a promise the
+     * accept response makes and no path keeps, which is exactly the state
+     * `undoWritesFor` was in before `undo-apply.ts` existed. The column
+     * allowlist there is deliberately written out rather than derived, so this
+     * is the check that the two lists agree. */
+    /* SCOPED TO THE BLOCK, and the falsification is why. The first cut asked
+     * whether the whole FILE contained `'workout_spec'`, and deleting it from
+     * `UNDOABLE_COLUMNS` passed — because `JSONB_COLUMNS` two lines below still
+     * spelled it. An absence-only assertion over a whole file cannot see which
+     * list a string is in, which is the citation-scrub defect in miniature
+     * (Rule 18: "the bad string is gone" is satisfied by garbage). */
+    const applierFile = readOwned('lib/brain/proposal/undo-apply.ts');
+    const start = applierFile.indexOf('const UNDOABLE_COLUMNS = new Set([');
+    expect(start, 'UNDOABLE_COLUMNS is gone; the undo applier writes nothing').toBeGreaterThan(-1);
+    const applier = applierFile.slice(start, applierFile.indexOf(']);', start));
+    const columns = new Set<string>();
+    for (const kind of ALL_ACTION_KINDS) {
+      const plan = undoWritesFor(SPECIMENS[kind]);
+      if (plan.kind !== 'reverse') continue;
+      for (const w of plan.writes) {
+        if (w.op === 'update') for (const c of Object.keys(w.set)) columns.add(c);
+      }
+    }
+    expect(columns.size, 'no undo produced any column, so this proves nothing').toBeGreaterThan(4);
+    for (const c of columns) {
+      expect(applier, `an undo writes ${c} and UNDOABLE_COLUMNS does not list it`)
+        .toContain(`'${c}'`);
+    }
+  });
+});
+
+describe('GUARD 1 · DECLINE · every kind says what the runner\'s NO means', () => {
+  it('has a decline arm and classifies into the three answers', () => {
+    const body = readOwned(FACET_OWNER_FILE.DECLINE);
+    const KINDS = ['KEEP_AS_PRESCRIBED', 'ACKNOWLEDGE_ONLY', 'NOT_DECLINABLE'];
+    let checked = 0;
+    for (const kind of ALL_ACTION_KINDS) {
+      const gap = facetGapFor(kind, 'DECLINE');
+      const armed = hasArm(body, kind);
+      if (gap) {
+        expect(armed, `STALE RATCHET · ${kind} has a DECLINE gap and now has an arm`).toBe(false);
+        continue;
+      }
+      expect(armed, `${kind} has no arm in decline-facet.ts and no ratchet entry`).toBe(true);
+      const d = declineBehaviorOf(SPECIMENS[kind]);
+      expect(KINDS, `${kind} produced decline kind ${d.kind}`).toContain(d.kind);
+      expect(d.because.length, `${kind} declines without saying what that means`).toBeGreaterThan(10);
+      checked += 1;
+    }
+    expect(checked, 'the decline scan examined no kinds').toBeGreaterThan(0);
+  });
+
+  it('refuses to let a safety stop be answered no, and refuses nothing else', () => {
+    /* THE DEFECT THIS PINS. The dismiss route was one UPDATE for twenty-one
+     * kinds, so tapping "Leave it" on a withhold marked it answered — a button
+     * that overrides safety. Asserted in BOTH directions, because a
+     * NOT_DECLINABLE that spread would be a card the runner can never clear. */
+    expect(declineBehaviorOf(SPECIMENS.SAFETY_STOP).kind).toBe('NOT_DECLINABLE');
+    expect(isDeclinable('SAFETY_STOP')).toBe(false);
+    const refused = ALL_ACTION_KINDS.filter(
+      (k) => declineBehaviorOf(SPECIMENS[k]).kind === 'NOT_DECLINABLE');
+    expect(refused).toEqual(['SAFETY_STOP']);
+    for (const k of ALL_ACTION_KINDS) {
+      expect(isDeclinable(k), `${k} disagrees with its own decline posture`)
+        .toBe(declineBehaviorOf(SPECIMENS[k]).kind !== 'NOT_DECLINABLE');
+    }
+  });
+
+  it('keeps "nothing was asked" apart from "the answer is no"', () => {
+    // Rule 11 on the runner's side of the lane. A HOLD did not propose a change,
+    // so declining one is not the same event as declining a shave, and a
+    // decision history that collapsed them would say he refused work he was
+    // never offered.
+    for (const k of ['HOLD', 'REFUSAL', 'CONDITIONAL'] as ActionKind[]) {
+      expect(declineBehaviorOf(SPECIMENS[k]).kind, `${k} should be ACKNOWLEDGE_ONLY`)
+        .toBe('ACKNOWLEDGE_ONLY');
+    }
+    expect(declineBehaviorOf(SPECIMENS.DISTANCE_CHANGE).kind).toBe('KEEP_AS_PRESCRIBED');
+  });
+
+  it('does not re-raise a decision the runner has already refused on principle', () => {
+    // His stated goal is his. Everything whose EVIDENCE can move is re-raisable;
+    // a goal renegotiation is not evidence, and asking twice is nagging about a
+    // judgement he has given.
+    expect(declineBehaviorOf(SPECIMENS.RACE_TARGET_CHANGE).reraise).toBe(false);
+    const nagging = ALL_ACTION_KINDS.filter((k) => !declineBehaviorOf(SPECIMENS[k]).reraise);
+    expect(nagging).toEqual(['RACE_TARGET_CHANGE']);
+  });
 });
 
 describe('GUARD 1 · WATCH · every kind says what the wrist must do', () => {
@@ -688,7 +964,7 @@ describe('GUARD 2 · GENERATOR · every kind is emitted by something live', () =
     // Falsifiable, and deliberately an equality rather than a floor: closing a
     // gap must be a deliberate edit to this line, so nobody can quietly ADD a
     // generator without also arguing it, and nobody can quietly lose one.
-    expect(emitted.length, `emitted kinds: ${emitted.join(', ')}`).toBe(12);
+    expect(emitted.length, `emitted kinds: ${emitted.join(', ')}`).toBe(13);
   });
 
   /* ── the generators, driven for real ─────────────────────────────────── */
@@ -829,6 +1105,248 @@ describe('GUARD 2 · GENERATOR · every kind is emitted by something live', () =
 });
 
 /* ══════════════════════════════════════════════════════════════════════════
+ * GUARD 2b · THE PROPOSAL WRITER · A LIVE PATH CAN SHOW IT TO THE RUNNER
+ *
+ * THE FACET THE ELEVEN COULD NOT SEE. HOLD and SAFETY_STOP passed every one of
+ * the original eleven while being unreachable from production: the writer took
+ * `AdaptationAction[]` and neither kind is a member of that type. A lever the
+ * runner can never be shown is inert however complete it looks.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('GUARD 2b · PROPOSAL_WRITER · every kind can reach the runner', () => {
+  it('names a writer, a call site and a live caller, and all three resolve', () => {
+    let checked = 0;
+    for (const kind of ALL_ACTION_KINDS) {
+      const gap = facetGapFor(kind, 'PROPOSAL_WRITER');
+      const ref = PROPOSAL_WRITER_REGISTRY[kind];
+      if (gap) {
+        expect(ref, `STALE RATCHET · ${kind} has a PROPOSAL_WRITER gap and a writer is registered`)
+          .toBeNull();
+        continue;
+      }
+      expect(ref, `${kind} has no writer and no ratchet entry`).not.toBeNull();
+      const w = ref!;
+
+      const mod = readOwned(w.module);
+      expect(mod, `${w.module} does not export ${w.symbol}`)
+        .toMatch(new RegExp(`export (async )?function ${w.symbol}`));
+      expect(w.how.length, `${kind}'s writer does not say how it reaches the row`).toBeGreaterThan(20);
+
+      // The writer actually writes THIS table. A "writer" that inserts nowhere
+      // is the same shape of lie as a generator with no live caller.
+      expect(mod, `${w.module} does not insert into plan_workout_proposals`)
+        .toContain('INSERT INTO plan_workout_proposals');
+
+      const callSite = readOwned(w.callSite);
+      expect(
+        callSite.includes(`${w.symbol}(`),
+        `${w.callSite} is named as the call site for ${kind} and does not call ${w.symbol}`,
+      ).toBe(true);
+
+      expect(
+        /^app\/api\/.+route\.ts$/.test(w.liveCaller),
+        `${w.liveCaller} is named as the live caller for ${kind} and is not a route or cron entry`,
+      ).toBe(true);
+      readOwned(w.liveCaller);
+      const graph = reachableModules(w.liveCaller);
+      expect(
+        graph.has(w.callSite),
+        `${w.liveCaller} does not reach ${w.callSite}, so nothing live can raise a ${kind} card`,
+      ).toBe(true);
+      expect(
+        graph.has(w.module),
+        `${w.liveCaller} does not reach ${w.module}, so ${kind} cannot be written on a live path`,
+      ).toBe(true);
+      checked += 1;
+    }
+    expect(checked, 'the writer scan examined no kinds').toBeGreaterThan(0);
+  });
+
+  it('cross-checks the ratchet against write.ts\'s own refusals, both ways', () => {
+    /* THE SELF-VERIFYING HALF, modelled on the ACCEPT_EXECUTOR cross-check.
+     * `write.ts` refuses six kinds by name with the ruling attached. A refusal
+     * with no gap entry is a list nobody updated; a gap for a kind the writer
+     * now carries is a stale entry. Neither can move without the other. */
+    for (const kind of ALL_ACTION_KINDS) {
+      const refused = WRITER_REFUSES[kind] !== undefined;
+      const gap = facetGapFor(kind, 'PROPOSAL_WRITER') != null;
+      if (refused) {
+        expect(gap, `write.ts refuses ${kind} and no PROPOSAL_WRITER gap says so`).toBe(true);
+        expect(WRITER_REFUSES[kind]!.length, `${kind} is refused without an argued reason`)
+          .toBeGreaterThan(80);
+      }
+      if (PROPOSAL_WRITER_REGISTRY[kind] !== null) {
+        expect(refused, `${kind} has a registered writer and write.ts refuses it`).toBe(false);
+      }
+    }
+    /* THE SET, PINNED SET-FOR-SET, AND THE HOLE THAT PUT IT HERE.
+     *
+     * The three assertions above are all consistent with `WRITER_REFUSES`
+     * SHRINKING. Falsification 18 proved it: deleting `QUALITY_DOSE_CHANGE`
+     * from that map passed the entire suite, because the kind still has no
+     * registered writer and still carries a gap — and `writeActionProposal`
+     * would have carried it, which is the side door around the owner's ruling
+     * that `write.ts` exists to not be.
+     *
+     * `WRITER_MUST_REFUSE` names the kinds whose gap is a RULING rather than an
+     * absence: constructible, generated, and withheld only because someone
+     * decided. Those two lists are the same list, and equality is what makes
+     * removing a name fail. */
+    expect(
+      ALL_ACTION_KINDS.filter((k) => WRITER_REFUSES[k] !== undefined).sort(),
+      'write.ts and facets.ts disagree about which kinds are withheld by a ruling',
+    ).toEqual([...WRITER_MUST_REFUSE].sort());
+    // Liveness: an empty refusal map would satisfy every assertion above.
+    expect(WRITER_MUST_REFUSE.length, 'nothing is withheld by a ruling, so this proves nothing')
+      .toBeGreaterThan(0);
+  });
+
+  it('the row kind is derived from the union rather than typed out', () => {
+    // A hand-written column vocabulary drifts from the union it mirrors. This
+    // is what makes a new kind a legal row value on the day it is added.
+    for (const kind of ALL_ACTION_KINDS) {
+      expect(rowKindOf(SPECIMENS[kind])).toBe(kind.toLowerCase());
+    }
+  });
+
+  it('every reason the progression gate can give fits on a card', () => {
+    /* THE FRAGILITY THIS PINS, and it is fifteen characters wide.
+     *
+     * The HOLD lane raises a card whose `reason` is the gate's own `why`, and
+     * `validateAction` refuses prose past PROSE_MAX_CHARS — correctly, because
+     * a card is six to ten words plus one line. `writeActionProposal` reports
+     * the refusal rather than swallowing it, so nothing breaks; the HOLD lane
+     * simply STOPS RAISING ANYTHING, quietly, and this repo's whole finding is
+     * that wired-tested-and-inert is what it ships.
+     *
+     * The longest sentence the gate can currently produce is 185 characters
+     * against a limit of 200. A coaching edit that adds one clause switches the
+     * lane off. So the STRINGS ARE READ OUT OF THE GATE AT RUN TIME and each is
+     * driven through the real generator and the real validator — a check that
+     * hardcoded the length would only prove it agrees with itself (Rule 18). */
+    const gate = readOwned('lib/plan/progression-gate.ts');
+    /* EVERY coach sentence in the file, not only the ones spelled `why:`.
+     * `takeWhy` RETURNS two of them and a third is a template literal, so a
+     * `why:`-anchored matcher read three of six — a check that scans most of a
+     * thing and reports clean is the shape Rule 18 warns about. Any
+     * single-quoted literal over forty characters in this file is a sentence
+     * the gate can put on a card. */
+    const whys = [...gate.matchAll(/'((?:[^'\\\n]|\\.){40,})'/g)].map((m) => m[1])
+      .filter((t) => !t.includes('Research/'));
+    expect(whys.length, 'no reasons were read out of progression-gate.ts; the extractor is broken')
+      .toBeGreaterThan(4);
+    for (const why of whys) {
+      const v = validateAction(holdFor(why, ['pw_1']));
+      expect(
+        v.ok,
+        `the progression gate can say a ${why.length}-character reason that no card can carry, so `
+        + `the HOLD lane would silently stop raising: ${v.ok ? '' : v.refusals.join('; ')}`,
+      ).toBe(true);
+    }
+  });
+
+  it('the two kinds this facet was added for are now written by a live path', () => {
+    /* Rule 20, on the finding itself. The owner asked for HOLD and SAFETY_STOP
+     * to be "producible by real evidence, not seeded screenshots", and a
+     * registry entry is a claim rather than a proof — so the claim is asserted
+     * against the actual lane and the actual cron. */
+    for (const kind of ['HOLD', 'SAFETY_STOP'] as ActionKind[]) {
+      const w = PROPOSAL_WRITER_REGISTRY[kind];
+      expect(w, `${kind} has no writer and it is the reason this facet exists`).not.toBeNull();
+      expect(w!.symbol).toBe('writeActionProposal');
+      expect(w!.callSite).toBe('lib/plan/action-proposal-lane.ts');
+    }
+    const lane = readOwned('lib/plan/action-proposal-lane.ts');
+    // The safety verdict is an INPUT and is never re-derived here.
+    expect(lane, 'the lane does not consume the canonical safety owner').toContain('resolveSafety');
+    expect(lane, 'the lane does not build the stop from the generator').toContain('safetyStopFrom');
+    /* AND THE SEAM IS NOT TOUCHED — gated rather than asserted in prose.
+     *
+     * Rule 19's corollary: both files claim in their own headers that they do
+     * not read `AUTOMATIC_ADAPTATION_AUTHORITY`, and `lthr-reanchor.ts` proved
+     * what a header claim is worth by asserting "imports no database at any
+     * depth" while importing one three modules deep, for a day, with every gate
+     * green. So the claim is checked against the IMPORT GRAPH.
+     *
+     * The check is on imports rather than on the string, because the string
+     * appears in both headers making exactly this promise — and a gate that
+     * fails on a file explaining why it does not do something is a gate that
+     * teaches people to stop explaining. */
+    for (const rel of ['lib/plan/action-proposal-lane.ts', 'lib/brain/proposal/write.ts']) {
+      const body = readOwned(rel);
+      const importsSeam = /(?:from|import\()\s*'[^']*adaptation-authority'/.test(body);
+      expect(importsSeam, `${rel} imports the automatic-adaptation seam`).toBe(false);
+      /* And does not name the switch in CODE. Comments are stripped first, for
+       * the reason above: both headers say what they do not do, and that
+       * sentence is the thing being checked rather than a violation of it.
+       *
+       * A TRANSITIVE check was tried here and is deliberately not used: the
+       * lane takes `AdaptationAction` as a TYPE from `lib/plan/adapt.ts`, which
+       * the seam itself imports, so the graph reaches the seam through a
+       * type-only edge that erases at compile time. Failing on that would be
+       * the gate objecting to a file naming a type, which is not the property
+       * anyone cares about — what matters is whether the switch is READ. */
+      const code = body.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+      expect(code.includes('AUTOMATIC_ADAPTATION_AUTHORITY'),
+        `${rel} reads the automatic-adaptation seam`).toBe(false);
+    }
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * GUARD 2c · THE EVIDENCE SOURCE · SOMETHING MEASURED IT
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('GUARD 2c · EVIDENCE_SOURCE · every kind names the reader behind it', () => {
+  it('names a real module and a real exported symbol', () => {
+    const FAMILIES = [
+      'PACE_ANCHOR', 'PROGRESSION_GATE', 'DETECTION_PASS', 'VOLUME_EVIDENCE',
+      'SAFETY_VERDICT', 'AUTHORITY_SEAM', 'RUNNER_STATED', 'EARNING_GATE',
+    ];
+    let checked = 0;
+    for (const kind of ALL_ACTION_KINDS) {
+      const gap = facetGapFor(kind, 'EVIDENCE_SOURCE');
+      const ref = EVIDENCE_REGISTRY[kind];
+      if (gap) {
+        expect(ref, `STALE RATCHET · ${kind} has an EVIDENCE_SOURCE gap and a reader is registered`)
+          .toBeNull();
+        continue;
+      }
+      expect(ref, `${kind} names no evidence reader and has no ratchet entry`).not.toBeNull();
+      const e = ref!;
+      expect(FAMILIES, `${kind} claims family ${e.family}`).toContain(e.family);
+      const mod = readOwned(e.module);
+      expect(mod, `${e.module} does not export ${e.symbol}`)
+        .toMatch(new RegExp(`export (async )?(function|const) ${e.symbol}\\b`));
+      expect(e.measures.length, `${kind} does not say what its reader measures`).toBeGreaterThan(30);
+      checked += 1;
+    }
+    expect(checked, 'the evidence scan examined no kinds').toBeGreaterThan(0);
+  });
+
+  it('labels the one source that is not a measurement as not one', () => {
+    /* The coach projects and never renegotiates a stated goal, so the only
+     * thing that may move a race target is the runner saying so. Calling that
+     * a measurement would put his own statement in the same voice as a reading,
+     * which is exactly what `Provenance.POLICY_ASSUMPTION` exists to prevent. */
+    expect(EVIDENCE_REGISTRY.RACE_TARGET_CHANGE!.family).toBe('RUNNER_STATED');
+    const stated = ALL_ACTION_KINDS.filter(
+      (k) => EVIDENCE_REGISTRY[k]?.family === 'RUNNER_STATED');
+    expect(stated).toEqual(['RACE_TARGET_CHANGE']);
+  });
+
+  it('a generated kind always names its evidence', () => {
+    // The pairing that matters: a generator with no named reader is a card the
+    // runner is asked to accept with nothing measured behind it.
+    for (const kind of ALL_ACTION_KINDS) {
+      if (GENERATOR_REGISTRY[kind] === null) continue;
+      expect(EVIDENCE_REGISTRY[kind], `${kind} is generated and names no evidence reader`)
+        .not.toBeNull();
+    }
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
  * GUARD 3 · THE INTEGRATION FACET · EVERY KIND WALKS THE WHOLE LANE
  * ═══════════════════════════════════════════════════════════════════════ */
 
@@ -849,6 +1367,7 @@ describe('GUARD 3 · INTEGRATION_TEST · every kind survives the whole lane at o
       expect(ledgerFacetsOf(back!).decision).toBeTruthy();
       expect(watchBehaviorOf(back!).kind).toBeTruthy();
       expect(undoWritesFor(back!).kind).toBeTruthy();
+      expect(declineBehaviorOf(back!).kind).toBeTruthy();
       expect(plannedWrites(back!)).toBeTruthy();
       walked += 1;
     }

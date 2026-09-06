@@ -87,14 +87,28 @@ export async function POST(
         { status: 409 },
       );
     }
+    /* ── ACTIONCOMPLETE-2 · RECORD_ONLY IS NOT "NOT ACTIONABLE" ────────────
+     *
+     * This refused EVERY non-mutating action, which was right for the kinds it
+     * could see and wrong for the three it could not. `applyBrainAction` has
+     * always treated RECORD_ONLY as the correct outcome — "the decision is the
+     * record; HOLD, REFUSAL and SAFETY_STOP exist so a judgement is visible" —
+     * so with those kinds now reachable the route and the applier gave OPPOSITE
+     * answers to the same tap (Rule 16). The applier is right; it owns the
+     * question.
+     *
+     * The guard itself stays, because it catches the thing it was written for:
+     * a kind routed to a real apply path that resolves to no write is a routing
+     * bug, and consuming the card while reporting success is the "applied: 0,
+     * ok: true" lie in a different costume. */
     if (prepared.plan.nonMutating) {
-      // The action resolves to no write. Accepting it would consume the card
-      // and change nothing, which is the "applied: 0, ok: true" lie in a
-      // different costume.
-      return NextResponse.json(
-        { ok: false, error: 'not_actionable', detail: prepared.plan.because },
-        { status: 422 },
-      );
+      const { executorFor } = await import('@/lib/brain/proposal/executor-map');
+      if (executorFor(action).path !== 'RECORD_ONLY') {
+        return NextResponse.json(
+          { ok: false, error: 'not_actionable', detail: prepared.plan.because },
+          { status: 422 },
+        );
+      }
     }
   }
 
@@ -210,12 +224,40 @@ export async function POST(
     });
   }
 
+  /* ── ACTIONCOMPLETE-2 (2026-09-05) · THE LEGACY LANE IS LEGACY-ONLY ───────
+   *
+   * Below here is the path for rows written before the action was stated on
+   * the row: it rebuilds an `AdaptationAction` from `newType` / `newDate` /
+   * `shaveFraction`, which only the five ORIGINAL engine words ever populated.
+   *
+   * The `action_kind` column can now also hold a `BrainAction` kind, written by
+   * `lib/brain/proposal/write.ts`. Such a row ALWAYS carries a stored action
+   * and is answered above; one that reaches here has a kind this lane has no
+   * fields for, and pumping it into `applyAdaptations` would hand the pipeline
+   * a kind it does not implement, which lands as `applied: 0`. Rule 11: that is
+   * a refusal the runner is owed, not a silent nothing — and the card goes back
+   * so he can try again rather than being spent.
+   */
+  const LEGACY_KINDS = new Set(['downgrade', 'shave', 'reschedule', 'field_test', 'mark_upgrade']);
+  if (!LEGACY_KINDS.has(proposal.actionKind)) {
+    console.error(
+      `[proposal/accept] ${proposalId} carries kind ${proposal.actionKind} and no readable stored `
+      + 'action; the legacy lane has no fields for it',
+    );
+    await sayIfTheCardCouldNotBePutBack(userId, proposalId);
+    return NextResponse.json({
+      ok: false,
+      error: 'unsupported',
+      detail: `this decision states no action and ${proposal.actionKind} is not a legacy kind`,
+    }, { status: 422 });
+  }
+
   // Reconstruct the AdaptationAction shape from the stored payload
   // and pump it through applyAdaptations. The existing path handles
   // sealed-day guards, original_* tracking, coach_intents audit, and
   // workout_spec re-derivation.
   const adaptation = {
-    kind: proposal.actionKind,
+    kind: proposal.actionKind as 'downgrade' | 'shave' | 'reschedule' | 'field_test' | 'mark_upgrade',
     workoutIds: [proposal.planWorkoutId],
     newType: proposal.actionPayload.newType ?? undefined,
     newDate: proposal.actionPayload.newDate ?? undefined,

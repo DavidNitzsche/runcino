@@ -104,15 +104,20 @@ enum ProposalDirectionV5 {
 }
 
 /// What kind of thing this is. See `V5ProposalStanding` on the server for the
-/// four and why they are not the same question as direction.
+/// five and why they are not the same question as direction.
 enum ProposalStandingV5 {
-    case proposal, condition, deferral, applied
+    case proposal, condition, deferral, applied, notice
 
     init(wire: String) {
         switch wire {
         case "condition": self = .condition
         case "deferral": self = .deferral
         case "applied": self = .applied
+        // ACTIONCOMPLETE-2 (2026-09-05) · a JUDGEMENT rather than a question.
+        // A hold and a safety stop change nothing and ask nothing; the server
+        // resolves this from the executor path, so the phone never has to know
+        // which kinds those are.
+        case "notice": self = .notice
         // A standing this phone has not been taught is treated as the one that
         // asks for nothing. Showing two buttons for a word we cannot read
         // would invite an answer to a question we do not understand.
@@ -127,13 +132,14 @@ enum ProposalStandingV5 {
         case .condition: return "CONDITION"
         case .deferral: return "DEFERRED"
         case .applied: return "APPLIED"
+        case .notice: return "NOTICE"
         }
     }
 
     /// Only an open proposal is answerable. A condition has not been earned, a
-    /// deferral has not been asked yet, and an applied decision is history.
-    /// Drawing Do it / Leave it on any of those would be the card asserting a
-    /// question the engine is not asking.
+    /// deferral has not been asked yet, an applied decision is history, and a
+    /// notice was never a question. Drawing Do it / Leave it on any of those
+    /// would be the card asserting a question the engine is not asking.
     var isAnswerable: Bool { self == .proposal }
 }
 

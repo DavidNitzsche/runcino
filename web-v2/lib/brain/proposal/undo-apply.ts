@@ -85,7 +85,22 @@ export interface UndoContext {
  */
 const UNDOABLE_COLUMNS = new Set([
   'date_iso', 'type', 'distance_mi', 'pace_target_s_per_mi',
+  // UNDOCOMPLETE-1 · the five `RowBefore` grew so a session's GEOMETRY could
+  // come back. Still written out rather than derived, and still narrower than
+  // the accept path's list: an undo restores what the proposal recorded and
+  // `RowBefore` records nine things.
+  'duration_min', 'is_quality', 'sub_label', 'notes', 'workout_spec',
 ]);
+
+/**
+ * Columns whose value is jsonb and must be handed to pg as TEXT with a cast.
+ *
+ * node-pg serializes a plain object to `[object Object]` unless it is
+ * stringified, and `workout_spec` is the only jsonb column an undo writes.
+ * Naming it here rather than special-casing inside the loop keeps the two
+ * lists — what may be written, and how — beside each other.
+ */
+const JSONB_COLUMNS = new Set(['workout_spec']);
 
 export async function applyUndo(
   action: BrainAction,
@@ -181,8 +196,17 @@ async function writeBack(
     }
     const cols = Object.keys(w.set).filter((c) => UNDOABLE_COLUMNS.has(c));
     if (cols.length === 0) continue;
-    const sets = cols.map((c, i) => `${c} = $${i + 3}`).join(', ');
-    const vals = cols.map((c) => (w.set as Record<string, unknown>)[c]);
+    const sets = cols
+      .map((c, i) => `${c} = $${i + 3}${JSONB_COLUMNS.has(c) ? '::jsonb' : ''}`)
+      .join(', ');
+    const vals = cols.map((c) => {
+      const v = (w.set as Record<string, unknown>)[c];
+      /* A recorded NULL stays null — Rule 11 on the write side: the session
+       * genuinely had no spec, and `JSON.stringify(null)` would write the
+       * four-character string "null" into a jsonb column instead. */
+      if (!JSONB_COLUMNS.has(c)) return v;
+      return v == null ? null : JSON.stringify(v);
+    });
     const r = await tx.query(
       `UPDATE plan_workouts SET ${sets} WHERE id = $1 AND plan_id = $2`,
       [w.planWorkoutId, planId, ...vals],

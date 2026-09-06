@@ -72,6 +72,47 @@ export interface RowBefore {
   readonly paceTargetSecPerMi?: number | null;
   /** The plan version this was read from. A rebuild changes it. */
   readonly planVersion?: string | null;
+
+  /* ── THE SESSION'S SHAPE · UNDOCOMPLETE-1 (2026-09-05) ──────────────────
+   *
+   * The five fields above are what `staleAgainst` COMPARES. The five below are
+   * what an undo RESTORES, and they are a different job on one record.
+   *
+   * They exist because seven kinds could be applied and never reversed, and
+   * every one of them for the same reason: the thing they overwrote lives in
+   * `workout_spec`, `sub_label`, `notes`, `duration_min` or `is_quality`, and
+   * `RowBefore` recorded none of the five. `undo.ts` said so honestly and
+   * refused — which was the right answer to the wrong shape.
+   *
+   * THEY ARE DELIBERATELY NOT COMPARED FOR STALENESS, and that is a decision
+   * rather than an omission. A note edited under a pending card, or a spec
+   * re-derived by an unrelated pass, must not make the runner's decision
+   * refuse to apply: staleness asks "is this still the session I reasoned
+   * about", and a sentence is not the session. `movedSinceAccept` in
+   * `undo-apply.ts` is where the after-the-fact comparison lives, and it asks
+   * a different question about different fields.
+   *
+   * Rule 11 holds exactly as it does above: absent is "not recorded" and the
+   * undo refuses naming the field; `null` is "recorded, and it was nothing",
+   * and the undo restores the nothing.
+   */
+  /** `plan_workouts.duration_min`. */
+  readonly durationMin?: number | null;
+  /** `plan_workouts.is_quality`. */
+  readonly isQuality?: boolean | null;
+  /** `plan_workouts.sub_label` — the chip the runner reads on the day card. */
+  readonly subLabel?: string | null;
+  /** `plan_workouts.notes` — the sentence attached to the session. */
+  readonly notes?: string | null;
+  /**
+   * `plan_workouts.workout_spec`, verbatim and OPAQUE.
+   *
+   * Never interpreted here. It is carried so a session's geometry can be put
+   * back exactly as it was, together with the `sub_label` and pace derived
+   * from it — restoring one without the others is the "is it 5 or 4 miles"
+   * defect that motivated the spec rebuild in the first place.
+   */
+  readonly workoutSpec?: Record<string, unknown> | null;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -169,6 +210,16 @@ export interface LiveRow {
   readonly distanceMi: number | null;
   readonly paceTargetSecPerMi: number | null;
   readonly planVersion: string | null;
+  /* The shape half, so `beforeFromLive` can record what an undo would restore.
+   * Optional on the READ because a reader that only needs staleness should not
+   * be forced to select five more columns, and Rule 11 keeps the difference:
+   * a reader that did not select them leaves them absent, and the undo of an
+   * action built from that snapshot refuses naming the field. */
+  readonly durationMin?: number | null;
+  readonly isQuality?: boolean | null;
+  readonly subLabel?: string | null;
+  readonly notes?: string | null;
+  readonly workoutSpec?: Record<string, unknown> | null;
 }
 
 export type StalenessVerdict =

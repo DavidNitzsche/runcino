@@ -29,6 +29,7 @@ import { stripResearchCitations } from './strip-citations';
 import type { RepricePayload } from './reprice-payload';
 import { actionFromAdaptation } from '@/lib/brain/proposal/generate/from-adaptation';
 import { serializeAction, type StoredAction } from '@/lib/brain/proposal/serialize';
+import type { ActionRowKind } from '@/lib/brain/proposal/write';
 
 export interface PendingProposal {
   id: number;
@@ -49,7 +50,18 @@ export interface PendingProposal {
   // reanchor-proposal.ts` is its writer and the accept route branches on it
   // before it builds an action. See `lib/plan/reprice-payload.ts` for why one
   // coordinated proposal beats seventy-seven cards.
-  actionKind: 'downgrade' | 'shave' | 'reschedule' | 'field_test' | 'mark_upgrade' | 'reprice';
+  //
+  // ACTIONCOMPLETE-2 (2026-09-05) · `ActionRowKind` joins them, and it is the
+  // widening that makes HOLD and SAFETY_STOP possible at all. Every member of
+  // it is `Lowercase<ActionKind>` — derived from the union rather than written
+  // out, so a kind added to `BrainAction` is a legal row value the same day and
+  // this type cannot drift from the vocabulary it is meant to mirror. The six
+  // legacy words stay because rows carrying them are in production; four of
+  // them (`downgrade`, `shave`, `reschedule`, `field_test`) are engine words
+  // with no `BrainAction` of the same spelling, so they are not redundant.
+  actionKind:
+    | 'downgrade' | 'shave' | 'reschedule' | 'field_test' | 'mark_upgrade' | 'reprice'
+    | ActionRowKind;
   actionPayload: {
     newType?: string;
     newDate?: string;

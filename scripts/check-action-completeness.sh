@@ -27,10 +27,33 @@
 # covered here." That is this repo's signature failure — WIRED, TESTED AND INERT
 # — arriving on the newest thing built, and it is what this gate is for.
 #
-# The registry is `web-v2/lib/brain/proposal/facets.ts`: eleven facets per kind,
-# 231 cells, and a RATCHET naming every one that is genuinely absent with an
+# The registry is `web-v2/lib/brain/proposal/facets.ts`: FOURTEEN facets per kind,
+# 294 cells, and a RATCHET naming every one that is genuinely absent with an
 # argued reason. The list may shrink and may never grow, and an entry whose facet
 # is now present FAILS UNTIL DELETED.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# WHY IT IS FOURTEEN AND NOT ELEVEN (ACTIONCOMPLETE-2, 2026-09-05)
+#
+# The eleven-facet version of this gate REPORTED HOLD AND SAFETY_STOP AS
+# COMPLETE. Both were: generated, validated, serialized, rendered, executable,
+# ledgered, watched, and with a stated undo posture. And no production path
+# could put either in front of anyone — `writeWorkoutProposals` takes
+# `AdaptationAction[]`, and neither kind is a member of that TYPE, because
+# neither is a mutation. `scripts/v5-roundtrip-seed.ts` wrote them by hand.
+#
+# So three facets were added, each closing a question nobody was asking:
+#
+#   PROPOSAL_WRITER  can a live path RAISE this kind as a card?
+#   EVIDENCE_SOURCE  what MEASUREMENT gives the engine the right to raise it?
+#   DECLINE          what does the runner's NO mean for this kind? (the old
+#                    answer was one UPDATE for twenty-one kinds, which let a
+#                    SAFETY_STOP be dismissed — a button that overrides safety)
+#
+# Adding facets ADDS CELLS and therefore adds ratchet entries, which is the one
+# way the gap total may legitimately rise. `ORIGINAL_ELEVEN_GAP_CEILING` in
+# facets.ts pins the count on the ORIGINAL matrix — 23 down to 14 in the same
+# pass — so a new facet cannot be used to smuggle a regression on an old one.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # FIVE GUARDS, exit 1 on any violation
@@ -52,8 +75,8 @@
 #                   seam meaningless.
 #   3 · CONTROLS  · positive and negative, on this script's own matchers, every
 #                   build. Rule 18 point 1.
-#   4 · FULL GATE · the suite: the 231-cell matrix, the ratchet in both
-#                   directions, the generator import-graph walk.
+#   4 · FULL GATE · the suite: the 294-cell matrix, the ratchet in both
+#                   directions, the generator AND writer import-graph walks.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # WHAT THIS GATE CANNOT FAIL ON (Rule 22)
@@ -67,7 +90,9 @@
 #   · WHETHER THE LIVE CALLER IS ITSELF ALIVE. The suite walks a STATIC IMPORT
 #     GRAPH. A cron nobody schedules and a route nobody calls both pass. Rule 19
 #     is the standing reminder that green is not deployed.
-#   · A FACET NOBODY THOUGHT OF. Eleven is a list somebody wrote down.
+#   · A FACET NOBODY THOUGHT OF. Fourteen is a list somebody wrote down. So was
+#     eleven, and three of the ones it was missing turned out to matter enough
+#     that two kinds passed this gate while being unreachable in production.
 #   · THE NATIVE SIDE. Swift is not in this process.
 #   · A RATCHET REASON THAT IS FALSE. It tells a stale entry from a live one; it
 #     cannot tell a true sentence from a plausible one.
@@ -101,6 +126,12 @@ GEN_REPRICE="$P/generate/from-reprice.ts"
 GEN_SEAL="$P/generate/from-seal.ts"
 GEN_SAFETY="$P/generate/from-safety.ts"
 
+# ACTIONCOMPLETE-2 · the three owners the fourteen-facet matrix added.
+DECLINE="$P/decline-facet.ts"
+EVIDENCE="$P/evidence-facet.ts"
+WRITE="$P/write.ts"
+LANE="$W/lib/plan/action-proposal-lane.ts"
+
 fail() { echo "FAIL  check-action-completeness · $1" >&2; exit 1; }
 
 # ── 0 · TAMPER ───────────────────────────────────────────────────────────────
@@ -109,7 +140,8 @@ fail() { echo "FAIL  check-action-completeness · $1" >&2; exit 1; }
 # audits — and scanned zero files while reporting clean.
 for f in "$FACETS" "$ACTION" "$VALIDATE" "$SERIALIZE" "$EXECUTE" "$EXECUTOR" \
          "$ACCEPT" "$LEDGER" "$UNDO" "$WATCH" "$RENDER" "$GATE" "$AUTHORITY" \
-         "$GEN_PROGRESSION" "$GEN_ADAPTATION" "$GEN_REPRICE" "$GEN_SEAL" "$GEN_SAFETY"; do
+         "$GEN_PROGRESSION" "$GEN_ADAPTATION" "$GEN_REPRICE" "$GEN_SEAL" "$GEN_SAFETY" \
+         "$DECLINE" "$EVIDENCE" "$WRITE" "$LANE"; do
   [ -f "$f" ] || fail "missing $f · the gate cannot check what is not there"
 done
 
@@ -125,7 +157,10 @@ for g in \
   "GUARD 1 · LEDGER · every decision can be written down" \
   "GUARD 1 · UNDO · every kind says whether the runner can take it back" \
   "GUARD 1 · WATCH · every kind says what the wrist must do" \
+  "GUARD 1 · DECLINE · every kind says what the runner\\'s NO means" \
   "GUARD 2 · GENERATOR · every kind is emitted by something live" \
+  "GUARD 2b · PROPOSAL_WRITER · every kind can reach the runner" \
+  "GUARD 2c · EVIDENCE_SOURCE · every kind names the reader behind it" \
   "GUARD 3 · INTEGRATION_TEST · every kind survives the whole lane at once" \
   "GUARD 4 · the completed lane can push as fluently as it can pull back" ; do
   grep -qF "describe('$g'" "$GATE" \
@@ -137,6 +172,12 @@ grep -q 'export const FACET_GAPS' "$FACETS" \
   || fail "facets.ts no longer exports FACET_GAPS · the ratchet is gone"
 grep -q 'export const GENERATOR_REGISTRY' "$FACETS" \
   || fail "facets.ts no longer exports GENERATOR_REGISTRY · nothing records who emits what"
+grep -q 'export const PROPOSAL_WRITER_REGISTRY' "$FACETS" \
+  || fail "facets.ts no longer exports PROPOSAL_WRITER_REGISTRY · nothing records who can RAISE what, which is the facet HOLD and SAFETY_STOP were missing while passing every other one"
+grep -q 'export const EVIDENCE_REGISTRY' "$EVIDENCE" \
+  || fail "evidence-facet.ts no longer exports EVIDENCE_REGISTRY · nothing records what measured the thing"
+grep -q 'export const ORIGINAL_ELEVEN_GAP_CEILING' "$FACETS" \
+  || fail "facets.ts no longer pins ORIGINAL_ELEVEN_GAP_CEILING · a new facet could then hide a regression on an old one"
 
 # Counted out of the file itself rather than hardcoded on both sides (Rule 18).
 KINDS="$(sed -n "/export const ALL_ACTION_KINDS/,/^];/p" "$ACTION" \
@@ -145,8 +186,8 @@ KINDS="$(sed -n "/export const ALL_ACTION_KINDS/,/^];/p" "$ACTION" \
 
 FACET_COUNT="$(sed -n "/export const ALL_FACETS/,/^];/p" "$FACETS" \
   | grep -oE "'[A-Z_]+'" | sort -u | wc -l | tr -d ' ')"
-[ "$FACET_COUNT" -eq 11 ] \
-  || fail "$FACET_COUNT facets declared, expected 11 · adding or removing one changes what completeness MEANS and must be argued, not absorbed"
+[ "$FACET_COUNT" -eq 14 ] \
+  || fail "$FACET_COUNT facets declared, expected 14 · adding or removing one changes what completeness MEANS and must be argued, not absorbed"
 
 GAPS="$(grep -cE "^[[:space:]]+kind: '[A-Z_]+', facet: '[A-Z_]+'," "$FACETS")"
 [ "$GAPS" -gt 0 ] || fail "the ratchet parses to zero entries · either the format changed or the list was emptied"
@@ -156,7 +197,7 @@ GAPS="$(grep -cE "^[[:space:]]+kind: '[A-Z_]+', facet: '[A-Z_]+'," "$FACETS")"
 # error in every facet, not a silent fall-through. `executor-map.ts` and
 # `watch-facet.ts` close over the union with an exhaustive switch instead, and
 # both are checked for their own shape below.
-for f in "$VALIDATE" "$EXECUTE" "$LEDGER" "$UNDO" "$RENDER"; do
+for f in "$VALIDATE" "$EXECUTE" "$LEDGER" "$UNDO" "$RENDER" "$DECLINE"; do
   grep -q 'const never: never' "$f" \
     || fail "$(basename "$f") owns a facet and its switch is not exhaustive · a new kind would fall through silently"
 done
@@ -183,11 +224,21 @@ grep -qE '^export const AUTOMATIC_ADAPTATION_AUTHORITY: false = false;' "$SEAM" 
 # `mutatePlan`'s own `apply` callback.
 for f in "$FACETS" "$VALIDATE" "$SERIALIZE" "$EXECUTE" "$EXECUTOR" "$LEDGER" \
          "$UNDO" "$WATCH" "$GEN_PROGRESSION" "$GEN_ADAPTATION" "$GEN_REPRICE" \
-         "$GEN_SEAL" "$GEN_SAFETY"; do
+         "$GEN_SEAL" "$GEN_SAFETY" "$DECLINE" "$EVIDENCE" "$WRITE" "$LANE"; do
   if grep -qiE '(UPDATE|INSERT INTO|DELETE FROM)[[:space:]]+plan_workouts' "$f"; then
     fail "$(basename "$f") writes plan_workouts directly · every plan mutation goes through lib/plan/mutate.ts"
   fi
 done
+# ACTIONCOMPLETE-2 · and the new propose door may not READ the seam either.
+# Both files claim in their own headers that they do not; Rule 19's corollary
+# says a header claim nothing verifies is worse than silence. Comments are
+# stripped first, because the sentence being checked is the claim itself.
+for f in "$WRITE" "$LANE"; do
+  if sed 's,//.*,,' "$f" | grep -v '^ \*' | grep -q 'AUTOMATIC_ADAPTATION_AUTHORITY'; then
+    fail "$(basename "$f") reads AUTOMATIC_ADAPTATION_AUTHORITY · the propose lane does not negotiate the seam"
+  fi
+done
+
 grep -q "mutatePlan" "$ACCEPT" \
   || fail "accept.ts writes the plan without the mutation boundary"
 grep -q "authority: 'RUNNER_ACCEPTED'" "$ACCEPT" \
@@ -234,7 +285,7 @@ if [ -x "$W/node_modules/.bin/vitest" ]; then
     || fail "the ACTIONCOMPLETE-1 suite failed (above)"
 else
   echo "NOTE  check-action-completeness · no vitest binary; ran tamper + totality + authority + controls only." >&2
-  echo "NOTE  the 231-cell matrix, the ratchet staleness check and the generator import-graph walk DID NOT RUN." >&2
+  echo "NOTE  the 294-cell matrix, the ratchet staleness check and the generator/writer import-graph walks DID NOT RUN." >&2
 fi
 
 echo "ok    check-action-completeness · $KINDS kinds x $FACET_COUNT facets, $GAPS ratcheted gaps, seam still false"

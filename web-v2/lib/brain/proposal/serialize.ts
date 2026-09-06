@@ -37,11 +37,27 @@
  *   `_action_completeness.test.ts`'s round-trip assertion is what catches that,
  *   by comparing the whole object rather than a field list — which means the
  *   protection lives in the test, not in this file, and would go with it.
+ *
+ * ── WHY THE READERS ARE A RECORD AND NOT A SWITCH (2026-09-05) ─────────────
+ *
+ * A `switch` with a `default: return null` is TOTAL AT RUNTIME and not at
+ * COMPILE TIME, which is exactly the wrong way round for this file: a
+ * twenty-second kind added to the union compiled, serialized, and came back
+ * `null` — a card the runner could never be shown, reported by nothing. Every
+ * other owner in this lane (`plannedWrites`, `executorFor`, `undoWritesFor`,
+ * `ledgerFacetsOf`, `watchBehaviorOf`, `validateAction`, `actionHeadline`) is
+ * exhaustive by a `never` check and fails the BUILD. This one could not be,
+ * because it must still answer null for a kind that is not in the union at all
+ * — a payload written by another build.
+ *
+ * `Readonly<Record<ActionKind, Reader>>` gets both: the compiler demands an
+ * entry for every member, and the lookup still misses for a foreign string.
  */
 
 import {
   ACTION_SCHEMA_VERSION,
   type ActionDirection,
+  type ActionKind,
   type BrainAction,
   type Quantity,
   type RowBefore,
@@ -91,124 +107,143 @@ export function deserializeAction(raw: unknown): BrainAction | null {
   if (direction === null || before === null) return null;
   const base = { schemaVersion: ACTION_SCHEMA_VERSION, direction, before } as const;
 
-  switch (body.kind) {
-    case 'PACE_CHANGE': {
-      const to = qty(body.to);
-      const lever = oneOf(body.lever, ['THRESHOLD', 'MARATHON', 'INTERVAL', 'EASY'] as const);
-      return to !== null && lever !== null ? { ...base, kind: 'PACE_CHANGE', to, lever } : null;
-    }
-    case 'DISTANCE_CHANGE': {
-      /* `to` is legitimately null — a decision made without a target distance —
-       * so null must round-trip as null and an unreadable value must NOT. */
-      const to = body.to === null ? null : qty(body.to);
-      if (body.to !== null && to === null) return null;
-      if (body.ofBefore === undefined) return { ...base, kind: 'DISTANCE_CHANGE', to };
-      const ofBefore = num(body.ofBefore);
-      if (ofBefore === null) return null;
-      return { ...base, kind: 'DISTANCE_CHANGE', to, ofBefore };
-    }
-    case 'DURATION_CHANGE': {
-      const to = qty(body.to);
-      return to !== null ? { ...base, kind: 'DURATION_CHANGE', to } : null;
-    }
-    case 'REPETITION_CHANGE': {
-      const to = qty(body.to);
-      return to !== null ? { ...base, kind: 'REPETITION_CHANGE', to } : null;
-    }
-    case 'RECOVERY_INTERVAL_CHANGE': {
-      const to = qty(body.to);
-      return to !== null ? { ...base, kind: 'RECOVERY_INTERVAL_CHANGE', to } : null;
-    }
-    case 'QUALITY_DOSE_CHANGE': {
-      const to = qty(body.to);
-      const lever = oneOf(body.lever, ['THRESHOLD', 'MARATHON', 'INTERVAL'] as const);
-      return to !== null && lever !== null ? { ...base, kind: 'QUALITY_DOSE_CHANGE', to, lever } : null;
-    }
-    case 'LONG_RUN_STRUCTURE_CHANGE': {
-      const to = str(body.to); const describe = str(body.describe);
-      return to !== null && describe !== null
-        ? { ...base, kind: 'LONG_RUN_STRUCTURE_CHANGE', to, describe } : null;
-    }
-    case 'WORKOUT_TYPE_CHANGE': {
-      const to = str(body.to);
-      return to !== null ? { ...base, kind: 'WORKOUT_TYPE_CHANGE', to } : null;
-    }
-    case 'ADD_WORKOUT': {
-      const dateISO = str(body.dateISO); const type = str(body.type);
-      const distanceMi = num(body.distanceMi);
-      return dateISO !== null && type !== null && distanceMi !== null
-        ? { ...base, kind: 'ADD_WORKOUT', dateISO, type, distanceMi } : null;
-    }
-    case 'REMOVE_WORKOUT':
-      return { ...base, kind: 'REMOVE_WORKOUT' };
-    case 'FREQUENCY_CHANGE': {
-      const to = qty(body.to);
-      return to !== null ? { ...base, kind: 'FREQUENCY_CHANGE', to } : null;
-    }
-    case 'RESCHEDULE': {
-      const toDateISO = str(body.toDateISO);
-      if (toDateISO === null) return null;
-      const swap = body.swapWithId === null ? null : str(body.swapWithId);
-      if (body.swapWithId !== null && swap === null) return null;
-      return { ...base, kind: 'RESCHEDULE', toDateISO, swapWithId: swap };
-    }
-    case 'COORDINATED': {
-      const describe = str(body.describe);
-      if (describe === null || !Array.isArray(body.parts)) return null;
-      const parts: BrainAction[] = [];
-      for (const p of body.parts) {
-        const one = deserializeAction(p);
-        // A coordinated action is applied whole or not at all, so a part that
-        // cannot be read poisons the decision rather than shrinking it.
-        if (one === null) return null;
-        parts.push(one);
-      }
-      return { ...base, kind: 'COORDINATED', describe, parts };
-    }
-    case 'RACE_TARGET_CHANGE': {
-      const raceSlug = str(body.raceSlug); const toSecPerMi = num(body.toSecPerMi);
-      return raceSlug !== null && toSecPerMi !== null
-        ? { ...base, kind: 'RACE_TARGET_CHANGE', raceSlug, toSecPerMi } : null;
-    }
-    case 'TAPER_CHANGE': {
-      const describe = str(body.describe);
-      return describe !== null ? { ...base, kind: 'TAPER_CHANGE', describe } : null;
-    }
-    case 'RECOVERY_CHANGE': {
-      const describe = str(body.describe);
-      return describe !== null ? { ...base, kind: 'RECOVERY_CHANGE', describe } : null;
-    }
-    case 'CONDITIONAL': {
-      const defaultTo = qty(body.defaultTo); const earnedTo = qty(body.earnedTo);
-      const assessOnISO = str(body.assessOnISO);
-      return defaultTo !== null && earnedTo !== null && assessOnISO !== null
-        ? { ...base, kind: 'CONDITIONAL', defaultTo, earnedTo, assessOnISO } : null;
-    }
-    case 'FIELD_TEST': {
-      const describe = str(body.describe);
-      return describe !== null ? { ...base, kind: 'FIELD_TEST', describe } : null;
-    }
-    case 'HOLD': {
-      const because = str(body.because);
-      return because !== null ? { ...base, kind: 'HOLD', because } : null;
-    }
-    case 'REFUSAL': {
-      const because = str(body.because);
-      return because !== null ? { ...base, kind: 'REFUSAL', because } : null;
-    }
-    case 'SAFETY_STOP': {
-      const because = str(body.because);
-      if (because === null) return null;
-      const until = body.until === null ? null : str(body.until);
-      if (body.until !== null && until === null) return null;
-      return { ...base, kind: 'SAFETY_STOP', because, until };
-    }
-    // Rule 11 · a kind this build does not have is not a no-op. The caller
-    // withholds the card rather than applying nothing and reporting success.
-    default:
-      return null;
-  }
+  /* Rule 11 · a kind this build does not have is not a no-op. The caller
+   * withholds the card rather than applying nothing and reporting success.
+   * The lookup misses for a foreign string; the RECORD is what stops a kind
+   * this build DOES have from reaching that same miss. */
+  const reader = typeof body.kind === 'string'
+    ? (READERS as Partial<Record<string, Reader>>)[body.kind]
+    : undefined;
+  return reader === undefined ? null : reader(body, base);
 }
+
+/** One stored payload, one member of the union, or a refusal. */
+type Reader = (
+  body: Record<string, unknown>,
+  base: { readonly schemaVersion: typeof ACTION_SCHEMA_VERSION;
+    readonly direction: ActionDirection; readonly before: readonly RowBefore[] },
+) => BrainAction | null;
+
+/**
+ * A READER PER KIND, TOTAL AT COMPILE TIME.
+ *
+ * A member added to `BrainAction` without an entry here fails `tsc`. That is
+ * the property the old `switch (body.kind)` could not have, because its
+ * `default` arm is load-bearing for foreign payloads and a `default` arm is
+ * exactly what stops a compiler noticing a missing case.
+ */
+const READERS: Readonly<Record<ActionKind, Reader>> = {
+  PACE_CHANGE: (body, base) => {
+    const to = qty(body.to);
+    const lever = oneOf(body.lever, ['THRESHOLD', 'MARATHON', 'INTERVAL', 'EASY'] as const);
+    return to !== null && lever !== null ? { ...base, kind: 'PACE_CHANGE', to, lever } : null;
+  },
+  DISTANCE_CHANGE: (body, base) => {
+    /* `to` is legitimately null — a decision made without a target distance —
+     * so null must round-trip as null and an unreadable value must NOT. */
+    const to = body.to === null ? null : qty(body.to);
+    if (body.to !== null && to === null) return null;
+    if (body.ofBefore === undefined) return { ...base, kind: 'DISTANCE_CHANGE', to };
+    const ofBefore = num(body.ofBefore);
+    if (ofBefore === null) return null;
+    return { ...base, kind: 'DISTANCE_CHANGE', to, ofBefore };
+  },
+  DURATION_CHANGE: (body, base) => {
+    const to = qty(body.to);
+    return to !== null ? { ...base, kind: 'DURATION_CHANGE', to } : null;
+  },
+  REPETITION_CHANGE: (body, base) => {
+    const to = qty(body.to);
+    return to !== null ? { ...base, kind: 'REPETITION_CHANGE', to } : null;
+  },
+  RECOVERY_INTERVAL_CHANGE: (body, base) => {
+    const to = qty(body.to);
+    return to !== null ? { ...base, kind: 'RECOVERY_INTERVAL_CHANGE', to } : null;
+  },
+  QUALITY_DOSE_CHANGE: (body, base) => {
+    const to = qty(body.to);
+    const lever = oneOf(body.lever, ['THRESHOLD', 'MARATHON', 'INTERVAL'] as const);
+    return to !== null && lever !== null ? { ...base, kind: 'QUALITY_DOSE_CHANGE', to, lever } : null;
+  },
+  LONG_RUN_STRUCTURE_CHANGE: (body, base) => {
+    const to = str(body.to); const describe = str(body.describe);
+    return to !== null && describe !== null
+      ? { ...base, kind: 'LONG_RUN_STRUCTURE_CHANGE', to, describe } : null;
+  },
+  WORKOUT_TYPE_CHANGE: (body, base) => {
+    const to = str(body.to);
+    return to !== null ? { ...base, kind: 'WORKOUT_TYPE_CHANGE', to } : null;
+  },
+  ADD_WORKOUT: (body, base) => {
+    const dateISO = str(body.dateISO); const type = str(body.type);
+    const distanceMi = num(body.distanceMi);
+    return dateISO !== null && type !== null && distanceMi !== null
+      ? { ...base, kind: 'ADD_WORKOUT', dateISO, type, distanceMi } : null;
+  },
+  REMOVE_WORKOUT: (_body, base) => ({ ...base, kind: 'REMOVE_WORKOUT' }),
+  FREQUENCY_CHANGE: (body, base) => {
+    const to = qty(body.to);
+    return to !== null ? { ...base, kind: 'FREQUENCY_CHANGE', to } : null;
+  },
+  RESCHEDULE: (body, base) => {
+    const toDateISO = str(body.toDateISO);
+    if (toDateISO === null) return null;
+    const swap = body.swapWithId === null ? null : str(body.swapWithId);
+    if (body.swapWithId !== null && swap === null) return null;
+    return { ...base, kind: 'RESCHEDULE', toDateISO, swapWithId: swap };
+  },
+  COORDINATED: (body, base) => {
+    const describe = str(body.describe);
+    if (describe === null || !Array.isArray(body.parts)) return null;
+    const parts: BrainAction[] = [];
+    for (const p of body.parts) {
+      const one = deserializeAction(p);
+      // A coordinated action is applied whole or not at all, so a part that
+      // cannot be read poisons the decision rather than shrinking it.
+      if (one === null) return null;
+      parts.push(one);
+    }
+    return { ...base, kind: 'COORDINATED', describe, parts };
+  },
+  RACE_TARGET_CHANGE: (body, base) => {
+    const raceSlug = str(body.raceSlug); const toSecPerMi = num(body.toSecPerMi);
+    return raceSlug !== null && toSecPerMi !== null
+      ? { ...base, kind: 'RACE_TARGET_CHANGE', raceSlug, toSecPerMi } : null;
+  },
+  TAPER_CHANGE: (body, base) => {
+    const describe = str(body.describe);
+    return describe !== null ? { ...base, kind: 'TAPER_CHANGE', describe } : null;
+  },
+  RECOVERY_CHANGE: (body, base) => {
+    const describe = str(body.describe);
+    return describe !== null ? { ...base, kind: 'RECOVERY_CHANGE', describe } : null;
+  },
+  CONDITIONAL: (body, base) => {
+    const defaultTo = qty(body.defaultTo); const earnedTo = qty(body.earnedTo);
+    const assessOnISO = str(body.assessOnISO);
+    return defaultTo !== null && earnedTo !== null && assessOnISO !== null
+      ? { ...base, kind: 'CONDITIONAL', defaultTo, earnedTo, assessOnISO } : null;
+  },
+  FIELD_TEST: (body, base) => {
+    const describe = str(body.describe);
+    return describe !== null ? { ...base, kind: 'FIELD_TEST', describe } : null;
+  },
+  HOLD: (body, base) => {
+    const because = str(body.because);
+    return because !== null ? { ...base, kind: 'HOLD', because } : null;
+  },
+  REFUSAL: (body, base) => {
+    const because = str(body.because);
+    return because !== null ? { ...base, kind: 'REFUSAL', because } : null;
+  },
+  SAFETY_STOP: (body, base) => {
+    const because = str(body.because);
+    if (because === null) return null;
+    const until = body.until === null ? null : str(body.until);
+    if (body.until !== null && until === null) return null;
+    return { ...base, kind: 'SAFETY_STOP', because, until };
+  },
+};
 
 /* ── readers · each returns null rather than a coerced value ────────────── */
 
@@ -275,6 +310,34 @@ function beforeList(v: unknown): readonly RowBefore[] | null {
     if ('planVersion' in o) {
       if (o.planVersion === null) row.planVersion = null;
       else { const s = str(o.planVersion); if (s === null) return null; row.planVersion = s; }
+    }
+    /* UNDOCOMPLETE-1 · the five shape fields an undo restores. Read exactly as
+     * the five above are: present-and-null is a recorded nothing, absent stays
+     * absent, and a value of the wrong TYPE poisons the whole payload rather
+     * than being dropped — a spec that came back as a string is a corrupt row,
+     * not a row with no spec. */
+    if ('durationMin' in o) {
+      if (o.durationMin === null) row.durationMin = null;
+      else { const n = num(o.durationMin); if (n === null) return null; row.durationMin = n; }
+    }
+    if ('isQuality' in o) {
+      if (o.isQuality === null) row.isQuality = null;
+      else if (typeof o.isQuality === 'boolean') row.isQuality = o.isQuality;
+      else return null;
+    }
+    if ('subLabel' in o) {
+      if (o.subLabel === null) row.subLabel = null;
+      else { const s = str(o.subLabel); if (s === null) return null; row.subLabel = s; }
+    }
+    if ('notes' in o) {
+      if (o.notes === null) row.notes = null;
+      else { const s = str(o.notes); if (s === null) return null; row.notes = s; }
+    }
+    if ('workoutSpec' in o) {
+      if (o.workoutSpec === null) row.workoutSpec = null;
+      else if (typeof o.workoutSpec === 'object' && !Array.isArray(o.workoutSpec)) {
+        row.workoutSpec = o.workoutSpec as Record<string, unknown>;
+      } else return null;
     }
     out.push(row as unknown as RowBefore);
   }
