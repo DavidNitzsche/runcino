@@ -170,10 +170,23 @@ CREATE TABLE IF NOT EXISTS plan_decision_ledger (
   responded_at          timestamptz,
 
   -- ── what actually happened to the plan · lib/plan/mutate.ts outcomes ────
+  -- LEDGERATOMIC-1 adds two members, and both are facts the old list could
+  -- only tell as a lie:
+  --   `ledger_unwritten` · the plan mutation was ROLLED BACK because this
+  --      table refused its row. Recorded on a second connection afterwards,
+  --      which is the only connection that survives the rollback. Without it
+  --      the outcome would have to be written as `not_attempted`, collapsing
+  --      "the statement blew up" with "the record refused" — Rule 11, in the
+  --      one table built to keep facts apart.
+  --   `duplicate` · an exactly-once mutation whose idempotency key already
+  --      carried a row. The mutation rolled back and the FIRST row still
+  --      stands; this member exists so a caller can say so without inventing
+  --      a second row that would claim the work happened twice.
   mutation_outcome      text
                           CHECK (mutation_outcome IS NULL OR mutation_outcome IN (
                             'applied', 'rejected', 'undeclared_structural', 'bypassed',
-                            'authorship_drift', 'no_plan', 'not_attempted')),
+                            'authorship_drift', 'no_plan', 'not_attempted',
+                            'ledger_unwritten', 'duplicate')),
   mutation_violations   jsonb NOT NULL DEFAULT '[]'::jsonb,
 
   -- ── the explanation, the model, the time ────────────────────────────────

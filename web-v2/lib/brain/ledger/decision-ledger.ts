@@ -7,13 +7,62 @@
  * policy of its own, in the same split `canonical-shadow/deferral-store.ts`
  * already uses against `canonical/deferral-queue.ts`.
  *
- * ── IT WRITES ON ITS OWN CONNECTION, ALWAYS ────────────────────────────────
+ * ══════════════════════════════════════════════════════════════════════════
+ * LEDGERATOMIC-1 (2026-09-05) · TWO LANES, AND WHICH ONE COVERS WHAT
+ * ══════════════════════════════════════════════════════════════════════════
  *
- * Never on the caller's transaction. `mutatePlan` rolls a rejected mutation
- * back, and a ledger row written inside that transaction would be rolled back
- * with it — so the ledger would record every decision EXCEPT the refusals,
- * which are the ones a reader most needs. `recordMutationOutcome` already made
- * this call for `plan_mutation_rejections` and the reasoning is identical.
+ * This file used to write on `pool` and ONLY on `pool`, and its own header
+ * argued for that: a ledger row written inside `mutatePlan`'s transaction
+ * would roll back with a rejected mutation, so the ledger would record every
+ * decision EXCEPT the refusals.
+ *
+ * That argument is correct about refusals and WRONG about the committed half,
+ * and the owner named the consequence exactly:
+ *
+ *     "A plan mutation and its ledger record must be one atomic outcome. The
+ *      system may not: (1) mutate the plan, (2) fail to write the ledger,
+ *      (3) log an error, (4) return success."
+ *
+ * That was the literal behaviour: `mutatePlan` COMMITted, then called this
+ * file on a second connection, then `console.error`d a failure and returned
+ * `ok: true`. A plan could move with nothing recording that it had.
+ *
+ * The resolution is not one lane, it is two, split on a real distinction:
+ *
+ *   ── LANE A · `recordDecisionInTransaction(tx, entry)` ─────────────────
+ *   A DECISION THAT ACCOMPANIES A COMMITTED MUTATION. Written on the
+ *   caller's own transaction, BEFORE its COMMIT, so the row and the plan
+ *   change land or vanish together. A failed insert THROWS — the caller
+ *   rolls back and the mutation does not happen. There is no window in
+ *   which the plan has moved and the ledger has not, because there is no
+ *   moment at which one is durable and the other is not.
+ *
+ *   ── LANE B · `recordDecision(entry)` ──────────────────────────────────
+ *   A DECISION THAT RECORDS A REFUSAL. There is no mutation for it to be
+ *   atomic WITH — the transaction has already rolled back, or was never
+ *   opened (the authority refusal throws before `pool.connect`). Writing a
+ *   refusal on the rolled-back transaction would erase it, which is the
+ *   original header's argument and it still holds for exactly this case.
+ *   So lane B keeps its own connection and its three-state, never-throws
+ *   contract: a ledger outage must not be the thing that takes a runner's
+ *   nightly cron down when nothing was going to change anyway.
+ *
+ * The test that separates them: DID ANYTHING COMMIT? If yes, lane A, and the
+ * ledger is a precondition of the commit. If no, lane B, and the ledger is a
+ * record of something that did not happen.
+ *
+ * ── AND THE THIRD STATE, WHICH IS NOT A FAILURE ────────────────────────────
+ *
+ * `table_absent` is not "the ledger failed", it is "migration 166 has not
+ * been applied on this database" — which is production's state today, on
+ * purpose, pending the owner's per-statement DDL go. Lane A treats it as the
+ * declared pre-migration state and lets the mutation commit; a REQUIRED
+ * ledger failure rolls the mutation back, and a table that does not exist yet
+ * is not a required ledger failing. Rule 11: absent, failed and written are
+ * three facts. The moment the table exists the ledger IS required, with no
+ * code change and no flag — `scripts/check-decision-ledger.sh` guard 4 is
+ * what holds that, and `_ledger_atomicity.db.test.ts` proves it against a
+ * real table.
  *
  * ── RULE 11 · THE WRITE HAS THREE ANSWERS ──────────────────────────────────
  *
@@ -45,6 +94,16 @@
  *   A write path that never calls it is invisible here, and that is exactly
  *   what `scripts/check-decision-ledger.sh` guard 1 exists to catch by scanning
  *   `mutatePlan`'s own exits.
+ * · WHETHER THE CALLER PICKED THE RIGHT LANE. Nothing in this file can tell
+ *   that a caller handed lane B a decision whose mutation committed — the
+ *   executor is the only difference and both are valid shapes. That is guard
+ *   4's job in the shell gate (every COMMIT preceded by an in-transaction
+ *   write) and GUARD 3's in `_decision_ledger_gate.test.ts`.
+ * · A COMMIT THAT NEVER OPENED A TRANSACTION HERE. Lane A is only atomic with
+ *   the transaction it is handed. A caller that autocommits its writes on a
+ *   pool connection and then calls lane A on that same pool connection gets no
+ *   atomicity and no error, because a single-statement autocommit is
+ *   indistinguishable from a transaction at this level.
  * · WHETHER THE DECISION WAS RIGHT, or whether the direction it carries is the
  *   coaching answer the runner needed.
  * · WHETHER MIGRATION 166 IS APPLIED TO PRODUCTION. It is not, deliberately.
@@ -53,11 +112,19 @@
  * · A ROW WRITTEN BY SOMETHING ELSE. Nothing else writes this table today; a
  *   psql session is outside any check here.
  */
+import type { PoolClient } from 'pg';
 import { pool } from '@/lib/db/pool';
 import { attempt, rowOrNull } from '@/lib/db/read';
 import type { LedgerDirection, LedgerEntry, LedgerRunnerResponse } from './ledger-entry';
 
 export const PLAN_DECISION_LEDGER_TABLE = 'plan_decision_ledger';
+
+/**
+ * Anything that can run a statement. `pool` is lane B; a `PoolClient` inside
+ * `mutatePlan`'s open transaction is lane A. Structural on purpose, so a test
+ * can hand it a stub and prove the rollback path without a live socket.
+ */
+export type LedgerExecutor = { query: PoolClient['query'] };
 
 /** Rule 11 · three answers, and the caller has to branch to reach the id. */
 export type LedgerWrite =
@@ -147,6 +214,40 @@ const ABSENT_WHY =
   + 'of nothing.';
 
 /**
+ * LANE A's probe · runs on the CALLER'S TRANSACTION and never swallows.
+ *
+ * Deliberately not routed through `attempt`: inside an open transaction a
+ * failed statement has already aborted the transaction, so there is no
+ * "carry on and report null" branch to take — the only honest answers are
+ * "the table is there", "the table is not there", and a throw that the caller
+ * turns into a ROLLBACK. Rule 11's third state is the exception here, not a
+ * value: it cannot exist, because a probe that failed took the transaction
+ * with it.
+ *
+ * IT HONOURS THE POSITIVE CACHE AND DELIBERATELY NOT THE ABSENT COOLDOWN.
+ *
+ * A definite `true` is permanent and skips the probe, because a table does not
+ * un-exist. A definite `absent` sets `absentUntilMs` for lane B's benefit but is
+ * NOT trusted here on the way back: lane B's 60-second cooldown exists to stop
+ * separate connections hammering the catalog, and being wrong on that lane costs
+ * a missing audit row. Being wrong on THIS lane costs a plan that moved with
+ * nothing recording it, and the probe is one catalog lookup on a connection that
+ * is already open. The asymmetry is the point, so it is stated rather than left
+ * to be inferred from which lines were copied.
+ */
+async function ledgerTableExistsInTransaction(
+  tx: LedgerExecutor,
+): Promise<'present' | 'absent'> {
+  if (tableExists === true) return 'present';
+  const r = await tx.query<{ reg: string | null }>(
+    `SELECT to_regclass('public.${PLAN_DECISION_LEDGER_TABLE}')::text AS reg`,
+  );
+  if (r.rows[0]?.reg != null) { tableExists = true; return 'present'; }
+  absentUntilMs = Date.now() + ABSENT_REPROBE_MS;
+  return 'absent';
+}
+
+/**
  * PLAN LINEAGE · the id that stays the same across every rebuild.
  *
  * Four rungs, in order, and each one is a different fact:
@@ -171,10 +272,20 @@ export async function resolvePlanLineage(args: {
   userUuid: string;
   planId: string | null;
   replacedPlanId: string | null;
+  /**
+   * LEDGERATOMIC-1 · lane A passes its own transaction, so the lineage is read
+   * against the SAME snapshot the row is about to be written into. Reading it
+   * on `pool` from inside a transaction that has already archived the replaced
+   * plan would see a different view of `training_plans` than the writer does.
+   */
+  on?: LedgerExecutor;
 }): Promise<string> {
+  const exec: LedgerExecutor = args.on ?? pool;
   const known = async (planId: string): Promise<string | null> => {
     // A lineage lookup that could not run is not "no lineage on record".
-    if ((await ledgerTableExists()) !== 'present') return null;
+    if (args.on) {
+      if ((await ledgerTableExistsInTransaction(args.on)) !== 'present') return null;
+    } else if ((await ledgerTableExists()) !== 'present') return null;
     // `rowOrNull` keeps the three states apart and LOGS a failure rather than
     // swallowing it (lib/db/read.ts). Both a failed read and a miss fall through
     // to the next rung, and that is the conservative direction on purpose: this
@@ -184,7 +295,7 @@ export async function resolvePlanLineage(args: {
     // how anyone would ever see it.
     const row = await rowOrNull<{ plan_lineage_id: string }>(
       'decision-ledger/lineage',
-      pool.query<{ plan_lineage_id: string }>(
+      exec.query<{ plan_lineage_id: string }>(
         `SELECT plan_lineage_id FROM ${PLAN_DECISION_LEDGER_TABLE}
           WHERE user_uuid = $1::uuid AND plan_id = $2
           ORDER BY at DESC LIMIT 1`,
@@ -204,20 +315,24 @@ export async function resolvePlanLineage(args: {
 }
 
 /**
- * Write one decision.
+ * THE ONE INSERT, shared by both lanes so they cannot drift apart.
  *
  * ON CONFLICT is scoped to the partial unique index over a non-null
  * `idempotency_key`, so a nightly pass that runs twice over unchanged evidence
  * refreshes its row instead of doubling the census. A row with no key is a
  * distinct event every time and never collides.
+ *
+ * `onceOnly` swaps the refresh for `DO NOTHING`, which turns the unique index
+ * into the boundary's EXACTLY-ONCE guard: a second transaction carrying the
+ * same key blocks on the index until the first commits, then inserts nothing
+ * and returns no row. The caller reads that empty result as "this has already
+ * been applied" and rolls its own mutation back. That is the whole of
+ * `applyOnce`, and it is only correct because the row and the mutation are in
+ * the same transaction — on two connections the second writer could commit its
+ * plan change and then discover the duplicate.
  */
-export async function recordDecision(entry: LedgerEntry): Promise<LedgerWrite> {
-  const probe = await ledgerTableExists();
-  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
-  if (probe === 'absent') return { state: 'table_absent', why: ABSENT_WHY };
-  try {
-    const r = await pool.query<{ id: string }>(
-      `INSERT INTO plan_decision_ledger (
+function ledgerInsertSql(onceOnly: boolean): string {
+  return `INSERT INTO plan_decision_ledger (
          user_uuid, plan_id, plan_lineage_id, replaced_plan_id, plan_version,
          scope, workout_ids, scope_from_iso, scope_to_iso,
          lever, direction,
@@ -269,7 +384,7 @@ export async function recordDecision(entry: LedgerEntry): Promise<LedgerWrite> {
          $26, $27, $28
        )
        ON CONFLICT (user_uuid, provenance, idempotency_key) WHERE idempotency_key IS NOT NULL
-       DO UPDATE SET
+       ${onceOnly ? 'DO NOTHING' : `DO UPDATE SET
          plan_id = EXCLUDED.plan_id,
          direction = EXCLUDED.direction,
          lever = EXCLUDED.lever,
@@ -280,24 +395,52 @@ export async function recordDecision(entry: LedgerEntry): Promise<LedgerWrite> {
          mutation_outcome = EXCLUDED.mutation_outcome,
          mutation_violations = EXCLUDED.mutation_violations,
          explanation = EXCLUDED.explanation,
-         at = now()
-       RETURNING id::text AS id`,
-      [
-        entry.userUuid, entry.planId, entry.planLineageId, entry.replacedPlanId, entry.planVersion,
-        entry.scope, JSON.stringify(entry.workoutIds), entry.scopeFromISO, entry.scopeToISO,
-        entry.lever, entry.direction,
-        JSON.stringify(entry.evidence), entry.provenance, entry.sourceMode,
-        entry.beforeState == null ? null : JSON.stringify(entry.beforeState),
-        entry.afterState == null ? null : JSON.stringify(entry.afterState),
-        entry.authority, entry.authorityVerdict,
-        entry.hold == null ? null : JSON.stringify(entry.hold),
-        entry.decision, entry.proposalId,
-        entry.proposal == null ? null : JSON.stringify(entry.proposal),
-        entry.runnerResponse,
-        entry.mutationOutcome, JSON.stringify(entry.mutationViolations),
-        entry.explanation, entry.modelVersion, entry.idempotencyKey,
-      ],
-    );
+         at = now()`}
+       RETURNING id::text AS id`;
+}
+
+/** The bound parameters, in the column order above. One definition, two lanes. */
+function ledgerInsertParams(entry: LedgerEntry): unknown[] {
+  return [
+    entry.userUuid, entry.planId, entry.planLineageId, entry.replacedPlanId, entry.planVersion,
+    entry.scope, JSON.stringify(entry.workoutIds), entry.scopeFromISO, entry.scopeToISO,
+    entry.lever, entry.direction,
+    JSON.stringify(entry.evidence), entry.provenance, entry.sourceMode,
+    entry.beforeState == null ? null : JSON.stringify(entry.beforeState),
+    entry.afterState == null ? null : JSON.stringify(entry.afterState),
+    entry.authority, entry.authorityVerdict,
+    entry.hold == null ? null : JSON.stringify(entry.hold),
+    entry.decision, entry.proposalId,
+    entry.proposal == null ? null : JSON.stringify(entry.proposal),
+    entry.runnerResponse,
+    entry.mutationOutcome, JSON.stringify(entry.mutationViolations),
+    entry.explanation, entry.modelVersion, entry.idempotencyKey,
+  ];
+}
+
+/**
+ * LANE B · WRITE A DECISION THAT RECORDS A REFUSAL, ON THIS FILE'S OWN
+ * CONNECTION.
+ *
+ * There is no mutation for this row to be atomic with: the caller has already
+ * rolled back, or never opened a transaction at all. Writing it on the caller's
+ * rolled-back transaction would erase the refusal, which is the one decision a
+ * reader most needs — an engine that never pushes and a runner who never earned
+ * it look identical without it (Rule 21).
+ *
+ * Three answers, never throws. A ledger outage must not take down a nightly
+ * cron whose mutation was not going to happen anyway.
+ *
+ * DO NOT CALL THIS AFTER A COMMIT. `recordDecisionInTransaction` is the lane
+ * for a decision whose mutation lands, and `scripts/check-decision-ledger.sh`
+ * guard 4 fails the build if a COMMIT in `mutatePlan` is not preceded by one.
+ */
+export async function recordDecision(entry: LedgerEntry): Promise<LedgerWrite> {
+  const probe = await ledgerTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return { state: 'table_absent', why: ABSENT_WHY };
+  try {
+    const r = await pool.query<{ id: string }>(ledgerInsertSql(false), ledgerInsertParams(entry));
     const id = r.rows[0]?.id;
     if (!id) {
       return {
@@ -313,6 +456,92 @@ export async function recordDecision(entry: LedgerEntry): Promise<LedgerWrite> {
         + 'The decision still happened; nothing recorded it.',
     };
   }
+}
+
+/**
+ * LANE A's answers. Note what is NOT here: there is no `failed`.
+ *
+ * A failed insert on the caller's transaction THROWS, because the only correct
+ * response to it is the caller's ROLLBACK and a returned `failed` would let a
+ * caller ignore it — which is precisely the four-step sequence the owner ruled
+ * out ("mutate the plan, fail to write the ledger, log an error, return
+ * success"). Making it a throw removes the option.
+ */
+export type LedgerTxWrite =
+  | { readonly state: 'written'; readonly id: string }
+  | { readonly state: 'table_absent'; readonly why: string }
+  | { readonly state: 'duplicate'; readonly why: string };
+
+export const LEDGER_ONCE_WITHOUT_TABLE =
+  'this mutation asked for exactly-once application, and the guarantee rests on '
+  + `${PLAN_DECISION_LEDGER_TABLE}'s unique index, which does not exist on this database. `
+  + 'Migration 166 has not been applied here. Applying anyway would silently downgrade an '
+  + 'exactly-once accept to an at-least-once one, which is a missing input quietly disabling a '
+  + 'safety mechanism (Rule 11), so the mutation is refused instead.';
+
+/**
+ * LANE A · WRITE A DECISION THAT ACCOMPANIES A COMMITTED MUTATION, ON THE
+ * CALLER'S OWN TRANSACTION, BEFORE ITS COMMIT.
+ *
+ * The row and the plan change become durable in the same commit or neither
+ * does. There is no interval in which one exists and the other does not, so
+ * there is nothing to reconcile, no outbox to drain and no window for a process
+ * to die in.
+ *
+ * Three outcomes, and the caller must branch on all three:
+ *
+ *   written      · commit. The plan change and its record land together.
+ *   table_absent · commit. Migration 166 is not applied on this database, which
+ *                  is a declared state and not a ledger failure. The caller
+ *                  says so out loud; it does not pretend a row was written.
+ *   duplicate    · ROLL BACK. `onceOnly` only. This idempotency key already
+ *                  carries a row, so this mutation has already been applied.
+ *
+ * Anything else throws, and a throw inside an open transaction is already
+ * fatal to it — Postgres puts the transaction in the aborted state, so a
+ * subsequent COMMIT is a ROLLBACK whether the caller cooperates or not. The
+ * caller cooperating is what turns that into an honest returned outcome rather
+ * than a silent no-op.
+ */
+export async function recordDecisionInTransaction(
+  tx: LedgerExecutor,
+  entry: LedgerEntry,
+  opts: { onceOnly?: boolean } = {},
+): Promise<LedgerTxWrite> {
+  const onceOnly = opts.onceOnly === true;
+  if (onceOnly && (entry.idempotencyKey == null || entry.idempotencyKey.length === 0)) {
+    throw new Error(
+      'exactly-once application was requested with no idempotency key. The unique index is '
+      + 'PARTIAL over a non-null key, so without one there is nothing for a second attempt to '
+      + 'collide with and the guarantee would be a comment rather than a constraint.',
+    );
+  }
+  const probe = await ledgerTableExistsInTransaction(tx);
+  if (probe === 'absent') {
+    if (onceOnly) throw new Error(LEDGER_ONCE_WITHOUT_TABLE);
+    return { state: 'table_absent', why: ABSENT_WHY };
+  }
+  const r = await tx.query<{ id: string }>(ledgerInsertSql(onceOnly), ledgerInsertParams(entry));
+  const id = r.rows[0]?.id;
+  if (!id) {
+    if (onceOnly) {
+      return {
+        state: 'duplicate',
+        why: `a decision with idempotency key '${entry.idempotencyKey}' from '${entry.provenance}' `
+          + 'is already recorded for this runner, so this is a repeat of a mutation that has '
+          + 'already been applied. Nothing was written a second time.',
+      };
+    }
+    // Not reachable through DO UPDATE, which always returns the row it touched.
+    // Reaching it means the statement's shape changed underneath this function,
+    // and proceeding to COMMIT on that basis is exactly the loss this lane
+    // exists to make impossible.
+    throw new Error(
+      'the ledger insert returned no id and this was not an exactly-once write, so whether the '
+      + 'decision was recorded is unknown. The mutation must not commit on an unknown.',
+    );
+  }
+  return { state: 'written', id };
 }
 
 /**
@@ -370,6 +599,50 @@ export async function markUndone(
       : { ok: false, why: 'no live row for that id — it was already undone, or never existed' };
   } catch (e) {
     return { ok: false, why: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+/**
+ * LANE A's undo · the stamp on the SAME transaction that reverses the plan.
+ *
+ * An undo is two facts that must not come apart: the plan goes back, and the
+ * decision that moved it is marked reversed. Written on separate connections
+ * they can, and the two halves fail in opposite directions — a plan reverted
+ * with its decision still reading live, or a decision marked undone over a plan
+ * that never moved back. Both are worse than either change alone.
+ *
+ * THROWS when the row is not there to undo, or has already been undone. That is
+ * not pedantry: a reversal that reverses nothing means the caller is undoing a
+ * decision it has misidentified, and committing the plan change on that basis
+ * would put a reversal in the ledger against the wrong row.
+ */
+export async function markUndoneInTransaction(
+  tx: LedgerExecutor,
+  id: string,
+  reason: string,
+): Promise<void> {
+  if (reason.trim().length === 0) {
+    throw new Error('an undo states a reason; the table refuses one without');
+  }
+  const probe = await ledgerTableExistsInTransaction(tx);
+  if (probe === 'absent') {
+    throw new Error(
+      `an undo was requested against ${PLAN_DECISION_LEDGER_TABLE}, which does not exist on this `
+      + 'database. Migration 166 has not been applied here, so there is no row to mark reversed '
+      + 'and the plan change that would have accompanied it must not commit alone.',
+    );
+  }
+  const r = await tx.query(
+    `UPDATE plan_decision_ledger
+        SET undone_at = now(), undo_reason = $2
+      WHERE id = $1::uuid AND undone_at IS NULL`,
+    [id, reason],
+  );
+  if (r.rowCount !== 1) {
+    throw new Error(
+      `no live ledger row for id ${id} — it was already undone, or never existed. The plan `
+      + 'reversal that would have accompanied this stamp has been rolled back with it.',
+    );
   }
 }
 

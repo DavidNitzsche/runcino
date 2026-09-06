@@ -1,10 +1,12 @@
 /**
  * lib/audit/_decision_ledger_gate.test.ts · LEDGER-1 · NO DECISION BYPASSES THE
- * LEDGER, AND NO DEFERRAL LIVES ONLY IN MEMORY.
+ * LEDGER, NO MUTATION COMMITS OUTSIDE ITS RECORD, AND NO DEFERRAL LIVES ONLY IN
+ * MEMORY.
  *
- * The scanning half of `scripts/check-decision-ledger.sh`. Two guards, and each
- * one exists because the corresponding failure has already happened in this
- * codebase in a neighbouring shape:
+ * The scanning half of `scripts/check-decision-ledger.sh`. Three guards, and
+ * each one exists because the corresponding failure has already happened in
+ * this codebase — two of them in a neighbouring shape and the third in this
+ * exact one:
  *
  *   GUARD 1 · EVERY EXIT OF `mutatePlan` LANDS A LEDGER ROW.
  *
@@ -17,6 +19,15 @@
  *     the exits it happens to drive, and the exit that matters is the one
  *     nobody thought to drive. So this is a source scan over the function's own
  *     returns and throws.
+ *
+ *   GUARD 3 · A PLAN MUTATION AND ITS LEDGER RECORD ARE ONE ATOMIC OUTCOME.
+ *
+ *     LEDGERATOMIC-1. This file's OWN previous assertion enforced the defect:
+ *     it demanded that the ledger store never write on a caller's transaction,
+ *     which is right for a refusal and backwards for a commit. The boundary
+ *     therefore ran COMMIT, then wrote the row on a second connection, then
+ *     logged the failure and returned success. The full statement of what that
+ *     is not allowed to be is on GUARD 3's own block below.
  *
  *   GUARD 2 · A DEFERRED ACTION HAS A DURABLE SCHEDULER ROW.
  *
@@ -45,6 +56,10 @@
  * · A SECOND QUEUE ADDED SOMEWHERE ELSE. Guard 2 checks that the deferral
  *   producers persist; it cannot notice a brand-new in-memory queue in a module
  *   it does not know to look at.
+ * · WHETHER A ROLLBACK ACTUALLY DISCARDS THE PLAN WRITES when the ledger
+ *   refuses. Guard 3 proves the call site is on the right side of the COMMIT;
+ *   `lib/plan/_ledger_atomicity.db.test.ts` measures the outcome against a real
+ *   table, and skips loudly with no scratch database.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'node:fs';
@@ -116,7 +131,7 @@ describe('GUARD 1 · every exit of the mutation boundary lands a ledger row', ()
     for (const exit of exits) {
       const from = Math.max(0, exit.line - LOOKBACK_LINES);
       const window = lines.slice(from, exit.line).join('\n');
-      if (!/\b(await land\(|landDecisionInLedger\()/.test(window)) {
+      if (!/\b(await land\(|await landInTx\(|landDecisionInLedger\()/.test(window)) {
         naked.push(`line ${exit.line} of mutatePlan · ${exit.text}`);
       }
     }
@@ -133,18 +148,22 @@ describe('GUARD 1 · every exit of the mutation boundary lands a ledger row', ()
     ).toEqual([]);
   });
 
-  it('the ledger writer is on its OWN connection, not the mutation transaction', () => {
-    // A row written inside the mutation's transaction is rolled back with it,
-    // so the ledger would record every decision EXCEPT the refusals — which are
-    // the ones a reader most needs.
+  it('the REFUSAL lane is on its own connection, so a rollback cannot erase it', () => {
+    // A refusal written inside the mutation's transaction is rolled back with
+    // it, so the ledger would record every decision EXCEPT the refusals — which
+    // are the ones a reader most needs. That half of the original argument is
+    // unchanged; GUARD 3 below carries the half it got wrong.
     const store = readFileSync(path.join(ROOT, 'lib/brain/ledger/decision-ledger.ts'), 'utf8');
     // NOTE the missing `\(`. Written with it, this assertion MISSED a planted
     // `client.query<{ id: string }>(...)` — a generic type argument sits
     // between the name and the paren, which is how this codebase writes a typed
     // query nearly everywhere. Rule 18 earned: the gate was falsified, did not
     // fail, and was fixed rather than trusted.
-    expect(store).not.toMatch(/\bclient\.query\b/);
     expect(store).toMatch(/\bpool\.query\b/);
+    // `recordDecision` — the refusal lane — must not take an executor. If it
+    // ever does, a caller can hand it a transaction and the refusal becomes
+    // erasable again, silently.
+    expect(store).toMatch(/export async function recordDecision\(entry: LedgerEntry\)/);
   });
 
   it('the authority REFUSAL records before it throws, so the throw cannot skip it', () => {
@@ -192,7 +211,7 @@ describe('GUARD 1 · every exit of the mutation boundary lands a ledger row', ()
     expect(plantedExits).toHaveLength(1);
     const pl = plantedBody.split('\n');
     const window = pl.slice(0, plantedExits[0].line).join('\n');
-    expect(/\b(await land\(|landDecisionInLedger\()/.test(window)).toBe(false);
+    expect(/\b(await land\(|await landInTx\(|landDecisionInLedger\()/.test(window)).toBe(false);
   });
 
   it('ORACLE · and it would NOT flag one that records', () => {
@@ -211,7 +230,174 @@ describe('GUARD 1 · every exit of the mutation boundary lands a ledger row', ()
     expect(plantedExits).toHaveLength(1);
     const pl = plantedBody.split('\n');
     const window = pl.slice(0, plantedExits[0].line).join('\n');
-    expect(/\b(await land\(|landDecisionInLedger\()/.test(window)).toBe(true);
+    expect(/\b(await land\(|await landInTx\(|landDecisionInLedger\()/.test(window)).toBe(true);
+  });
+});
+
+/** Every line on which `mutatePlan` COMMITs. */
+function commitsOf(body: string): Array<{ line: number; text: string }> {
+  const out: Array<{ line: number; text: string }> = [];
+  body.split('\n').forEach((raw, i) => {
+    const t = raw.trim();
+    if (t.startsWith('*') || t.startsWith('//')) return;
+    if (/client\.query\('COMMIT'\)/.test(t)) out.push({ line: i, text: t });
+  });
+  return out;
+}
+
+/**
+ * LEDGERATOMIC-1 · GUARD 3.
+ *
+ * ── WHAT THIS GUARD REPLACED, AND WHY THAT IS THE POINT ───────────────────
+ *
+ * The assertion that used to sit here read `expect(store).not.toMatch(
+ * /\bclient\.query\b/)` — the ledger store may NEVER write on a caller's
+ * transaction — and it was enforcing the defect. Its reasoning holds for a
+ * refusal and inverts for a commit: on a second connection, `COMMIT` then
+ * `land(...)` then `console.error` then `return { ok: true }` is a plan that
+ * moved with nothing recording that it had.
+ *
+ * The owner, verbatim: "A plan mutation and its ledger record must be one
+ * atomic outcome. The system may not: (1) mutate the plan, (2) fail to write
+ * the ledger, (3) log an error, (4) return success."
+ *
+ * A behavioural test cannot close this either, for the same reason GUARD 1 is
+ * a source scan: it can only prove the commits it happens to drive, and the
+ * commit that matters is the one nobody thought to drive. So this walks every
+ * `COMMIT` in the function and demands an in-transaction write above it.
+ *
+ * ── RULE 22 · WHAT GUARD 3 CANNOT FAIL ON ─────────────────────────────────
+ *
+ * · WHETHER THE ROLLBACK ACTUALLY DISCARDS THE PLAN WRITES. It proves the call
+ *   site is on the right side of the COMMIT. That the database then throws the
+ *   work away is Postgres's guarantee, measured in
+ *   `lib/plan/_ledger_atomicity.db.test.ts` against a real table — which SKIPS,
+ *   loudly, with no scratch database.
+ * · A COMMIT ISSUED BY `apply`. The boundary's contract forbids it in prose
+ *   ("must not BEGIN, COMMIT or ROLLBACK") and nothing here reads the closures
+ *   callers pass in.
+ * · A LEDGER WRITE THAT IS SYNTACTICALLY PRESENT AND SEMANTICALLY WRONG — one
+ *   describing a different mutation, or carrying an outcome that does not match
+ *   what committed.
+ * · WHETHER `table_absent` IS STILL THE RIGHT POSTURE. It permits the commit by
+ *   design, because migration 166 is deliberately unapplied on production. If
+ *   that ever stops being true this guard would not notice.
+ */
+describe('GUARD 3 · a plan mutation and its ledger record are one atomic outcome', () => {
+  const body = mutatePlanBody(readFileSync(MUTATE, 'utf8'));
+  const lines = body.split('\n');
+  const commits = commitsOf(body);
+
+  it('liveness · the walk found every COMMIT, and never zero', () => {
+    expect(
+      commits.length,
+      'no COMMIT found in mutatePlan — the boundary has been restructured and this guard is '
+      + 'watching nothing, which is worse than no guard because it also reports confidence',
+    ).toBeGreaterThanOrEqual(5);
+  });
+
+  it('every COMMIT is preceded by an IN-TRANSACTION ledger write', () => {
+    const naked: string[] = [];
+    let prev = 0;
+    for (const c of commits) {
+      const window = lines.slice(prev, c.line).join('\n');
+      if (!/\bawait landInTx\(/.test(window)) naked.push(`line ${c.line} of mutatePlan · ${c.text}`);
+      prev = c.line;
+    }
+    expect(
+      naked,
+      naked.length === 0 ? '' :
+        '\nA PLAN MUTATION COMMITS OUTSIDE ITS LEDGER RECORD:\n  ' + naked.join('\n  ') + '\n\n'
+        + 'This COMMIT makes a plan change durable with no ledger row in the same transaction,\n'
+        + 'so the row can fail afterwards and the boundary would log an error and return\n'
+        + 'success — the exact four-step sequence LEDGERATOMIC-1 removed.\n\n'
+        + 'Call `await landInTx(<decision>, <outcome>, <violations>, <account>, <planId>)`\n'
+        + 'BEFORE the commit. `await land(...)` is the REFUSAL lane and belongs after a\n'
+        + 'ROLLBACK, where there is no mutation for the row to be atomic with.',
+    ).toEqual([]);
+  });
+
+  it('the refusal lane is used after a ROLLBACK and never before a COMMIT', () => {
+    // Symmetric to the check above: `land(` immediately before a commit would
+    // satisfy a reader skimming the code and would restore the defect.
+    const offenders: string[] = [];
+    let prev = 0;
+    for (const c of commits) {
+      let lastLand = -1;
+      let lastTx = -1;
+      for (let i = prev; i < c.line; i += 1) {
+        const t = lines[i].trim();
+        if (t.startsWith('*') || t.startsWith('//')) continue;
+        if (/\bawait landInTx\(/.test(t)) lastTx = i;
+        else if (/\bawait land\(/.test(t)) lastLand = i;
+      }
+      if (lastLand > -1 && lastLand > lastTx) {
+        offenders.push(
+          `line ${c.line} of mutatePlan · the last ledger call before this COMMIT is the REFUSAL `
+          + `lane (line ${lastLand}), which writes on its own connection. A record that can fail `
+          + 'independently of the commit is the defect, whatever it is called.',
+        );
+      }
+      prev = c.line;
+    }
+    expect(offenders, offenders.join('\n')).toEqual([]);
+  });
+
+  it('the boundary rolls back rather than returning success when the ledger refuses', () => {
+    const src = readFileSync(MUTATE, 'utf8');
+    // The outcome exists, is returned, and is distinguishable from a crash.
+    expect(src).toContain("| 'ledger_unwritten'");
+    expect(src).toContain('class LedgerRefusedMutation extends Error');
+    expect(src).toContain('e instanceof LedgerRefusedMutation');
+    // And the in-transaction lane must not swallow. A `catch` that returns a
+    // state instead of throwing is how the four-step sequence comes back.
+    const store = readFileSync(path.join(ROOT, 'lib/brain/ledger/decision-ledger.ts'), 'utf8');
+    const txStart = store.indexOf('export async function recordDecisionInTransaction');
+    expect(txStart, 'the in-transaction lane has been renamed or removed').toBeGreaterThan(-1);
+    // Bounded to THIS function. Slicing to end-of-file swept in
+    // `loadRecentDecisions` and `directionCensus`, whose `state: 'failed'` is
+    // correct and unrelated — the assertion failed on its first run for that
+    // reason, which is the falsification working before the guard was trusted.
+    const txEnd = store.indexOf('\n/**', txStart);
+    const txLane = store.slice(txStart, txEnd > txStart ? txEnd : undefined);
+    expect(txLane).toContain('recordDecisionInTransaction');
+    expect(
+      /state: 'failed'/.test(txLane),
+      'the in-transaction lane returns a `failed` state · a caller can ignore a returned value '
+      + 'and commit anyway, which is the whole defect. It must throw.',
+    ).toBe(false);
+  });
+
+  it('ORACLE · the walk WOULD flag a commit whose ledger write comes after it', () => {
+    const planted = [
+      'export async function mutatePlan<T>(opts: X) {',
+      "    await client.query('COMMIT');",
+      "    await landInTx('APPLY', 'applied', [], 'x', p);",
+      '}',
+      '',
+      '// ── the record ──',
+    ].join('\n');
+    const b = mutatePlanBody(planted);
+    const c = commitsOf(b);
+    expect(c).toHaveLength(1);
+    const window = b.split('\n').slice(0, c[0].line).join('\n');
+    expect(/\bawait landInTx\(/.test(window)).toBe(false);
+  });
+
+  it('ORACLE · and it would NOT flag one whose write comes before', () => {
+    const planted = [
+      'export async function mutatePlan<T>(opts: X) {',
+      "    await landInTx('APPLY', 'applied', [], 'x', p);",
+      "    await client.query('COMMIT');",
+      '}',
+      '',
+      '// ── the record ──',
+    ].join('\n');
+    const b = mutatePlanBody(planted);
+    const c = commitsOf(b);
+    expect(c).toHaveLength(1);
+    const window = b.split('\n').slice(0, c[0].line).join('\n');
+    expect(/\bawait landInTx\(/.test(window)).toBe(true);
   });
 });
 
