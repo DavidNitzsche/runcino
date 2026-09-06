@@ -128,8 +128,15 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
     // an admin diagnostic. Nothing on the nightly coaching path arbitrates a
     // live lever through it, and "a route reaches it" is not the same claim as
     // "it decides anything". That gap is precisely what SHADOW names.
-    blocker: 'reachable only from the admin canonical-adaptation-shadow route. No coaching '
-      + 'path asks it to order two competing levers for a real runner.',
+    blocker: 'MOVEREADJUDICATE-1 (2026-09-05) narrowed the reachability sentence and did NOT '
+      + 'change the state. `move-orchestrator.ts` now reaches this module from two production '
+      + 'routes, so "reachable only from the admin canonical-adaptation-shadow route" is no '
+      + 'longer true and is corrected here rather than left to rot (Rule 20). But what it '
+      + 'imports is `phaseFromAuthoredLabel` — a string translator — not '
+      + '`resolveArbitrationPriority`. Nothing on any coaching path asks this module to ORDER '
+      + 'TWO COMPETING LEVERS for a real runner, which is what step 9 is. Calling it wired '
+      + 'because an adjacent translator travelled is the claim Rule 20 exists to stop, and it '
+      + 'is the same correction step 4 already carries.',
   },
   {
     n: 10, name: 'Persist the decision',

@@ -362,6 +362,11 @@ const ALLOWED_ADJUDICATION_DEMAND_DOOR = path.join(WEB, 'lib/plan/adjudication/c
 /* VOLUMESEAM-1 · the loader that carries this engine's deterioration verdict
  * into the volume lever's admission conditions. One module, one question. */
 const ALLOWED_VOLUME_LOADER_FILE = path.join(WEB, 'lib/plan/volume-evidence-loader.ts');
+/**
+ * MOVEREADJUDICATE-1 (2026-09-05) · the move orchestrator's one door. See the
+ * grant at the end of ALLOWLIST for the argument.
+ */
+const ALLOWED_MOVE_ORCHESTRATION_DOOR = path.join(WEB, 'lib/brain/orchestration/canonical-phase.ts');
 const ALLOWLIST: readonly AllowedImport[] = [
   { file: ALLOWED_ADJUDICATION_DEMAND_DOOR, module: '@/lib/adaptation/canonical/plan-load', symbols: new Set(['projectPlanLoad']) },
   { file: ALLOWED_EXCEPTION_FILE, module: '@/lib/adaptation/canonical/evaluate', symbols: new Set(['evaluateAdaptation']) },
@@ -553,6 +558,32 @@ const ALLOWLIST: readonly AllowedImport[] = [
     module: '@/lib/adaptation/canonical/phase-priority',
     symbols: new Set(['phaseFromAuthoredLabel']),
   },
+  /* MOVEREADJUDICATE-1 (2026-09-05) · THE MOVE ORCHESTRATOR'S ONE DOOR.
+   *
+   * `lib/brain/orchestration/move-orchestrator.ts` re-adjudicates a PROPOSED
+   * move and reports how each affected week's DEMAND moved. A demand rise means
+   * opposite things in two phases -- a taper week is meant to fall and a build
+   * week is meant to climb -- so a report that did not know the phase would
+   * either have to stay silent about the fact that gives the number meaning, or
+   * coin a second reading of `plan_phases.label`.
+   *
+   * That second reading is the exact defect VOLUMESEAM-1 argued one grant
+   * above: the volume loader hand-rolled BASE/BUILD/PEAK and every week of the
+   * owner's live block, whose phases are QUALITY and RACE-SPECIFIC, read as
+   * UNKNOWN. Two translators would drift the same way and neither side would
+   * look wrong on its own.
+   *
+   * ONE FILE for the whole directory, in the pattern MILEAGE-RESPONSIVE-1 and
+   * ROLLINGBOUNDARY-1 set: `lib/brain/orchestration/canonical-phase.ts`
+   * re-exports it and nothing else in `lib/brain/` reaches this engine. A pure
+   * string switch with a Rule 11 UNKNOWN default, in a file guards 1-3 already
+   * prove has no I/O. No evaluator, no lever, no arbitration, and this grant
+   * cannot widen in any direction. */
+  {
+    file: ALLOWED_MOVE_ORCHESTRATION_DOOR,
+    module: '@/lib/adaptation/canonical/phase-priority',
+    symbols: new Set(['phaseFromAuthoredLabel', 'TrainingPhase']),
+  },
 ];
 
 function violatesAllowlist(file: string, imp: { module: string; names: string[] }): boolean {
@@ -573,6 +604,7 @@ describe('guard 4 · nothing outside imports this engine, nested paths included,
     expect(OUTSIDE).toContain(ALLOWED_EXCEPTION_FILE);
     expect(OUTSIDE).toContain(ALLOWED_LOADER_FILE);
     expect(OUTSIDE).toContain(ALLOWED_VOLUME_EVIDENCE_DOOR);
+    expect(OUTSIDE).toContain(ALLOWED_MOVE_ORCHESTRATION_DOOR);
     expect(OUTSIDE).toContain(ALLOWED_VOLUME_LOADER_FILE);
   });
 
