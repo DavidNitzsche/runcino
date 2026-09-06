@@ -386,7 +386,13 @@ export function weighCapacity(
   const worstSeverity = conditions.deterioration.ok
     ? conditions.deterioration.value.worstSeverityFrac
     : null;
-  const deteriorationWeight = deteriorationConfidenceWeight(worstSeverity);
+  /* PAHR-QUANTITY-1 · the readability PAIRED with `worstSeverity` (see
+   * `DeteriorationPattern.worstSeverityReadabilityFrac`'s own doc), never
+   * re-derived here — this file weighs a measurement, it does not judge one. */
+  const worstSeverityReadability = conditions.deterioration.ok
+    ? (conditions.deterioration.value.worstSeverityReadabilityFrac ?? 1)
+    : 1;
+  const deteriorationWeight = deteriorationConfidenceWeight(worstSeverity, worstSeverityReadability);
   const credited = creditedBeforeDeterioration * deteriorationWeight;
   factors.push({
     name: 'deteriorationConfidenceWeight',
@@ -394,8 +400,12 @@ export function weighCapacity(
     why: worstSeverity == null
       ? 'No session in this week could be read for late deterioration, so nothing is '
         + 'withheld and nothing is granted.'
-      : `The worst session in this week finished at ${roundTo(worstSeverity * 100)} per cent `
-        + 'pace-to-heart-rate decoupling.',
+      : worstSeverityReadability >= 1
+        ? `The worst session in this week finished at ${roundTo(worstSeverity * 100)} per cent `
+          + 'pace-to-heart-rate decoupling.'
+        : `The worst session in this week finished at ${roundTo(worstSeverity * 100)} per cent `
+          + `pace-to-heart-rate decoupling, read at ${roundTo(worstSeverityReadability * 100)} per `
+          + 'cent confidence against Research/03 §12\'s own preconditions (duration, terrain, heat).',
   });
 
   /* Absorption. THREE facts, never one (Rule 11):

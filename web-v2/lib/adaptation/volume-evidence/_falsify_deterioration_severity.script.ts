@@ -36,6 +36,14 @@
  *      every citation still resolves, and a week with one wrecked session
  *      reads as clean.
  *  7 · DROP THE REPEATED BLOCK. Q13's own count, removed.
+ *  9 · PAHR-QUANTITY-1 (2026-09-05) · READABILITY DISABLED. Every session
+ *      reads fully readable regardless of duration, terrain or heat — a hot,
+ *      hilly or too-short session is judged at full confidence again, which
+ *      is the CLEAN/DETERIORATED-not-UNREADABLE collapse CLAUDE.md asked this
+ *      round to falsify by name.
+ * 10 · PAHR-QUANTITY-1 · THE EXTREME GATE IGNORES READABILITY. Even with
+ *      case 9's check intact, a gate that never CONSULTS it reproduces the
+ *      old cliff for a contaminated extreme session specifically.
  *
  * ── PART C · THE OTHER DIRECTION ──────────────────────────────────────────
  *
@@ -46,12 +54,14 @@
  *
  * ── RULE 22 · WHAT THIS FALSIFIER CANNOT TELL YOU ─────────────────────────
  *
- * It proves the gates notice eight specific breakages. It says nothing about
+ * It proves the gates notice ten specific breakages. It says nothing about
  * the breakages nobody thought to plant, and in particular it cannot plant the
  * one failure that would matter most: `Research/03` §12's band table being the
  * WRONG TABLE for a thirds-based comparison. That is a judgement, no gate in
  * this repo could catch it, and pretending otherwise would be the false
- * confidence Rule 18 exists to prevent.
+ * confidence Rule 18 exists to prevent. Nor can it plant the STEADY-EFFORT
+ * precondition's absence, because nothing here implements it to falsify —
+ * `deterioration.ts`'s own PAHR-QUANTITY-1 section names that gap directly.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -110,7 +120,12 @@ const PLANTS: readonly Plant[] = [
     name: '1 · the old wall is restored · any deteriorated session refuses the week',
     file: 'lib/adaptation/volume-evidence/admit.ts',
     suite: SEVERITY_SUITE,
-    find: '  const extreme = worst != null && worst + 1e-9 >= DETERIORATION_SEVERITY_EXTREME_FRAC;',
+    // PAHR-QUANTITY-1 (2026-09-05) re-expressed this line to sit where the
+    // TWO-FACTOR weight is already zero (severity AND readability), rather
+    // than comparing `worst` to the edge directly. The plant is unchanged in
+    // intent — restore the categorical "any fade refuses" wall — only the
+    // anchor moved with the line it was quoting.
+    find: '  const extreme = worst != null && deteriorationConfidenceWeight(worst, worstReadability) <= WEIGHT_FLOOR_EPSILON;',
     replace: '  const extreme = det != null && det.deterioratedCount > 0;',
     // Named by the CASE rather than by the word FAIL, so the plant has to
     // break the thing it is aimed at (Rule 18 point 3).
@@ -120,24 +135,33 @@ const PLANTS: readonly Plant[] = [
     name: '2 · the severity ramp becomes a step at the endurance-gap edge',
     file: 'lib/adaptation/volume-evidence/weight.ts',
     suite: SEVERITY_SUITE,
-    find: `  return 1 - rampAcross(
+    // PAHR-QUANTITY-1 split the old one-shot `return 1 - rampAcross(...)`
+    // into a `penalty` (the severity curve) composed with `readability`. The
+    // plant now steps the PENALTY, which is the same axis the original plant
+    // stepped — `readability` defaults to 1 in every case this suite's part 3
+    // walks, so the composed weight steps exactly where the penalty does.
+    find: `  const penalty = rampAcross(
     DETERIORATION_DECOUPLING_FRAC,
     DETERIORATION_SEVERITY_EXTREME_FRAC,
     severityFrac,
   );`,
-    replace: '  return severityFrac >= DETERIORATION_SEVERITY_EXTREME_FRAC ? 0 : 1;',
+    replace: '  const penalty = severityFrac >= DETERIORATION_SEVERITY_EXTREME_FRAC ? 1 : 0;',
     expectNames: 'HAS A CLIFF',
   },
   {
     name: '3 · the curve is inverted · a worse fade buys MORE (Rule 9\'s signature)',
     file: 'lib/adaptation/volume-evidence/weight.ts',
     suite: SEVERITY_SUITE,
-    find: `  return 1 - rampAcross(
+    // Inverting the PENALTY (rather than the whole return, as before the
+    // split) is the equivalent defect in the new shape: penalty now FALLS as
+    // severity rises, so `weight = 1 - readability * penalty` RISES — a
+    // worse fade buys back confidence instead of losing it.
+    find: `  const penalty = rampAcross(
     DETERIORATION_DECOUPLING_FRAC,
     DETERIORATION_SEVERITY_EXTREME_FRAC,
     severityFrac,
   );`,
-    replace: `  return rampAcross(
+    replace: `  const penalty = 1 - rampAcross(
     DETERIORATION_DECOUPLING_FRAC,
     DETERIORATION_SEVERITY_EXTREME_FRAC,
     severityFrac,
@@ -164,8 +188,14 @@ const PLANTS: readonly Plant[] = [
     name: '6 · the roll-up takes the MILDEST session instead of the worst',
     file: 'lib/adaptation/canonical/deterioration.ts',
     suite: SEVERITY_SUITE,
-    find: '  const worstSeverityFrac = readable.length === 0 ? null : Math.max(...readable);',
-    replace: '  const worstSeverityFrac = readable.length === 0 ? null : Math.min(...readable);',
+    // PAHR-QUANTITY-1 changed the roll-up from a bare `Math.max` over numbers
+    // to a `reduce` over (severity, readability) PAIRS, because the readability
+    // paired with the worst session has to travel with it (see
+    // `DeteriorationPattern.worstSeverityReadabilityFrac`'s own doc). Flipping
+    // the reduce's comparator is the equivalent plant: it now keeps the pair
+    // with the SMALLEST severity instead of the largest.
+    find: '    : readable.reduce((a, b) => (b.severityFrac > a.severityFrac ? b : a));',
+    replace: '    : readable.reduce((a, b) => (b.severityFrac < a.severityFrac ? b : a));',
     expectNames: 'the roll-up takes the WORST readable session',
   },
   {
@@ -184,6 +214,36 @@ const PLANTS: readonly Plant[] = [
     find: 'export { DETERIORATION_DECOUPLING_FRAC, DETERIORATION_SEVERITY_EXTREME_FRAC };',
     replace: 'export { DETERIORATION_DECOUPLING_FRAC };',
     expectNames: 'no longer exports',
+  },
+  /* ── PART D · PAHR-QUANTITY-1 (2026-09-05) ───────────────────────────── */
+  {
+    name: '9 · READABILITY IS DISABLED · every session reads fully readable regardless of duration, terrain or heat',
+    file: 'lib/adaptation/canonical/deterioration.ts',
+    suite: SEVERITY_SUITE,
+    // Silently CLEAN or silently DETERIORATED is exactly what a contaminated
+    // reading must not become — CLAUDE.md's own instruction for this round.
+    // Disabling the check entirely is the most direct way to plant that: a
+    // hot, hilly or too-short session goes back to being judged at FULL
+    // confidence against Research/03 §12's bands, which is the defect
+    // PAHR-QUANTITY-1 exists to close.
+    find: `export function decouplingReadabilityFrac(env: SessionEnvironmentalContext): DecouplingReadability {
+  let value = 1;`,
+    replace: `export function decouplingReadabilityFrac(env: SessionEnvironmentalContext): DecouplingReadability {
+  return { value: 1, detail: '' };
+  let value = 1;`,
+    expectNames: 'duration ramps from the confounder-table floor',
+  },
+  {
+    name: '10 · THE EXTREME GATE IGNORES READABILITY · a contaminated extreme session is refused like a clean one',
+    file: 'lib/adaptation/volume-evidence/admit.ts',
+    suite: SEVERITY_SUITE,
+    // The other half of the same defect class: even with `decouplingReadabilityFrac`
+    // intact, a gate that does not CONSULT it reproduces the old cliff for
+    // exactly the case this round exists to fix — a raw severity past 8%
+    // whose own preconditions (duration, terrain, heat) were not met.
+    find: '  const extreme = worst != null && deteriorationConfidenceWeight(worst, worstReadability) <= WEIGHT_FLOOR_EPSILON;',
+    replace: '  const extreme = worst != null && worst + 1e-9 >= DETERIORATION_SEVERITY_EXTREME_FRAC;',
+    expectNames: 'the IDENTICAL raw severity, marked UNREADABLE by environment, is ADMITTED at a discount instead',
   },
 ];
 

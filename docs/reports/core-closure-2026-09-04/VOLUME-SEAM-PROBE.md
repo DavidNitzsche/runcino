@@ -22,10 +22,10 @@ accepts. This probe does not even do that: it stops before the write.
 
 | field | value |
 |---|---|
-| `peakWeeklyMi` | unmeasured |
-| `sustainedWeeklyMi` | unmeasured |
-| `heldWeeklyMi` | unmeasured |
-| `meanWeeklyMi` | unmeasured |
+| `peakWeeklyMi` | 47.3 |
+| `sustainedWeeklyMi` | 39.7 |
+| `heldWeeklyMi` | 39.8 |
+| `meanWeeklyMi` | 39.8 |
 | `absorbedWeeklyMiUnfiltered` (Rule 8's corollary, NOT filtered) | 47.5 |
 
 ### The ledger
@@ -45,7 +45,7 @@ accepts. This probe does not even do that: it stops before the write.
 | 2026-05-25 | 44 | 39.7 | 0 | NOT_SUPPORTED | NOT MET · EXECUTION_IDENTITY_TRUSTWORTHY: 0 mi of admissible surplus against 44 mi prescribed is inside the 1 per cent a GPS watch can misreport on its own, so it says nothing about the runner. | 0.00000 | 0% | 0 |
 | 2026-06-01 | 44.5 | 44.9 | refused | NOT_SUPPORTED | `CUTBACK_WEEK` | 0.00000 | 0% | 0.4 |
 | 2026-06-08 | 45.5 | 40.1 | 0 | NOT_SUPPORTED | NOT MET · EXECUTION_IDENTITY_TRUSTWORTHY: 0 mi of admissible surplus against 45.5 mi prescribed is inside the 1 per cent a GPS watch can misreport on its own, so it says nothing about the runner. | 0.00000 | 0% | 0 |
-| 2026-06-15 | 45.5 | 47.3 | 1.8 | NOT_SUPPORTED | NOT MET · NO_MATERIAL_DETERIORATION: The worst session in this week finished at 8.04 per cent pace-to-heart-rate decoupling. Doctrine calls that an endurance gap and answers it by building base before progressing. | 0.00000 | 0% | 1.8 |
+| 2026-06-15 | 45.5 | 47.3 | 1.8 | **ADMITTED 1.8 mi** |  | 0.00838 | 5.6% | 1.8 |
 | 2026-06-22 | 49.5 | 28 | 0 | NOT_SUPPORTED | NOT MET · EXECUTION_IDENTITY_TRUSTWORTHY: 0 mi of admissible surplus against 49.5 mi prescribed is inside the 1 per cent a GPS watch can misreport on its own, so it says nothing about the runner. | 0.00000 | 0% | 0 |
 | 2026-06-29 | 55.5 | 0 | 0 | NOT_SUPPORTED | NOT MET · EXECUTION_IDENTITY_TRUSTWORTHY: 0 mi of admissible surplus against 55.5 mi prescribed is inside the 1 per cent a GPS watch can misreport on its own, so it says nothing about the runner. | 0.00000 | 0% | 0 |
 | 2026-07-06 | 45.5 | 43.2 | refused | NOT_SUPPORTED | `CUTBACK_WEEK` | 0.00000 | 0% | 0 |
@@ -62,45 +62,60 @@ accepts. This probe does not even do that: it stops before the write.
 
 Doctrine's two edges: a fade costs nothing at or below **5 per cent** Pa:HR decoupling ("Strong aerobic endurance; sustainable") and costs everything at or above **8 per cent** ("Endurance gap; build base before progressing").
 
-| week | key sessions read | deteriorated | unreadable | worst Pa:HR decoupling | credit kept |
-|---|---|---|---|---|---|
-| 2026-05-11 | 0 | 0 | 0 | no readable session | 100% |
-| 2026-05-18 | 0 | 0 | 0 | no readable session | 100% |
-| 2026-05-25 | 0 | 0 | 0 | no readable session | 100% |
-| 2026-06-01 | 0 | 0 | 0 | no readable session | 100% |
-| 2026-06-08 | 3 | 2 | 0 | 10.743% | 0% |
-| 2026-06-15 | 3 | 1 | 0 | 8.043% | 0% |
-| 2026-06-22 | 3 | 0 | 0 | 6.061% | 64.6% |
-| 2026-06-29 | 0 | 0 | 0 | no readable session | 100% |
-| 2026-07-06 | 3 | 0 | 1 | 3.135% | 100% |
-| 2026-07-13 | 1 | 0 | 1 | no readable session | 100% |
-| 2026-07-20 | 2 | 0 | 0 | 8.127% | 0% |
-| 2026-07-27 | 0 | 0 | 0 | no readable session | 100% |
-| 2026-08-03 | 1 | 0 | 0 | 2.286% | 100% |
-| 2026-08-10 | 2 | 1 | 1 | 6.993% | 33.6% |
-| 2026-08-17 | 0 | 0 | 0 | no readable session | 100% |
-| 2026-08-24 | 1 | 1 | 0 | 8.024% | 0% |
-| 2026-08-31 | 3 | 2 | 1 | 12.305% | 0% |
+PAHR-QUANTITY-1 (2026-09-05): the raw severity number below is UNCHANGED from the
+prior run of this probe. The thirds formula was already proven identical to §12's own
+halves formula. What is new is `readability`: whether THIS session actually met §12's
+own preconditions (a ≥60-minute steady run, out of the heat, off material terrain) before
+its number is compared against the 5%/8% bands at full strength. `credit kept BEFORE`
+is what the prior run reported (readability implicitly 1 for every session); `AFTER` is
+what this run reports with readability folded in. See `deterioration.ts`'s
+PAHR-QUANTITY-1 section for the full research-vs-app comparison and the citations below.
+
+| week | key sessions read | deteriorated | unreadable | worst Pa:HR decoupling | readability | credit kept BEFORE | credit kept AFTER |
+|---|---|---|---|---|---|---|---|
+| 2026-05-11 | 0 | 0 | 0 | no readable session |  |  |  |
+| 2026-05-18 | 0 | 0 | 0 | no readable session |  |  |  |
+| 2026-05-25 | 0 | 0 | 0 | no readable session |  |  |  |
+| 2026-06-01 | 0 | 0 | 0 | no readable session |  |  |  |
+| 2026-06-08 | 3 | 2 | 0 | 10.743% | 50.6% | 0% | 49.4% |
+| 2026-06-15 | 3 | 1 | 0 | 8.043% | 78.8% | 0% | 21.2% |
+| 2026-06-22 | 3 | 0 | 0 | 6.061% | 71.8% | 64.6% | 74.6% |
+| 2026-06-29 | 0 | 0 | 0 | no readable session |  |  |  |
+| 2026-07-06 | 3 | 0 | 1 | 3.135% | 40% | 100% | 100% |
+| 2026-07-13 | 1 | 0 | 1 | no readable session |  |  |  |
+| 2026-07-20 | 2 | 0 | 0 | 8.127% | 34.7% | 0% | 65.3% |
+| 2026-07-27 | 0 | 0 | 0 | no readable session |  |  |  |
+| 2026-08-03 | 1 | 0 | 0 | 2.286% | 37.6% | 100% | 100% |
+| 2026-08-10 | 2 | 1 | 1 | 6.993% | 47.6% | 33.6% | 68.3% |
+| 2026-08-17 | 0 | 0 | 0 | no readable session |  |  |  |
+| 2026-08-24 | 1 | 1 | 0 | 8.024% | 4.1% | 0% | 95.9% |
+| 2026-08-31 | 3 | 2 | 1 | 12.305% | 17.1% | 0% | 82.9% |
 
 - weeks with a readable key session: **9**
-- of those, weeks at or past doctrine's endurance-gap edge: **5**
+- of those, weeks at or past doctrine's endurance-gap edge on the RAW number: **5**
+- of those, weeks that STILL categorically refuse once readability is applied: **0**
 
-**DECISION FOR THE OWNER · 5 of 9 weeks with a
-readable key session sit at or past the endurance-gap edge.** That is a high share,
-and it has two readings that lead opposite ways. Either these long runs really are
-finishing at the aerobic limit, which is a coaching fact worth acting on rather than
-a threshold to move. Or the transfer is too harsh: `Research/03` §12 states its
-bands for a steady 60-90 minute run compared FIRST HALF against SECOND HALF, and
-Q13 compares the MIDDLE third against the FINAL third, which excludes the warm-up
-and therefore compares a harder window against a harder window. Nothing in this
-repo can tell those two apart, and moving the edge to make the numbers nicer is
-exactly the tuning CLAUDE.md Rule 21 forbids. It is written down instead.
+**STILL A DECISION FOR THE OWNER · 5 of 9 weeks with a
+readable key session sit at or past the endurance-gap edge on the raw number**, and
+**0 of those still categorically refuse** once each
+session's duration, terrain and heat are checked against §12's own preconditions. The
+remainder now discount continuously rather than refusing outright, which is the fix this
+round makes. What is NOT fixed, because no citation settles it: `Research/03` §12 states
+its bands for a steady 60-90 minute run compared FIRST HALF against SECOND HALF, and Q13
+compares the MIDDLE third against the FINAL third, which excludes the warm-up and
+therefore compares a harder window against a harder window. Nothing in this repo can
+derive one window's reading from the other's after the fact, and moving the edge to make
+the numbers nicer is exactly the tuning CLAUDE.md Rule 21 forbids. It stays written down.
 
 ## What the cron would do tonight
 
-**NO_ADMITTED_EVIDENCE**
+**NOTHING_TO_PROPOSE**
 
-> No week in the 17-week window was admitted as volume evidence. The runner did not run materially more than prescribed in any representative week.
+> The extra mileage counts as evidence, but next week remains a cutback.
+
+- evidence stands at **0 per cent** of a step
+- weeks the responder would have raised: **0**
+- raises held rather than discarded: **0**
 
 ## The future weeks, and which of them may grow
 
@@ -129,7 +144,7 @@ exactly the tuning CLAUDE.md Rule 21 forbids. It is written down instead.
 | 2026-05-25 | 44 | 39.7 | 0 |  | no |
 | 2026-06-01 | 44.5 | 44.9 | refused | CUTBACK_WEEK | no |
 | 2026-06-08 | 45.5 | 40.1 | 0 |  | no |
-| 2026-06-15 | 45.5 | 47.3 | 1.8 |  | no |
+| 2026-06-15 | 45.5 | 47.3 | 1.8 |  | YES |
 | 2026-06-22 | 49.5 | 28 | 0 |  | no |
 | 2026-06-29 | 55.5 | 0 | 0 |  | no |
 | 2026-07-06 | 45.5 | 43.2 | refused | CUTBACK_WEEK | no |
@@ -166,12 +181,22 @@ continuously across §12's own band table and blocks only when the fade is past
 the endurance-gap edge, when it is repeated (Q13's two sessions), or when its size
 could not be measured at all (Rule 11: known-bad-but-unmeasurable is not mild).
 
-**And it did not make his week fire, which is the honest result.** 2026-06-15's
-worst key session measures the value in the table above, and it is past §12's
-8 per cent edge. The week is still refused. What changed is that it is refused for
-a reason doctrine states rather than by a rule doctrine forbids, and that missing
-the edge by a hair now costs a hair rather than everything: the credit curve
-reaches zero AT the edge, so a week either side of it is worth about the same.
+**UPDATED BY PAHR-QUANTITY-1 (2026-09-05), AND THIS IS THE HONEST RESULT, NOT A
+TUNING.** The paragraph above described the PRIOR run of this probe, where 2026-06-15
+was still refused because its worst key session sat past §12's 8 per cent edge with
+no way to say whether that edge applied. This run adds exactly that check,
+`decouplingReadabilityFrac` in `deterioration.ts`, built from §12's OWN stated
+preconditions (a >=60-minute steady run, off material terrain, out of the heat),
+and 2026-06-15's worst session reads at readability well under 1 (see the table
+above). Doctrine's own bands were written for a session that met them; this one did
+not fully, so the categorical refusal no longer fires and the week is now ADMITTED at
+a reduced credit rather than refused outright ("Every week the fold read" table above).
+The severity number itself is UNCHANGED and still past the edge; what changed is
+whether that number is trusted at full strength, and the check was applied the same
+way to every week in this window, not written to fit this one. Two of the other four
+weeks that sat past the raw edge (2026-07-20, 2026-08-24) show an even larger swing,
+for the same reason: their readability is lower still, so more of their raw severity
+is set aside as unproven rather than spent as fatigue.
 
 **STILL OPEN · An OVERRUN cutback week.** 2026-06-01: 44.9 mi run against 44.5 prescribed, in
 a week the plan marked a cutback, refused for that reason. Rule 8 is unambiguous

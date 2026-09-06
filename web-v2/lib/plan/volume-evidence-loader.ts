@@ -82,15 +82,22 @@ import { distanceMiOfMeta } from '@/lib/race/distance';
  * Nothing checks that a hand-typed jsonb key names a real one, and there is
  * exactly one correct answer to "which run is the merge loser" (Rule 14). */
 import { runDaySql, runMergedIntoIdSql } from '@/lib/runs/run-shape';
-import { runAvgHr, type RunData } from '@/lib/runs/run-shape';
+import { runAvgHr, runMovingSec, runTempF, type RunData } from '@/lib/runs/run-shape';
+/* PAHR-QUANTITY-1 · the whole-run terrain read, reused rather than
+ * re-derived: `resolveRunTerrain` already knows the four elevation
+ * conventions `runs.data` carries and the treadmill trap, and this file has
+ * no business re-deciding any of that for a readability check (Rule 16). */
+import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
 /* CONDITIONS 2 AND 3, RECONSTRUCTED RATHER THAN REFUSED · Rule 16.
  * `canonical-shadow/live-input.ts` already owns "is this heart-rate trace
  * worth grading" and "what were this run's thirds", and both are pure
  * functions of one `RunData`. Importing them is what stops this file becoming
  * a second, quieter answer to two questions the canonical engine owns. */
 import { isHrReliable, buildThirds } from '@/lib/adaptation/canonical-shadow/live-input';
-import { assessDeterioration, deteriorationPattern, type DeteriorationResult }
-  from '@/lib/adaptation/canonical/deterioration';
+import {
+  assessDeterioration, deteriorationPattern,
+  type DeteriorationResult, type SessionEnvironmentalContext,
+} from '@/lib/adaptation/canonical/deterioration';
 /* Rule 16 · `plan_phases.label` has ONE translator, and this is it. The first
  * cut of `phaseIntentOf` below hand-rolled a switch over BASE/BUILD/PEAK, and
  * the production probe showed what that costs: the live block's phases are
@@ -708,10 +715,45 @@ export function telemetryOf(runs: readonly RunData[]): Measured<HrTraceVerdict> 
  * final third was, by that fact, recorded to the end. Reading a truncation
  * flag that this schema does not carry would be inventing a fact.
  */
+/**
+ * PAHR-QUANTITY-1 · what Research/03 §12 needs to know before trusting a
+ * decoupling reading, read off the SAME `RunData` `buildThirds` already
+ * reduced to pace and heart rate. Absent rather than guessed wherever the
+ * row does not carry the fact (Rule 11) — `decouplingReadabilityFrac` treats
+ * an absent factor as fully readable, per its own doc, so this function's
+ * job is only to say what IS known, never to fill a gap with an assumption.
+ */
+function environmentalContextOf(r: RunData): SessionEnvironmentalContext {
+  const durationSec = runMovingSec(r);
+  const tempF = runTempF(r);
+  // `resolveRunTerrain` reads the four elevation conventions `runs.data`
+  // carries and the treadmill trap; this file does not re-decide any of
+  // that, it only reads the ONE number (`deltaSPerMi`) this readability
+  // check needs (Rule 16).
+  const terrain = resolveRunTerrain(r as unknown as Parameters<typeof resolveRunTerrain>[0]);
+  // `basis` 'none' (no elevation signal at all) and 'treadmill-incline-unknown'
+  // (a treadmill row whose belt angle was never recorded) BOTH resolve to
+  // `deltaSPerMi: 0` inside `runGradeAdjustment`, and that zero means "we did
+  // not check", not "this run was measured flat" (Rule 11) — reading it as a
+  // measured zero would tell `decouplingReadabilityFrac` this run definitely
+  // had no terrain confound when the honest answer is nobody knows.
+  const terrainKnown = terrain.basis !== 'none' && terrain.basis !== 'treadmill-incline-unknown';
+  return {
+    analyzedDurationMin: durationSec != null && durationSec > 0
+      ? measured(durationSec / 60)
+      : absent('no moving time recorded for this run'),
+    terrainDeltaSPerMi: terrainKnown
+      ? measured(terrain.deltaSPerMi)
+      : absent(`no usable terrain signal on this run (basis: ${terrain.basis})`),
+    tempF: tempF != null ? measured(tempF) : absent('no weather recorded for this run'),
+  };
+}
+
 export function deteriorationOf(keyRuns: readonly RunData[]): Measured<ReturnType<typeof deteriorationPattern>> {
   const results: DeteriorationResult[] = keyRuns.map((r) => assessDeterioration(
     buildThirds(r),
     { truncated: false, completeWorkPhasesCaptured: true, note: '' },
+    environmentalContextOf(r),
   ));
   return measured(deteriorationPattern(results));
 }

@@ -1097,6 +1097,25 @@ export function runMovingSec(d: RunData): number | null {
 }
 
 /**
+ * Ambient temperature, °F. Mirrors `runTempFSql`'s COALESCE order exactly —
+ * peak (worst case for a heat read) first, then the enrichment's mean, then
+ * the top-level field the old single-shot write used.
+ *
+ * Added for PAHR-QUANTITY-1 (2026-09-05): the Pa:HR decoupling readability
+ * check needs this in JS, not SQL, because it runs inside `deteriorationOf`
+ * (`lib/plan/volume-evidence-loader.ts`) and the canonical-shadow loader
+ * (`lib/adaptation/canonical-shadow/live-input.ts`), both of which already
+ * hold a `RunData` and neither of which issues its own SQL for one field.
+ *
+ * `num`, deliberately, NOT `pos`: zero and sub-zero Fahrenheit are real
+ * measurements for a temperature, unlike a distance or a duration, and `pos`
+ * would silently discard a winter run's actual reading.
+ */
+export function runTempF(d: RunData): number | null {
+  return num(d.weather?.temp_f_peak) ?? num(d.weather?.temp_f) ?? num(d.tempF);
+}
+
+/**
  * Finish seconds — the clock a fitness estimate should be built on.
  *
  * ⚠ 2026-08-24 · THIS DID NOT MIRROR `runFinishSecSql`, AND SAID IT DID.

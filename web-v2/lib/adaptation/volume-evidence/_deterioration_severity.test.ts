@@ -97,9 +97,17 @@ import { describe, expect, it } from 'vitest';
 import { parsePctBand, resolveCitation } from '@/lib/doctrine/resolve';
 import {
   assessDeterioration,
+  decouplingReadabilityFrac,
   deteriorationPattern,
   paHrDecouplingFrac,
+  DECOUPLING_READABILITY_DURATION_CEIL_MIN,
+  DECOUPLING_READABILITY_DURATION_FLOOR_MIN,
+  DECOUPLING_READABILITY_HEAT_HI_F,
+  DECOUPLING_READABILITY_HEAT_LO_F,
+  DECOUPLING_READABILITY_TERRAIN_HI_S_PER_MI,
+  DECOUPLING_READABILITY_TERRAIN_LO_S_PER_MI,
   type DeteriorationResult,
+  type SessionEnvironmentalContext,
 } from '@/lib/adaptation/canonical/deterioration';
 import type { ComparableThirds, Truncation } from '@/lib/adaptation/canonical/input';
 import { admitSurplus, type AdmissionInput } from './admit';
@@ -662,5 +670,197 @@ describe('4 · what this suite exercised, counted', () => {
     // The categorical gates upstream of deterioration all pass, so a refusal
     // in part 2 is attributable to the fade and to nothing else.
     expect(admitSurplus({ ...conditions(CLEAN), week: surplus }).admitted).toBe(true);
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * PART 5 · PAHR-QUANTITY-1 (2026-09-05) · READABILITY
+ *
+ * "First establish whether Research/03 §12 measures the SAME QUANTITY as the
+ * app." `deterioration.ts`'s own PAHR-QUANTITY-1 section carries the argued
+ * verdict: the FORMULA is identical (asserted independently in part 1 above),
+ * the WINDOW is not (thirds versus halves, kept as thirds for Q13's own
+ * reason), and the app's thirds path enforced NONE of §12's own duration,
+ * terrain or heat preconditions before this change. This part prices that gap.
+ *
+ * ── RULE 22 · WHAT THIS PART CANNOT FAIL ON ───────────────────────────────
+ *
+ * · It cannot fail on the READABILITY FORMULA being the wrong shape. Three
+ *   ramps multiplied is a POLICY_ASSUMPTION about composition, argued in
+ *   `decouplingReadabilityFrac`'s own doc by analogy to `composeEffortFactor`,
+ *   and no citation proves multiplicative is the right combination rule for
+ *   THESE three factors specifically.
+ * · It cannot fail on the STEADY-EFFORT precondition, which is not built.
+ *   A deliberate fast finish in perfect conditions still reads at full
+ *   readability and can still discount to zero. `deterioration.ts`'s own
+ *   header names this gap; nothing here hides it.
+ * · It cannot fail on the EDGES being the wrong number. 30 minutes, 20 s/mi,
+ *   60°F are POLICY_ASSUMPTION and argued, not derived; only the CEILINGS
+ *   (60 minutes, the terrain materiality floor, 77°F) are read from a citation.
+ */
+
+const ctx = (o: {
+  durationMin?: number | null;
+  terrainDeltaSPerMi?: number | null;
+  tempF?: number | null;
+}): SessionEnvironmentalContext => ({
+  analyzedDurationMin: o.durationMin == null ? absent('no moving time recorded') : measured(o.durationMin),
+  terrainDeltaSPerMi: o.terrainDeltaSPerMi == null ? absent('no elevation signal') : measured(o.terrainDeltaSPerMi),
+  tempF: o.tempF == null ? absent('no weather recorded') : measured(o.tempF),
+});
+
+describe('5A · decouplingReadabilityFrac · each factor, independently', () => {
+  it('a run with no environmental facts at all reads fully readable · Rule 11', () => {
+    // "An absence of grounds to refuse is not grounds to refuse" —
+    // `hr-trace-credibility.ts`'s own sentence, applied here to a fact this
+    // engine simply never learned rather than one that was checked and found
+    // clean.
+    const r = decouplingReadabilityFrac(ctx({}));
+    expect(r.value).toBe(1);
+    expect(r.detail).toBe('');
+  });
+
+  it('duration ramps from the confounder-table floor to §12\'s own protocol ceiling', () => {
+    expect(decouplingReadabilityFrac(ctx({ durationMin: DECOUPLING_READABILITY_DURATION_FLOOR_MIN })).value).toBe(0);
+    expect(decouplingReadabilityFrac(ctx({ durationMin: DECOUPLING_READABILITY_DURATION_CEIL_MIN })).value).toBe(1);
+    const mid = (DECOUPLING_READABILITY_DURATION_FLOOR_MIN + DECOUPLING_READABILITY_DURATION_CEIL_MIN) / 2;
+    expect(decouplingReadabilityFrac(ctx({ durationMin: mid })).value).toBeCloseTo(0.5, 10);
+    // Below the floor there has not been time for real drift at all — the
+    // ramp does not go negative, it stays at the floor's own zero.
+    expect(decouplingReadabilityFrac(ctx({ durationMin: 5 })).value).toBe(0);
+  });
+
+  it('terrain ramps from grade-adjust.ts\'s OWN materiality floor to aerobic-decoupling.ts\'s OWN steady-state ceiling', () => {
+    expect(decouplingReadabilityFrac(ctx({ terrainDeltaSPerMi: DECOUPLING_READABILITY_TERRAIN_LO_S_PER_MI })).value).toBe(1);
+    expect(decouplingReadabilityFrac(ctx({ terrainDeltaSPerMi: DECOUPLING_READABILITY_TERRAIN_HI_S_PER_MI })).value).toBe(0);
+    // Signed input, unsigned effect: a net DESCENT confounds the comparison
+    // exactly as much as a net CLIMB of the same size, because either one
+    // means the thirds are not comparing like-for-like effort.
+    expect(decouplingReadabilityFrac(ctx({ terrainDeltaSPerMi: -DECOUPLING_READABILITY_TERRAIN_HI_S_PER_MI })).value).toBe(0);
+  });
+
+  it('heat ramps from an ordinary training temperature to §1\'s OWN cited confounder trigger', () => {
+    expect(decouplingReadabilityFrac(ctx({ tempF: DECOUPLING_READABILITY_HEAT_LO_F })).value).toBe(1);
+    expect(decouplingReadabilityFrac(ctx({ tempF: DECOUPLING_READABILITY_HEAT_HI_F })).value).toBe(0);
+    // Cold is not heat. The ramp has no lower tail: 20°F reads exactly like
+    // 60°F, because §1's confounder row this ramp transcribes is about HEAT.
+    expect(decouplingReadabilityFrac(ctx({ tempF: 20 })).value).toBe(1);
+  });
+
+  it('THE COMPOSITION IS MULTIPLICATIVE, not additive · matches grade-adjust.ts\'s own composeEffortFactor', () => {
+    // Half duration-readable AND half terrain-readable is a QUARTER readable,
+    // not zero and not three-quarters. `composeEffortFactor`'s own citation
+    // ("Add adjustments multiplicatively, not additively") is the doctrine
+    // this mirrors, applied to a confidence factor instead of a pace factor.
+    const durMid = (DECOUPLING_READABILITY_DURATION_FLOOR_MIN + DECOUPLING_READABILITY_DURATION_CEIL_MIN) / 2;
+    const terrMid = (DECOUPLING_READABILITY_TERRAIN_LO_S_PER_MI + DECOUPLING_READABILITY_TERRAIN_HI_S_PER_MI) / 2;
+    const r = decouplingReadabilityFrac(ctx({ durationMin: durMid, terrainDeltaSPerMi: terrMid }));
+    expect(r.value).toBeCloseTo(0.25, 10);
+    expect(r.detail).toContain('min is short of');
+    expect(r.detail).toContain('terrain was worth about');
+  });
+
+  it('LIVENESS · a compound-contaminated session (short, hilly, hot) reads near zero, not merely reduced', () => {
+    const r = decouplingReadabilityFrac(ctx({
+      durationMin: 35, terrainDeltaSPerMi: 18, tempF: 76,
+    }));
+    expect(r.value).toBeGreaterThan(0);
+    expect(r.value).toBeLessThan(0.1);
+  });
+});
+
+describe('5B · deteriorationConfidenceWeight(severity, readability) · the SECOND axis', () => {
+  it('readability = 1 (the default) reproduces the ORIGINAL one-argument function, bit for bit', () => {
+    for (const s of [0, 0.02, 0.05, 0.065, 0.08, 0.09, 0.5]) {
+      expect(deteriorationConfidenceWeight(s, 1)).toBe(deteriorationConfidenceWeight(s));
+    }
+  });
+
+  it('readability = 0 costs NOTHING, however extreme the raw severity · Rule 11 generalised', () => {
+    // The same posture `null` severity already had (line 517 above), now
+    // reached by a DIFFERENT axis: a reading this file cannot vouch for is
+    // spent as "no penalty", never as "mild penalty" and never as "refuse".
+    expect(deteriorationConfidenceWeight(0.5, 0)).toBe(1);
+    expect(deteriorationConfidenceWeight(DETERIORATION_SEVERITY_EXTREME_FRAC, 0)).toBe(1);
+  });
+
+  it('a PARTIALLY readable extreme session is DISCOUNTED, not refused and not waved through', () => {
+    const w = deteriorationConfidenceWeight(DETERIORATION_SEVERITY_EXTREME_FRAC, 0.4);
+    expect(w).toBeCloseTo(0.6, 10);
+    expect(w).toBeGreaterThan(0);
+    expect(w).toBeLessThan(1);
+  });
+
+  it('C · THE READABILITY AXIS ITSELF is continuous and monotone, held at the EXTREME edge', () => {
+    // Holding severity fixed at the edge where the severity axis already
+    // proved a slope bound of 34 (part 3A), walk READABILITY from 0 to 1. The
+    // function is `1 - readability * 1` there (penalty saturates to 1 at the
+    // edge), so the analytic slope is exactly 1 — the bound this file's own
+    // header comment in weight.ts derives.
+    const r = walk((rd) => 1 - deteriorationConfidenceWeight(DETERIORATION_SEVERITY_EXTREME_FRAC, rd), 0, 1, 0.0001);
+    assertContinuousAndMonotone('deteriorationConfidenceWeight across readability at the extreme edge', r, 1.01);
+    expect(r.range).toBeCloseTo(1, 10);
+  });
+});
+
+describe('5C · admit.ts\'s extreme gate now asks BOTH axes, not severity alone', () => {
+  it('a FULLY READABLE extreme session still categorically refuses · the citation is not weakened', () => {
+    const r = refused(read({ deterioratedCount: 1, worstSeverityFrac: 0.09 }));
+    expect(r.admission.admitted).toBe(false);
+    expect(r.capacity.units).toBe(0);
+  });
+
+  it('the IDENTICAL raw severity, marked UNREADABLE by environment, is ADMITTED at a discount instead', () => {
+    // Same 0.09 as the case immediately above. The only difference is that
+    // this fixture also carries `worstSeverityReadabilityFrac`, which a real
+    // `DeteriorationPattern` built from `deteriorationOf` would compute from
+    // the session's own duration, terrain and heat.
+    const fade: Fade & { worstSeverityReadabilityFrac?: number } = {
+      deterioratedCount: 1, worstSeverityFrac: 0.09, worstSeverityReadabilityFrac: 0.3,
+    };
+    const r = credited(readWeekEvidence({
+      asOfISO: '2026-06-22',
+      week: weekAt(COMPLETED),
+      conditions: {
+        ...conditions(fade),
+        deterioration: measured({
+          repeated: false, deterioratedCount: 1, unknownCount: 0, cleanCount: 2,
+          worstSeverityFrac: 0.09, worstSeverityReadabilityFrac: 0.3, detail: 'constructed',
+        }),
+      },
+    }));
+    expect(r.admission.admitted).toBe(true);
+    expect(r.capacity.deteriorationWeight).toBeCloseTo(0.7, 10);
+    expect(r.capacity.units).toBeGreaterThan(0);
+    expect(r.capacity.units).toBeLessThan(read(CLEAN).capacity.units);
+  });
+
+  it('a DeteriorationPattern with no readability field at all (pre-PAHR-QUANTITY-1 shape) still refuses · backward compatible', () => {
+    // No caller was broken by this change: a fixture that predates
+    // `worstSeverityReadabilityFrac` defaults to 1, which is the OLD
+    // behaviour, exactly.
+    const r = refused(read({ deterioratedCount: 1, worstSeverityFrac: 0.09 }));
+    expect(r.admission.admitted).toBe(false);
+  });
+});
+
+describe('5D · assessDeterioration(thirds, truncation, env) · the wiring, end to end', () => {
+  const CLEAN_THIRDS = thirds({ midPace: 480, finPace: 480, midHr: 150, finHr: 150 });
+
+  it('two calls with the same thirds but different environments produce the same VERDICT and DIFFERENT readability', () => {
+    const hot = assessDeterioration(CLEAN_THIRDS, INTACT, ctx({ tempF: 90 }));
+    const cool = assessDeterioration(CLEAN_THIRDS, INTACT, ctx({ tempF: 50 }));
+    expect(hot.verdict).toBe(cool.verdict);
+    expect(hot.severityFrac).toBe(cool.severityFrac);
+    expect(hot.readabilityFrac).toBeLessThan(cool.readabilityFrac ?? 1);
+    expect(cool.readabilityFrac).toBe(1);
+  });
+
+  it('calling with NO third argument at all matches calling with a fully-readable one · the default is additive, not a behaviour change', () => {
+    const withoutEnv = assessDeterioration(CLEAN_THIRDS, INTACT);
+    const withCoolEnv = assessDeterioration(CLEAN_THIRDS, INTACT, ctx({ tempF: 50, durationMin: 90, terrainDeltaSPerMi: 0 }));
+    expect(withoutEnv.readabilityFrac).toBe(1);
+    expect(withCoolEnv.readabilityFrac).toBe(1);
+    expect(withoutEnv.severityFrac).toBe(withCoolEnv.severityFrac);
   });
 });

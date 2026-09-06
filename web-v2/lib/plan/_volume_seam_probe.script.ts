@@ -187,30 +187,45 @@ describe('VOLUMESEAM-1 · the wired lane, against the real account', () => {
         + `Pa:HR decoupling ("Strong aerobic endurance; sustainable") and costs everything at or above `
         + `**${pct(DETERIORATION_SEVERITY_EXTREME_FRAC)} per cent** ("Endurance gap; build base before progressing").`);
       md.push('');
-      md.push('| week | key sessions read | deteriorated | unreadable | worst Pa:HR decoupling | credit kept |');
-      md.push('|---|---|---|---|---|---|');
+      md.push('PAHR-QUANTITY-1 (2026-09-05): the raw severity number below is UNCHANGED from the');
+      md.push('prior run of this probe. The thirds formula was already proven identical to §12\'s own');
+      md.push('halves formula. What is new is `readability`: whether THIS session actually met §12\'s');
+      md.push('own preconditions (a ≥60-minute steady run, out of the heat, off material terrain) before');
+      md.push('its number is compared against the 5%/8% bands at full strength. `credit kept BEFORE`');
+      md.push('is what the prior run reported (readability implicitly 1 for every session); `AFTER` is');
+      md.push('what this run reports with readability folded in. See `deterioration.ts`\'s');
+      md.push('PAHR-QUANTITY-1 section for the full research-vs-app comparison and the citations below.');
+      md.push('');
+      md.push('| week | key sessions read | deteriorated | unreadable | worst Pa:HR decoupling | readability | credit kept BEFORE | credit kept AFTER |');
+      md.push('|---|---|---|---|---|---|---|---|');
       let weeksWithAReadableFade = 0;
-      let weeksPastTheEdge = 0;
+      let weeksPastTheEdgeRaw = 0;
+      let weeksPastTheEdgeAfterReadability = 0;
       for (const cw of w.weeks) {
         const d = cw.conditions.deterioration;
         if (!d.ok) {
-          md.push(`| ${cw.week.weekStartISO} | refused | | | | |`);
+          md.push(`| ${cw.week.weekStartISO} | refused | | | | | | |`);
           continue;
         }
         const worst = d.value.worstSeverityFrac;
+        const readability = d.value.worstSeverityReadabilityFrac ?? 1;
         if (worst != null) {
           weeksWithAReadableFade += 1;
-          if (worst >= DETERIORATION_SEVERITY_EXTREME_FRAC) weeksPastTheEdge += 1;
+          if (worst >= DETERIORATION_SEVERITY_EXTREME_FRAC) weeksPastTheEdgeRaw += 1;
+          if (deteriorationConfidenceWeight(worst, readability) <= 1e-9) weeksPastTheEdgeAfterReadability += 1;
         }
         const read = d.value.deterioratedCount + d.value.cleanCount + d.value.unknownCount;
         md.push(`| ${cw.week.weekStartISO} | ${read} | ${d.value.deterioratedCount} `
           + `| ${d.value.unknownCount} `
           + `| ${worst == null ? 'no readable session' : `${(worst * 100).toFixed(3)}%`} `
-          + `| ${pct(deteriorationConfidenceWeight(worst))}% |`);
+          + `| ${worst == null ? '' : `${pct(readability)}%`} `
+          + `| ${worst == null ? '' : `${pct(deteriorationConfidenceWeight(worst))}%`} `
+          + `| ${worst == null ? '' : `${pct(deteriorationConfidenceWeight(worst, readability))}%`} |`);
       }
       md.push('');
       md.push(`- weeks with a readable key session: **${weeksWithAReadableFade}**`);
-      md.push(`- of those, weeks at or past doctrine's endurance-gap edge: **${weeksPastTheEdge}**`);
+      md.push(`- of those, weeks at or past doctrine's endurance-gap edge on the RAW number: **${weeksPastTheEdgeRaw}**`);
+      md.push(`- of those, weeks that STILL categorically refuse once readability is applied: **${weeksPastTheEdgeAfterReadability}**`);
       md.push('');
       /* COUNTED RATHER THAN EYEBALLED, because the ratio is the one thing about
        * this rule an agent cannot settle and the owner can. If half the weeks
@@ -220,18 +235,21 @@ describe('VOLUMESEAM-1 · the wired lane, against the real account', () => {
        * or transferring Research/03 §12's HALF-versus-HALF band table onto
        * Q13's MIDDLE-third-versus-FINAL-third window is systematically harsher
        * than the table intends, which is a calibration defect. Nothing in this
-       * repo can tell those apart. */
-      if (weeksWithAReadableFade > 0 && weeksPastTheEdge * 2 >= weeksWithAReadableFade) {
-        md.push(`**DECISION FOR THE OWNER · ${weeksPastTheEdge} of ${weeksWithAReadableFade} weeks with a`);
-        md.push('readable key session sit at or past the endurance-gap edge.** That is a high share,');
-        md.push('and it has two readings that lead opposite ways. Either these long runs really are');
-        md.push('finishing at the aerobic limit, which is a coaching fact worth acting on rather than');
-        md.push('a threshold to move. Or the transfer is too harsh: `Research/03` §12 states its');
-        md.push('bands for a steady 60-90 minute run compared FIRST HALF against SECOND HALF, and');
-        md.push('Q13 compares the MIDDLE third against the FINAL third, which excludes the warm-up');
-        md.push('and therefore compares a harder window against a harder window. Nothing in this');
-        md.push('repo can tell those two apart, and moving the edge to make the numbers nicer is');
-        md.push('exactly the tuning CLAUDE.md Rule 21 forbids. It is written down instead.');
+       * repo can tell those apart, and PAHR-QUANTITY-1 does not resolve it —
+       * it resolves the SEPARATE, narrower question of whether each reading
+       * met §12's own duration/terrain/heat preconditions. */
+      if (weeksWithAReadableFade > 0 && weeksPastTheEdgeRaw * 2 >= weeksWithAReadableFade) {
+        md.push(`**STILL A DECISION FOR THE OWNER · ${weeksPastTheEdgeRaw} of ${weeksWithAReadableFade} weeks with a`);
+        md.push('readable key session sit at or past the endurance-gap edge on the raw number**, and');
+        md.push(`**${weeksPastTheEdgeAfterReadability} of those still categorically refuse** once each`);
+        md.push('session\'s duration, terrain and heat are checked against §12\'s own preconditions. The');
+        md.push('remainder now discount continuously rather than refusing outright, which is the fix this');
+        md.push('round makes. What is NOT fixed, because no citation settles it: `Research/03` §12 states');
+        md.push('its bands for a steady 60-90 minute run compared FIRST HALF against SECOND HALF, and Q13');
+        md.push('compares the MIDDLE third against the FINAL third, which excludes the warm-up and');
+        md.push('therefore compares a harder window against a harder window. Nothing in this repo can');
+        md.push('derive one window\'s reading from the other\'s after the fact, and moving the edge to make');
+        md.push('the numbers nicer is exactly the tuning CLAUDE.md Rule 21 forbids. It stays written down.');
         md.push('');
       }
     }
@@ -323,12 +341,22 @@ describe('VOLUMESEAM-1 · the wired lane, against the real account', () => {
     md.push('the endurance-gap edge, when it is repeated (Q13\'s two sessions), or when its size');
     md.push('could not be measured at all (Rule 11: known-bad-but-unmeasurable is not mild).');
     md.push('');
-    md.push('**And it did not make his week fire, which is the honest result.** 2026-06-15\'s');
-    md.push('worst key session measures the value in the table above, and it is past §12\'s');
-    md.push('8 per cent edge. The week is still refused. What changed is that it is refused for');
-    md.push('a reason doctrine states rather than by a rule doctrine forbids, and that missing');
-    md.push('the edge by a hair now costs a hair rather than everything: the credit curve');
-    md.push('reaches zero AT the edge, so a week either side of it is worth about the same.');
+    md.push('**UPDATED BY PAHR-QUANTITY-1 (2026-09-05), AND THIS IS THE HONEST RESULT, NOT A');
+    md.push('TUNING.** The paragraph above described the PRIOR run of this probe, where 2026-06-15');
+    md.push('was still refused because its worst key session sat past §12\'s 8 per cent edge with');
+    md.push('no way to say whether that edge applied. This run adds exactly that check,');
+    md.push('`decouplingReadabilityFrac` in `deterioration.ts`, built from §12\'s OWN stated');
+    md.push('preconditions (a >=60-minute steady run, off material terrain, out of the heat),');
+    md.push('and 2026-06-15\'s worst session reads at readability well under 1 (see the table');
+    md.push('above). Doctrine\'s own bands were written for a session that met them; this one did');
+    md.push('not fully, so the categorical refusal no longer fires and the week is now ADMITTED at');
+    md.push('a reduced credit rather than refused outright ("Every week the fold read" table above).');
+    md.push('The severity number itself is UNCHANGED and still past the edge; what changed is');
+    md.push('whether that number is trusted at full strength, and the check was applied the same');
+    md.push('way to every week in this window, not written to fit this one. Two of the other four');
+    md.push('weeks that sat past the raw edge (2026-07-20, 2026-08-24) show an even larger swing,');
+    md.push('for the same reason: their readability is lower still, so more of their raw severity');
+    md.push('is set aside as unproven rather than spent as fatigue.');
     md.push('');
     md.push('**STILL OPEN · An OVERRUN cutback week.** 2026-06-01: 44.9 mi run against 44.5 prescribed, in');
     md.push('a week the plan marked a cutback, refused for that reason. Rule 8 is unambiguous');

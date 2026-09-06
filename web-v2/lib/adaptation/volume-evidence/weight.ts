@@ -651,14 +651,53 @@ export function absorptionWeight(followingWeekCompletionFrac: number): number {
  * THE ARGUMENT IS IN SECTION 3b ABOVE and is not repeated here (Rule 17): the
  * two doctrine edges, why the factor reads every readable session rather than
  * only flagged ones, and why `null` weighs 1 rather than 0.
+ *
+ * ── PAHR-QUANTITY-1 (2026-09-05) · `readabilityFrac`, SECOND PARAMETER ────
+ *
+ * `deterioration.ts::decouplingReadabilityFrac` establishes whether §12's own
+ * preconditions (duration, terrain, heat) actually held for the session that
+ * produced `severityFrac`, in [0, 1]. It arrives here as a plain number
+ * (rather than this function importing that machinery itself) because this
+ * file's whole job is "turn a measurement into a weight", and readability is
+ * ANOTHER measurement, not a curve this file owns.
+ *
+ * DEFAULT 1, so every pre-existing caller — the three lever files under
+ * `canonical/levers/`, none of which have been migrated to supply
+ * `SessionEnvironmentalContext` — gets EXACTLY today's number back. This is
+ * additive, not a behaviour change to anyone who does not opt in.
+ *
+ * THE COMPOSITION IS MULTIPLICATIVE ON THE PENALTY, not on the weight itself:
+ * `weight = 1 - readability × penalty(severity)`. At `readability = 1` this is
+ * the original one-argument function, unchanged bit-for-bit. At
+ * `readability = 0` the weight is exactly 1 REGARDLESS of severity — a
+ * reading this file cannot vouch for costs nothing, which is Rule 11's
+ * established null-severity posture (`severityFrac == null` already returns
+ * 1 above) generalised from a boolean ("could not measure at all") to a
+ * continuum ("measured, but under conditions doctrine's own protocol did not
+ * hold"). Continuity in BOTH inputs follows from this shape without a new
+ * proof: `penalty` is `rampAcross`, bounded in [0, 1] and Lipschitz with
+ * constant `1 / (EXTREME − DECOUPLING)` (≈33.3, the existing bound); the
+ * output is a product of that with `readability ∈ [0, 1]`, so
+ * `∂weight/∂severity = -readability × penalty'(severity)` can only be
+ * SMALLER in magnitude than the unweighted case, never larger — the existing
+ * slope bound of 34 in `_deterioration_severity.test.ts` part 3A therefore
+ * still holds for every fixed `readability ≤ 1`, and does not need
+ * re-deriving upward. The readability AXIS is even shallower: holding
+ * severity fixed, `∂weight/∂readability = -penalty(severity) ∈ [-1, 0]`, a
+ * slope bound of 1.
  */
-export function deteriorationConfidenceWeight(severityFrac: number | null): number {
+export function deteriorationConfidenceWeight(
+  severityFrac: number | null,
+  readabilityFrac: number = 1,
+): number {
   if (severityFrac == null || !Number.isFinite(severityFrac)) return 1;
-  return 1 - rampAcross(
+  const readability = Number.isFinite(readabilityFrac) ? clamp01(readabilityFrac) : 1;
+  const penalty = rampAcross(
     DETERIORATION_DECOUPLING_FRAC,
     DETERIORATION_SEVERITY_EXTREME_FRAC,
     severityFrac,
   );
+  return 1 - readability * penalty;
 }
 
 /**
