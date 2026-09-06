@@ -618,7 +618,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_E570D171-1ED4-4A79-9F12-C5DD65C03A75" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_021C8D3A-8DF5-4ACB-9C38-0C5E83319224" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1051,10 +1051,10 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_606375B9-2EE5-4F4A-9D52-92C5434F1327" /* native-v2 */ = {
+		"TEMP_137F9786-363E-4DE8-A0E8-98BCDAA91035" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_E570D171-1ED4-4A79-9F12-C5DD65C03A75" /* Secrets.xcconfig */,
+				"TEMP_021C8D3A-8DF5-4ACB-9C38-0C5E83319224" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1576,7 +1576,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_E570D171-1ED4-4A79-9F12-C5DD65C03A75" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_021C8D3A-8DF5-4ACB-9C38-0C5E83319224" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1803,7 +1803,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_E570D171-1ED4-4A79-9F12-C5DD65C03A75" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_021C8D3A-8DF5-4ACB-9C38-0C5E83319224" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
