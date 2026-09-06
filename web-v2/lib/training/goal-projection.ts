@@ -61,8 +61,12 @@ import { pool } from '@/lib/db/pool';
 import { rowsOrNull } from '@/lib/db/read';
 import { intentValueField } from '@/lib/coach/intent-value';
 import { isoDaysBefore } from '@/lib/runs/volume';
-import { predictRaceTime, vdotFromRace, tPaceFromVdot, vdotFromTpace, parseRaceTime } from './vdot';
+import { predictRaceTime, vdotFromRace, vdotFromTpace, parseRaceTime } from './vdot';
 import { computeDecouplingTrend } from './decoupling-trend';
+// THRESHOLD-OWNER-2 · THE canonical threshold, for the two sites in this file
+// that used to derive one from a caller-threaded VDOT. Pace Prescription's
+// shell over the Runner Model's own resolver; see its header for the seal.
+import { resolvePrescribedPaceAnchors } from './load-prescription-anchors';
 import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { heatAdjustedStatus } from '@/lib/coach/heat-band';
 import { resolveWorkoutVerdict, testPointVerdictFor, type WorkoutVerdict } from '@/lib/execution/verdict';
@@ -361,7 +365,7 @@ export async function resolveExecutionSignal(userUuid: string, vdot: number | nu
   recentMissedKeyDates: string[];
 }> {
   const [recentTestPoints, absence, overPerf, missedSignal] = await Promise.all([
-    loadRecentTestPoints(userUuid, vdot).catch(() => [] as GoalProjection['recentTestPoints']),
+    loadRecentTestPoints(userUuid).catch(() => [] as GoalProjection['recentTestPoints']),
     loadExecutionAbsence(userUuid).catch(() => ({ daysSinceLastRun: null as number | null, recentMissedKeyDates: [] as string[] })),
     vdot != null
       ? computeOverPerformanceBonus(userUuid, vdot).catch(() => ({ bonusVdot: 0, sessions: 0, medianBeatSPerMi: 0 }))
@@ -501,7 +505,7 @@ export async function computeGoalProjection(args: {
   const summary = composeSummary(status, driftSignals, goalSec, vdotProjectionSec);
   const [nextTestPoints, recentTestPoints] = await Promise.all([
     loadNextTestPoints(userUuid, vdot).catch(() => []),
-    loadRecentTestPoints(userUuid, vdot).catch(() => []),
+    loadRecentTestPoints(userUuid).catch(() => []),
   ]);
   const transitions = composeTransitions(status, driftSignals);
 
@@ -945,15 +949,49 @@ async function computeOverPerformanceBonus(
  *  shake-out doesn't accidentally clear a planned tempo. */
 async function loadNextTestPoints(
   userUuid: string,
-  /** Current VDOT · drives the pass-criteria T-pace. Null → no criteria. */
-  vdot: number | null = null,
+  /** Retained for the recent-test-point sibling's signature parity. NO LONGER
+   *  prices the threshold — see the THRESHOLD-OWNER-2 note below. */
+  _vdot: number | null = null,
 ): Promise<GoalProjection['nextTestPoints']> {
   const today = await runnerToday(userUuid);
   // 2026-06-09 Phase 2 (3.3) · pass criteria for T-pace test points.
   // paceMax = T + 10 (the exact slow edge detectTempoPaceDrift tolerates
   // before counting drift); hrMax = 0.975 × LTHR (at-or-under threshold ·
   // same line the tune-up's pass note uses). Computed once per call.
-  const tPace = tPaceFromVdot(vdot);
+  //
+  // THRESHOLD-OWNER-2 (2026-09-05) · THE PASS BAR READS THE CANONICAL
+  // THRESHOLD. This was `tPaceFromVdot(vdot)` off a snapshot VDOT threaded
+  // from the caller — a second answer to "what can this runner hold at
+  // threshold", measured live at 431 s/mi against the canonical 430 on the
+  // owner's account, 2026-09-05. One second that day; unbounded by
+  // construction, because the two numbers come off different anchors and
+  // nothing made them agree.
+  //
+  // It matters more here than the size of the gap suggests: this is the bar a
+  // threshold session is PASSED or FAILED against, and that verdict is
+  // evidence the capacity resolver itself later reads. Grading the runner
+  // against a threshold the engine does not believe is how a belief gets
+  // corroborated by its own shadow.
+  //
+  // Rule 11: a refusal is a real answer. No anchors → no criteria, exactly as
+  // a null VDOT produced before.
+  // THREE FACTS, NOT ONE (Rule 11). The anchors REFUSING (`ok: false` — the
+  // runner cannot be priced yet) and the READ FAILING are different, and a
+  // bare `.catch(() => null)` collapses them — which `check-coercion.sh`
+  // caught on this exact line the first time it was written. The pass bar is
+  // withheld either way, because grading a session against a threshold we do
+  // not have is worse than not grading it; but a FAILURE is logged so it can
+  // be seen, where a refusal is the resolver's own honest answer.
+  const anchorRead = await resolvePrescribedPaceAnchors(userUuid, today)
+    .catch((err: unknown) => {
+      console.error(
+        '[goal-projection/loadNextTestPoints] the canonical anchor read FAILED · '
+        + 'no pass criteria for this pass ·',
+        err instanceof Error ? err.message : err,
+      );
+      return null;
+    });
+  const tPace = anchorRead?.ok ? anchorRead.anchors.thresholdSecPerMi : null;
   const lthr = (await pool.query<{ lthr: number | null }>(
     `SELECT lthr FROM profile WHERE user_uuid = $1::uuid LIMIT 1`,
     [userUuid],
@@ -1187,20 +1225,37 @@ export function blendedOverallTargetSPerMi(phases: ExpandedPhase[]): number | nu
   return e ? e.timeS / e.distMi : null;
 }
 
-/** Easy pace for WU/CD in the blend. Canonical: T-pace from VDOT + 100
+/** Easy pace for WU/CD in the blend. Canonical: THE threshold + 100
  *  (midpoint of the spec-builder/derivePaces easy band T+80..T+120 ·
- *  Research/01-pace-zones-vdot.md). No-VDOT fallback anchors on the work
+ *  Research/01-pace-zones-vdot.md). No-threshold fallback anchors on the work
  *  target itself: tempo/threshold/tuneup targets ≈ T (PACE-T-1); intervals
  *  target = I = T−18 (derivePaces intervalSec). WU/CD carry ~30% of a
  *  quality day's distance, so a ±20 s/mi easy-pace error moves the blend
- *  ≤ ~6 s/mi — inside the band. Null only when both anchors are missing. */
+ *  ≤ ~6 s/mi — inside the band. Null only when both anchors are missing.
+ *
+ *  THRESHOLD-OWNER-2 (2026-09-05) · THE FIRST PARAMETER IS THE CANONICAL
+ *  THRESHOLD, NOT A VDOT. It was `vdot: number | null`, and the body opened
+ *  `tPaceFromVdot(vdot)` — the second of goal-projection's two threshold
+ *  owners, live at 431 s/mi against the canonical 430.
+ *
+ *  Migrating it meant changing the parameter rather than resolving inside,
+ *  and that is deliberate: this function is PURE and is called per session in
+ *  a loop by `judgeTestPointExecution`. Resolving the anchors here would put
+ *  a database read inside a pure grader and issue one per row. Both callers
+ *  already hold the canonical number — `reconstruct.ts` has it on `ctx` as
+ *  `tPaceSecPerMi` (put there by the F-5 migration, whose own header names
+ *  finishing this as the obvious next step), and `judgeTestPointExecution`
+ *  now takes it on its input where it took `vdot`.
+ *
+ *  Naming it `tPaceSecPerMi` matches `reconstruct.ts` and `execution/load.ts`
+ *  exactly, so Rule 16's "one quantity, one name" holds across the seam
+ *  rather than stopping at the module boundary. */
 export function easyPaceForBlend(
-  vdot: number | null,
+  tPaceSecPerMi: number | null,
   type: string,
   targetS: number | null,
 ): number | null {
-  const t = tPaceFromVdot(vdot);
-  if (t != null) return t + 100;
+  if (tPaceSecPerMi != null && tPaceSecPerMi > 0) return tPaceSecPerMi + 100;
   if (targetS == null || targetS <= 0) return null;
   return type === 'intervals' ? targetS + 118 : targetS + 100;
 }
@@ -1234,7 +1289,11 @@ export function judgeTestPointExecution(input: {
   spec: WorkoutSpec;
   plannedDistanceMi: number | null;
   actualDistanceMi: number | null;
-  vdot: number | null;
+  /** THE canonical threshold, from `resolvePrescribedPaceAnchors`. Was
+   *  `vdot: number | null`, which this function turned into a threshold of
+   *  its own (THRESHOLD-OWNER-2). Null is a real answer: no threshold, no
+   *  spec-derived blend, and the grader falls to its target-anchored rung. */
+  tPaceSecPerMi: number | null;
   heatSlowdownPct: number;
   /** VERDICT-1 · THE canonical grade for the day, when the caller resolved
    *  one. Rung 1 reads it; a session graded `executed` is `on`, one graded
@@ -1305,7 +1364,7 @@ export function judgeTestPointExecution(input: {
     return { actualS: overallS ?? null, verdict: null, basis: null };
   }
 
-  const easyPaceSec = easyPaceForBlend(input.vdot, type, targetS);
+  const easyPaceSec = easyPaceForBlend(input.tPaceSecPerMi, type, targetS);
   const phases = (input.spec && easyPaceSec != null)
     ? expandSpecToPhases({
         spec: input.spec,
@@ -1411,12 +1470,37 @@ export function judgeTestPointExecution(input: {
  */
 export async function loadRecentTestPoints(
   userUuid: string,
-  vdot: number | null,
   limit = 3,
   sinceISO: string | null = null,
   includeArchivedPlans = false,
 ): Promise<GoalProjection['recentTestPoints']> {
   const today = await runnerToday(userUuid);
+  /* THRESHOLD-OWNER-2 (2026-09-05) · THE `vdot` PARAMETER IS GONE, not merely
+   * unused. It was threaded from three call sites in `lib/adaptation/load.ts`
+   * and one in this file, and every one of them handed a snapshot VDOT that
+   * `easyPaceForBlend` turned into a threshold of its own — 431 s/mi against
+   * the canonical 430 on the owner's account, 2026-09-05.
+   *
+   * Deleting the parameter rather than ignoring it is the point: an inert
+   * parameter is a side door with a "do not use" sign on it, and Rule 20's
+   * whole lesson is that a sign is not a gate. With the parameter gone, a
+   * caller CANNOT supply a competing anchor — the compiler refuses.
+   *
+   * Resolved ONCE per call, not per row: the grader below runs in a loop and
+   * the anchors are a property of the runner, not of the session. */
+  // Same three facts, same reason as `loadNextTestPoints` above. A null here
+  // drops the grader to its target-anchored rung rather than inventing an
+  // easy band, and a FAILED read says so out loud.
+  const anchorRead = await resolvePrescribedPaceAnchors(userUuid, today)
+    .catch((err: unknown) => {
+      console.error(
+        '[goal-projection/loadRecentTestPoints] the canonical anchor read FAILED · '
+        + 'sessions grade on the target-anchored rung ·',
+        err instanceof Error ? err.message : err,
+      );
+      return null;
+    });
+  const tPaceSecPerMi = anchorRead?.ok ? anchorRead.anchors.thresholdSecPerMi : null;
   // 2026-07-06 · audit P1-11 · runner-local day bucketing for ci.ts
   // (see computeOverPerformanceBonus).
   const ciTz = await runnerTimezoneOrPacific(userUuid);
@@ -1575,7 +1659,7 @@ export async function loadRecentTestPoints(
       spec: r.workout_spec ?? null,
       plannedDistanceMi: dist,
       actualDistanceMi: r.distance_actual != null ? Number(r.distance_actual) || null : null,
-      vdot,
+      tPaceSecPerMi,
       heatSlowdownPct,
       grade: r.work_phases != null
         ? resolveWorkoutVerdict({

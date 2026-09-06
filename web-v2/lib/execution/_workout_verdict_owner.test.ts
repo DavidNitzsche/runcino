@@ -571,7 +571,7 @@ describe('VERDICT-2 · the twelve workout types, every consumer agreeing', () =>
           rawSplits: null, splitsUnreliable: false,
           spec: (f.spec ?? null) as unknown as WorkoutSpec,
           plannedDistanceMi: f.plannedMi, actualDistanceMi: f.plannedMi,
-          vdot: null, heatSlowdownPct: 0, grade,
+          tPaceSecPerMi: null, heatSlowdownPct: 0, grade,
         });
         expect(tp.verdict).toBe(f.expect.testPoint);
         // And never contradicts the session: an executed session is not `slow`,
@@ -704,7 +704,7 @@ describe('VERDICT-3 · the owner s 2026-09-01 4×1 mi, on every consumer', () =>
     expect(judgeTestPointExecution({
       type: 'threshold', targetS: 430, watchWorkS: 423, overallS: 483, rawSplits: null, splitsUnreliable: false,
       spec: { kind: 'threshold' } as unknown as WorkoutSpec, plannedDistanceMi: 8.5, actualDistanceMi: 8.5,
-      vdot: null, heatSlowdownPct: 0, grade,
+      tPaceSecPerMi: null, heatSlowdownPct: 0, grade,
     }).verdict).toBe('on');
     const a = actualStimulus(asRunData({ phases: REAL_4X1, status: 'completed' }), {
       basis: 'expanded-spec', workTargetSPerMi: 430,

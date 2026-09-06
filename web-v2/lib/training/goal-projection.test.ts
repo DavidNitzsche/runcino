@@ -146,7 +146,10 @@ const base = {
   spec: TEMPO_SPEC as Record<string, unknown>,
   plannedDistanceMi: 6.5,
   actualDistanceMi: 6.5,
-  vdot: null as number | null,
+  // THRESHOLD-OWNER-2 · was `vdot: null`. The grader now takes THE canonical
+  // threshold directly; null still exercises the target-anchored fallback
+  // rung, which is what the 520 easy pace above is derived from.
+  tPaceSecPerMi: null as number | null,
   heatSlowdownPct: 0,
 };
 
@@ -355,9 +358,25 @@ describe('P1-10 helpers', () => {
     expect(Math.round(blendedOverallTargetSPerMi(phases)!)).toBe(458); // 2980 / 6.5
   });
 
-  it('easyPaceForBlend · target-anchored fallback when vdot is unknown', () => {
+  it('easyPaceForBlend · target-anchored fallback when the threshold is unknown', () => {
     expect(easyPaceForBlend(null, 'tempo', 420)).toBe(520);       // T + 100
     expect(easyPaceForBlend(null, 'intervals', 402)).toBe(520);   // I = T−18 → +118
     expect(easyPaceForBlend(null, 'tempo', null)).toBeNull();     // never invent
+  });
+
+  it('easyPaceForBlend · THE canonical threshold anchors it when present', () => {
+    // THRESHOLD-OWNER-2 · the first parameter IS the threshold now, not a
+    // VDOT. Asserted directly rather than through the Daniels table, because
+    // routing it back through `tPaceFromVdot` here would reintroduce exactly
+    // the second derivation this migration removed (Rule 18: a check that
+    // hardcodes both sides only proves it agrees with itself).
+    expect(easyPaceForBlend(430, 'tempo', 420)).toBe(530);   // canonical 430 + 100
+    expect(easyPaceForBlend(430, 'intervals', 402)).toBe(530);
+    // The threshold WINS over the target-anchored fallback whenever it is
+    // present — the fallback is a last resort, not a blend.
+    expect(easyPaceForBlend(430, 'tempo', 999)).toBe(530);
+    // A non-positive threshold is not a threshold. It falls through rather
+    // than pricing an easy day at 100 s/mi (Rule 11: zero is not a reading).
+    expect(easyPaceForBlend(0, 'tempo', 420)).toBe(520);
   });
 });

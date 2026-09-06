@@ -587,11 +587,14 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
       {
         module: 'lib/plan/seed-from-onboarding.ts',
         symbol: 'persistMaintenancePlan',
-        at: 'lib/plan/seed-from-onboarding.ts:564',
-        computes: 'The cold-start threshold for the very first plan, off a '
-          + 'measured or mileage-derived VDOT, inside the onboarding '
-          + 'transaction before the resolver can read the runner at all.',
-        canDisagree: true,
+        at: 'lib/plan/seed-from-onboarding.ts:574',
+        computes: 'ROUTED 2026-09-05 (THRESHOLD-OWNER-2). It priced the very '
+          + 'first plan with its own tPaceFromVdot(anchorVdot) ?? 480, live at '
+          + '472 s/mi against the canonical 430. It now calls '
+          + 'coldStartThresholdCapacity, which is composeThresholdCapacity '
+          + 'with a cold-start input — the canonical ladder\'s own rung 4, '
+          + 'which was built for exactly this case. It computes no threshold.',
+        canDisagree: false,
       },
       {
         module: 'lib/adaptation/canonical/levers/threshold-pace.ts',
@@ -605,7 +608,7 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
     surveyed: 'lib/training, lib/plan, lib/adaptation, lib/race for anything '
       + 'that produces a threshold pace.',
     conflict: {
-      verdict: 'OPEN',
+      verdict: 'ROUTED',
       between: [
         'lib/training/capacity-resolver.ts#resolveThresholdCapacity',
         'lib/training/vdot.ts#resolveCurrentTPace',
@@ -614,19 +617,31 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
       shouldOwn: 'lib/training/capacity-resolver.ts#resolveThresholdCapacity',
       because: 'Constitution 5 names this exact function as the one '
         + 'application-level answer, and it is the only one of the three '
-        + 'that carries confidence, source mode and evidence ids.',
-      notRoutedBecause: 'THE GOAL SIDE DOOR IS CLOSED (THRESHOLD-OWNER-1, '
-        + '2026-09-05). spec-builder.tPaceFromGoal was the third competitor '
-        + 'in this row and it is DELETED: it read the stated goal and '
-        + 'returned a threshold, measured live at 394 s/mi against the '
-        + 'canonical 430, and its last caller (adapt.ts single-row rebuild) '
-        + 'now reads resolvePrescribedPaceAnchors. The executed-run grader '
-        + '(execution/reconstruct.ts) was migrated in the same pass and three '
-        + 'dead imports of the legacy cascade were removed. What is left is '
-        + 'not a side door: resolveCurrentTPace survives only as rungs 2-4 '
-        + 'the canonical resolver itself calls, and the seeder answers before '
-        + 'any belief exists. lib/training/_threshold_owner_scan.test.ts is '
-        + 'now the gate on this row and fails when a new owner appears.',
+        + 'that carries confidence, source mode and evidence ids. '
+        + 'ROUTED BY THRESHOLD-OWNER-2 (2026-09-05). THRESHOLD-OWNER-1 had '
+        + 'closed the goal side door (spec-builder.tPaceFromGoal, 394 s/mi off '
+        + 'the stated 3:00 goal, DELETED and guarded as removed) and left '
+        + 'three owners standing. Measured live on the owner\'s account '
+        + 'before this pass: canonical 430, goal-projection 431 at two sites, '
+        + 'seeder 472 — three distinct live answers, widest pair 42 s/mi. All '
+        + 'three are readers now. goal-projection:956 is the bar a threshold '
+        + 'session is PASSED against, which matters more than 1 s/mi suggests '
+        + 'because that verdict becomes evidence the capacity resolver itself '
+        + 'later reads; it calls resolvePrescribedPaceAnchors. '
+        + 'goal-projection:1202 (easyPaceForBlend) takes the canonical '
+        + 'threshold as its first parameter, and loadRecentTestPoints no '
+        + 'longer HAS a vdot parameter for a caller to thread one through — '
+        + 'deleted rather than ignored, because an inert parameter is a side '
+        + 'door with a sign on it. seed-from-onboarding:574 calls '
+        + 'coldStartThresholdCapacity, which is composeThresholdCapacity with '
+        + 'a cold-start input: the canonical ladder\'s own rung 4, built for '
+        + 'exactly that case. resolveCurrentTPace survives ONLY as rungs 2-4 '
+        + 'the canonical resolver itself calls. '
+        + 'lib/training/_threshold_owner_scan.test.ts holds this row — its '
+        + 'OPEN list is empty and ratcheted, and its test 8 asserts each '
+        + 'closed site READS the canonical rather than merely not producing '
+        + 'one.',
+      notRoutedBecause: '',
     },
     movesUpOn: [
       {

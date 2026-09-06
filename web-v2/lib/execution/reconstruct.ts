@@ -263,7 +263,11 @@ export interface PlannedRead {
  */
 export function plannedStimulus(
   session: PlannedSession,
-  ctx: { vdot: number | null },
+  /* THRESHOLD-OWNER-2 · `{ vdot }` became `{ tPaceSecPerMi }`. The only thing
+   * this ctx was ever used for is the easy band `expandPlanned` prices the
+   * spec against, and that band now comes off THE canonical threshold —
+   * the same number `actualStimulus` beside it already took. */
+  ctx: { tPaceSecPerMi: number | null },
 ): PlannedRead | null {
   const domain = plannedDomain(session.type, session.spec);
 
@@ -288,7 +292,7 @@ export function plannedStimulus(
   }
 
   /* 2 · the app's single spec expander. */
-  const phases = expandPlanned(session, ctx.vdot);
+  const phases = expandPlanned(session, ctx.tPaceSecPerMi);
   if (phases) {
     const work = summariseExpandedWork(phases);
     if (work != null) {
@@ -329,10 +333,16 @@ export function plannedStimulus(
   return null;
 }
 
-/** `expandSpecToPhases` with the easy anchor every other consumer uses. */
-function expandPlanned(session: PlannedSession, vdot: number | null): ExpandedPhase[] | null {
+/** `expandSpecToPhases` with the easy anchor every other consumer uses.
+ *
+ *  THRESHOLD-OWNER-2 (2026-09-05) · takes THE canonical threshold, where it
+ *  took a `vdot`. `actualStimulus`'s header named this as the open half of
+ *  the F-5 migration — the domain a run was CLASSIFIED into came off the
+ *  canonical anchors while the easy band it was expanded against came off a
+ *  VDOT, two answers eleven lines apart in the same call. They are one now. */
+function expandPlanned(session: PlannedSession, tPaceSecPerMi: number | null): ExpandedPhase[] | null {
   if (!session.spec) return null;
-  const easyPaceSec = easyPaceForBlend(vdot, String(session.type ?? ''), session.paceTargetSPerMi);
+  const easyPaceSec = easyPaceForBlend(tPaceSecPerMi, String(session.type ?? ''), session.paceTargetSPerMi);
   if (easyPaceSec == null) return null;
   return expandSpecToPhases({
     spec: session.spec,
@@ -485,7 +495,7 @@ export function actualStimulus(
   /* 2 · splits, windowed to the contiguous work block. Only resolves a single
    *     block — mile splits cannot see sub-mile reps between jog recoveries. */
   if (runData.splits_unreliable !== true) {
-    const expanded = expandPlanned(session, ctx.vdot);
+    const expanded = expandPlanned(session, ctx.tPaceSecPerMi);
     const splits = normalizePaceSplits(runData.splits);
     if (expanded && splits.length >= 2) {
       const window = contiguousWorkWindowMi(expanded);

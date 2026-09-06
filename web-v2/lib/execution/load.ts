@@ -201,7 +201,14 @@ export async function loadKeySessionExecutions(
       paceTargetSPerMi: row.pace_target_s_per_mi == null ? null : Number(row.pace_target_s_per_mi),
       spec: (row.workout_spec ?? null) as WorkoutSpec,
     };
-    const planned = plannedStimulus(session, { vdot });
+    // THRESHOLD-OWNER-2 · the planned side reads the SAME canonical threshold
+    // the actual side four lines below already did. Before this, one call
+    // priced the plan's easy band off a VDOT and the next priced the run's
+    // domain off the canonical anchors — the divergence `actualStimulus`'s
+    // header named as the obvious next migration.
+    const planned = plannedStimulus(session, {
+      tPaceSecPerMi: anchors?.thresholdSecPerMi ?? null,
+    });
     const matchedRun = resolvedDays.get(row.date_iso)?.prescriptions
       .find((p) => p.id === row.id)?.matchedRun ?? null;
     const runData = matchedRun ? matchedRun.data : null;

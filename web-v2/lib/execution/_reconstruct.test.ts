@@ -177,7 +177,7 @@ describe('planned stimulus', () => {
         },
       },
       type: 'threshold',
-    }), { vdot: VDOT });
+    }), { tPaceSecPerMi: T_PACE });
     expect(r?.basis).toBe('progression-spec');
     expect(r?.stimulus.workMinutes).toBe(35);
     expect(r?.stimulus.recoveryIntent).toBe('incomplete');
@@ -185,7 +185,7 @@ describe('planned stimulus', () => {
   });
 
   it('falls back to the app s own spec expander · work phases only', () => {
-    const r = plannedStimulus(tempoSession(), { vdot: VDOT });
+    const r = plannedStimulus(tempoSession(), { tPaceSecPerMi: T_PACE });
     expect(r?.basis).toBe('expanded-spec');
     // 4 miles of tempo — the warm-up and cool-down are not the stimulus.
     expect(r?.stimulus.workMi).toBeCloseTo(4, 2);
@@ -197,7 +197,7 @@ describe('planned stimulus', () => {
   it('abstains rather than claim a quality day was eight miles at threshold', () => {
     // The plan row's distance is the WHOLE run and its pace is the WORK pace.
     // Reading them together is how "8 mi @ 6:59" gets invented.
-    const r = plannedStimulus(tempoSession({ spec: null }), { vdot: VDOT });
+    const r = plannedStimulus(tempoSession({ spec: null }), { tPaceSecPerMi: T_PACE });
     expect(r).toBeNull();
   });
 
@@ -205,7 +205,7 @@ describe('planned stimulus', () => {
     const r = plannedStimulus({
       dateISO: '2026-07-12', type: 'long', isQuality: false, isLong: true,
       distanceMi: 12, paceTargetSPerMi: 480, spec: null,
-    }, { vdot: VDOT });
+    }, { tPaceSecPerMi: T_PACE });
     expect(r?.basis).toBe('plan-row');
     expect(r?.stimulus.workMi).toBe(12);
     expect(r?.stimulus.domain).toBe('easy');
@@ -215,7 +215,7 @@ describe('planned stimulus', () => {
 /* ════════════════════════════════════════════════════ actual stimulus */
 
 describe('actual stimulus', () => {
-  const planned = plannedStimulus(tempoSession(), { vdot: VDOT })!;
+  const planned = plannedStimulus(tempoSession(), { tPaceSecPerMi: T_PACE })!;
 
   /** The live 2026-07-07 row, trimmed to the fields that matter. */
   const watchRow = asRunData({
@@ -268,7 +268,7 @@ describe('actual stimulus', () => {
     const longPlanned = plannedStimulus({
       dateISO: '2026-07-12', type: 'long', isQuality: false, isLong: true,
       distanceMi: 12, paceTargetSPerMi: 480, spec: null,
-    }, { vdot: VDOT })!;
+    }, { tPaceSecPerMi: T_PACE })!;
     const a = actualStimulus(
       asRunData({ date: '2026-07-12', distanceMi: 12.6, movingTimeS: 6276 }),
       longPlanned,
