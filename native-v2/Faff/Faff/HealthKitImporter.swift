@@ -372,12 +372,11 @@ final class HealthKitImporter: ObservableObject {
         // server dedupes on (user, type, date, recorded_at).
         var sampleOk = 0, sampleFail = 0
         let samples = await collectVitalSamples(daysBack: daysBack)
-        // 2026-06-01 round 6 · break out active_energy specifically so
-        // the re-sync toast surfaces whether per-bucket samples are
-        // actually flowing. Backend smoke saw 1/day instead of the
-        // expected 100s/day; this lets a future re-sync confirm in one
-        // tap whether the iPhone is silently dropping the per-bucket
-        // payload or HK simply doesn't have the data.
+        // active_energy is now ONE ROW PER DAY (REQUESTSTORM-2) — see
+        // `activeEnergyDailyTotals`. So this count is DAYS COVERED, not
+        // buckets: on a 7-day import it should read 0-7, and a 7 means HK
+        // had energy on every day in the window. It used to read in the
+        // thousands, which is the flood this change removed.
         let activeEnergyCount = samples.filter { $0.sample_type == "active_energy" }.count
         let sleepStageCount = samples.filter { $0.sample_type.hasPrefix("sleep_") && $0.sample_type.hasSuffix("_minutes") }.count
         // 2026-06-02 round 42 · stash the most-recent sleep_hours row so
@@ -422,10 +421,15 @@ final class HealthKitImporter: ObservableObject {
         // makes the next debug iteration immediate · if active_energy
         // shows 0 here, we know HK is returning empty regardless of
         // server-side state.
-        if activeEnergyCount > 0 { summary += " · \(activeEnergyCount) kcal samples" }
+        if activeEnergyCount > 0 { summary += " · \(activeEnergyCount) kcal days" }
         if sleepStageCount > 0 { summary += " · \(sleepStageCount) sleep" }
         if strengthResult.posted > 0 || strengthResult.deleted > 0 {
             summary += " · \(strengthResult.posted)↑/\(strengthResult.deleted)↓ strength"
+        } else if strengthResult.skippedUnchanged > 0 {
+            // REQUESTSTORM-2 · "we looked and nothing needed sending" is a
+            // different fact from "we found nothing," and the steady state
+            // after this change is the former. Say which.
+            summary += " · \(strengthResult.skippedUnchanged) strength unchanged"
         }
         if anyFail > 0 { summary += " · \(anyFail) failed" }
         lastMessage = summary
@@ -1177,7 +1181,11 @@ final class HealthKitImporter: ObservableObject {
     // MARK: - Daily vitals (P27.1)
 
     /// One sample as the /api/ingest/health endpoint expects.
-    private struct VitalSample: Encodable {
+    ///
+    /// Internal, not private, so `ActiveEnergyAggregationTests` can assert on
+    /// what `activeEnergyDailyRows` produces. Rule 18: a gate that cannot see
+    /// the value it is checking is not a gate.
+    struct VitalSample: Encodable {
         let sample_type: String
         let value: Double
         let sample_date: String     // yyyy-MM-dd · PT for HK auto-sync (isoDay), device-local for manual log (isoDayLocal)
@@ -1386,15 +1394,12 @@ final class HealthKitImporter: ObservableObject {
                 ))
             }
         }
-        // active_energy — TIME-SERIES, not a daily scalar. HK ships ~15-second
-        // buckets during workouts and sparser passive samples between. The
-        // backend's resolveCalories tier 2 sums these in the run's time window
-        // when the watch payload's `kcal` field is absent · the iPhone needs
-        // to upload buckets, not daily totals, for that path to work.
-        // Brief: designs/briefs/iphone-calories-and-absorption-brief.md
-        // (2026-06-01). Use HKSampleQuery (discrete samples) instead of
-        // HKStatisticsCollectionQuery (which would sum to a daily scalar).
-        for sample in await activeEnergySamples(daysBack: daysBack) {
+        // active_energy — ONE ROW PER DAY. See `activeEnergyDailyTotals`.
+        //
+        // REQUESTSTORM-2 (2026-09-05) · this used to append every raw HK
+        // bucket. It is the request flood, and it is also why the stored
+        // daily totals are wrong. The argument is in that function's header.
+        for sample in await activeEnergyDailyTotals(daysBack: daysBack) {
             out.append(sample)
         }
         // Cycle ingest · opt-in, gender-gated at the Settings layer.
@@ -1411,12 +1416,62 @@ final class HealthKitImporter: ObservableObject {
         return out
     }
 
-    /// Per-bucket active-energy samples from HK · maps each HKQuantitySample
-    /// to a VitalSample row. Bucket start = sample.startDate.
-    /// recorded_at carries millisecond precision so the server's dedupe
-    /// key `(user, type, date, recorded_at)` can distinguish ~15-second
-    /// buckets that fall in the same calendar second.
-    private nonisolated func activeEnergySamples(daysBack: Int) async -> [VitalSample] {
+    /// ONE active-energy row per calendar day: the day's total, summed on
+    /// the phone from HK's own buckets.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// REQUESTSTORM-2 (2026-09-05) · WHY THIS AGGREGATES, AND WHY SENDING
+    /// BUCKETS WAS BOTH THE REQUEST FLOOD AND A DATA-CORRUPTION BUG.
+    ///
+    /// This function used to return every raw HK bucket. Measured on the
+    /// owner's phone, TestFlight 282: one import posted **21 sequential
+    /// `POST /api/ingest/health` requests** (entries #71-#91 of a 98-request
+    /// log). `postHealthSamples` chunks at 500, so that is 10,001-10,500
+    /// samples in one import, of which ~10,300 were active-energy buckets —
+    /// about 1,470 per day over a 7-day window, which is exactly the rate a
+    /// worn Apple Watch emits them at.
+    ///
+    /// THE PAYLOAD HAD NO READER. The reason given for shipping buckets was
+    /// `resolveCalories` tier 2, which summed them inside a run's window.
+    /// That tier was DELETED on 2026-08-24 — see the header of
+    /// `web-v2/lib/runs/energy.ts`, and `energy.test.ts` asserts it stays
+    /// deleted. The only surviving consumer is `lib/coach/health-state.ts`,
+    /// which does `SUM(value) GROUP BY sample_date`: a daily total. And
+    /// `health_samples` carries UNIQUE (user_id, sample_type, sample_date),
+    /// so one row per day is all the table can physically hold — prod,
+    /// 2026-09-05: 135 active_energy rows, 135 distinct dates, never two for
+    /// one day.
+    ///
+    /// AND THE CHUNKING SILENTLY DESTROYED THE TOTAL. The server
+    /// pre-aggregates active_energy by date, but it does so PER REQUEST
+    /// BODY, and the upsert is last-write-wins. Splitting one day across up
+    /// to 21 bodies means the stored total is whatever the LAST chunk
+    /// holding that date happened to contribute. Measured in production,
+    /// same day, over the owner's 135 stored days:
+    ///
+    ///     54 of 135 days below 100 kcal · 37 below 20 kcal
+    ///     2026-08-23:  11.4 kcal stored, on a day he ran 11.01 miles
+    ///     2026-07-14:   2.1 kcal stored, on a day he ran  8.02 miles
+    ///     2026-08-24:   1.1 kcal stored, on a day he ran  4.02 miles
+    ///     2026-08-17:   0.1 kcal stored
+    ///
+    /// Summing here fixes both at once, and it is not a throttle: the phone
+    /// sends less because there was never anything on the other end that
+    /// wanted more. One import's health payload drops from ~10,300 samples
+    /// to ~137 — a single POST — and the day's total arrives whole, in one
+    /// body, where no chunk boundary can cut it.
+    ///
+    /// The day key is `isoDay(sample.startDate)`, deliberately the SAME
+    /// function the per-bucket path used, so the calendar-day bucketing the
+    /// server has been storing does not move underneath this change. It is
+    /// hardcoded to America/Los_Angeles for HK auto-sync — see `isoDay`.
+    ///
+    /// Rule 11: a day HK has no samples for emits NO ROW, so "no data" stays
+    /// distinguishable from a measured zero. Exact-zero buckets are still
+    /// dropped (HK emits them during pure idle), but a day whose buckets are
+    /// all zero still produces no row rather than a `0` that would read as a
+    /// measurement.
+    private nonisolated func activeEnergyDailyTotals(daysBack: Int) async -> [VitalSample] {
         let kcal = HKUnit.kilocalorie()
         let start = Calendar.current.date(byAdding: .day, value: -daysBack, to: Date()) ?? Date()
         let pred = HKQuery.predicateForSamples(withStart: start, end: Date(), options: .strictStartDate)
@@ -1444,14 +1499,58 @@ final class HealthKitImporter: ObservableObject {
         // emit more). Strict `> 0` keeps every real sample, drops only
         // the explicit zero markers HK emits during pure idle, and the
         // server's resolveCalories tier 2 sums them in the run's window.
-        return samples.compactMap { s in
-            let v = s.quantity.doubleValue(for: kcal)
-            guard v > 0 else { return nil }
+        return Self.activeEnergyDailyRows(
+            buckets: samples.map { (kcalValue: $0.quantity.doubleValue(for: kcal), start: $0.startDate) },
+            dayKey: isoDay,
+            stamp: isoUTCMillis
+        )
+    }
+
+    /// One active-energy row per calendar day. The PURE half of
+    /// `activeEnergyDailyTotals`, split out so a test can drive it without a
+    /// HealthKit store — same reasoning as `splitsVerdict` and `pauseRanges`
+    /// elsewhere in this file, and the reason the old per-bucket behaviour
+    /// could never be unit-tested at all.
+    ///
+    /// Rule 18 · falsify by putting the buckets back: return one row per
+    /// bucket instead of per day and `ActiveEnergyAggregationTests` names it.
+    ///
+    /// `stamp` receives the day's LATEST bucket start, so `recorded_at`
+    /// points at a moment the energy was actually spent rather than at the
+    /// ingest instant — the failure `web-v2/lib/runs/energy.ts` documents
+    /// when it explains why the old daily row's timestamp was useless
+    /// ("every one of David's 123 rows is stamped 2026-08-25 02:58 UTC, the
+    /// second his phone synced").
+    ///
+    /// Rule 11 · a day whose buckets are all zero or negative emits NO ROW,
+    /// not a `0`. "HK has nothing for this day" and "he burned nothing" are
+    /// different facts and the server must not be handed the second when the
+    /// first is true.
+    nonisolated static func activeEnergyDailyRows(
+        buckets: [(kcalValue: Double, start: Date)],
+        dayKey: (Date) -> String,
+        stamp: (Date) -> String
+    ) -> [VitalSample] {
+        var totalByDay: [String: Double] = [:]
+        var latestStartByDay: [String: Date] = [:]
+        for b in buckets {
+            guard b.kcalValue > 0 else { continue }
+            let day = dayKey(b.start)
+            totalByDay[day, default: 0] += b.kcalValue
+            if let seen = latestStartByDay[day] {
+                if b.start > seen { latestStartByDay[day] = b.start }
+            } else {
+                latestStartByDay[day] = b.start
+            }
+        }
+        return totalByDay.keys.sorted().compactMap { day -> VitalSample? in
+            guard let total = totalByDay[day], total > 0,
+                  let latest = latestStartByDay[day] else { return nil }
             return VitalSample(
                 sample_type: "active_energy",
-                value: (v * 100).rounded() / 100,
-                sample_date: isoDay(s.startDate),
-                recorded_at: isoUTCMillis(s.startDate)
+                value: (total * 10).rounded() / 10,
+                sample_date: day,
+                recorded_at: stamp(latest)
             )
         }
     }
@@ -1730,7 +1829,11 @@ final class HealthKitImporter: ObservableObject {
         // silently 401'ing and the runner's sleep/HRV/RHR never reached
         // the server. Route through authedSend so the same Bearer +
         // .faffSessionExpired contract that surface reads use applies here.
-        let (data, http) = try await API.authedSend(req)
+        //
+        // REQUESTSTORM-2 · `announcesReachability: false` — background
+        // housekeeping does not get to tell the runner his screen is stale.
+        // It still throws, and importRecent still counts it as a failure.
+        let (data, http) = try await API.authedSend(req, announcesReachability: false)
         guard (200..<300).contains(http.statusCode) else {
             let bodyStr = String(data: data, encoding: .utf8) ?? "<unreadable>"
             print("[HKImporter] POST /api/ingest/health \(http.statusCode): \(bodyStr)")
@@ -1779,6 +1882,14 @@ final class HealthKitImporter: ObservableObject {
     /// the delete-diff guard against silently deleting sessions that merely
     /// aged out of the 28-day query window (P-7, 2026-06-10).
     private let strengthDateCacheKey  = "faff.health.strength.dates.v2"
+    /// REQUESTSTORM-2 · UUID → the content fingerprint (`date|type|minutes`)
+    /// of the payload most recently CONFIRMED landed. A session whose
+    /// fingerprint still matches is not re-POSTed; a session whose duration
+    /// or type changed in Apple Fitness has a different fingerprint and
+    /// posts again. Distinct from `strengthUUIDCacheKey`, which answers the
+    /// delete-diff's question ("does HK still have this?") and not this one
+    /// ("has the server already been told THIS version?").
+    private let strengthSentFingerprintKey = "faff.health.strength.sent.v1"
 
     /// Per-sync rollup returned to the parent importRecent so it can
     /// shape the user-facing status string.
@@ -1786,6 +1897,10 @@ final class HealthKitImporter: ObservableObject {
         var posted: Int = 0
         var deleted: Int = 0
         var failed: Int = 0
+        /// Sessions already on the server with an identical payload. Counted
+        /// separately from `posted` so a sync that correctly sends NOTHING is
+        /// visibly different from one that found nothing to send.
+        var skippedUnchanged: Int = 0
     }
 
     private func syncStrengthFromHK() async -> StrengthSyncResult {
@@ -1797,11 +1912,38 @@ final class HealthKitImporter: ObservableObject {
         // "deleted in Apple Fitness" from "aged out of the 28-day window".
         var freshUUIDs = Set<String>()
         var freshStartTimes: [String: Double] = [:]
+        // REQUESTSTORM-2 (2026-09-05) · DON'T RE-POST A SESSION THAT HAS NOT
+        // CHANGED.
+        //
+        // This loop used to POST every strength workout in the 28-day window
+        // on EVERY import — measured on the owner's phone at 5 identical
+        // `/api/strength` POSTs per foreground, forever, alongside the health
+        // flood. The UUID cache it needed was already being written two
+        // dozen lines below; it was only ever read by the delete-diff.
+        //
+        // Keyed on uuid + a CONTENT FINGERPRINT, not on uuid alone. A
+        // uuid-only skip would mean a session the runner edits in Apple
+        // Fitness (corrected duration, retyped activity) never reaches the
+        // server again — trading a flood for silent staleness, which is the
+        // worse of the two. The fingerprint is exactly the fields the POST
+        // carries, so "the payload is unchanged" and "we may skip" are the
+        // same statement.
+        //
+        // Rule 11: a MISSING fingerprint (first run after this ships, or a
+        // uuid the cache has never seen) is not "unchanged" — it posts. The
+        // skip requires a positive match against a stored value.
+        var sentFingerprints = (UserDefaults.standard.dictionary(forKey: strengthSentFingerprintKey) as? [String: String]) ?? [:]
+        var skippedUnchanged = 0
         for w in workouts {
             let uuid = w.uuid.uuidString
             freshUUIDs.insert(uuid)
             freshStartTimes[uuid] = w.startDate.timeIntervalSinceReferenceDate
             guard let payload = buildStrengthPayload(for: w) else { continue }
+            let fingerprint = "\(payload.date)|\(payload.session_type)|\(payload.duration_min)"
+            if sentFingerprints[uuid] == fingerprint {
+                skippedUnchanged += 1
+                continue
+            }
             do {
                 try await API.postStrengthFromHK(
                     date: payload.date,
@@ -1810,11 +1952,18 @@ final class HealthKitImporter: ObservableObject {
                     hkUUID: payload.hk_uuid
                 )
                 result.posted += 1
+                // Recorded ONLY after a confirmed 2xx. A failed POST leaves
+                // no fingerprint, so the next import retries it — a send-side
+                // skip must never be able to strand a session that never
+                // actually landed.
+                sentFingerprints[uuid] = fingerprint
             } catch {
                 result.failed += 1
+                sentFingerprints.removeValue(forKey: uuid)
                 print("[HKImporter] strength ingest failed \(uuid): \(error)")
             }
         }
+        result.skippedUnchanged = skippedUnchanged
 
         // SAFETY GUARD (2026-06-11) · never run the delete-diff when the
         // fresh HK query came back EMPTY. An empty result is overwhelmingly
@@ -1870,6 +2019,12 @@ final class HealthKitImporter: ObservableObject {
         for (uuid, t) in freshStartTimes { nextDates[uuid] = t }
         for key in nextDates.keys where !nextCache.contains(key) { nextDates.removeValue(forKey: key) }
         UserDefaults.standard.set(nextDates, forKey: strengthDateCacheKey)
+        // REQUESTSTORM-2 · fingerprints follow the same lifecycle: a uuid
+        // that has left the cache (deleted in Apple Fitness, or aged out) has
+        // no fingerprint either, so if it ever comes back it POSTS rather
+        // than being skipped against a stale record of a send.
+        for key in sentFingerprints.keys where !nextCache.contains(key) { sentFingerprints.removeValue(forKey: key) }
+        UserDefaults.standard.set(sentFingerprints, forKey: strengthSentFingerprintKey)
 
         return result
     }
@@ -2074,7 +2229,10 @@ final class HealthKitImporter: ObservableObject {
         // every HK-imported workout silently 401'd post-audit. Runs from
         // Apple Watch that aren't on Strava (treadmill, indoor) never
         // landed in workout_completions. Route through authedSend.
-        let (data, http) = try await API.authedSend(req)
+        //
+        // REQUESTSTORM-2 · background ingest, silent banner. See
+        // `API.authedSend`'s `announcesReachability`.
+        let (data, http) = try await API.authedSend(req, announcesReachability: false)
         guard (200..<300).contains(http.statusCode) else {
             let bodyStr = String(data: data, encoding: .utf8) ?? "<unreadable>"
             print("[HKImporter] POST /api/ingest/workout \(http.statusCode): \(bodyStr)")

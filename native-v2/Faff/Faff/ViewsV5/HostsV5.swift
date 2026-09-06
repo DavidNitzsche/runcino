@@ -3395,18 +3395,24 @@ struct RunLogHostV5: View {
 struct DecisionHistoryHostV5: View {
     @Environment(\.dismiss) private var dismiss
     @State private var state: DecisionHistoryV5.State = .loading
+    /// ACCEPTVOICE-1 · the server's reason a take-back was declined. Kept
+    /// apart from `state` because a refusal is an answer and an outage is
+    /// not — see `DecisionHistoryV5.undoRefusal`.
+    @State private var undoRefusal: String? = nil
 
     var body: some View {
         DecisionHistoryV5(state: state,
                           onBack: { dismiss() },
                           onRetry: { Task { await load() } },
-                          onUndo: { d in Task { await undo(d) } })
+                          onUndo: { d in Task { await undo(d) } },
+                          undoRefusal: undoRefusal)
             .task { await load() }
             .navigationBarBackButtonHidden(true)
     }
 
     private func load() async {
         state = .loading
+        undoRefusal = nil
         guard let fetched = try? await API.fetchDecisions() else {
             state = .failed
             return
@@ -3425,17 +3431,56 @@ struct DecisionHistoryHostV5: View {
     ///
     /// A refusal is NOT swallowed. `_ = try? await` would leave this screen
     /// exactly as it was and the runner would conclude the button does
-    /// nothing, which is the shape this whole change exists to remove. The
-    /// server's 409 means something else has moved the session since and the
-    /// undo would write over it; the failed state carries the outage copy
-    /// rather than a silent no-op.
+    /// nothing, which is the shape this whole change exists to remove.
+    ///
+    /// ACCEPTVOICE-1 (2026-09-05) · AND A REFUSAL IS NOT AN OUTAGE EITHER.
+    ///
+    /// This used to test only `answered?.ok` and put everything else into
+    /// `state = .failed`, which draws `OutageBodyV5` — "we could not reach
+    /// your coach" — and replaces the whole loaded history. The 409 it was
+    /// written for means the exact opposite: the coach answered, promptly and
+    /// clearly, and said no because something else has moved this session
+    /// since. `undoProposal` returns a tuple carrying `status` for precisely
+    /// this, and the status was captured and never read.
+    ///
+    /// Three endings, three renderings now: a transport failure is the
+    /// outage, a 409 keeps the record on screen under the reason, and any
+    /// other non-2xx is the outage because we do not know what it was.
     private func undo(_ d: V5Decision) async {
-        let answered = try? await API.undoProposal(id: d.id)
-        if answered?.ok != true {
+        undoRefusal = nil
+        let answered: (ok: Bool, status: Int)
+        do {
+            answered = try await API.undoProposal(id: d.id)
+        } catch {
             state = .failed
             return
         }
-        await load()
+        if answered.ok {
+            await load()
+            // The plan moved back, so the snapshot the week strip reads has
+            // to move with it (PLANSNAPSHOT-1's named trigger).
+            NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
+            // ACCEPTVOICE-1 · and TODAY has to hear about it too. Found by
+            // walking this in the simulator: after a successful take-back the
+            // decision was correctly STILL OPEN again on this screen, and
+            // Today went on showing no decision at all until the runner
+            // happened to pull to refresh. The proposal is pending again and
+            // Today is where it is answered, so Today is the surface that
+            // most needs to know. `load()` above only re-reads THIS screen.
+            NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+            return
+        }
+        if answered.status == 409 {
+            // The one sentence the phone is allowed to write on the engine's
+            // behalf, because the route answers 409 with machine text and
+            // this is what 409 MEANS here — stated in `undoProposal`'s own
+            // doc comment, which is the contract being honoured rather than
+            // a reason being invented.
+            undoRefusal = "Something else has moved this session since. "
+                + "Taking it back now would write over that change."
+            return
+        }
+        state = .failed
     }
 }
 

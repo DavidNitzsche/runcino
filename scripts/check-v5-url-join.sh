@@ -44,7 +44,13 @@
 #   UNCHECKED with the line number rather than passing them silently, because a
 #   scanner that quietly skips what it cannot read is how a gate ends up
 #   reporting clean on zero files (Rule 18).
-# · Any surface other than the v5 API client. One file, named below.
+# · A JOIN IDIOM OTHER THAN THESE TWO. `appendingPathComponent` call sites
+#   insert their own separator and are correct either way, so they are not
+#   examined; a third idiom introduced later would be invisible until this
+#   list is extended.
+# · Anything outside `native-v2/Faff/Faff`. The scope is every Swift file under
+#   that tree that performs the join, discovered at run time rather than named,
+#   so a new file is covered the day it starts concatenating.
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # FALSIFYING IT (Rule 18). Both directions have been run:
@@ -55,26 +61,48 @@
 set -uo pipefail
 cd "$(dirname "$0")/.."
 
-FILE="native-v2/Faff/Faff/DesignV5/APIV5.swift"
+# ACCEPTVOICE-1 (2026-09-05) · SCOPE IS DISCOVERED, NOT HARDCODED.
+#
+# This named ONE file. `ViewsV5/RescheduleV5.swift:255` performs the identical
+# `baseURL.absoluteString + "…"` concatenation and sat entirely outside the
+# scan — so the exact defect this gate exists for could be reintroduced there
+# and the gate would report OK. A gate whose scope is a literal filename is a
+# gate that only covers the file somebody happened to be looking at.
+#
+# So the scope is now every Swift file that performs the join. A new file that
+# starts concatenating is covered the day it does, with nothing to remember.
+ROOT="native-v2/Faff/Faff"
 fail=0
 
 # ── guard 0 · LIVENESS ───────────────────────────────────────────────────────
 # A scanner that reports clean because it read nothing is the worst outcome
 # available, because it also reports confidence.
-if [ ! -f "$FILE" ]; then
-  echo "check-v5-url-join: FAIL · $FILE does not exist. This gate has moved or the"
-  echo "  file was renamed; either way it is scanning nothing and must not pass."
+if [ ! -d "$ROOT" ]; then
+  echo "check-v5-url-join: FAIL · $ROOT does not exist. This gate has moved or the"
+  echo "  tree was renamed; either way it is scanning nothing and must not pass."
   exit 1
 fi
 
-joins=$(grep -c 'baseURL\.absoluteString +' "$FILE" || true)
-calls=$(grep -cE 'await v5\("' "$FILE" || true)
-if [ "$joins" -eq 0 ] && [ "$calls" -eq 0 ]; then
-  echo "check-v5-url-join: FAIL · found 0 concatenations and 0 v5() calls in $FILE."
-  echo "  The predicate no longer matches the code it was written against."
+FILES=$(grep -rlE 'baseURL\.absoluteString \+|await v5\("' "$ROOT" --include='*.swift' 2>/dev/null | sort || true)
+if [ -z "$FILES" ]; then
+  echo "check-v5-url-join: FAIL · found 0 files under $ROOT that concatenate onto"
+  echo "  baseURL.absoluteString or call v5(). The predicate no longer matches the"
+  echo "  code it was written against."
   exit 1
 fi
-echo "check-v5-url-join: scanning $FILE · ${joins} concatenation(s), ${calls} v5() call(s)"
+
+joins=0
+calls=0
+for FILE in $FILES; do
+  joins=$(( joins + $(grep -c 'baseURL\.absoluteString +' "$FILE" || true) ))
+  calls=$(( calls + $(grep -cE 'await v5\("' "$FILE" || true) ))
+done
+if [ "$joins" -eq 0 ] && [ "$calls" -eq 0 ]; then
+  echo "check-v5-url-join: FAIL · files matched but 0 concatenations and 0 v5() calls."
+  exit 1
+fi
+echo "check-v5-url-join: scanning $(printf '%s\n' $FILES | wc -l | tr -d ' ') file(s) · ${joins} concatenation(s), ${calls} v5() call(s)"
+printf '    %s\n' $FILES
 
 # ── guard 1 · every concatenated literal starts with "/" ─────────────────────
 #
@@ -101,6 +129,7 @@ echo "check-v5-url-join: scanning $FILE · ${joins} concatenation(s), ${calls} v
 # concatenation by name, look back up to 12 lines for that name's binding and
 # check the literal it was bound to.
 #
+for FILE in $FILES; do
 while IFS= read -r hit; do
   line="${hit%%:*}"
   text="${hit#*:}"
@@ -150,6 +179,7 @@ while IFS= read -r hit; do
       ;;
   esac
 done < <(grep -nE 'await v5\("' "$FILE" || true)
+done
 
 if [ "$fail" -ne 0 ]; then
   echo ""

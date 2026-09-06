@@ -225,6 +225,24 @@ extension API {
 
     enum V5RescheduleWrite {
         case applied(V5RescheduleApplied)
+        /// ACCEPTVOICE-1 (2026-09-05) · THE SERVER APPLIED IT AND WE COULD
+        /// NOT READ THE ANSWER.
+        ///
+        /// A 2xx whose body will not decode used to collapse into `.failed`,
+        /// and `.failed`'s copy is *"That did not go through, and nothing was
+        /// changed. Try again."* — a sentence asserting the opposite of what
+        /// happened, over a plan that HAD moved, ending in an invitation to
+        /// write it twice.
+        ///
+        /// This is the identical incident the `V5RescheduleUndo` comment
+        /// twelve lines down already records from 2026-09-02, in the function
+        /// immediately below the one that was fixed for it. The undo path got
+        /// its own decoder; the apply path kept the shape.
+        ///
+        /// Rule 11: a write that succeeded and a write that did not are
+        /// opposite facts and must not share a case. The runner is told the
+        /// change landed, and the block is re-synced, because it did.
+        case appliedUnreadable
         case refused(String)
         case failed
     }
@@ -236,6 +254,12 @@ extension API {
     /// device 2026-09-02, which is the whole of CLAUDE.md Rule 13.
     enum V5RescheduleUndo {
         case undone
+        /// ACCEPTVOICE-1 · the undo landed and the body did not decode. Same
+        /// argument as `V5RescheduleWrite.appliedUnreadable` above: `ok`
+        /// is optional on `RescheduleUndoBody`, so a 2xx from a server that
+        /// simply omits it used to return `.failed` and print "Your plan is
+        /// as the change left it." over a plan that had been put back.
+        case undoneUnreadable
         case refused(String)
         case failed
     }
@@ -295,8 +319,13 @@ extension API {
             withJSONObject: ["action": "undo", "decision_id": decisionId])
         let (data, http) = try await API.authedSend(req)
         if (200...299).contains(http.statusCode) {
-            let body = try? JSONDecoder().decode(RescheduleUndoBody.self, from: data)
-            return (body?.ok ?? false) ? .undone : .failed
+            // A 2xx IS the server saying it did the thing. What the body says
+            // only refines that; it cannot retract it.
+            guard let body = try? JSONDecoder().decode(RescheduleUndoBody.self, from: data) else {
+                return .undoneUnreadable
+            }
+            guard let ok = body.ok else { return .undoneUnreadable }
+            return ok ? .undone : .failed
         }
         if let r = try? JSONDecoder().decode(RescheduleRefusalBody.self, from: data),
            let text = r.text {
@@ -315,7 +344,7 @@ extension API {
             if let applied = try? JSONDecoder().decode(V5RescheduleApplied.self, from: data) {
                 return .applied(applied)
             }
-            return .failed
+            return .appliedUnreadable
         }
         if (400...599).contains(http.statusCode),
            let r = try? JSONDecoder().decode(RescheduleRefusalBody.self, from: data),
@@ -389,6 +418,16 @@ struct RescheduleSheetV5: View {
         case detail(String)
         /// RS-8 · what happened, and Undo.
         case done(V5RescheduleSummary)
+        /// ACCEPTVOICE-1 (2026-09-05) · the server applied it and we could not
+        /// read the answer.
+        ///
+        /// Separate from `.done` because there is no summary to show and — the
+        /// part that matters — no `decisionId`, so there is nothing Undo could
+        /// address. Drawing `.done` with an invented id would put a button on
+        /// screen that cannot work, which is a new lie in place of the old
+        /// one. Separate from `.outage` and from `refusal` because the change
+        /// LANDED, and both of those say it did not.
+        case doneUnreadable
         /// The engine answered and the answer is no.
         case absent(String)
         /// We could not reach the coach. Not the same thing.
@@ -415,6 +454,7 @@ struct RescheduleSheetV5: View {
         case .options: return "options"
         case .detail(let id): return "detail-\(id)"
         case .done(let s): return "done-\(s.decisionId)"
+        case .doneUnreadable: return "done-unreadable"
         case .absent: return "absent"
         case .outage: return "outage"
         }
@@ -428,6 +468,7 @@ struct RescheduleSheetV5: View {
             case .options:      optionsBody
             case .detail(let id): detailBody(id)
             case .done(let s):  doneBody(s)
+            case .doneUnreadable: doneUnreadableBody
             case .absent(let text): absentBody(text)
             case .outage:       outageBody
             }
@@ -466,6 +507,7 @@ struct RescheduleSheetV5: View {
                 ? "Ranked on the block as it stands. Mark the days that are out to narrow it."
                 : "Ranked on the days you can run."
         case .done:    return "Applied. You can put it back."
+        case .doneUnreadable: return "Applied."
         case .absent:  return "The coach has an answer, and it is no."
         case .outage:  return "The coach could not be reached."
         }
@@ -763,6 +805,26 @@ struct RescheduleSheetV5: View {
         }
     }
 
+    /// ACCEPTVOICE-1 · the change landed and the server's description of it
+    /// did not decode.
+    ///
+    /// It says the true thing and stops. No summary, because there is none.
+    /// No Undo, because Undo needs the `decisionId` that was inside the body
+    /// we could not read — and a button that cannot do what it says is worse
+    /// than its absence. The runner is pointed at the day itself, which is
+    /// where the answer actually is.
+    ///
+    /// It is emphatically NOT `outageBody`, whose copy is "Nothing was
+    /// changed." Saying that here was the defect: on 2026-09-02 the undo path
+    /// printed its equivalent over a plan that HAD been put back.
+    private var doneUnreadableBody: some View {
+        VStack(alignment: .leading, spacing: V5.S.s16) {
+            Alert(text: "The change went through. We could not read the details back, "
+                  + "so open the day to see it.", tone: .attention)
+            FaffButton("Close", variant: .primary, size: .lg) { onClose() }
+        }
+    }
+
     // ── refusal and outage are different facts ──────────────────────────
 
     private func absentBody(_ text: String) -> some View {
@@ -896,6 +958,13 @@ struct RescheduleSheetV5: View {
                 // PLANSNAPSHOT-1 · the block just changed under the runner's
                 // feet — a fresh sync is one of the named triggers.
                 NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
+            case .appliedUnreadable:
+                // It landed. Say so, re-sync the block, and do not invite a
+                // second write. `.done` needs a summary sentence and we do
+                // not have the server's, so the screen says the true thing it
+                // does know.
+                stage = .doneUnreadable
+                NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
             case .refused(let text): refusal = text
             case .failed: refusal = "That did not go through, and nothing was changed. Try again."
             }
@@ -910,6 +979,12 @@ struct RescheduleSheetV5: View {
         do {
             switch try await API.undoReschedule(decisionId: decisionId) {
             case .undone:
+                undone = true
+                NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
+            case .undoneUnreadable:
+                // Same as apply: a 2xx is the server saying it put the plan
+                // back. Treating it as a failure told the runner the opposite
+                // of the truth on 2026-09-02.
                 undone = true
                 NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
             case .refused(let text): refusal = text

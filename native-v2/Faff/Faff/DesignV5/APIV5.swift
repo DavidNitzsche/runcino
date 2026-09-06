@@ -1880,8 +1880,36 @@ extension API {
     /// Hits the SAME routes the v4 shell used, deliberately: the accept path
     /// re-applies the stored payload through `applyAdaptations` with its
     /// provenance chip, and duplicating it for V5 would be a second owner for
-    /// one decision. Returns true when the server accepted the answer.
-    static func answerProposal(id: String, accept: Bool) async throws -> Bool {
+    /// one decision.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// ACCEPTVOICE-1 (2026-09-05) · IT RETURNS `V5Write`, NOT `Bool`.
+    ///
+    /// It used to answer a bare `Bool` derived from the status code, and
+    /// discard the response body entirely (`let (_, http) = …`). So four
+    /// genuinely different endings arrived at the button as one `false`:
+    ///
+    ///   · the URL would not build, and nothing was sent
+    ///   · the request never reached the server
+    ///   · the engine REFUSED, in a sentence, and said why
+    ///   · the server broke
+    ///
+    /// Every other write in this file had already learned this — `V5Write`'s
+    /// own doc comment fifteen hundred lines down is the argument, and
+    /// `postRaceResultOutcome` is the worked example. This route was the last
+    /// one collapsing to a `Bool`, and it is the one behind the button the
+    /// whole adaptation loop ends at. A refusal the engine took the trouble to
+    /// word must not be thrown away at the transport.
+    ///
+    /// The URL-build failure now THROWS rather than returning a value. There
+    /// is no honest `V5Write` for "I did not send anything": `.failed` reads
+    /// as "we could not complete it", which is true, but it is the one case
+    /// where the fault is entirely ours and the caller should not present it
+    /// as an ordinary network ending. It cannot happen while
+    /// `scripts/check-v5-url-join.sh` holds, and if the gate ever stops
+    /// holding, a thrown error is louder than a swallowed `false` — which is
+    /// exactly how V5ACCEPTURL-1 survived as long as it did.
+    static func answerProposal(id: String, accept: Bool) async throws -> V5Write {
         /* ── V5ACCEPTURL-1 (2026-09-05) · THE LEADING SLASH ──────────────────
          *
          * This read `"api/plan/..."` with no separator, concatenated onto
@@ -1911,13 +1939,53 @@ extension API {
          * is what stops the third.
          */
         let path = "/api/plan/workout-proposals/\(id)/\(accept ? "accept" : "dismiss")"
-        guard let url = URL(string: API.baseURL.absoluteString + path) else { return false }
+        guard let url = URL(string: API.baseURL.absoluteString + path) else {
+            throw APIError.badStatus(-1)
+        }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = Data("{}".utf8)
-        let (_, http) = try await API.authedSend(req)
-        return (200...299).contains(http.statusCode)
+        let (data, http) = try await API.authedSend(req)
+        if (200...299).contains(http.statusCode) { return .ok }
+        if (400...499).contains(http.statusCode),
+           let r = try? JSONDecoder().decode(V5Refusal.self, from: data),
+           let text = r.refusal ?? r.reason, !text.isEmpty {
+            return .refused(text)
+        }
+        /* ── THE 409, WHICH IS THIS ROUTE'S ONE REAL REFUSAL ──────────────
+         *
+         * Observed against a scratch server, 2026-09-05, by moving the
+         * session under a pending card and then accepting it:
+         *
+         *     HTTP 409
+         *     {"ok":false,"error":"stale",
+         *      "detail":"workout wko_1cf8cd95971f2226 is now 9 mi"}
+         *
+         * That is not the v5 refusal shape, so the branch above cannot read
+         * it, and it fell through to `.failed` — "That did not go through,
+         * and nothing has changed. Try again." True about the plan, and
+         * useless: trying again produces the same 409 forever, because the
+         * decision was about a session that no longer exists.
+         *
+         * And `detail` must NEVER be printed. It names a row id and is
+         * machine text; the design contract does not allow it near a
+         * runner.
+         *
+         * So the STATUS is translated, not the body — exactly the posture
+         * `postRaceResultOutcome` takes for its 404 twenty lines up, and the
+         * one `undoProposal`'s 409 takes in `DecisionHistoryHostV5`. 409 has
+         * a single meaning on this route (the server's own check compares
+         * the proposal's recorded before-state against the live session), so
+         * the sentence is a translation of a fact the engine established,
+         * not a reason the phone invented.
+         */
+        if http.statusCode == 409 {
+            return .refused("This session has changed since the coach proposed it, "
+                            + "so the decision no longer fits. It will be raised again "
+                            + "against the session as it stands.")
+        }
+        return .failed
     }
 
     /// V5UNDO-1 · take one accepted decision back.
@@ -2379,8 +2447,41 @@ extension V5Today {
         notOnPhoneYet = c.opt(.notOnPhoneYet)
         paceNote = c.opt(.paceNote)
         blockNote = c.opt(.blockNote)
-        proposals = c.opt(.proposals)
-        proposalsRead = c.opt(.proposalsRead)
+        /* ── ACCEPTVOICE-1 (2026-09-05) · A MALFORMED PROPOSAL LIST IS A
+         * FAILED READ, NOT AN EMPTY ONE.
+         *
+         * These were `c.opt(...)`, which is `try?` — so a `proposals` key
+         * that was PRESENT and would not decode became `nil`, `pending`
+         * became `[]`, and `proposalsSection` drew nothing at all. The
+         * screen has a careful three-state guard directly above it
+         * (`proposalsRead == "failed"` renders "Any decision waiting on you
+         * did not load"), and the decoder underneath silently defeated it:
+         * the one state that must never be silent was the one a decode
+         * failure produced.
+         *
+         * The same `try?` on `proposalsRead` could lose the word "failed"
+         * itself, which is the guard's only input.
+         *
+         * Both now resolve to the honest answer the surface already knows how
+         * to draw. Absent stays absent — a payload with no `proposals` key is
+         * "nothing pending", which is different again and correctly silent.
+         */
+        var proposalsDecodeFailed = false
+        do {
+            proposals = try c.decodeIfPresent([V5Proposal].self, forKey: .proposals)
+        } catch {
+            proposals = nil
+            proposalsDecodeFailed = true
+        }
+        if proposalsDecodeFailed {
+            proposalsRead = "failed"
+        } else {
+            do {
+                proposalsRead = try c.decodeIfPresent(String.self, forKey: .proposalsRead)
+            } catch {
+                proposalsRead = "failed"
+            }
+        }
         sick = c.opt(.sick)
         race = c.opt(.race)
     }

@@ -228,6 +228,16 @@ struct TodayBeforeV5: View {
     /// handed and never re-reads: a "Details" that could disagree with the
     /// card it opened from would be Rule 16 inside one interaction.
     @State private var openProposalDetail: V5Proposal? = nil
+    /// ACCEPTVOICE-1 · the three endings of an answer, kept apart.
+    /// `answerRefusal` holds the ENGINE'S OWN sentence; `answerFailed` is our
+    /// own failure and carries no sentence from the server because there was
+    /// none. Both clear on the next tap, so a stale message can never sit
+    /// over a fresh attempt.
+    @State private var answerRefusal: String? = nil
+    @State private var answerFailed = false
+    /// Which card is mid-flight. A tap used to give no feedback at all for
+    /// the whole 12-second timeout `authedSend` imposes.
+    @State private var answeringProposalID: String? = nil
 
 
     /// The strip's plate — which of the seven cells wears the "you are here"
@@ -537,9 +547,23 @@ struct TodayBeforeV5: View {
                     ErrorNote(text: "Any decision waiting on you did not load. "
                               + "Nothing has been applied, we just cannot see it.")
                 }
+                // ACCEPTVOICE-1 · the engine's own refusal, above the cards
+                // it is about. Rendered as `Alert`, not `ErrorNote`: a
+                // refusal is an ANSWER, and drawing it in the outage
+                // treatment would say we went blind about a coach that spoke
+                // clearly.
+                if let refusal = answerRefusal {
+                    Alert(text: refusal)
+                }
+                // And the ending that is ours, not the engine's.
+                if answerFailed {
+                    ErrorNote(text: "That did not go through, and nothing has changed. "
+                              + "Try again.")
+                }
                 ForEach(pending) { p in
                     ProposalCardV5(
                         proposal: p,
+                        answering: answeringProposalID == p.id,
                         onAnswer: { accept in
                             Task { await answerProposal(p, accept: accept) }
                         },
@@ -550,12 +574,50 @@ struct TodayBeforeV5: View {
         }
     }
 
+    /// ACCEPTVOICE-1 (2026-09-05) · A FAILED TAP MUST NEVER LOOK SUCCESSFUL,
+    /// AND MUST NEVER LOOK LIKE NOTHING.
+    ///
+    /// This was `_ = try? await API.answerProposal(...)` followed
+    /// unconditionally by a refresh. Three separate endings — a request that
+    /// was never sent, a request that failed in flight, and an engine that
+    /// REFUSED in a sentence — were all discarded, and the refresh then drew
+    /// the same still-pending card in every case, including the successful
+    /// one. So the button had exactly one rendering for "it worked" and for
+    /// "it did nothing", and that is the hole V5ACCEPTURL-1 lived in for its
+    /// whole life: the accept and leave-it buttons never sent a request, and
+    /// no screen could say so.
+    ///
+    /// Now: `.ok` refreshes (the server owns the mutation, and the card
+    /// disappearing is the confirmation). `.refused` prints the engine's own
+    /// words. `.failed` and a thrown error print our own sentence, and
+    /// deliberately DO NOT refresh — a refresh after a failed write invites
+    /// the runner to read an unchanged screen as a completed action.
+    ///
+    /// Rule 11: three facts, three renderings. Rule 16: the refusal sentence
+    /// is the engine's, never one the phone invented on its behalf.
     private func answerProposal(_ p: V5Proposal, accept: Bool) async {
-        // Fire and refresh. The server owns the mutation and the refresh is
-        // what makes the card disappear, so there is no local optimistic state
-        // to drift out of sync with the plan.
-        _ = try? await API.answerProposal(id: p.id, accept: accept)
-        NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+        answerRefusal = nil
+        answerFailed = false
+        answeringProposalID = p.id
+        defer { answeringProposalID = nil }
+        do {
+            switch try await API.answerProposal(id: p.id, accept: accept) {
+            case .ok:
+                NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+                // The block moved, so the snapshot the week strip reads has
+                // to move with it. Same named trigger the reschedule path
+                // uses (PLANSNAPSHOT-1); accepting a proposal is a plan
+                // mutation by exactly the same definition and was not
+                // posting it.
+                NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
+            case .refused(let text):
+                answerRefusal = text
+            case .failed:
+                answerFailed = true
+            }
+        } catch {
+            answerFailed = true
+        }
     }
 
     @ViewBuilder

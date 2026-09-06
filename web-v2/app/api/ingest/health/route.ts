@@ -22,6 +22,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheDebounced } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
+import { aggregateActiveEnergy } from '@/lib/health/active-energy-batch';
 
 // Only these sample types move the readiness needle day-to-day, so only
 // these justify a fresh LLM regen on arrival. Weight / VO2 / body fat
@@ -128,33 +129,36 @@ export async function POST(req: NextRequest) {
     return dayKeyInTz(Number.isNaN(d.getTime()) ? new Date() : d, tz);
   };
 
-  // Pre-aggregate active_energy samples by calendar date.
+  // Pre-aggregate active_energy samples by calendar date, and report the
+  // fragment shape rather than quietly summing it.
   //
-  // The iPhone sends ~15-second HK buckets (each 0.01–3 kcal). The health_samples
-  // table has a UNIQUE constraint on (user_id, sample_type, sample_date), so
-  // last-write-wins in the upsert loop below — every previous bucket gets
-  // overwritten and only the last tiny fragment (~1 kcal) survives per day.
-  // health-state.ts reads `SUM(value)` per date, so one row = SUM of 1 = wrong.
-  //
-  // Fix: collapse all active_energy samples in this batch to one row per date
-  // (the true daily total). re-syncs correctly replace the stored total with the
-  // new batch total. resolveCalories Tier 2 is unaffected — it was already
-  // falling through to the Tier 3 estimator because the last-bucket value was
-  // never inside a run's time window anyway.
-  const aeByDate = new Map<string, number>();
-  for (const s of samples) {
-    if (s?.sample_type === 'active_energy' && typeof s.value === 'number' && s.value > 0) {
-      const d: string = s.sample_date ?? localDayOf(s.recorded_at);
-      aeByDate.set(d, (aeByDate.get(d) ?? 0) + s.value);
-    }
+  // `health_samples` carries UNIQUE (user_id, sample_type, sample_date) and
+  // the upsert below is last-write-wins, so one row per date is all this
+  // table can hold. health-state.ts reads SUM(value) per date. The full
+  // argument — including the 54-of-135 corrupted days this shape produced in
+  // production when the phone chunked one day across 21 bodies — is in
+  // lib/health/active-energy-batch.ts. REQUESTSTORM-2 (2026-09-05).
+  const ae = aggregateActiveEnergy(samples, localDayOf);
+  if (ae.bucketShapedDates.length > 0) {
+    // Rule 20 · the instance is fixed on the client; this is the gap staying
+    // visible. A body carrying more than one active_energy sample for one
+    // date is a client shipping raw buckets, and its total for that date is
+    // a fragment if any sibling body carries the same date. Loud, because
+    // silent is how the original cost 40% of the stored series.
+    console.warn(
+      `[ingest/health] active_energy arrived BUCKET-SHAPED for ${ae.bucketShapedDates.length} ` +
+      `date(s) (${ae.bucketShapedDates.join(', ')}) across ${ae.bucketCount} samples in one body, ` +
+      `user=${userId}. The stored daily total is only trustworthy if no other request body ` +
+      `carries these dates. Client should send one pre-summed row per day.`,
+    );
   }
   const ingestBatchTime = new Date().toISOString();
   const effectiveSamples: any[] = [
     ...samples.filter((s: any) => s?.sample_type !== 'active_energy'),
-    ...Array.from(aeByDate.entries()).map(([d, total]) => ({
+    ...ae.totals.map((t) => ({
       sample_type: 'active_energy',
-      value: Math.round(total * 10) / 10,
-      sample_date: d,
+      value: t.value,
+      sample_date: t.sample_date,
       recorded_at: ingestBatchTime,
     })),
   ];
@@ -268,5 +272,11 @@ export async function POST(req: NextRequest) {
   // instead of one per sample. Weight / VO2 / body_fat arrivals do
   // NOT bust — they don't move today's voice.
   if (insertedSignal > 0 || updatedSignal > 0) bustBriefingCacheDebounced(userId);
-  return NextResponse.json({ ok: true, inserted, updated, skipped, errors, signalSamples: insertedSignal + updatedSignal });
+  return NextResponse.json({
+    ok: true, inserted, updated, skipped, errors,
+    signalSamples: insertedSignal + updatedSignal,
+    // REQUESTSTORM-2 · non-empty means this body carried raw active-energy
+    // buckets, so its daily totals may be fragments. Empty is healthy.
+    activeEnergyBucketShapedDates: ae.bucketShapedDates,
+  });
 }
