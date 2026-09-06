@@ -1209,6 +1209,42 @@ describe('GUARD 2b · PROPOSAL_WRITER · every kind can reach the runner', () =>
     }
   });
 
+  it('every reason the progression gate can give fits on a card', () => {
+    /* THE FRAGILITY THIS PINS, and it is fifteen characters wide.
+     *
+     * The HOLD lane raises a card whose `reason` is the gate's own `why`, and
+     * `validateAction` refuses prose past PROSE_MAX_CHARS — correctly, because
+     * a card is six to ten words plus one line. `writeActionProposal` reports
+     * the refusal rather than swallowing it, so nothing breaks; the HOLD lane
+     * simply STOPS RAISING ANYTHING, quietly, and this repo's whole finding is
+     * that wired-tested-and-inert is what it ships.
+     *
+     * The longest sentence the gate can currently produce is 185 characters
+     * against a limit of 200. A coaching edit that adds one clause switches the
+     * lane off. So the STRINGS ARE READ OUT OF THE GATE AT RUN TIME and each is
+     * driven through the real generator and the real validator — a check that
+     * hardcoded the length would only prove it agrees with itself (Rule 18). */
+    const gate = readOwned('lib/plan/progression-gate.ts');
+    /* EVERY coach sentence in the file, not only the ones spelled `why:`.
+     * `takeWhy` RETURNS two of them and a third is a template literal, so a
+     * `why:`-anchored matcher read three of six — a check that scans most of a
+     * thing and reports clean is the shape Rule 18 warns about. Any
+     * single-quoted literal over forty characters in this file is a sentence
+     * the gate can put on a card. */
+    const whys = [...gate.matchAll(/'((?:[^'\\\n]|\\.){40,})'/g)].map((m) => m[1])
+      .filter((t) => !t.includes('Research/'));
+    expect(whys.length, 'no reasons were read out of progression-gate.ts; the extractor is broken')
+      .toBeGreaterThan(4);
+    for (const why of whys) {
+      const v = validateAction(holdFor(why, ['pw_1']));
+      expect(
+        v.ok,
+        `the progression gate can say a ${why.length}-character reason that no card can carry, so `
+        + `the HOLD lane would silently stop raising: ${v.ok ? '' : v.refusals.join('; ')}`,
+      ).toBe(true);
+    }
+  });
+
   it('the two kinds this facet was added for are now written by a live path', () => {
     /* Rule 20, on the finding itself. The owner asked for HOLD and SAFETY_STOP
      * to be "producible by real evidence, not seeded screenshots", and a
