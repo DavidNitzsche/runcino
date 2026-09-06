@@ -13,15 +13,44 @@
  * protocol will not advance on a self-report alone, this refuses (422,
  * `refusal` set) rather than silently recording a check-in that could never
  * move anything.
+ *
+ * ── RETURNSTAGE-1 (2026-09-06) · THE NEXT RUNG IS NOW A DURABLE PROMISE ────
+ *
+ * `RETURN_TO_TRAINING_STAGE` has been a real member of `ReassessmentKind`
+ * since migration 167 was drafted and had no production caller: the ladder
+ * lived entirely in `return-ladder.ts`'s pure replay, re-derived from
+ * `coach_intents` on every read and never durable in its own right. That is
+ * fine for "what stage is he on" (a cheap, correct replay) and wrong for "when
+ * does the next rung open" — the one-advance-per-week cap makes a concrete,
+ * dated promise ("silent again on or after this date and the stage moves")
+ * and nothing recorded that promise anywhere a process restart could find it.
+ *
+ * The mapping onto the scheduler's DATE-based due-ness: `applyCheckin` already
+ * computes `advanceQueued` — the runner has cleared the two-session minimum at
+ * this stage and is waiting only on the calendar. That date
+ * (`lastAdvanceAt + MIN_DAYS_BETWEEN_ADVANCES`) is exactly the reassessment's
+ * `assessOnISO`. When the stage actually advances, any standing promise for
+ * this injury is resolved rather than left to expire on its own overdue date.
+ *
+ * Best-effort and never blocking, per this route's own `outage()` contract —
+ * a scheduler outage must not turn a real check-in into a failed request.
  */
 import { NextRequest, NextResponse } from 'next/server';
+import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { requireUserId } from '@/lib/auth/session';
 import {
   loadActiveInjuryForReturn, protocolForInjury, loadReturnCheckins, recordReturnCheckin,
 } from '@/lib/plan/return-checkin-store';
-import { computeReturnLadderState, applyCheckin, advancementGateLine, type ReturnCheckinOutcome } from '@/lib/plan/return-ladder';
+import {
+  computeReturnLadderState, applyCheckin, advancementGateLine, MIN_DAYS_BETWEEN_ADVANCES,
+  type ReturnCheckinOutcome,
+} from '@/lib/plan/return-ladder';
 import { MAX_WALK_RUN_STAGE } from '@/lib/plan/injury-protocols';
 import { outage } from '@/lib/route/failure';
+import { planVersionOf } from '@/lib/plan/plan-version';
+import { scheduleReassessment, loadLiveQueue, resolveReassessment } from '@/lib/ops/reassessment-scheduler';
+import { addDaysToDayKey } from '@/lib/runtime/day-key';
 
 export const dynamic = 'force-dynamic';
 
@@ -79,6 +108,79 @@ async function submitReturnCheckin(req: NextRequest): Promise<NextResponse> {
   const before = computeReturnLadderState(await loadReturnCheckins(userId, injury.id), resolved.protocol.startStage);
   const event = await recordReturnCheckin(userId, injury.id, outcome);
   const after = applyCheckin(before, event);
+
+  /* RETURNSTAGE-1 · the durable promise. Contained in its own try — a
+   * scheduler outage must not turn a recorded check-in into a failed
+   * response, per this route's own `outage()` contract for the request as a
+   * whole. */
+  try {
+    const activePlan = await rowOrNull<{ id: string; last_adapted_at: string | null }>(
+      'v5/return/checkin · plan version',
+      pool.query<{ id: string; last_adapted_at: string | null }>(
+        `SELECT id::text AS id, last_adapted_at::text AS last_adapted_at FROM training_plans
+          WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+          ORDER BY authored_iso DESC LIMIT 1`,
+        [userId],
+      ),
+    );
+    // A runner mid-return does not always carry an active `training_plans`
+    // row (the return ladder is driven off `coach_intents`, not a plan), so
+    // this falls back to the same "no version yet" convention
+    // `planVersionOf` itself uses for a plan that has never been adapted,
+    // rather than inventing a second spelling for the same fact (Rule 16).
+    const planVersion = activePlan ? planVersionOf(activePlan) : `injury:${injury.id}:none`;
+    const todayISO = event.at.slice(0, 10);
+
+    if (after.stage > before.stage) {
+      // The ladder answered its own question this check-in. Any standing
+      // promise for the prior stage is resolved rather than left to expire
+      // on its own — an item that quietly goes stale reads as a defect to
+      // the sweep's overdue alert, and this was not one.
+      const live = await loadLiveQueue(userId, 'RETURN_TO_TRAINING_STAGE');
+      if (live.state === 'ok') {
+        for (const item of live.value) {
+          if (item.payload?.injuryId !== injury.id) continue;
+          await resolveReassessment({
+            id: item.id,
+            status: 'RESOLVED',
+            decision: 'STAGE_ADVANCED',
+            detail: `the runner advanced to stage ${after.stage} via a ${outcome} check-in on `
+              + `${todayISO}`,
+          });
+        }
+      } else {
+        console.log(`[v5/return/checkin] could not resolve prior stage promises · ${live.why}`);
+      }
+    }
+
+    if (after.advanceQueued && after.lastAdvanceAt) {
+      const dueISO = addDaysToDayKey(after.lastAdvanceAt.slice(0, 10), MIN_DAYS_BETWEEN_ADVANCES);
+      const res = await scheduleReassessment({
+        userUuid: userId,
+        kind: 'RETURN_TO_TRAINING_STAGE',
+        reasonCode: 'return_ladder_advance_queued',
+        reasonDetail: `stage ${after.stage} has cleared its two-session minimum and is waiting `
+          + `on the one-advance-per-week cap; a silent check-in on or after ${dueISO} advances it `
+          + `to the next rung`,
+        assessOnISO: dueISO,
+        overdueAfterISO: addDaysToDayKey(dueISO, 7),
+        planId: activePlan?.id ?? null,
+        planVersion,
+        lever: 'PLAN_STRUCTURE',
+        payload: { injuryId: injury.id, stage: after.stage },
+        idempotencyKey: `return:${injury.id}:stage:${after.stage}`,
+        queuedAtISO: todayISO,
+      });
+      if (res.state !== 'ok') {
+        console.log(`[v5/return/checkin] promise not scheduled · ${res.state} · ${res.why}`);
+      }
+    }
+  } catch (e) {
+    console.error(
+      '[v5/return/checkin] scheduler write threw and was contained ·',
+      e instanceof Error ? e.message : e,
+    );
+  }
 
   return NextResponse.json({
     ok: true,

@@ -346,3 +346,99 @@ export function scopeOfChange(
   if (weeks.size === 1 && !weeks.has('')) return { scope: 'WEEK', fromISO, toISO };
   return { scope: 'PLAN', fromISO, toISO };
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * DECLINE-1 (2026-09-06) · THE RUNNER'S NO, AS A ROW
+ *
+ * `lib/plan/mutate.ts`'s ledger only fires from inside `mutatePlan`, and a
+ * decline never calls it: the runner is turning down a card BEFORE it ever
+ * reaches the boundary, so there is no before/after snapshot and no
+ * transaction to write on. Left unrecorded, that is exactly Rule 21's
+ * ambiguity pointed the other way — "the engine never pushes" and "the
+ * runner never accepted the push it was offered" collapse into the same
+ * silence, and this app has already shipped that silence once
+ * (`plan_decision_ledger` had no decline row at all until this).
+ *
+ * Built here, as POLICY, and written by `recordDecision` in
+ * `decision-ledger.ts` (STORAGE) on that file's own lane B — a decline never
+ * mutates, so it never needs the in-transaction lane, and there is nothing
+ * for the row to be atomic WITH.
+ *
+ * ── WHY EACH FIELD READS THE WAY IT DOES ───────────────────────────────────
+ *
+ *   lever      RECORD_ONLY. Nothing moved and nothing was asked to.
+ *   direction  UNKNOWN, never NEUTRAL. `demandDelta`'s own file header draws
+ *              this line: NEUTRAL means two snapshots were read and neither
+ *              axis moved; UNKNOWN means there was no comparable state to
+ *              read in the first place. A decline reads no snapshot at all.
+ *   decision   REFUSE. The closest word the ledger's controlled vocabulary
+ *              has for "this candidate change did not happen" — the same
+ *              word a doctrine rejection or an authority refusal uses, and a
+ *              decline is the same fact from a different cause.
+ *   authority  RUNNER_INITIATED. He is the one who declined; nothing here
+ *              claims the coach initiated anything.
+ *   mutationOutcome  null, deliberately, not `not_attempted`. That member of
+ *              `MutationOutcome` belongs to `lib/plan/mutate.ts`'s own
+ *              vocabulary for a boundary that ran and produced no mutation;
+ *              this route never called the boundary at all, and reusing the
+ *              string would claim a relationship to `mutatePlan` that does
+ *              not exist. The DB column is nullable for exactly this case.
+ *
+ * ── RULE 22 · WHAT THIS BUILDER CANNOT FAIL ON ─────────────────────────────
+ *
+ * · WHETHER THE DECLINE REACHED IT AT ALL. This is a pure function; a caller
+ *   that never calls it is invisible here.
+ * · WHETHER THE PROPOSAL WAS RIGHT TO DECLINE. It records the runner's answer,
+ *   not a judgement on it.
+ * · A LINEAGE RESOLVED AGAINST THE WRONG PLAN. `planLineageId` is the
+ *   caller's to resolve (`resolvePlanLineage`) and to pass in; this function
+ *   only shapes the row around it.
+ */
+export const DECLINE_LEDGER_MODEL_VERSION = 'decline-ledger/2026-09-06';
+
+export function declineEntry(args: {
+  readonly userUuid: string;
+  readonly planId: string | null;
+  readonly planLineageId: string;
+  /** The named write site, e.g. `api/plan/workout-proposals/dismiss`. */
+  readonly provenance: string;
+  /** One clause a person can read: what was declined and why it matters. */
+  readonly explanation: string;
+  readonly proposalId: string | null;
+  readonly proposal?: unknown;
+  /** The workout(s) the declined proposal would have touched, if any. */
+  readonly workoutIds?: readonly string[];
+  readonly evidence?: readonly unknown[];
+}): LedgerEntry {
+  const workoutIds = args.workoutIds ?? [];
+  return {
+    userUuid: args.userUuid,
+    planId: args.planId,
+    planLineageId: args.planLineageId,
+    replacedPlanId: null,
+    planVersion: null,
+    scope: workoutIds.length === 1 ? 'WORKOUT' : workoutIds.length > 1 ? 'PLAN' : 'NONE',
+    workoutIds,
+    scopeFromISO: null,
+    scopeToISO: null,
+    lever: 'RECORD_ONLY',
+    direction: 'UNKNOWN',
+    evidence: args.evidence ?? [],
+    provenance: args.provenance,
+    sourceMode: null,
+    beforeState: null,
+    afterState: null,
+    authority: 'RUNNER_INITIATED',
+    authorityVerdict: 'PERMITTED',
+    hold: null,
+    decision: 'REFUSE',
+    proposalId: args.proposalId,
+    proposal: args.proposal ?? null,
+    runnerResponse: 'DECLINED',
+    mutationOutcome: null,
+    mutationViolations: [],
+    explanation: args.explanation,
+    modelVersion: DECLINE_LEDGER_MODEL_VERSION,
+    idempotencyKey: null,
+  };
+}

@@ -41,7 +41,7 @@
 # FIVE GUARDS, exit 1 on any violation
 #
 #   0 · TAMPER    · the modules, the migrations and the gate suite all still
-#                   exist, and the suite still declares all three of its guards.
+#                   exist, and the suite still declares all four of its guards.
 #                   A deleted gate must fail loudly, not silently stop running.
 #                   (check-automatic-mutations.sh's guard 2 once used
 #                   `grep -q "GUARD 0"`, which ANY comment satisfied, including
@@ -53,8 +53,10 @@
 #   2 · CONTROLS  · positive and negative, on the shell half's own matcher, on
 #                   every build. Rule 18 point 1.
 #   3 · FULL GATE · the scanning suite: no exit of `mutatePlan` bypasses the
-#                   ledger, no COMMIT precedes its record, and no deferral
-#                   producer lacks a durable sink.
+#                   ledger, no COMMIT precedes its record, no deferral producer
+#                   lacks a durable sink, and no decline route (the answer that
+#                   mutates nothing, and so never reaches `mutatePlan` at all)
+#                   goes unrecorded.
 #   4 · ATOMICITY · LEDGERATOMIC-1. The store keeps BOTH lanes and the boundary
 #                   uses the right one on each side: every COMMIT is preceded by
 #                   an in-transaction write, and the refusal lane still writes
@@ -121,6 +123,19 @@ grep -q "describe('GUARD 2 · a deferred action has a durable scheduler row'" "$
   || fail "the gate suite no longer declares GUARD 2 · it has been renamed, weakened or removed"
 grep -q "describe('GUARD 3 · a plan mutation and its ledger record are one atomic outcome'" "$GATE" \
   || fail "the gate suite no longer declares GUARD 3 · it has been renamed, weakened or removed"
+grep -q "describe('GUARD 4 · a decline that mutates nothing still lands in the ledger'" "$GATE" \
+  || fail "the gate suite no longer declares GUARD 4 · it has been renamed, weakened or removed"
+
+# Both decline routes must still exist and still name the two calls GUARD 4
+# checks for. A generic grep for a comment would be satisfied by a comment
+# left behind if the calls were deleted, so this checks the actual call sites.
+DISMISS_ROUTE="$W/app/api/plan/workout-proposals/[id]/dismiss/route.ts"
+COACH_DECLINE_ROUTE="$W/app/api/coach/proposal/[id]/decline/route.ts"
+for f in "$DISMISS_ROUTE" "$COACH_DECLINE_ROUTE"; do
+  [ -f "$f" ] || fail "missing $f · GUARD 4 cannot check a decline route that is not there"
+  grep -q 'declineEntry(' "$f" || fail "$(basename "$(dirname "$f")")/route.ts no longer calls declineEntry(...) · a decline that mutates nothing would go unrecorded again"
+  grep -q 'recordDecision(' "$f" || fail "$(basename "$(dirname "$f")")/route.ts no longer calls recordDecision(...) · a decline that mutates nothing would go unrecorded again"
+done
 
 # The boundary must still route through the ledger at all. If this line goes,
 # every finding in guard 3 goes with it and the suite would pass vacuously.

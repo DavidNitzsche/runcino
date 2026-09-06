@@ -664,6 +664,13 @@ export interface SweepReport {
   readonly expired: number;
   readonly overdue: number;
   /**
+   * FAILEDEVAL-1 · items whose promotion to DUE broke past `MAX_ATTEMPTS` and
+   * were retired terminal-FAILED this pass. Not the same as `overdue`: an
+   * overdue item is late but still live and might still resolve; a retired
+   * item never will without a human or a future migration to re-open it.
+   */
+  readonly retiredFailed: number;
+  /**
    * Non-null when NOTHING was attempted. The state a caller must be able to
    * tell apart from "nothing needed doing" (Rule 11).
    */
@@ -696,7 +703,7 @@ export async function sweepReassessments(todayISO: string): Promise<SweepReport>
     // sweep that could not read are the same shape and opposite facts, and
     // reporting the second as the first is how this whole class of bug hides.
     return {
-      examined: 0, promoted: 0, expired: 0, overdue: 0,
+      examined: 0, promoted: 0, expired: 0, overdue: 0, retiredFailed: 0,
       refusal: due.state,
       detail: due.why,
     };
@@ -705,6 +712,7 @@ export async function sweepReassessments(todayISO: string): Promise<SweepReport>
   let promoted = 0;
   let expired = 0;
   let overdue = 0;
+  let retiredFailed = 0;
   const problems: string[] = [];
 
   for (const item of due.value) {
@@ -754,7 +762,25 @@ export async function sweepReassessments(todayISO: string): Promise<SweepReport>
     if (item.status === 'PENDING') {
       const r = await markDue(item.id);
       if (r.state === 'ok' && r.value) promoted += 1;
-      else if (r.state !== 'ok') problems.push(`promote ${item.id}: ${r.why}`);
+      else if (r.state !== 'ok') {
+        problems.push(`promote ${item.id}: ${r.why}`);
+        /* FAILEDEVAL-1 (2026-09-06) · `recordAssessmentFailure` existed with
+         * ZERO production callers — the attempts/backoff/FAILED machinery
+         * migration 167 built was wired and tested and inert, the exact
+         * signature failure CLAUDE.md names, on the one mechanism whose whole
+         * job is telling "never assessed" from "assessed and broke" apart
+         * (Rule 11). A promotion that cannot even flip PENDING to DUE is
+         * exactly what it exists to record: without this, a broken promotion
+         * retries silently forever with no counter, no backoff and no
+         * terminal state, and the sweep's own `problems` array is visible
+         * only in this pass's return value — gone the moment the caller
+         * discards it. Best-effort: a failure recording its own failure must
+         * not throw the sweep off its other items. */
+        try {
+          const f = await recordAssessmentFailure(item.id, `promotion to DUE failed: ${r.why}`);
+          if (f.state === 'ok' && f.value === 'failed') retiredFailed += 1;
+        } catch { /* the promotion failure above is already recorded in `problems` */ }
+      }
     }
   }
 
@@ -763,15 +789,16 @@ export async function sweepReassessments(todayISO: string): Promise<SweepReport>
   // ternary, the same shape `persistQueueAtBoundary` already uses.
   if (problems.length > 0) {
     return {
-      examined: due.value.length, promoted, expired, overdue,
+      examined: due.value.length, promoted, expired, overdue, retiredFailed,
       refusal: 'partial-failure',
       detail:
-        `${promoted} promoted, ${expired} expired, ${overdue} overdue, with `
-        + `${problems.length} failure(s): ${problems.join('; ')}`,
+        `${promoted} promoted, ${expired} expired, ${overdue} overdue, `
+        + `${retiredFailed} retired-failed, with ${problems.length} failure(s): `
+        + problems.join('; '),
     };
   }
   return {
-    examined: due.value.length, promoted, expired, overdue,
+    examined: due.value.length, promoted, expired, overdue, retiredFailed,
     refusal: null,
     detail: `${due.value.length} examined · ${promoted} promoted · ${expired} expired · `
       + `${overdue} overdue`,

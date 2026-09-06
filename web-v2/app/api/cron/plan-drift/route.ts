@@ -487,6 +487,75 @@ export async function POST(req: NextRequest) {
         // "leave it" left the runner with zero active plans. The open-block
         // handoff is below, outside this branch, so it also catches a runner
         // who reached this state by any other route.
+
+        /* ── POSTRACE-1 (2026-09-06) · THE RECOVERY QUESTION GETS A DATE ────
+         *
+         * `POST_RACE_RECOVERY_CHECK` has been a real `ReassessmentKind` since
+         * migration 167 was drafted and had no production caller — the
+         * question "is this runner ready to train normally again" was asked
+         * nowhere, on any schedule. `graduateDue` firing IS the fact that a
+         * race just finished, whichever race comes next, so this is the one
+         * honest place to start the clock: `postRaceRecoveryWeeks` from
+         * `Research/00b` is the same doctrine number `normal-window.ts`
+         * already excludes from every "what does this runner normally do"
+         * reader (CLAUDE.md Rule 8), read here as a forward-looking date
+         * rather than a backward-looking exclusion window.
+         *
+         * Runs regardless of whether the graduate rebuild above found a next
+         * race — recovery is a question about the runner's body, not about
+         * which block comes next, and a runner with no next race booked still
+         * needs the same recovery window honoured. Best-effort and contained:
+         * a scheduler outage must not stop the graduate rebuild it sits next
+         * to. */
+        try {
+          // Rule 11 · `rowOrNull` (not `.catch(() => ({ rows: [] }))`) so a
+          // failed read and a genuine miss stay distinguishable — a swallowed
+          // failure here would silently disable the recovery-check schedule
+          // for this race rather than being visible as the outage it is.
+          const raceRow = await rowOrNull<{
+            distance_mi: number | null; priority: string | null;
+          }>(
+            'plan-drift · post-race recovery race lookup',
+            pool.query<{ distance_mi: number | null; priority: string | null }>(
+              `SELECT (meta->>'distance_mi')::float8 AS distance_mi, meta->>'priority' AS priority
+                 FROM races WHERE slug = $1 AND user_uuid = $2 LIMIT 1`,
+              [finishedRow.race_id, u],
+            ),
+          );
+          const { distanceCategoryOrNull } = await import('@/lib/race/distance-category');
+          const cat = distanceCategoryOrNull(raceRow?.distance_mi ?? null);
+          if (cat) {
+            const { postRaceRecoveryWeeks } = await import('@/lib/plan/goal-tiers');
+            const weeks = postRaceRecoveryWeeks(cat, raceRow?.priority ?? null);
+            if (weeks > 0 && finishedRow.race_date) {
+              const { addDaysToDayKey } = await import('@/lib/runtime/day-key');
+              const dueISO = addDaysToDayKey(finishedRow.race_date.slice(0, 10), weeks * 7);
+              const { scheduleReassessment } = await import('@/lib/ops/reassessment-scheduler');
+              const res = await scheduleReassessment({
+                userUuid: u,
+                kind: 'POST_RACE_RECOVERY_CHECK',
+                reasonCode: 'post_race_recovery_window',
+                reasonDetail: `${finishedRow.race_id} finished on ${finishedRow.race_date}; `
+                  + `Research/00b prices this distance's recovery at ${weeks} week(s), so `
+                  + `${dueISO} is the first date normal training resumes without dipping into `
+                  + 'the prescribed recovery window',
+                assessOnISO: dueISO,
+                overdueAfterISO: addDaysToDayKey(dueISO, 7),
+                planId: activePlanRow?.plan_id ?? null,
+                planVersion: `race:${finishedRow.race_id}:none`,
+                lever: 'PLAN_STRUCTURE',
+                payload: { raceSlug: finishedRow.race_id, raceDateISO: finishedRow.race_date, recoveryWeeks: weeks },
+                idempotencyKey: `post-race-recovery:${finishedRow.race_id}`,
+                queuedAtISO: userToday,
+              });
+              if (res.state !== 'ok') {
+                console.log(`[plan-drift] post-race recovery check not scheduled · ${res.state} · ${res.why}`);
+              }
+            }
+          }
+        } catch (e) {
+          console.error('[plan-drift] post-race recovery scheduling threw and was contained:', e);
+        }
       }
 
       // 2026-08-19 · race-shape audit · THE PLAN THAT RAN OUT.
