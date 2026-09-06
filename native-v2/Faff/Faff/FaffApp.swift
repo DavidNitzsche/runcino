@@ -631,6 +631,24 @@ struct RootContainer: View {
             withAnimation(.easeInOut(duration: 0.32)) { step = .signIn }
         }
         .onReceive(NotificationCenter.default.publisher(for: .faffSessionExpired)) { _ in
+            // QATOKEN-EXPIRE-1, 2026-09-06 · a QA launch's token lives in
+            // `TokenStore.debugOverrideToken` (a static, set once by
+            // `seedDebugToken`), never in the Keychain-backed `self.token`
+            // this handler clears. `clear()` wipes `self.token` but not the
+            // override, so `authorize(_:)`/`readTokenStatus()` (which check
+            // the override first) keep authenticating every later request
+            // fine — reproduced directly: `/api/watch/today`, `/api/v5/today`
+            // and `/api/readiness` all kept returning 200 after this fired —
+            // while `isSignedIn` (`self.token != nil`) is now permanently
+            // false, so the root view is stuck on the sign-in gate forever
+            // despite a network layer that never stopped working. One
+            // spurious 401 in the launch prefetch burst — the exact
+            // "pre-unlock background 401" vector the comment below already
+            // names — is enough to trigger it every time. A QA token never
+            // legitimately expires mid-run (it is minted fresh by the walk
+            // substrate for exactly this run), so a QA launch ignores the
+            // signal entirely rather than acting on it.
+            if FaffApp.isQATokenLaunch { return }
             // Auth contract changed 2026-05-30 — /api/* no longer falls back
             // to DEFAULT_USER_ID, so a 401 from any read means the session
             // token expired. Clear the token + onboarded flag and bounce to
