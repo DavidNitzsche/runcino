@@ -54,6 +54,8 @@ import { pool } from '@/lib/db/pool';
 import { detectAdaptations, applyAdaptations, reducesLoad, PROPOSE_FIRST_TRIGGERS } from '@/lib/plan/adapt';
 import { sealAutomaticActions, ADAPTATION_SEAM_ID } from '@/lib/plan/adaptation-authority';
 import { tryAdaptiveBump } from '@/lib/plan/adaptive-ramp';
+// VOLUMESEAM-1 · the demonstrated-volume-evidence lane. Proposal only.
+import { runVolumeEvidenceLane } from '@/lib/plan/volume-evidence-proposal';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { raiseAlert } from '@/lib/ops/alerts';
 import { recordCronSuccess } from '@/lib/ops/cron-ledger';
@@ -430,6 +432,39 @@ export async function POST(req: NextRequest) {
       const pullbackDecided = actions.some(reducesLoad);
       const bump = await tryAdaptiveBump(uid, applied > 0 || pullbackDecided).catch(() => null);
       if (bump) await bustBriefingCacheForEvent(uid, 'plan_swap');
+
+      /* ── VOLUMESEAM-1 (2026-09-05) · THE VOLUME-EVIDENCE LANE GETS A LIVE
+       * ENTRY POINT.
+       *
+       * `lib/adaptation/volume-evidence/` answers the one question nothing in
+       * this app owned — if the runner runs MORE mileage than prescribed, does
+       * future planned mileage increase — and until this line it answered it
+       * for nobody. Nine modules, a doctrine registry entry, three gates, a
+       * real-history replay, and not one production importer. This codebase's
+       * signature failure, again: wired, tested and inert, on the UPWARD path,
+       * where it is most damaging.
+       *
+       * It is a SEPARATE lane from `tryAdaptiveBump` above and not a
+       * replacement for it, because the two read different evidence. The ramp
+       * reads five signals and none of them is "he ran more than prescribed";
+       * its ACWR clause actually runs the other way, since extra mileage
+       * raises acute load and CLOSES the gate. This lane reads the surplus
+       * itself, continuously.
+       *
+       * Same guard as the ramp, for the same reason: an offer of more work
+       * must not go out on a night the engine judged a pull-back warranted.
+       * `writeWorkoutProposals` dedupes against pending rows, so the two lanes
+       * cannot stack two cards on one session.
+       *
+       * The seam stays shut. This writes a `plan_workout_proposals` row and
+       * nothing else; the plan changes only if the runner accepts.
+       *
+       * Failure is contained inside `runVolumeEvidenceLane`, which names its
+       * outcome in the log rather than returning a silent zero (Rule 11). */
+      const volumeCards = (applied > 0 || pullbackDecided)
+        ? 0
+        : await runVolumeEvidenceLane(uid);
+      if (volumeCards > 0) await bustBriefingCacheForEvent(uid, 'plan_swap');
 
       /* ── LIVESEQ-1 (2026-09-05) · THE SEQUENCE GATE GETS A LIVE ENTRY POINT
        *

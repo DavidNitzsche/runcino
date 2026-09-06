@@ -673,46 +673,100 @@ export async function planUpgrade(opp: RampOpportunity): Promise<UpgradePlan | n
 
   if (rows.length === 0) return null;
 
+  const spread = distributeWeeklyBump(
+    rows.map((r) => ({ id: r.id, type: r.type, distanceMi: Number(r.distance_mi) })),
+    { budgetMi: MAX_WEEKLY_BUMP_MI, longUpperMi: opp.tierLongUpper },
+  );
+  if (spread.bumps.length === 0) return null;
+
+  return {
+    bumps: spread.bumps,
+    longBumpMi: spread.longBumpMi,
+    weeklyBumpMi: spread.weeklyBumpMi,
+    reason: opp.reason,
+  };
+}
+
+/** One plan row a raise could land on, in the shape the distributor reads. */
+export interface BumpCandidateRow {
+  readonly id: string;
+  readonly type: string;
+  readonly distanceMi: number;
+}
+
+export interface BumpSpread {
+  readonly bumps: UpgradePlan['bumps'];
+  readonly longBumpMi: number;
+  readonly weeklyBumpMi: number;
+}
+
+/**
+ * HOW A WEEKLY RAISE LANDS ON ROWS. One owner, and this is it (Rule 16).
+ *
+ * Extracted from `planUpgrade`'s body on 2026-09-05, unchanged in behaviour,
+ * because `lib/plan/volume-evidence-proposal.ts` needs the same answer for a
+ * raise driven by demonstrated volume evidence rather than by the ramp
+ * signals. Two spreaders would be two chances to disagree about where a
+ * runner's extra miles go, and the caps below are the doctrine-bound part.
+ *
+ * `budgetMi` is what the CALLER has already decided it may spend. That is the
+ * whole reason this is a parameter rather than the constant: the ramp lane
+ * spends a full `MAX_WEEKLY_BUMP_MI`, and the evidence lane spends the
+ * smaller of that and what the load contract's envelope actually supports,
+ * scaled by how much evidence has accumulated. Neither may exceed the cap,
+ * and `Math.min` below is what enforces that rather than trust.
+ *
+ * Rule 22 · what a gate over this function cannot fail on: it cannot tell a
+ * sensible spread from a silly one. Adding a mile to each of five easy days
+ * and adding five to one of them both satisfy every assertion here; what
+ * stops the second is `MAX_PER_EASY_BUMP_MI`, which is a doctrine choice and
+ * not a property this function could check about itself.
+ */
+export function distributeWeeklyBump(
+  rows: readonly BumpCandidateRow[],
+  opts: { readonly budgetMi: number; readonly longUpperMi: number },
+): BumpSpread {
+  const budget = Math.min(opts.budgetMi, MAX_WEEKLY_BUMP_MI);
   const bumps: UpgradePlan['bumps'] = [];
   let longBumpApplied = 0;
   let weeklyBumpApplied = 0;
+  if (budget <= 0) return { bumps, longBumpMi: 0, weeklyBumpMi: 0 };
 
-  // 1) Long bump · +1mi capped at tier upper.
+  // 1) Long bump · +1mi capped at tier upper, and never past the budget.
   const longRow = rows.find((r) => r.type === 'long');
   if (longRow) {
-    const old = Number(longRow.distance_mi);
-    const proposed = old + MAX_LONG_BUMP_MI;
-    const capped = Math.min(proposed, opp.tierLongUpper);
+    const old = longRow.distanceMi;
+    const proposed = old + Math.min(MAX_LONG_BUMP_MI, budget);
+    const capped = Math.min(proposed, opts.longUpperMi);
     if (capped > old) {
       bumps.push({ workoutId: longRow.id, oldDistanceMi: old, newDistanceMi: capped, type: 'long' });
       longBumpApplied = capped - old;
     }
   }
 
-  // 2) Easy bumps · distribute up to (MAX_WEEKLY_BUMP_MI - longBumpApplied)
-  //    across easy days. Per-easy cap = MAX_PER_EASY_BUMP_MI.
-  const easyBudgetMi = MAX_WEEKLY_BUMP_MI - longBumpApplied;
+  // 2) Easy bumps · distribute up to (budget - longBumpApplied) across easy
+  //    days. Per-easy cap = MAX_PER_EASY_BUMP_MI · doctrine: distribute the
+  //    reward, don't pile it on one day.
+  const easyBudgetMi = budget - longBumpApplied;
   if (easyBudgetMi > 0) {
     const easyRows = rows.filter((r) => r.type === 'easy' || r.type === 'recovery');
     let remaining = easyBudgetMi;
     for (const r of easyRows) {
       if (remaining <= 0) break;
       const add = Math.min(MAX_PER_EASY_BUMP_MI, remaining);
-      const old = Number(r.distance_mi);
+      const old = r.distanceMi;
       const newDist = Number((old + add).toFixed(1));
+      if (newDist <= old) continue;
       bumps.push({ workoutId: r.id, oldDistanceMi: old, newDistanceMi: newDist, type: r.type });
       remaining -= add;
       weeklyBumpApplied += add;
     }
   }
 
-  if (bumps.length === 0) return null;
-
   return {
     bumps,
     longBumpMi: longBumpApplied,
     weeklyBumpMi: longBumpApplied + weeklyBumpApplied,
-    reason: opp.reason,
   };
 }
 

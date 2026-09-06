@@ -86,9 +86,14 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
     n: 4, name: 'Grade sessions and the week',
     owner: 'lib/adaptation/canonical/stimulus.ts', ownerExports: 'gradeStimulus',
     state: 'SHADOW',
-    blocker: 'the canonical grader is imported only by the canonical-shadow live input and '
-      + 'the volume-evidence readers, both of which are themselves shadow-only. Nothing on '
-      + 'the nightly coaching path grades a week through it.',
+    blocker: 'VOLUMESEAM-1 (2026-09-05) narrowed this and did not close it. The '
+      + 'volume-evidence readers now DO reach the nightly cron, so this module is no longer '
+      + 'unreachable; but what they import from it is the constant set '
+      + 'GRADES_THAT_COUNT_AS_EVIDENCE, not `gradeStimulus`. Nothing on the nightly coaching '
+      + 'path actually GRADES a session through this owner: the volume lane hands its '
+      + 'deterioration and telemetry conditions in as refusals, and the canonical-shadow live '
+      + 'input remains shadow-only. Reachable is not wired, and calling it wired because an '
+      + 'adjacent constant travelled would be the claim Rule 20 exists to stop.',
   },
   {
     n: 5, name: 'Update beliefs',

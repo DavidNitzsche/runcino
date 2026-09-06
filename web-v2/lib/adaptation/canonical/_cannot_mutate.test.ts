@@ -324,6 +324,9 @@ const ALLOWED_DEMAND_LOADER_FILE = path.join(WEB, 'lib/adaptation/canonical-shad
 // ALLOWLIST. ONE file, deliberately, so a whole directory's dependence on this
 // engine is auditable in one place.
 const ALLOWED_VOLUME_EVIDENCE_DOOR = path.join(WEB, 'lib/adaptation/volume-evidence/contract.ts');
+/* VOLUMESEAM-1 · the loader that carries this engine's deterioration verdict
+ * into the volume lever's admission conditions. One module, one question. */
+const ALLOWED_VOLUME_LOADER_FILE = path.join(WEB, 'lib/plan/volume-evidence-loader.ts');
 const ALLOWLIST: readonly AllowedImport[] = [
   { file: ALLOWED_EXCEPTION_FILE, module: '@/lib/adaptation/canonical/evaluate', symbols: new Set(['evaluateAdaptation']) },
   // DEFERPERSIST-1 (2026-09-04) · the shadow cycle must CARRY THE DEFERRAL
@@ -477,6 +480,43 @@ const ALLOWLIST: readonly AllowedImport[] = [
   // definition of the contract's evidence window (Rule 16). Both are inert
   // numbers on a frozen module and neither can decide anything.
   { file: ALLOWED_VOLUME_EVIDENCE_DOOR, module: '@/lib/adaptation/canonical/contract-constants', symbols: new Set(['CONTRACT_DOC', 'VOLUME_MAX_STEP_FRAC', 'VOLUME_MAX_STEPS_PER_CUTBACK_CYCLE', 'VOLUME_MIN_CONSECUTIVE_WEEKS', 'VOLUME_WEEK_COMPLETION_MIN_FRAC', 'THRESHOLD_EVIDENCE_WINDOW_DAYS', 'THRESHOLD_EVIDENCE_WINDOW_DAYS_TIGHT']) },
+
+  /* VOLUMESEAM-1 (2026-09-05) · THE SECOND FILE OUTSIDE `lib/adaptation` THAT
+   * MAY REACH THIS ENGINE, and it reaches one module for one question.
+   *
+   * `lib/plan/volume-evidence-loader.ts` is the adapter that turns database
+   * rows into the volume lever's inputs, and admission condition 3 is "the run
+   * did not materially deteriorate". `canonical/deterioration.ts` is the OWNER
+   * of that verdict: it is the file that knows a slower final third at LOWER
+   * heart rate is a runner easing down rather than a collapse, and that an
+   * unreadable session is UNKNOWN and not CLEAN. Re-deriving either judgement
+   * on the app side would be a second, quieter grader whose disagreements
+   * nobody would notice (Rule 16), and it would lose the UNKNOWN-versus-clean
+   * separation `admit.ts` depends on to block on deterioration without
+   * blocking on unreadability (Rule 11).
+   *
+   * Two pure functions and one type. No `evaluate`, no lever, no `arbitrate`:
+   * this file speaks the engine's verdict, it does not run it, which is the
+   * same posture as the volume-evidence door above. */
+  {
+    file: ALLOWED_VOLUME_LOADER_FILE,
+    module: '@/lib/adaptation/canonical/deterioration',
+    symbols: new Set(['assessDeterioration', 'deteriorationPattern', 'DeteriorationResult']),
+  },
+  /* VOLUMESEAM-1 · `plan_phases.label` has ONE translator and it lives here.
+   * `phaseFromAuthoredLabel` is the function that knows the generator writes
+   * 'BASE', 'QUALITY', 'RACE-SPECIFIC', 'TAPER', 'MAINTENANCE' and 'RECOVERY',
+   * and that anything else is UNKNOWN rather than a default phase (Rule 11).
+   * The loader's first cut hand-rolled a switch over BASE/BUILD/PEAK instead,
+   * and the production probe showed the cost: the live block's phases are
+   * QUALITY and RACE-SPECIFIC, so every week of the runner's actual marathon
+   * block read as UNKNOWN and the lane refused on a label it had simply
+   * failed to parse. One pure function, no evaluator, no arbitration. */
+  {
+    file: ALLOWED_VOLUME_LOADER_FILE,
+    module: '@/lib/adaptation/canonical/phase-priority',
+    symbols: new Set(['phaseFromAuthoredLabel']),
+  },
 ];
 
 function violatesAllowlist(file: string, imp: { module: string; names: string[] }): boolean {
@@ -497,6 +537,7 @@ describe('guard 4 · nothing outside imports this engine, nested paths included,
     expect(OUTSIDE).toContain(ALLOWED_EXCEPTION_FILE);
     expect(OUTSIDE).toContain(ALLOWED_LOADER_FILE);
     expect(OUTSIDE).toContain(ALLOWED_VOLUME_EVIDENCE_DOOR);
+    expect(OUTSIDE).toContain(ALLOWED_VOLUME_LOADER_FILE);
   });
 
   it('ORACLE · a nested import is detected, which the pre-existing flat gate misses', () => {

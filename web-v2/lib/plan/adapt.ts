@@ -275,6 +275,20 @@ export type AdaptationTriggerKind =
                           // the second one becoming sayable.
                           // Detector: lib/plan/adaptive-ramp.ts ·
                           // Research/00a §"Practical load rules".
+  | 'volume_evidence'     // VOLUMESEAM-1 (2026-09-05) · the UPWARD VOLUME path
+                          // driven by DEMONSTRATED EVIDENCE rather than by the
+                          // ramp signals. Separate from `adaptive_ramp` on
+                          // purpose: that lane reads acwrHeadroom /
+                          // lastQualityOnPace / lastLongClean / belowTierUpper
+                          // / noBumpRecent, and NONE of them is "the runner ran
+                          // more than prescribed" -- its ACWR clause runs the
+                          // other way, since extra mileage raises acute load
+                          // and CLOSES the gate. Rule 21 asks that an
+                          // adaptation record what it did and on what evidence,
+                          // and two upward volume lanes filed under one kind
+                          // would make "which one fired" unanswerable from the
+                          // log. Raised by `lib/plan/volume-evidence-proposal.ts`
+                          // as a PROPOSAL only; the seam stays shut.
   | 'training_lead';      // 2026-08-25 · the UPWARD training-evidence path ·
                           // sustained quality work reading above the last race
                           // anchor by the doctrinal soft-lead quantum. The

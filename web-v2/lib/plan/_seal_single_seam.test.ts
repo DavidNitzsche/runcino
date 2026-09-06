@@ -119,6 +119,13 @@ const MUTATOR_NAME_EXEMPT: Record<string, string> = {
   'app/api/plan/workout-proposals/[id]/accept/route.ts':
     'RUNNER-INITIATED. The runner tapped accept on a proposal card; this is the driver\'s seat the '
     + 'ruling preserves, not an unattended lever. Not a cron route.',
+  'lib/plan/_falsify_volume_seam.script.ts':
+    'VOLUMESEAM-1 (2026-09-05). A FALSIFIER, and it names `applyAdaptations` only as the string it '
+    + 'PLANTS into `lib/plan/volume-evidence-proposal.ts` to prove that suite notices a plan writer '
+    + 'appearing in the volume lane. It is a .script.ts, excluded from the default vitest include '
+    + 'glob because it mutates source files on purpose, so nothing runs it unattended; it restores '
+    + 'every file it touches in a `finally` and verifies the restoration byte for byte. If a cron '
+    + 'ever imports it, the exemption is wrong and the import is the bug.',
   'lib/brain/proposal/accept.ts':
     'ACTIONCOMPLETE-1 (2026-09-05). The SAME runner tap as the route immediately above, moved one '
     + 'level down so the accept lane dispatches on the action rather than on one of five legacy '

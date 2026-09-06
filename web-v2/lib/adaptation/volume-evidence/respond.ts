@@ -186,8 +186,19 @@ export interface VolumeResponse {
   /** The envelope struck off the NEW belief. This is what makes weeks larger. */
   readonly contractAfter: LoadProgressionContract;
   readonly weeks: readonly FutureWeekChange[];
-  /** Weeks that would have been raised and could not be, yet. */
-  readonly deferred: readonly QueuedDeferral[];
+  /**
+   * Weeks that would have been raised and could not be, yet.
+   *
+   * NAMED `deferredRaises` AND NOT `deferred`, 2026-09-05, and the rename is
+   * Rule 16 rather than taste: `AdaptationProposalSet.deferred` in
+   * `lib/adaptation/adaptation-engine.ts` is a DIFFERENT quantity — proposals
+   * the engine held back — and `_zero_mutation_scan.test.ts` guard 5 exists to
+   * stop anything outside this layer reading that one. Two unrelated things
+   * under one field name made a blunt but correct guard fire on an unrelated
+   * read, and the right answer was to stop the collision rather than to exempt
+   * it: a caller should not have to know which `.deferred` it is holding.
+   */
+  readonly deferredRaises: readonly QueuedDeferral[];
   readonly simultaneousStressFindings: readonly SimultaneousStressAddition[];
   /** Step 8. One sentence, composed once, in the runner's language. */
   readonly explanation: string;
@@ -272,7 +283,7 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
       contractBefore,
       contractAfter,
       weeks,
-      deferred: [],
+      deferredRaises: [],
       simultaneousStressFindings: [],
       explanation: explainVolumeResponse({
         admission: input.admission,
@@ -298,8 +309,13 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
   if (!PHASES_THAT_BENEFIT_FROM_MORE_VOLUME.has(input.phase)) {
     const reason: PreservationReason = input.phase === 'RACE_WEEK'
       ? 'RACE_WEEK' : input.phase === 'TAPER' ? 'TAPER_WEEK' : 'RECOVERY_BLOCK';
-    return nothingMoves(reason,
-      `The block is in ${input.phase}. More volume is not what this phase is for.`);
+    /* UNKNOWN gets its own sentence. It used to print "The block is in
+     * UNKNOWN", which is not English and, worse, said the same thing as a real
+     * taper: Rule 11 again, at the level of the sentence the runner reads. A
+     * phase nobody could read is a refusal to state a reason, not a reason. */
+    return nothingMoves(reason, input.phase === 'UNKNOWN'
+      ? 'The phase this block is in could not be read, so no week is grown on it.'
+      : `The block is in ${input.phase}. More volume is not what this phase is for.`);
   }
 
   /* 3 · the cadence bound, ABOVE the walk. */
@@ -447,7 +463,7 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
   }
 
   /* 6 · everything that could not land is deferred, never discarded. */
-  const deferred: QueuedDeferral[] = [];
+  const deferredRaises: QueuedDeferral[] = [];
   const finalChanges: FutureWeekChange[] = changes.map((c) => {
     if (!blockedWeeks.has(c.weekStartISO) || c.preserved != null) return c;
     const finding = findings.find((f) => f.weekStartISO === c.weekStartISO)!;
@@ -460,7 +476,7 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
     };
     const idempotencyKey = `${input.athleteId}·${input.planVersion}·${input.evidenceVersion}`
       + `·${MILEAGE_RESPONSIVE_LEVER}·${c.weekStartISO}`;
-    deferred.push({
+    deferredRaises.push({
       queueId: `${input.athleteId} · ${MILEAGE_RESPONSIVE_LEVER} · ${idempotencyKey}`,
       athleteId: input.athleteId,
       planVersion: input.planVersion,
@@ -507,7 +523,7 @@ export function respondToVolumeEvidence(input: VolumeResponseInput): VolumeRespo
     contractBefore,
     contractAfter,
     weeks: finalChanges,
-    deferred,
+    deferredRaises,
     simultaneousStressFindings: findings,
     explanation: explainVolumeResponse({
       admission: input.admission,
