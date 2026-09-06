@@ -61,10 +61,24 @@
  * grade it under-reads, which no road course reaches on a mean-grade basis.
  */
 
-import { DESCENT_GIVEBACK_FRACTION } from '@/lib/terrain/grade-adjust';
+import { DESCENT_GIVEBACK_FRACTION, GRADE_COST_PER_PCT } from '@/lib/terrain/grade-adjust';
 
-/** Research/11 · fraction of pace added per 1% of uphill grade. */
-export const GRADE_COST_PER_PCT = 0.033;
+/**
+ * Fraction of pace added per 1% of uphill grade.
+ *
+ * NOT declared here (OWNER-AGREEMENT-1, 2026-09-05). It was a SECOND literal
+ * `0.033` beside `lib/terrain/grade-adjust.ts#GRADE_COST_PER_PCT` — the same
+ * physiology, the same `Research/11` citation, one of them with no doctrine
+ * claim watching it — in a file that already imports `DESCENT_GIVEBACK_FRACTION`
+ * from that owner four lines below. The import edge existed; it had simply not
+ * been used for this constant, which is the shape `lib/runner-state/ownership.ts`
+ * recorded as an open conflict on ENVIRONMENTAL_SENSITIVITY.
+ *
+ * Re-exported under the same name so every reader of this module keeps working
+ * and no second literal exists to drift. The terrain module is the owner
+ * because that is where `Research/11`'s grade model is stated and gated.
+ */
+export { GRADE_COST_PER_PCT } from '@/lib/terrain/grade-adjust';
 
 /** Research/11 · "up to ~10–15%" · the conservative end of the linear band. */
 export const GRADE_LINEAR_LIMIT_PCT = 10;

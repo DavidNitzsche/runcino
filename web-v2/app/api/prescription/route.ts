@@ -28,12 +28,13 @@ import { distanceMiFromLabel } from '@/lib/race/distance';
  */
 const VALID: WorkoutType[] = ['easy','long','tempo','threshold','intervals','race','shakeout','rest','unplanned'];
 
-function parseGoalSeconds(s: string | null | undefined): number | null {
-  if (!s) return null;
-  const m = String(s).match(/^(\d+):(\d{2}):(\d{2})$/);
-  if (!m) return null;
-  return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
-}
+/*
+ * A route-local `parseGoalSeconds` lived here and is DELETED
+ * (OWNER-AGREEMENT-1, 2026-09-05). It was a third copy of the strict
+ * `^H:MM:SS` regex, it disagreed with `lib/training/vdot.ts#parseRaceTime` on
+ * every MM:SS goal, and nothing in this route ever called it. The owner is
+ * `parseRaceTime`; import it if this route ever needs a goal in seconds.
+ */
 
 // 2026-07-07 · ultra-honesty audit · local fork replaced with the shared
 // parser (@/lib/race/distance) — was already null-safe on unmatched (no

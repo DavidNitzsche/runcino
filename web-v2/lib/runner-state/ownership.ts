@@ -434,7 +434,16 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
     key: 'RUN_FREQUENCY_TOLERANCE',
     question: 'How many days a week does he run, and how many can he run.',
     constitutionOwner: 'Runner Model',
-    canonical: null,
+    canonical: {
+      module: 'lib/plan/generate.ts',
+      symbol: 'derivedTrainingDaysPerWeek',
+      answers: 'The rank-3 highest distinct-run-day count over the last '
+        + 'sixteen seven-day blocks. Rank-3 rather than a median because the '
+        + 'median read five for a runner who runs six, which is one of Rule '
+        + '8 own founding defects. Null on a failed read or on a runner who '
+        + 'ran in under three of those weeks, which is a refusal and not a '
+        + 'zero.',
+    },
     rule8Side: 'HABIT',
     competing: [
       {
@@ -468,26 +477,45 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
     conflict: {
       verdict: 'OPEN',
       between: [
-        'profile.weekly_frequency (stated)',
+        'lib/plan/generate.ts#derivedTrainingDaysPerWeek',
+        'profile.weekly_frequency (stated, read at four sites)',
         'lib/plan/goal-tiers.ts#TIER_TARGETS',
-        'lib/training/normal-window.ts#normalWeeklyMileageDetail',
       ],
-      shouldOwn: 'a habit reader in lib/training/normal-window.ts that does '
-        + 'not yet exist',
-      because: 'NOTHING MEASURES THIS. Every site above reads a stated value, '
-        + 'a population table, or a coverage count that its own comment says '
-        + 'is not a rate. Rule 8 lists the frequency derivation among its six '
-        + 'founding defects (a median of 5 read for a runner who runs 6) and '
-        + 'the derivation it describes no longer exists anywhere in the tree. '
-        + 'So the belief is stated, never demonstrated, and a runner who has '
-        + 'moved from five days to six cannot tell the engine by running.',
-      notRoutedBecause: 'Building a measured frequency reader means deciding '
-        + 'what it does when it disagrees with a stated preference, which is '
-        + 'a coaching decision about whose answer wins. Recorded rather than '
-        + 'guessed.',
+      shouldOwn: 'lib/plan/generate.ts#derivedTrainingDaysPerWeek',
+      because: 'CORRECTED 2026-09-05. This entry read "NOTHING MEASURES THIS '
+        + '... the derivation it describes no longer exists anywhere in the '
+        + 'tree", and that had gone stale: derivedTrainingDaysPerWeek landed '
+        + '2026-08-30 and sits on the authoring path, so the belief IS '
+        + 'demonstrated now. What is still open is narrower and worse. FOUR '
+        + 'sites read profile.weekly_frequency independently and only ONE of '
+        + 'them falls back to the measurement: the generator coerces 0 to 3 '
+        + 'and then derives, while injury-builder answers 5 from a private '
+        + 'constant, and adapt.ts and mutate.ts spend the raw column as a '
+        + 'hard cap with no fallback at all. So a runner with a null profile '
+        + 'is measured by the composer and defaulted by the three readers '
+        + 'that reshape what the composer wrote.',
+      notRoutedBecause: 'Routing the other three means deciding what happens '
+        + 'when the measurement disagrees with a stated preference, which is '
+        + 'a coaching decision about whose answer wins, and adapt.ts spends '
+        + 'the number as a SAFETY cap rather than as a habit reading — Rule '
+        + '8 corollary, opposite sides. Recorded with all four sites named in '
+        + 'lib/runner-state/quantity-owners.ts RUNNING_FREQUENCY, where they '
+        + 'are measured against the owner rather than only listed.',
     },
-    movesUpOn: [],
-    movesDownOn: [],
+    movesUpOn: [
+      {
+        what: 'Three of the last sixteen weeks run on more days than the '
+          + 'current reading. The runner tells the engine by running.',
+        reader: 'lib/plan/generate.ts#derivedTrainingDaysPerWeek',
+      },
+    ],
+    movesDownOn: [
+      {
+        what: 'The same rank falling, once the weeks that carried it leave '
+          + 'the window.',
+        reader: 'lib/plan/generate.ts#derivedTrainingDaysPerWeek',
+      },
+    ],
     neverMovesOn: [
       NEVER_TAPER,
       {
@@ -1181,12 +1209,17 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
         module: 'lib/training/elevation-model.ts',
         symbol: 'courseElevationCostSec',
         at: 'lib/training/elevation-model.ts:67',
-        computes: 'A SECOND declaration of the per-percent grade cost, same '
-          + 'value and same citation as the terrain owner, but with no '
-          + 'doctrine claim watching it. The same file already imports the '
-          + 'descent fraction from that owner, so the import edge exists '
-          + 'and was not used for this constant.',
-        canDisagree: true,
+        computes: 'CLOSED 2026-09-05 (OWNER-AGREEMENT-1). It WAS a second '
+          + 'declaration of the per-percent grade cost, same value and same '
+          + 'citation as the terrain owner but with no doctrine claim '
+          + 'watching it, in a file that already imported the descent '
+          + 'fraction from that owner. The constant is now re-exported from '
+          + 'lib/terrain/grade-adjust.ts, so one literal exists and the two '
+          + 'cannot drift. Kept in this list rather than deleted because the '
+          + 'agreement is now CHECKED — quantity-owners.ts holds them as an '
+          + 'owner and its carrier, and _owner_agreement.test.ts fails on any '
+          + 'difference between them.',
+        canDisagree: false,
       },
     ],
     surveyed: 'lib/training, lib/coach, lib/weather, lib/race, lib/terrain '

@@ -220,6 +220,20 @@ const ALLOWLIST: Entry[] = [
       + 'are quoted text; it imports nothing from vdot.ts and computes no pace.',
   },
   {
+    path: 'lib/runner-state/quantity-owners.ts',
+    status: 'CONVERSION',
+    reason:
+      'STRINGS, NOT CALLS · the same exemption as `ownership.ts` above and for '
+      + 'the same reason this file\'s own header gives: it is entirely quoted '
+      + 'text, and the producer name it mentions is `tPaceFromGoal`, cited in '
+      + 'two argued exemptions as the precedent for deleting the marathon '
+      + 'goal branch. Naming a deleted side door as the shape a surviving one '
+      + 'should be closed in is the opposite of reopening it. The file imports '
+      + 'nothing from vdot.ts, computes no pace, and declares no numeric '
+      + 'constant that is a pace — its numbers are MEASURED DELTAS between two '
+      + 'owners, which is what its gate ratchets.',
+  },
+  {
     path: 'lib/plan/authoring-shadow-compare.ts',
     status: 'CONVERSION',
     reason:
