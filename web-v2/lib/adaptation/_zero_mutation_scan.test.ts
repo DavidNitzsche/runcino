@@ -242,6 +242,17 @@ const PERMITTED_EXTERNAL_IMPORTS: ReadonlyArray<{ file: string; module: string; 
       + 'because it is the one place a change to `adaptation-model.ts` can reach a runner\'s '
       + 'plan, and a future edit to that file must know it.',
   },
+  {
+    file: 'lib/evidence/classify-evidence.ts', module: '@/lib/adaptation/canonical',
+    names: ['workTraceIsCredible'],
+    why:
+      'EVIDENCECLASSIFIER-1 (2026-09-05) - the canonical evidence classifier\'s '
+      + '`flatlinedTelemetry` tag reuses the SAME HRFLATLINE-1 predicate '
+      + '`canonical-shadow/live-input.ts` was already granted (same module, same symbol, '
+      + 'in `lib/adaptation/canonical/_cannot_mutate.test.ts`\'s ALLOWLIST), rather than '
+      + 'writing a second flatline test that could silently disagree with the one this engine '
+      + 'grades against. Read-only, pure over sample arrays, no plan, no proposal, no write.',
+  },
 ];
 
 /**

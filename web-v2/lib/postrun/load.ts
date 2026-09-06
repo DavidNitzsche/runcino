@@ -233,21 +233,72 @@ export async function loadPostRunExperience(
   const data = runRow.data ?? {};
   const dateISO = String(data.date ?? String(data.startLocal ?? '').slice(0, 10));
 
-  // ── the ACTIVE plan's row for the day ────────────────────────────────────
-  const planRes = await pool.query<{
-    plan_id: string; type: string | null; distance_mi: string | number | null;
-    workout_spec: Record<string, unknown> | null; sub_label: string | null;
-  }>(
-    `SELECT pw.plan_id, pw.type, pw.distance_mi, pw.workout_spec, pw.sub_label
-       FROM plan_workouts pw
-       JOIN training_plans tp ON tp.id = pw.plan_id
-      WHERE tp.user_uuid = $1::uuid
-        AND tp.archived_iso IS NULL
-        AND pw.date_iso = $2
-      ORDER BY pw.id ASC
-      LIMIT 1`,
-    [userId, dateISO],
-  );
+  /* ── the plan row THIS RUN satisfies — not "the plan row for this date" ───
+   *
+   * POSTRUN-DATE-GRADE-1 (2026-09-05). This used to be a pure `pw.date_iso =
+   * $2` lookup: whichever `plan_workouts` row happened to sit on the run's
+   * calendar date, with NO check that this specific run is what satisfied
+   * it. Every production call site loads by `runId`
+   * (`app/api/runs/[id]/route.ts`, `.../recap/route.ts`, `/api/v5/today`),
+   * which means `loadRun`'s `ref.dateISO` branch — the one branch that
+   * already consulted `resolveDayExecutions` — never ran for a real
+   * request. The execution-identity resolver `lib/execution/day-resolver.ts`
+   * exists specifically so no surface re-derives "did this run complete
+   * this prescription" from a date match (its own header names the exact
+   * shape of this bug: WORKOUT-EXECUTION-ID-1), and this file was the one
+   * surface still doing it.
+   *
+   * Concretely: a supplemental easy run — a shakeout, a run with a friend,
+   * a second watch payload synced late — opened by id on a day the plan
+   * prescribed a 9.5-mile tempo got `plannedType: 'tempo'`,
+   * `plannedDistanceMi: 9.5` and a `verdict` graded against the tempo's own
+   * `workout_spec`, over phases that were never that tempo. A 3-mile easy
+   * run read as a massive shortfall against a session it was never shown to
+   * have executed. Rule 14: a query names the population it reads, and "the
+   * plan row for this date" is not "the plan row THIS RUN satisfied".
+   *
+   * `resolveDayExecutions` is called once, here, for every load path
+   * (EXECID-SCAN-1 — the one resolver, no side door). `matchedPrescriptionId`
+   * is non-null only when this run is the EXACT or LEGACY match for a real
+   * prescription that day. A supplemental run — or a run reached by id on a
+   * day where nothing matched it — gets `null`, which every field below
+   * already treats as "no plan row for this date": `plannedType` falls back
+   * to the run's own self-reported type, `verdict` grades against no spec
+   * (or the run's own self-authored targets), and `targetProvenance` reads
+   * `'self_authored'` or `'none'` — the same honest states a genuine
+   * rest-day extra run has always produced. Nothing invents a new UI state;
+   * a supplemental run simply stops borrowing a stranger's prescription.
+   *
+   * On a failed identity read, this refuses to guess: `matchedPrescriptionId`
+   * stays null rather than falling back to the old date-only query, because
+   * the date-only query is the exact behaviour this fix removes — "the
+   * safest possible reading of data" (Rule 11) is to grade nothing against
+   * an unconfirmed prescription, not to grade confidently against the wrong
+   * one. */
+  const resolvedDay = await resolveDayExecutions(userId, dateISO).catch((err: unknown) => {
+    console.warn('[postrun/load] execution identity unreadable — grading no prescription:',
+      err instanceof Error ? err.message : err);
+    return null;
+  });
+  const matchedPrescriptionId = resolvedDay
+    ? resolvedDay.prescriptions.find((p) => p.matchedRun?.runId === runRow.id)?.id ?? null
+    : null;
+
+  const planRes = matchedPrescriptionId == null
+    ? { rows: [] as Array<{
+        plan_id: string; type: string | null; distance_mi: string | number | null;
+        workout_spec: Record<string, unknown> | null; sub_label: string | null;
+      }> }
+    : await pool.query<{
+        plan_id: string; type: string | null; distance_mi: string | number | null;
+        workout_spec: Record<string, unknown> | null; sub_label: string | null;
+      }>(
+        `SELECT pw.plan_id, pw.type, pw.distance_mi, pw.workout_spec, pw.sub_label
+           FROM plan_workouts pw
+          WHERE pw.id = $1
+          LIMIT 1`,
+        [matchedPrescriptionId],
+      );
   const planRow = planRes.rows[0] ?? null;
 
   const activePlanRes = await pool.query<{ id: string }>(

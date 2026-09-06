@@ -349,6 +349,20 @@ const IDENTITY_ALLOW: Array<{ file: string; statement: string; reason: string }>
       'CANONICAL_ROW_SQL. Adding the predicate here would make the rung unreachable and ' +
       're-404 all 118 of the reference runner\'s absorbed ids.',
   },
+  {
+    file: 'lib/evidence/classify-evidence.ts',
+    statement: 'SELECT id::text AS id, data',
+    reason:
+      'classifyEvidence() must be able to classify a MERGED-AWAY LOSER, because one of its ' +
+      '19 tags — duplication.mergedRecording — is a question specifically ABOUT a non-canonical ' +
+      'row: "did this row lose a duplicate merge". Restricting the fetch to CANONICAL_ROW_SQL ' +
+      'would make a caller asking to classify a loser id get null (no such row) instead of the ' +
+      'correct tag. The canonical predicate is enforced one layer down instead: ' +
+      'buildEvidenceClassification sets isCanonicalRow from isMergedAway(data) and gates BOTH ' +
+      'admissibility.capacityEvidence and admissibility.fatigueCost to false for a loser row, so ' +
+      'nothing downstream can double-count it — _classify_evidence.test.ts falsifies exactly ' +
+      'that gate (case (c)) and watches it fail before trusting it green.',
+  },
 ];
 
 describe('IDENTITY-1 · a lookup by run id names the canonical population', () => {

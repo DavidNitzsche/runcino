@@ -375,6 +375,19 @@ const ALLOWED_MOVE_ORCHESTRATION_DOOR = path.join(WEB, 'lib/brain/orchestration/
 const ALLOWED_SEVERITY_GATE_FILE = path.join(
   WEB, 'lib/adaptation/volume-evidence/_deterioration_severity.test.ts',
 );
+/**
+ * EVIDENCECLASSIFIER-1 (2026-09-05) · the canonical evidence classifier's one
+ * door. `lib/evidence/classify-evidence.ts` composes execution identity,
+ * duplicate detection, terrain, heat, safety and race-authority into one
+ * tagged record per activity — CLAUDE.md's overnight priority 5 — and its
+ * `flatlinedTelemetry` tag reuses the SAME HRFLATLINE-1 predicate the loader
+ * above was granted, for the identical reason: a held-constant HR trace reads
+ * as a real measurement to any check that only looks at the run-level
+ * average. A second, ad-hoc flatline test in the classifier would be a second
+ * answer to a question `hr-trace-credibility.ts` already owns (Rule 16) — and
+ * risks silently drifting from the loader's own definition of "credible".
+ */
+const ALLOWED_EVIDENCE_CLASSIFIER_FILE = path.join(WEB, 'lib/evidence/classify-evidence.ts');
 const ALLOWLIST: readonly AllowedImport[] = [
   { file: ALLOWED_ADJUDICATION_DEMAND_DOOR, module: '@/lib/adaptation/canonical/plan-load', symbols: new Set(['projectPlanLoad']) },
   { file: ALLOWED_EXCEPTION_FILE, module: '@/lib/adaptation/canonical/evaluate', symbols: new Set(['evaluateAdaptation']) },
@@ -624,6 +637,15 @@ const ALLOWLIST: readonly AllowedImport[] = [
     file: ALLOWED_MOVE_ORCHESTRATION_DOOR,
     module: '@/lib/adaptation/canonical/phase-priority',
     symbols: new Set(['phaseFromAuthoredLabel', 'TrainingPhase']),
+  },
+  /* EVIDENCECLASSIFIER-1 (2026-09-05) · see the grant above for the argument.
+   * `workTraceIsCredible` is a PURE function of sample arrays — no plan, no
+   * database, no writes — the same property that earned the loader's own
+   * grant of the identical symbol. */
+  {
+    file: ALLOWED_EVIDENCE_CLASSIFIER_FILE,
+    module: '@/lib/adaptation/canonical/hr-trace-credibility',
+    symbols: new Set(['workTraceIsCredible']),
   },
 ];
 
