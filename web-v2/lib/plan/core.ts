@@ -34,13 +34,25 @@ export function mondayOf(iso: string): string {
   return addDays(iso, shift);
 }
 
-/** Parse a goal time like "1:35:00" or "3:25:00" → seconds, or null. */
-export function parseGoalSeconds(goal: string | null | undefined): number | null {
-  if (!goal) return null;
-  const m = String(goal).match(/^(\d+):(\d{2}):(\d{2})$/);
-  if (!m) return null;
-  return (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]);
-}
+/*
+ * `parseGoalSeconds` LIVED HERE AND IS DELETED (OWNER-AGREEMENT-1, 2026-09-05).
+ *
+ * It was a second implementation of "goal string to seconds", strict
+ * `^H:MM:SS`, beside `lib/training/vdot.ts#parseRaceTime` — which is the one
+ * `lib/plan/generate.ts#parseGoalSeconds` delegates to and which also reads
+ * `H:MM` and `MM:SS`. The two did not merely differ in coverage: a 25:30
+ * five-kilometre goal parsed to 1530 seconds through the owner and to NULL
+ * through this copy, so the same stored goal was a target on one path and
+ * "no goal at all" on another (Rule 11 collapsed at the parser).
+ *
+ * It had no production caller and no test — `generator-bench.test.ts`'s
+ * "accepts multiple goal-time formats" suite imports the `generate.ts` one —
+ * so deleting it changes no behaviour and closes the divergence rather than
+ * arguing about it. Registered as REMOVED in
+ * `lib/runner-state/quantity-owners.ts` so a reintroduction fails by name.
+ *
+ * Need a goal in seconds? `parseRaceTime` from `lib/training/vdot.ts`.
+ */
 
 /** Round to 1 decimal — used widely for distance_mi values. */
 export function round1(n: number): number {
