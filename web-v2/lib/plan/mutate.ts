@@ -1050,16 +1050,32 @@ async function landDecisionInLedger(l: LedgerLanding): Promise<string | null> {
  * is contained, deliberately: containment is what produced the four-step
  * sequence this whole change exists to remove.
  *
- * `table_absent` is NOT a failure — it is the declared pre-migration state of
- * production. The commit proceeds and the boundary says so at `console.warn`
- * once per exit, exactly as it did before this change. The instant migration
- * 166 lands the ledger becomes required with no flag to flip.
+ * LEDGERREQUIRED-1 (2026-09-06) · `table_absent` REFUSES. It used to warn and
+ * let the commit through, on the argument that it is "the declared
+ * pre-migration state of production." The owner's ruling overturns that
+ * argument by name: "There may be no ambiguous or optional ledger behavior
+ * for a plan mutation... When the ledger is required and unavailable, the
+ * mutation refuses before changing the plan." A structural or derivations
+ * mutation with no durable record of what it did or why is exactly the
+ * unaudited write this whole ledger exists to end — an absent table does not
+ * make that acceptable, it only makes it invisible.
+ *
+ * The operational consequence, stated rather than buried: until migration 166
+ * is applied, EVERY structural/derivations mutation through this door refuses
+ * — every proposal accept, every Move-a-Run, every pace change. Plan AUTHORING
+ * (`touches === 'authorship'`) is a separate exit and is unaffected; a brand
+ * new plan can still be created. This is the conservative direction and it is
+ * the one asked for: a runner-accepted mutation nobody can audit is closer to
+ * an unaccountable automatic write than a properly governed one, and "do not
+ * modify my live plan" is better served by refusing than by silently
+ * proceeding unaudited.
  */
 async function landDecisionInTransaction(
   tx: LedgerExecutor,
   l: LedgerLanding,
   onceOnly: boolean,
   undoes: { id: string; reason: string } | undefined,
+  requireLedger: boolean,
 ): Promise<string | null> {
   const entry = await buildLedgerEntry(l, tx);
   let written;
@@ -1076,19 +1092,30 @@ async function landDecisionInTransaction(
     throw new LedgerRefusedMutation('duplicate', written.why);
   }
   if (written.state === 'table_absent') {
-    console.warn(
-      `[plan/mutate] DECISION NOT RECORDED (table_absent) · source=${l.source} · `
-      + `outcome=${l.outcome} · ${written.why}`,
-    );
-    if (undoes) {
-      // An undo with no table cannot be atomic with anything. Refuse rather
-      // than reverse a plan and leave the decision reading live.
+    // LEDGERREQUIRED-1 · refuse, do not warn-and-proceed — for a mutation the
+    // ledger is REQUIRED for. Scoped to `requireLedger`, not to every touch:
+    // plan AUTHORSHIP (a brand-new `training_plans` row — onboarding, a
+    // rebuild) is not the runner-accepted coaching decision this rule is
+    // about, and refusing it here would mean no plan could be authored in
+    // production at all while migration 166 is pending — a far larger blast
+    // radius than "Move-a-Run" or "accept a proposal," and not what was
+    // asked for. An undo ALWAYS requires the ledger regardless of
+    // `requireLedger`: a reversal with nothing recording it is never sound.
+    if (requireLedger || undoes) {
       throw new LedgerRefusedMutation(
         'ledger_unwritten',
-        `this mutation reverses ledger row ${undoes.id}, and the ledger table does not exist on `
-        + 'this database, so the reversal cannot be recorded alongside the plan change.',
+        (undoes
+          ? `this mutation reverses ledger row ${undoes.id}, and `
+          : 'this mutation ')
+        + `the ledger table does not exist on this database, so the ${undoes ? 'reversal' : 'decision'} `
+        + `cannot be recorded alongside the plan change. source=${l.source} · outcome=${l.outcome} · `
+        + written.why,
       );
     }
+    console.warn(
+      `[plan/mutate] DECISION NOT RECORDED (table_absent, ledger not required for this touch) · `
+      + `source=${l.source} · outcome=${l.outcome} · ${written.why}`,
+    );
     return null;
   }
   if (undoes) {
@@ -1377,6 +1404,9 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     landing(decision, outcome, violations, account, planIdForRow),
     opts.ledger?.applyOnce === true,
     opts.ledger?.undoes,
+    // LEDGERREQUIRED-1 · required for every touch except a brand-new plan
+    // being authored. See landDecisionInTransaction's own comment for why.
+    touches !== 'authorship',
   );
 
   try {

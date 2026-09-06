@@ -45,6 +45,14 @@
  *     honoured, not that `updated > 0` is the right question for that caller.
  *   · It cannot observe production. The seven rows above are evidence
  *     gathered by hand; nothing in this repo can re-read them.
+ *   · It cannot fail on ledger absence (LEDGERREQUIRED-1, 2026-09-06). The
+ *     mock reports the ledger table present and its insert successful on
+ *     every run, deliberately, so a bypass mutation here reaches the stamp
+ *     decision the same way it would once migration 166 is applied. The
+ *     refuse-before-mutate contract for a genuinely absent table is proved
+ *     against a real database in `_ledger_atomicity.db.test.ts` (0b/0c), not
+ *     here — this file has never asserted anything about table presence and
+ *     should not start silently depending on it.
  *   · Distribution (Rule 22): four assertions require the stamp to still
  *     happen and four require it not to. A gate that only checked "no-ops
  *     don't stamp" would pass a boundary that had stopped stamping entirely,
@@ -75,6 +83,19 @@ function fakeClient() {
       }
       if (/SELECT last_adapted_at/.test(s)) {
         return { rows: [{ last_adapted_at: '2026-09-01T00:00:00.000Z' }], rowCount: 1 };
+      }
+      // LEDGERREQUIRED-1 · this suite is about `last_adapted_at` stamping,
+      // not ledger presence. The harness reports the ledger PRESENT and its
+      // insert successful so a bypass mutation reaches the stamp decision the
+      // same way it would in production with migration 166 applied — the
+      // absence path has its own dedicated coverage in
+      // `_ledger_atomicity.db.test.ts` (0b/0c) and re-exercising it here would
+      // only make this file assert something it does not name (Rule 22).
+      if (/to_regclass/.test(s)) {
+        return { rows: [{ reg: 'plan_decision_ledger' }], rowCount: 1 };
+      }
+      if (/INSERT INTO plan_decision_ledger/.test(s)) {
+        return { rows: [{ id: 'ldg_test' }], rowCount: 1 };
       }
       return { rows: [], rowCount: 0 };
     }),

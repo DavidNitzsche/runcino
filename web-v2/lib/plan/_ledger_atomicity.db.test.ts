@@ -52,9 +52,11 @@
  * · WHETHER PRODUCTION HAS MIGRATION 166. It does not, deliberately. A green
  *   run here says the boundary and a LOCAL COPY of that schema agree, and
  *   nothing whatsoever about the live database (Rule 19: green is not
- *   deployed). On production today every one of these mutations takes the
- *   `table_absent` branch and commits without a row, which is the declared
- *   pre-migration state and is asserted separately below rather than assumed.
+ *   deployed). LEDGERREQUIRED-1 (2026-09-06) changed what "on production
+ *   today" means, though: every structural/derivations mutation now REFUSES
+ *   rather than commits when the table is absent — asserted directly below
+ *   (test 0b), not assumed. Plan authorship is a separate exit and is
+ *   unaffected.
  * · A FAILURE MODE POSTGRES DOES NOT ROLL BACK. Everything here rests on
  *   transactional DDL-free rollback semantics. A write outside the transaction
  *   — a file, an HTTP call, a second pool connection inside `apply` — is not
@@ -311,9 +313,10 @@ describe('LEDGERATOMIC-1 · a plan mutation and its ledger record share one fate
   });
 
   when('0 · the fixture is real · the ledger table exists on this database', async () => {
-    // Rule 18 · without this, every assertion below could pass against the
-    // `table_absent` branch, which permits the commit and writes nothing. The
-    // suite would report atomicity while proving the opposite.
+    // Rule 18 · without this, every assertion below could pass vacuously —
+    // every mutation would REFUSE (per LEDGERREQUIRED-1) rather than
+    // exercising the atomicity paths tests 1-9 are actually about. The suite
+    // would report atomicity while never reaching the code that provides it.
     const r = await pool.query<{ reg: string | null }>(
       `SELECT to_regclass('public.plan_decision_ledger')::text AS reg`,
     );
@@ -323,6 +326,61 @@ describe('LEDGERATOMIC-1 · a plan mutation and its ledger record share one fate
       + 'pre-migration branch and this suite proves nothing. Apply db/migrations/166.',
     ).not.toBeNull();
     expect(await paces()).toEqual([500, 500, 500]);
+  });
+
+  when('0b · LEDGERREQUIRED-1 · an absent ledger REFUSES, before the plan moves', async () => {
+    // The contract this test exists to prove, in the owner's own words:
+    // "There may be no ambiguous or optional ledger behavior for a plan
+    // mutation... When the ledger is required and unavailable, the mutation
+    // refuses before changing the plan." Made genuinely absent by renaming
+    // the real table for the duration of the test — the in-transaction probe
+    // (`ledgerTableExistsInTransaction`) queries `tx`, the caller's own open
+    // transaction, never `pool`, so a `pool.query` mock cannot reach it. This
+    // is the honest simulation the file's own `breakTheLedger` already uses
+    // the same philosophy for: change the real database, not a JS stub.
+    const before = await paces();
+    await pool.query(`ALTER TABLE plan_decision_ledger RENAME TO plan_decision_ledger_hidden`);
+    _resetLedgerTableProbeForTests();
+
+    let res: Awaited<ReturnType<typeof bumpPace>>;
+    try {
+      res = await bumpPace({ source: 'test/ledger-absent' });
+    } finally {
+      await pool.query(`ALTER TABLE plan_decision_ledger_hidden RENAME TO plan_decision_ledger`);
+      _resetLedgerTableProbeForTests();
+    }
+
+    expect(res.ok, 'a mutation with no ledger table must not report success').toBe(false);
+    expect(res.outcome).toBe('ledger_unwritten');
+    expect(await paces(), 'the plan moved even though the ledger could not record it')
+      .toEqual(before);
+  });
+
+  when('0c · LEDGERREQUIRED-1 · plan AUTHORSHIP is unaffected by the ledger requirement', async () => {
+    // The refusal is scoped to structural/derivations mutations. A brand-new
+    // plan being authored takes a different exit entirely and this test
+    // proves that exit does not regress into refusing too, even with the
+    // table genuinely absent.
+    await pool.query(`ALTER TABLE plan_decision_ledger RENAME TO plan_decision_ledger_hidden`);
+    _resetLedgerTableProbeForTests();
+
+    let res: Awaited<ReturnType<typeof mutatePlan<number>>>;
+    try {
+      res = await mutatePlan<number>({
+        userUuid: RUNNER,
+        authority: 'AUTHORSHIP',
+        source: 'test/authorship-unaffected',
+        todayISO: TODAY,
+        touches: 'authorship',
+        planIdFromResult: () => `pln_test_${randomUUID().slice(0, 8)}`,
+        apply: async () => 1,
+      });
+    } finally {
+      await pool.query(`ALTER TABLE plan_decision_ledger_hidden RENAME TO plan_decision_ledger`);
+      _resetLedgerTableProbeForTests();
+    }
+
+    expect(res.ok, 'plan authorship refused because of the ledger, and it must not').toBe(true);
   });
 
   when('1 · mutation succeeds and ledger succeeds', async () => {
