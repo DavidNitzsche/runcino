@@ -65,10 +65,22 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
   {
     n: 1, name: 'Load canonical runner state',
     owner: 'lib/runner-state/assemble.ts', ownerExports: 'BeliefValueByKey',
-    state: 'UNWIRED',
-    blocker: 'assemble.ts declares the belief shapes and the ownership table but has no '
-      + 'assembler that reads a runner and returns them. Nothing imports it from outside '
-      + 'lib/runner-state/.',
+    state: 'WIRED',
+    // ORCHESTRATIONWIRE-1 (2026-09-06) · `lib/runner-state/store/orchestrator.ts#
+    // loadRunnerBeliefs`/`updateRunnerBeliefs` call into `assemble.ts` directly,
+    // and `app/api/cron/run-adaptations/route.ts` now imports `orchestrator.ts`
+    // in its real per-runner loop — a dynamic import, but `buildModuleGraph`
+    // follows dynamic imports (same builder the client-graph gate uses), so this
+    // is a genuine route-to-owner edge, not a claim resting on a type-only one.
+    //
+    // What this does NOT claim: that a belief is being stored in production
+    // today. No migration for `runner_beliefs` has been applied (`db/migrations/
+    // 169_runner_beliefs.sql` is drafted and unapplied — DDL needs David's
+    // per-statement go), so every call from the cron answers `table_absent` and
+    // the honest refusal is what actually runs. Steps 12 and 16 are already
+    // WIRED in exactly this state — "reachable and blocked on approval is a
+    // different state from unwired" — and this is the same argument, not a new
+    // one invented to justify this promotion.
   },
   {
     n: 2, name: 'Resolve executions',
@@ -98,9 +110,13 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
   {
     n: 5, name: 'Update beliefs',
     owner: 'lib/runner-state/belief.ts', ownerExports: 'BELIEF_KEYS',
-    state: 'UNWIRED',
-    blocker: 'there is no belief store. Beliefs are types and an ownership table; nothing '
-      + 'persists or updates one, so step 1 has nothing to load.',
+    state: 'WIRED',
+    // ORCHESTRATIONWIRE-1 (2026-09-06) · same wiring as step 1's note.
+    // `assemble.ts` (now reachable from the cron via `orchestrator.ts`)
+    // imports `BELIEF_KEYS` as a real value from `belief.ts`, so this owner is
+    // reachable transitively rather than through a type-only edge. Same
+    // pending-migration caveat as step 1: every call refuses today, honestly,
+    // until `runner_beliefs` is approved and applied.
   },
   {
     n: 6, name: 'Update fatigue separately',
@@ -218,8 +234,18 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
  * had before this change — it changed what step 9's answer is now recorded
  * as, which is the distinction `_orchestration.test.ts`'s own header draws
  * between reachability and being on the path that matters.
+ *
+ * ORCHESTRATIONWIRE-1 (2026-09-06) · 10 → 12. Steps 1 and 5 (load canonical
+ * runner state / update beliefs) are WIRED: `app/api/cron/run-adaptations/
+ * route.ts` now imports `lib/runner-state/store/orchestrator.ts` in its real
+ * per-runner loop, which reaches `assemble.ts` (step 1's owner) and, through
+ * it, `belief.ts` (step 5's owner) by a genuine value import — not the
+ * type-only edges that would have been erased from the graph. Both refuse on
+ * every call today (migration 169 is drafted and unapplied), in exactly the
+ * declared, reported state steps 12 and 16 already established this pin
+ * counts as WIRED rather than UNWIRED.
  */
-export const WIRED_STEP_PIN = 10;
+export const WIRED_STEP_PIN = 12;
 
 /**
  * NOT_BUILT may only FALL. A step becoming fiction again is a regression.

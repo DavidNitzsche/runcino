@@ -13704,17 +13704,21 @@ async function persistPlan(client: PoolClient, args: {
       const phaseId = id('phs');
       phaseIds.push(phaseId);
       const b = params.length;
-      tuples.push(`($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7})`);
+      tuples.push(`($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8})`);
       // PHASE-ANSWERS-1 · `rationale` carries the phase's own "what are we
       // developing" sentence, about THIS runner, in place of the one fixed
       // string every block used to share. The full structured set lives on
       // `authored_state.phase_answers` (no DDL · additive jsonb key).
-      params.push(phaseId, planId, ph.label, cursor, cursor + ph.weeks - 1, ph.answers?.developing ?? ph.rationale, ph.citation);
+      // PLANWEEKSUUID-1 (2026-09-06) · user_uuid stamped on INSERT, matching
+      // the sibling plan_workouts insert below — this is the writer-side half
+      // of Rule 14's `plan_weeks`/`plan_phases` NULL-user_uuid gap; the
+      // read-side stays on the plan_id join regardless (defense in depth).
+      params.push(phaseId, planId, ph.label, cursor, cursor + ph.weeks - 1, ph.answers?.developing ?? ph.rationale, ph.citation, args.userId);
       cursor += ph.weeks;
     }
     if (tuples.length > 0) {
       await client.query(
-        `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation)
+        `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation, user_uuid)
          VALUES ${tuples.join(', ')}`,
         params
       );
@@ -13769,7 +13773,11 @@ async function persistPlan(client: PoolClient, args: {
        isCutbackByWeek[wi]
          ? cutbackWeekRationale(authoredCutbackEveryN)
          : `${w.phase} · week ${(w.blockWeekIdx ?? wi) + 1}`,
-       isPeakByWeek[wi], isCutbackByWeek[wi]]
+       // PLANWEEKSUUID-1 (2026-09-06) · stamped on INSERT now, matching the
+       // sibling plan_workouts row below. Closes the writer-side half of
+       // Rule 14's plan_weeks NULL-user_uuid gap for every plan this
+       // generator authors from here forward.
+       isPeakByWeek[wi], isCutbackByWeek[wi], args.userId]
     );
 
     for (const d of w.days) {
@@ -13832,10 +13840,10 @@ async function persistPlan(client: PoolClient, args: {
     const tuples = weekRows.map((row) => {
       const b = params.length;
       params.push(...row);
-      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9})`;
+      return `($${b + 1}, $${b + 2}, $${b + 3}, $${b + 4}, $${b + 5}, $${b + 6}, $${b + 7}, $${b + 8}, $${b + 9}, $${b + 10})`;
     });
     await client.query(
-      `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id, is_race_week, rationale, is_peak, is_cutback)
+      `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id, is_race_week, rationale, is_peak, is_cutback, user_uuid)
        VALUES ${tuples.join(', ')}`,
       params
     );

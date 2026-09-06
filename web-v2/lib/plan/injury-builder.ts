@@ -570,9 +570,11 @@ async function buildInjuryPlanBody(input: InjuryBuildInput): Promise<InjuryBuild
     : `${resolved.protocol.label}. Walk-run ladder from week ${(resolved.runStartWeek ?? 0) + 1}, one stage a week, alternate days. Doctrine total return ${bandLabel}. Pain 0-2 carry on, 3-5 hold, 6 or more stop.`;
   const phaseId = id('phs');
   await pool.query(
-    `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation)
-     VALUES ($1, $2, $3, 0, $4, $5, $6)`,
-    [phaseId, planId, phaseLabel, totalWeeks - 1, rationale, resolved.protocol.citation],
+    // PLANWEEKSUUID-1 (2026-09-06) · user_uuid stamped on INSERT, matching
+    // the plan_workouts insert below.
+    `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation, user_uuid)
+     VALUES ($1, $2, $3, 0, $4, $5, $6, $7)`,
+    [phaseId, planId, phaseLabel, totalWeeks - 1, rationale, resolved.protocol.citation, userId],
   );
 
   // Generate weeks + workouts.
@@ -586,9 +588,10 @@ async function buildInjuryPlanBody(input: InjuryBuildInput): Promise<InjuryBuild
         ? `${phaseLabel} · week ${wi + 1} of ${totalWeeks} · walk-run stage ${stage.stage} of 8`
         : `${phaseLabel} · week ${wi + 1} of ${totalWeeks} · off running, monitoring the site`;
     await pool.query(
-      `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id, is_race_week, rationale)
-       VALUES ($1, $2, $3, $4, $5, FALSE, $6)`,
-      [weekId, planId, wi, weekStart, phaseId, weekRationale],
+      // PLANWEEKSUUID-1 (2026-09-06) · user_uuid stamped on INSERT.
+      `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id, is_race_week, rationale, user_uuid)
+       VALUES ($1, $2, $3, $4, $5, FALSE, $6, $7)`,
+      [weekId, planId, wi, weekStart, phaseId, weekRationale, userId],
     );
 
     const days = injuryWeekShape(wi, resolved, restDow, maxSessions, easyPaceSecPerMi);

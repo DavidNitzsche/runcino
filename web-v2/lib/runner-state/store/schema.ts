@@ -193,3 +193,60 @@ export async function ensureBeliefStoreSchema(exec: Pick<PoolClient, 'query'>): 
       ON ${RUNNER_BELIEFS_TABLE} (user_uuid, plan_lineage_id)
   `);
 }
+
+/**
+ * ORCHESTRATIONWIRE-1 (2026-09-06) · THE THIRD FACT `write.ts`/`read.ts` NEVER
+ * ASKED FOR.
+ *
+ * Neither file ever probed whether `runner_beliefs` exists — every INSERT and
+ * SELECT there assumes it does. That was fine while nothing outside this
+ * directory called them. Wiring steps 1 and 5 of the orchestrator into a real
+ * nightly cron (per David's instruction that an admin route, a test or a
+ * shadow script do not count as wiring) means those statements now run
+ * against PRODUCTION, where this table does not exist — no migration has been
+ * written for it yet, let alone applied — and an uncaught "relation
+ * runner_beliefs does not exist" would take the rest of that cron pass down
+ * with it.
+ *
+ * This is `plan_decision_ledger`'s own LEDGERREQUIRED-1/`ledgerTableExists`
+ * shape, copied rather than re-derived: three states (Rule 11), a permanent
+ * positive cache because a table does not un-exist, a cooldown on a definite
+ * absence so a live process notices a migration landing without hammering the
+ * catalog on every write, and a failed probe caches nothing. The one
+ * deliberate difference: this store is READ-MOSTLY-APPEND, so both callers
+ * (`updateRunnerBeliefs` writes, `loadRunnerBeliefs` reads) share ONE probe
+ * rather than a Lane A / Lane B split — there is no open transaction here for
+ * an in-transaction variant to matter, and both callers can equally tolerate
+ * the pool-based cooldown.
+ */
+export type BeliefsTableProbe = 'present' | 'absent' | null;
+
+let beliefsTableExists: true | null = null;
+let beliefsAbsentUntilMs = 0;
+const BELIEFS_ABSENT_REPROBE_MS = 60_000;
+
+export async function beliefsTableExistsCheck(
+  exec: Pick<PoolClient, 'query'>,
+): Promise<BeliefsTableProbe> {
+  if (beliefsTableExists === true) return 'present';
+  if (Date.now() < beliefsAbsentUntilMs) return 'absent';
+  try {
+    const r = await exec.query<{ reg: string | null }>(
+      `SELECT to_regclass('public.${RUNNER_BELIEFS_TABLE}')::text AS reg`,
+    );
+    if (r.rows[0]?.reg != null) { beliefsTableExists = true; return 'present'; }
+    beliefsAbsentUntilMs = Date.now() + BELIEFS_ABSENT_REPROBE_MS;
+    return 'absent';
+  } catch {
+    // The probe query itself failed (connection dropped, permission denied).
+    // Nothing is cached — Rule 11's third state, and the caller must not
+    // read this the same way as a definite absence.
+    return null;
+  }
+}
+
+/** Test-only reset, mirroring `_resetLedgerTableProbeForTests` next door. */
+export function _resetBeliefsTableProbeForTests(): void {
+  beliefsTableExists = null;
+  beliefsAbsentUntilMs = 0;
+}

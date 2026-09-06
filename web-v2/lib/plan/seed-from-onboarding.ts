@@ -625,12 +625,14 @@ async function persistMaintenancePlan(args: {
     : 'No A-race, holding aerobic base with 1 quality session/week.';
   const phaseId = id('phs');
   await args.tx.query(
-    `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    // PLANWEEKSUUID-1 (2026-09-06) · user_uuid stamped on INSERT.
+    `INSERT INTO plan_phases (id, plan_id, label, start_week_idx, end_week_idx, rationale, citation, user_uuid)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       phaseId, planId, phaseLabel, 0, args.totalWeeks - 1,
       phaseRationale,
       'Daniels Running Formula §13 · Periodization + §"5K-10K training"',
+      args.userId,
     ],
   );
 
@@ -639,14 +641,16 @@ async function persistMaintenancePlan(args: {
     const weekId = id('wk');
     const isCutback = args.curve.isCutback[wi];
     await args.tx.query(
+      // PLANWEEKSUUID-1 (2026-09-06) · user_uuid stamped on INSERT.
       `INSERT INTO plan_weeks (id, plan_id, week_idx, week_start_iso, phase_id,
-                                is_cutback, is_peak, is_race_week, rationale)
-       VALUES ($1, $2, $3, $4, $5, $6, FALSE, FALSE, $7)`,
+                                is_cutback, is_peak, is_race_week, rationale, user_uuid)
+       VALUES ($1, $2, $3, $4, $5, $6, FALSE, FALSE, $7, $8)`,
       [
         weekId, planId, wi, weekStartISO, phaseId, isCutback,
         isCutback
           ? 'Cutback week, volume drops ~18% so the last block of work can land.'
           : 'Maintenance week, aerobic base + 1 quality session.',
+        args.userId,
       ],
     );
 

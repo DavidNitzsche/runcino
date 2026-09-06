@@ -54,7 +54,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { pool } from '@/lib/db/pool';
-import { ensureBeliefStoreSchema, RUNNER_BELIEFS_TABLE } from './schema';
+import { ensureBeliefStoreSchema, RUNNER_BELIEFS_TABLE, _resetBeliefsTableProbeForTests } from './schema';
 import { resolveRunnerLineage } from './lineage';
 import { updateRunnerBeliefs, loadRunnerBeliefs } from './orchestrator';
 import { readLineageHistory } from './read';
@@ -307,4 +307,37 @@ describe('BELIEF-STORE-1 · schema, lineage, and the rebuild-survival proof', ()
     expect(r.rows.length).toBe(3);
     for (const row of r.rows) expect(row.registry).toBe('QUANTITY');
   });
+
+  when(
+    'ORCHESTRATIONWIRE-1 · an absent runner_beliefs table REFUSES both callers, never throws raw SQL and never silently no-ops',
+    async () => {
+      // The exact production shape today: no migration for this table has
+      // been applied. A genuine absence, made by renaming the real table
+      // away — the same technique `_ledger_atomicity.db.test.ts`'s 0b/0c use
+      // for the identical reason: a `pool.query` mock cannot stand in for a
+      // real catalog lookup.
+      await seedRunner();
+      await pool.query(`ALTER TABLE ${RUNNER_BELIEFS_TABLE} RENAME TO runner_beliefs_hidden`);
+      _resetBeliefsTableProbeForTests();
+
+      try {
+        await expect(updateRunnerBeliefs(pool, RUNNER, TODAY)).rejects.toMatchObject({
+          name: 'BeliefsTableUnavailable',
+          reason: 'absent',
+        });
+        await expect(loadRunnerBeliefs(pool, RUNNER, TODAY)).rejects.toMatchObject({
+          name: 'BeliefsTableUnavailable',
+          reason: 'absent',
+        });
+      } finally {
+        await pool.query(`ALTER TABLE runner_beliefs_hidden RENAME TO ${RUNNER_BELIEFS_TABLE}`);
+        _resetBeliefsTableProbeForTests();
+      }
+
+      // Restored — a normal call succeeds again, proving the refusal was the
+      // table's absence and not some corrupted probe state left behind.
+      const result = await updateRunnerBeliefs(pool, RUNNER, TODAY);
+      expect(result.writtenBeliefIds.length).toBeGreaterThan(0);
+    },
+  );
 });

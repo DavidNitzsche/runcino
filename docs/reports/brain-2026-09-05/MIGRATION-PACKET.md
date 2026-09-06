@@ -1111,3 +1111,350 @@ word of the reason, because `console.warn` inside a passing test is swallowed by
 the reporter. It now writes to `process.stderr` directly and puts the verdict in
 the TEST NAME. `lib/brain/ledger/_decision_ledger.db.test.ts` still has the
 console.warn shape and the same hole — named here rather than fixed silently.
+
+---
+
+# ADDENDUM 3 · 2026-09-06 · migration 168, migration 169, the plan_weeks/plan_phases backfill, and a correction to Section I
+
+This addendum covers everything the standing decision asked for that ADDENDUM 1/2
+did not: literal SQL for **168** (`plan_decision_outcome`) and **169**
+(`runner_beliefs`, new this session), and the **`plan_weeks.user_uuid` backfill**
+— plus a correction this packet owes its own Section I, because a decision made
+after that section was written reverses a claim it states as fact.
+
+None of the DDL below has been applied to production. Every statement has been
+applied to, and exercised on, `faff_roundtrip_scratch` (the full production
+SCHEMA, no data, rebuilt by `scripts/_build_roundtrip_scratch.sh`) this session,
+2026-09-06.
+
+## J · Correction to Section I · `table_absent` is now a REFUSAL, not a pass-through
+
+Section I says, verbatim: *"`table_absent` is not a failure, and that distinction
+is what makes this deployable against production today. The table does not exist
+there, so lane A returns `table_absent` and the mutation commits, exactly as it
+does now."*
+
+**That sentence is no longer true, by decision, not by drift.** `LEDGERREQUIRED-1`
+(2026-09-06, commit `0b744d681`, already merged to `main` and deployed — Railway
+`SUCCESS` confirmed for that exact commit) reverses it on the owner's own ruling:
+*"There may be no ambiguous or optional ledger behavior for a plan mutation...
+When the ledger is required and unavailable, the mutation refuses before changing
+the plan."*
+
+`table_absent` inside `landDecisionInTransaction` now throws `LedgerRefusedMutation`
+and rolls back the whole transaction, for every `touches` value except
+`'authorship'` (a brand-new `training_plans` row — refusing plan creation itself
+while migration 166 is pending would be a far larger blast radius than what this
+guards). An undo always requires the ledger regardless of `touches`.
+
+**The operational consequence, unchanged in shape from Section I but opposite in
+direction:** while migration 166 is unapplied, structural/derivations mutations
+in production (proposal accepts, Move-a-Run, pace changes) return a visible
+error instead of committing unaudited. Plan authoring is unaffected. This makes
+applying 166 more urgent than Section I implied, not less — every day it is
+unapplied is a day two of the app's live coaching-acceptance paths return `409`.
+
+Proof: `web-v2/lib/plan/_ledger_atomicity.db.test.ts` tests `0b`/`0c`, falsified
+in both directions (reverting the refusal fails `0b` by name; reverting the
+authorship carve-out fails `0c` by name).
+
+## K · Migration 168 · `plan_decision_outcome` · statement by statement
+
+Full text: `db/migrations/168_plan_decision_outcome.sql`. Reproduced here per the
+standing decision's requirement for literal SQL in the packet itself, not only a
+pointer to the file.
+
+```sql
+CREATE TABLE IF NOT EXISTS plan_decision_outcome (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  decision_id           uuid NOT NULL,
+  user_uuid             uuid NOT NULL,
+  plan_lineage_id       text NOT NULL,
+  lever                 text NOT NULL,
+  chosen_option         text NOT NULL,
+  rejected_options      jsonb NOT NULL DEFAULT '[]'::jsonb,
+  expected_direction    text NOT NULL
+                          CHECK (expected_direction IN ('UP', 'DOWN', 'NEUTRAL', 'UNKNOWN')),
+  prediction            jsonb NOT NULL DEFAULT '{}'::jsonb,
+  observed_from_iso     date NOT NULL,
+  observed_to_iso       date NOT NULL,
+  subsequent_execution  jsonb NOT NULL DEFAULT '{}'::jsonb,
+  recovery              jsonb NOT NULL DEFAULT '{}'::jsonb,
+  later_performance     jsonb NOT NULL DEFAULT '{}'::jsonb,
+  pain_or_injury        jsonb NOT NULL DEFAULT '{}'::jsonb,
+  verdict               text NOT NULL
+                          CHECK (verdict IN ('PRODUCTIVE', 'EXCESSIVE', 'UNDERDOSED', 'UNRESOLVED')),
+  verdict_because       text NOT NULL,
+  unresolved_reason     text,
+  confidence            numeric(4,3),
+  model_version         text,
+  evaluated_at          timestamptz NOT NULL DEFAULT now(),
+  idempotency_key       text NOT NULL,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT plan_decision_outcome_window_ordered
+    CHECK (observed_to_iso >= observed_from_iso),
+  CONSTRAINT plan_decision_outcome_unresolved_is_explained
+    CHECK ((verdict = 'UNRESOLVED') = (unresolved_reason IS NOT NULL))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS plan_decision_outcome_idem
+  ON plan_decision_outcome (decision_id, idempotency_key);
+CREATE INDEX IF NOT EXISTS plan_decision_outcome_by_runner
+  ON plan_decision_outcome (user_uuid, evaluated_at DESC);
+CREATE INDEX IF NOT EXISTS plan_decision_outcome_by_lineage
+  ON plan_decision_outcome (plan_lineage_id, evaluated_at DESC);
+CREATE INDEX IF NOT EXISTS plan_decision_outcome_by_verdict
+  ON plan_decision_outcome (user_uuid, lever, verdict);
+
+COMMENT ON TABLE plan_decision_outcome IS
+  'Step 16 · whether a coaching decision turned out to be right. Written by a '
+  'later sweep, never by the decision itself. UNRESOLVED is a real answer.';
+```
+
+**Why a separate table and not columns on `plan_decision_ledger`:** a different
+job writes it, days or weeks later than the decision itself, so a row appearing
+IS the signal the loop closed; extending 166 after its literal SQL was already
+submitted for review would invalidate that review; and a decision can be
+re-evaluated as more evidence arrives — one decision, many observations, is a
+row set, not a column.
+
+**No FK on `decision_id`**, deliberately, same reasoning as 166's own lack of
+one: a record whose whole value is outliving its subject must not be deletable
+by a cascade from the row it judges.
+
+**Additive only.** No ALTER, no rewrite, no backfill against any existing table.
+
+**Locking:** one `CREATE TABLE`, four `CREATE INDEX` (non-concurrent, but the
+table is empty at creation — no existing rows to lock or scan). Same profile as
+166/167's own Section C: effectively none.
+
+**Verification, read-only, immediately after apply:**
+```sql
+SELECT to_regclass('public.plan_decision_outcome');           -- not null
+SELECT count(*) FROM plan_decision_outcome;                    -- 0
+\d plan_decision_outcome                                       -- matches the DDL above
+```
+
+**Rollback:**
+- *Pre-use (table empty):* `DROP TABLE IF EXISTS plan_decision_outcome;` — clean,
+  no data loss possible.
+- *Post-use, code rolled back, data preserved (default):* leave the table. Step
+  16's sweep (`lib/brain/ledger/outcome-sweep.ts`) simply stops being called;
+  existing rows are inert history, exactly like 166/167's own rollback matrix
+  row (b).
+- *Post-use, destructive removal:* export first
+  (`\copy plan_decision_outcome TO 'plan_decision_outcome-YYYYMMDD.csv' CSV HEADER`),
+  then `DROP TABLE`. Its own approval, never bundled with anything else, per
+  ADDENDUM 2's rule (d).
+
+**Measured on `faff_roundtrip_scratch`, 2026-09-06:** applied clean, re-applied
+with zero errors (every `CREATE TABLE IF NOT EXISTS` / `CREATE INDEX IF NOT
+EXISTS` reported "already exists, skipping" on the second run) — idempotency
+holds.
+
+## L · Migration 169 · `runner_beliefs` · statement by statement
+
+New this session, for orchestration steps 1 ("load canonical runner state") and
+5 ("update beliefs"). Full text: `db/migrations/169_runner_beliefs.sql`, a
+byte-for-byte transcription of `lib/runner-state/store/schema.ts#
+ensureBeliefStoreSchema`'s own CREATE TABLE and two indexes — that function is
+this migration's literal source of truth, so the two cannot drift silently.
+
+```sql
+CREATE TABLE IF NOT EXISTS runner_beliefs (
+  id                 bigserial PRIMARY KEY,
+  user_uuid          uuid NOT NULL,
+  registry           text NOT NULL CHECK (registry IN ('BELIEF', 'QUANTITY')),
+  belief_key         text NOT NULL,
+  plan_lineage_id    text NOT NULL,
+  reading_ok         boolean NOT NULL,
+  reading_value      jsonb,
+  reading_absent_reason jsonb,
+  CHECK (
+    (reading_ok = true  AND reading_value IS NOT NULL AND reading_absent_reason IS NULL) OR
+    (reading_ok = false AND reading_value IS NULL AND reading_absent_reason IS NOT NULL)
+  ),
+  confidence         double precision CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1)),
+  source_mode        text,
+  supporting         jsonb NOT NULL DEFAULT '[]'::jsonb,
+  contradicting      jsonb NOT NULL DEFAULT '[]'::jsonb,
+  tension            jsonb,
+  recency            jsonb,
+  rule8_side         text NOT NULL CHECK (rule8_side IN ('HABIT', 'ABSORBED_LOAD', 'NEITHER')),
+  moves_up_on        jsonb NOT NULL DEFAULT '[]'::jsonb,
+  moves_down_on      jsonb NOT NULL DEFAULT '[]'::jsonb,
+  never_moves_on     jsonb NOT NULL DEFAULT '[]'::jsonb,
+  owner_module       text NOT NULL,
+  owner_symbol       text NOT NULL,
+  owner_answers      text NOT NULL,
+  computed_at        timestamptz NOT NULL,
+  model_version      text NOT NULL,
+  stored_at          timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS runner_beliefs_latest_idx
+  ON runner_beliefs (user_uuid, registry, belief_key, stored_at DESC);
+CREATE INDEX IF NOT EXISTS runner_beliefs_lineage_idx
+  ON runner_beliefs (user_uuid, plan_lineage_id);
+
+COMMENT ON TABLE runner_beliefs IS
+  'Steps 1/5 · the durable belief store. Append-only; the current belief is '
+  'the newest row per (user_uuid, registry, belief_key). A reading_ok=false '
+  'row is an honest refusal, never a coerced zero.';
+```
+
+**Append-only, same shape as 166:** one write path (`INSERT`, `lib/runner-state/
+store/write.ts`), "current" defined at read time as the newest row per
+`(user_uuid, registry, belief_key)`. No `UPDATE` anywhere in the owning
+directory.
+
+**Additive only.** No ALTER, no rewrite, no backfill.
+
+**Runtime behaviour already live, before this migration applies:**
+`app/api/cron/run-adaptations/route.ts` calls `updateRunnerBeliefs` for every
+active runner, every night, already, as of this session's `ORCHESTRATIONWIRE-1`
+change. `beliefsTableExistsCheck` (mirroring `plan_decision_ledger`'s three-state
+probe) reports `absent` on every call today, `updateRunnerBeliefs`/
+`loadRunnerBeliefs` throw a typed `BeliefsTableUnavailable('absent', …)` rather
+than a raw SQL error, the cron catches it per-runner exactly like every other
+best-effort mechanism in that loop, and a `belief_store_pass` ops alert reports
+the pass at `info` severity (the declared, expected state) rather than `error`.
+The moment this migration applies, the next cron pass starts writing — no code
+change, no flag to flip.
+
+**Verification, read-only, immediately after apply:**
+```sql
+SELECT to_regclass('public.runner_beliefs');                   -- not null
+SELECT count(*) FROM runner_beliefs;                            -- 0
+```
+And, within ~24h, confirm the cron actually wrote:
+```sql
+SELECT count(DISTINCT user_uuid), max(stored_at) FROM runner_beliefs;
+SELECT metadata->>'written', metadata->>'absent' FROM ops_alerts
+ WHERE kind = 'belief_store_pass' ORDER BY created_at DESC LIMIT 3;
+-- expect written > 0 and absent = 0 once the migration has landed
+```
+
+**Rollback:** identical matrix to 166 (Section H) — pre-use `DROP TABLE`, clean;
+post-use code rollback with data preserved is the default and requires nothing
+(the cron's own try/catch means a rolled-back `orchestrator.ts` import simply
+stops calling it, and the table sits inert); destructive removal is export-first,
+its own approval.
+
+**Measured on `faff_roundtrip_scratch`, 2026-09-06:** applied clean (already
+present from this session's own test setup calling `ensureBeliefStoreSchema`),
+re-applied idempotently, and exercised end to end by
+`lib/runner-state/store/_belief_store.db.test.ts` (7 tests, including a
+falsified-in-both-directions proof that an absent table refuses rather than
+throwing raw SQL or silently no-oping).
+
+## M · The `plan_weeks` / `plan_phases` `user_uuid` backfill
+
+CLAUDE.md's own Rule 14 names this column as a known landmine: migration 143
+(2026-06-10) added `user_uuid` to `plan_phases`/`plan_weeks`/`plan_workouts`/
+`plan_mutations`, backfilled it once, and left a note — *"Phase 2 (separate,
+later): teach the writers... to stamp user_uuid on INSERT"* — that nothing ever
+picked up for two of the four tables.
+
+**Measured against production, read-only, 2026-09-06:**
+
+| table | NULL | total | % |
+|---|---|---|---|
+| `plan_weeks` | 88 | 672 | 13.1% |
+| `plan_phases` | 25 | 222 | 11.3% |
+| `plan_workouts` | 0 | 4,742 | — |
+| `plan_mutations` | 0 | 10 | — |
+
+`plan_workouts` and `plan_mutations` are fully populated because every writer
+already stamps `user_uuid` on that INSERT. `plan_weeks`/`plan_phases` are not,
+in the exact same functions, for the same runner, in the same transaction —
+`generate.ts`, `injury-builder.ts` and `seed-from-onboarding.ts` all pass
+`user_uuid` to their `plan_workouts` row and never did to their `plan_weeks`/
+`plan_phases` row three lines above it.
+
+**Root cause fixed in code this session** (`PLANWEEKSUUID-1`, no DDL): all six
+call sites (`plan_weeks` × 3, `plan_phases` × 3, across the three writers named
+above) now include `user_uuid` in their INSERT column list, using the same
+`userId`/`args.userId` value already in scope for the sibling `plan_workouts`
+insert. Gated by a new source-scan test,
+`lib/plan/_plan_weeks_user_uuid.test.ts`, in the same style as
+`_no_strength_rows.test.ts` — it scans every writer and fails if any
+`INSERT INTO plan_weeks`/`INSERT INTO plan_phases` omits `user_uuid` from its
+column list, so this cannot silently regress. **This half needs no approval —
+it changes what future INSERTs write, not any existing row, and ships with the
+rest of this session's code.**
+
+**The backfill itself — literal SQL, unchanged from migration 143's own
+statement, safe to re-run:**
+
+```sql
+BEGIN;
+
+UPDATE plan_weeks w
+   SET user_uuid = t.user_uuid
+  FROM training_plans t
+ WHERE w.plan_id = t.id AND w.user_uuid IS NULL;
+
+UPDATE plan_phases p
+   SET user_uuid = t.user_uuid
+  FROM training_plans t
+ WHERE p.plan_id = t.id AND p.user_uuid IS NULL;
+
+COMMIT;
+```
+
+**Idempotency, proven on `faff_roundtrip_scratch`, 2026-09-06:** a synthetic rig
+(one plan, one phase, three weeks — one already stamped, two NULL, matching the
+production shape) ran this exact statement: `UPDATE 2` (plan_weeks), `UPDATE 1`
+(plan_phases), all three rows correctly carrying the plan's `user_uuid`
+afterward, the already-stamped row untouched. Re-running the identical
+statement immediately after returned `UPDATE 0` — every row already satisfies
+`user_uuid IS NULL`'s negation, so a second run (a retry, or a second approval
+pass) is a no-op, not a re-write.
+
+**Locking:** an `UPDATE ... FROM` naming 672 and 222 total rows respectively
+(113 changed rows combined, in production, today) takes row-level locks only on
+the rows actually updated (`user_uuid IS NULL`), for the duration of one
+transaction. No table-level lock, no `ALTER`, sub-second on tables this size.
+Effectively none, same as 166/167's own Section C.
+
+**Verification, read-only, immediately after apply:**
+```sql
+SELECT count(*) FILTER (WHERE user_uuid IS NULL) FROM plan_weeks;   -- expect 0
+SELECT count(*) FILTER (WHERE user_uuid IS NULL) FROM plan_phases;  -- expect 0
+-- and that nothing already-correct moved:
+SELECT count(*) FROM plan_weeks w JOIN training_plans t ON w.plan_id = t.id
+  WHERE w.user_uuid IS DISTINCT FROM t.user_uuid;                   -- expect 0
+```
+
+**Rollback:** this is a data write, not a schema change, so ADDENDUM 2's matrix
+does not directly apply — there is no `DROP` that undoes it. The honest rollback
+is: the column was already nullable and already denormalized-with-slack before
+this ran (the app has always treated it as defense-in-depth, never the join of
+record — Rule 14 again: "queries must keep the `plan_id` join"), so re-nulling
+the 113 rows this touches would only reintroduce the exact gap this closes, not
+protect anything. **If a specific row's backfilled value is ever found wrong**
+(it cannot be, structurally — the value came from that row's own
+`training_plans.user_uuid` via the join, never invented — but stated for
+completeness): `UPDATE plan_weeks SET user_uuid = NULL WHERE id = '<id>';` is
+available per-row, with no cascade, since the FK is `ON DELETE CASCADE` for the
+child-to-parent-deleted direction only, not for a manual null-out.
+
+**Failure recovery:** the two `UPDATE` statements are wrapped in one transaction
+above; a failure on the second rolls back the first, so this can never leave
+`plan_weeks` fixed and `plan_phases` still broken (or vice versa) from a single
+partial apply. Safe to retry immediately — idempotency is proven above.
+
+## N · What ADDENDUM 3 does not claim
+
+- It does not apply any of 168, 169, or the backfill to production. All three
+  remain **pending David's explicit go**, per this repo's deployment doctrine.
+- It does not claim the writer-side `PLANWEEKSUUID-1` fix has been exercised
+  against a live plan generation in production — it is proven by the existing
+  plan-generation test suite (3,266 tests, unchanged pass count before and
+  after) plus the new source-scan gate, not by a production plan actually
+  authored since the fix landed.
+- It does not re-litigate whether `plan_weeks`/`plan_phases` should ever be
+  queried by `user_uuid` directly instead of the `plan_id` join — Rule 14's own
+  answer stands: the join remains the read of record, and this column stays
+  defense-in-depth.

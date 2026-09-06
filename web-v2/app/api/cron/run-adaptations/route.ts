@@ -136,6 +136,15 @@ export async function POST(req: NextRequest) {
    * from a healthy quiet night in every previous version of this reporting,
    * and that is the exact liveness failure Rule 18 names. */
   const canonicalShadowExits: ShadowExit[] = [];
+  /* ── ORCHESTRATIONWIRE-1 (2026-09-06) · ONE ENTRY PER RUNNER PER PASS ──────
+   * Same "accumulate and report once" shape as `canonicalShadowExits` right
+   * above, and for the same Rule 23 reason: a refusal on every runner every
+   * night must be visible to something other than a per-runner console.warn
+   * nobody is tailing at 3am. */
+  const beliefStoreOutcomes: Array<
+    | { uid: string; ok: true; written: number }
+    | { uid: string; ok: false; reason: 'absent' | 'probe_failed' | 'threw'; detail?: string }
+  > = [];
   /* ── ARBITRATIONWIRE-1 (2026-09-05) · ONE ENTRY PER LEVER ARBITRATION HAD
    * an opinion about, across the whole pass. This is the observable half of
    * step 9 becoming WIRED: `resolveArbitrationPriority`'s answer no longer
@@ -287,6 +296,45 @@ export async function POST(req: NextRequest) {
         const detail = `runAndPersistCanonicalShadowEvaluation threw: ${e instanceof Error ? e.message : String(e)}`;
         canonicalShadowExits.push(shadowExit('EVALUATION_ERROR', detail));
         console.warn(`[canonical-shadow] ${uid} threw:`, e instanceof Error ? e.message : e);
+      }
+
+      // ── ORCHESTRATIONWIRE-1 (2026-09-06) · STEPS 1 & 5 · THE BELIEF STORE ──
+      //
+      // "Load canonical runner state" and "update beliefs" — `lib/brain/
+      // orchestration/steps.ts` — reach production for the first time here.
+      // Same placement logic as the two shadow mechanisms above: read/write
+      // beliefs off the SAME pre-mutation plan state everything else in this
+      // pass reads, and never block the real adaptation pass on it.
+      //
+      // Today this refuses on every single runner, every single pass: no
+      // migration for `runner_beliefs` has been applied to production (see
+      // `db/migrations/169_runner_beliefs.sql`, drafted and unapplied — DDL
+      // needs David's per-statement go). That is not a reason to leave this
+      // unwired — steps 12 and 16 are already declared WIRED in exactly this
+      // state ("reachable and blocked on approval is a different state from
+      // unwired"), and Rule 23 says a job proceeding as if a precondition
+      // held would be the defect, not this refusal. `updateRunnerBeliefs`
+      // throws `BeliefsTableUnavailable` rather than a raw SQL error
+      // specifically so this catch can tell "waiting on approval" apart from
+      // "something is actually broken" (Rule 11) without either one taking
+      // the rest of this runner's pass down.
+      try {
+        const { updateRunnerBeliefs } = await import('@/lib/runner-state/store/orchestrator');
+        const { pool: beliefPool } = await import('@/lib/db/pool');
+        const todayISO = new Date().toISOString().slice(0, 10);
+        const result = await updateRunnerBeliefs(beliefPool, uid, todayISO);
+        beliefStoreOutcomes.push({ uid, ok: true, written: result.writtenBeliefIds.length });
+      } catch (e) {
+        const { BeliefsTableUnavailable } = await import('@/lib/runner-state/store/orchestrator');
+        if (e instanceof BeliefsTableUnavailable) {
+          beliefStoreOutcomes.push({ uid, ok: false, reason: e.reason });
+        } else {
+          beliefStoreOutcomes.push({
+            uid, ok: false, reason: 'threw',
+            detail: e instanceof Error ? e.message : String(e),
+          });
+          console.warn(`[belief-store] ${uid} threw:`, e instanceof Error ? e.message : e);
+        }
       }
 
       // 2026-06-04 · split actions into APPLY-NOW vs PROPOSE-FIRST.
@@ -776,6 +824,31 @@ export async function POST(req: NextRequest) {
       // nobody reads at 3am. First DEFECT only — Rule 17, the reader reads a
       // sentence once, and every DEFECT of the same code has the same remedy.
       remedy: canonicalShadowExits.find((e) => e.health === 'DEFECT')?.remedy ?? null,
+    },
+    source: 'cron/run-adaptations',
+  }).catch(() => {});
+  /* ORCHESTRATIONWIRE-1 · reported at INFO while the migration is unapplied
+   * (`absent` on every runner is the expected, declared state — not a
+   * DEFECT), and raised as a real DEFECT the moment ANY runner sees `threw`,
+   * which is the one outcome this mechanism's own contract says should never
+   * happen. Never blocks the pass. */
+  const beliefAbsent = beliefStoreOutcomes.filter((o) => !o.ok && o.reason === 'absent').length;
+  const beliefWritten = beliefStoreOutcomes.filter((o) => o.ok).length;
+  const beliefThrew = beliefStoreOutcomes.filter((o) => !o.ok && o.reason === 'threw');
+  await raiseAlert({
+    kind: 'belief_store_pass',
+    severity: beliefThrew.length > 0 ? 'error' : 'info',
+    message: beliefThrew.length > 0
+      ? `${beliefThrew.length}/${userIds.length} runners threw updating beliefs (not the declared table_absent state)`
+      : beliefWritten > 0
+        ? `${beliefWritten}/${userIds.length} runners' beliefs updated`
+        : `runner_beliefs unavailable for all ${userIds.length} runners — migration 169 unapplied (declared, expected state)`,
+    metadata: {
+      users_in_loop: userIds.length,
+      written: beliefWritten,
+      absent: beliefAbsent,
+      threw: beliefThrew.length,
+      threw_detail: beliefThrew.slice(0, 3).map((o) => ('detail' in o ? o.detail : undefined)),
     },
     source: 'cron/run-adaptations',
   }).catch(() => {});

@@ -43,6 +43,12 @@ export type AlertKind = 'plan_convergence' | 'cron_fail' | 'cron_ok' | 'cron_sta
    * "cannot tell a job that ran and did nothing from a job that ran and did
    * the wrong thing". This is the row that can. */
   | 'canonical_shadow_exit'
+  /* ORCHESTRATIONWIRE-1 (2026-09-06) · one row per `run-adaptations` pass
+   * saying what steps 1/5 of the belief store actually did — written count,
+   * absent-table count (the declared, expected state until migration 169 is
+   * approved), and any genuine throw. Same "cron_ok does not mean this
+   * mechanism did anything" reasoning as `canonical_shadow_exit` above. */
+  | 'belief_store_pass'
   | 'unknown';
 export type AlertSeverity = 'info' | 'warn' | 'error' | 'critical';
 
