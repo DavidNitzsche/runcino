@@ -122,21 +122,39 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
   {
     n: 9, name: 'Arbitrate competing levers',
     owner: 'lib/adaptation/canonical/phase-priority.ts', ownerExports: 'resolveArbitrationPriority',
-    state: 'SHADOW',
-    // Corrected by this file's own gate, which found the route I had missed.
-    // Reachable, but only from `app/api/admin/canonical-adaptation-shadow` —
-    // an admin diagnostic. Nothing on the nightly coaching path arbitrates a
-    // live lever through it, and "a route reaches it" is not the same claim as
-    // "it decides anything". That gap is precisely what SHADOW names.
-    blocker: 'MOVEREADJUDICATE-1 (2026-09-05) narrowed the reachability sentence and did NOT '
-      + 'change the state. `move-orchestrator.ts` now reaches this module from two production '
-      + 'routes, so "reachable only from the admin canonical-adaptation-shadow route" is no '
-      + 'longer true and is corrected here rather than left to rot (Rule 20). But what it '
-      + 'imports is `phaseFromAuthoredLabel` — a string translator — not '
-      + '`resolveArbitrationPriority`. Nothing on any coaching path asks this module to ORDER '
-      + 'TWO COMPETING LEVERS for a real runner, which is what step 9 is. Calling it wired '
-      + 'because an adjacent translator travelled is the claim Rule 20 exists to stop, and it '
-      + 'is the same correction step 4 already carries.',
+    state: 'WIRED',
+    // ARBITRATIONWIRE-1 (2026-09-05) · this is the state change, and it is
+    // earned rather than claimed against this file's own liveness test.
+    //
+    // `resolveArbitrationPriority` was ALREADY called on every real
+    // evaluation cycle — `evaluate.ts`'s `priorityFor` calls it for every
+    // runner, every night, reached from `run-adaptations` via
+    // `run-live-shadow-evaluation.ts` — so mechanical reachability was never
+    // the gap `_orchestration.test.ts` checks for (and correctly does not
+    // count on its own: "an importer is evidence of reachability, not of
+    // being on the nightly coaching path — which is why SHADOW exists"). The
+    // gap was that its ANSWER only ever reached `canonical_adaptation_shadow_
+    // log`, an admin diagnostic table, however the admin route or the cron
+    // got there.
+    //
+    // `live-arbitration-proposals.ts`, called from inside
+    // `run-live-shadow-evaluation.ts` on the SAME `CanonicalDecisionRecord[]`
+    // that call already computes, is what changes that: the lever
+    // arbitration lets win this cycle is now recorded on `plan_decision_
+    // ledger` (step 10, WIRED) as a HELD, runner-lineage-visible row, and a
+    // SUPPORTED lever it defers is queued on `reassessment_schedule` (step
+    // 12) via `scheduleReassessment(kind: 'DEFERRAL')` rather than existing
+    // only in the shadow log's own idempotency bookkeeping. A safety-defeated
+    // push is ledgered as a HOLD and deliberately never queued — see that
+    // file's header for why that is the same mechanism that makes "Safety
+    // defeats every push" hold one layer further out than the resolver
+    // itself.
+    //
+    // What this does NOT claim: that a runner has SEEN one of these rows.
+    // The proposal-surfacing UI is out of scope for this pass, same posture
+    // step 12 already states for migration 167. Reachable-and-recorded is a
+    // different state from surfaced, and the gap is named here rather than
+    // hidden behind WIRED.
   },
   {
     n: 10, name: 'Persist the decision',
@@ -193,8 +211,15 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
  * 166 and 168 are unapplied, so the sweep answers `table_absent` and says so.
  * Reachable and blocked on approval is a different state from unwired, and the
  * blocker is named in the packet rather than hidden behind this number.
+ *
+ * ARBITRATIONWIRE-1 (2026-09-05) · 9 → 10. Step 9 (arbitrate competing
+ * levers) is WIRED: see its own entry above for the argument. This did not
+ * change step 9's mechanical reachability, which the graph walk below already
+ * had before this change — it changed what step 9's answer is now recorded
+ * as, which is the distinction `_orchestration.test.ts`'s own header draws
+ * between reachability and being on the path that matters.
  */
-export const WIRED_STEP_PIN = 9;
+export const WIRED_STEP_PIN = 10;
 
 /**
  * NOT_BUILT may only FALL. A step becoming fiction again is a regression.

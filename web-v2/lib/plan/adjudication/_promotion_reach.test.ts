@@ -246,16 +246,20 @@ function corpus(): readonly Case[] {
  * population this app actually has, and the entry says what would be needed to
  * retire it. The list may shrink; it may never grow (Rule 18 §4).
  * ═══════════════════════════════════════════════════════════════════════ */
-const UNREACHED_BY_THIS_CORPUS: Partial<Record<keyof PromotionCheck, string>> = {
-  doctrineResolution:
-    'NOTHING IN THIS ENGINE EMITS A `DoctrineConflict` YET. `adjudication-corpus.ts` writes '
-    + '`conflicts: []` on every trace it builds, so no composed block — and no live plan, as '
-    + 'the read-only replay confirms with 0 of 7 — has ever given this dimension an item to '
-    + 'judge. It is proven independently failable by `_promotion_dimensions.test.ts` on a '
-    + 'hand-built conflict and is inert everywhere else. Retiring this entry means a real '
-    + 'caller emitting a real conflict, which belongs to whoever wires citation arbitration '
-    + 'into the composer, not here.',
-};
+/**
+ * ARBITRATION-DOCTRINE-1 (2026-09-05) · RETIRED, `doctrineResolution`.
+ *
+ * `adjudication-corpus.ts` now constructs a real `DoctrineConflict` — through
+ * `adjudicate()`, never around it — whenever a week's own evidence would have
+ * ranked PUSH first and the week is a taper or race week, which is exactly
+ * the case the taper/race-week override two lines below it already existed
+ * to handle silently. See that file's `ARBITRATION-DOCTRINE-1` header for the
+ * full argument and the citations. This entry is deleted rather than left at
+ * zero because the ratchet below means exactly that: an exemption whose
+ * dimension is now reached fails until deleted, and leaving it here after
+ * fixing the cause would be lying to the next reader about which is true.
+ */
+const UNREACHED_BY_THIS_CORPUS: Partial<Record<keyof PromotionCheck, string>> = {};
 
 describe('ADJ-REACH-1 · every promotion dimension examined something', () => {
   const cases = corpus();

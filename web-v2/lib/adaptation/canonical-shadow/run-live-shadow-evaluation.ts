@@ -53,6 +53,9 @@ import { loadLiveQueue, persistQueueAtBoundary } from './deferral-store';
 import { roQuery, readOnlyConnectionConfigured } from './read-only-db';
 import { insertShadowRecord, CANONICAL_ADAPTATION_SHADOW_LOG_TABLE } from './shadow-log-writer';
 import { shadowExit, type ShadowExit } from './shadow-exit';
+import {
+  persistArbitratedProposals, type ArbitratedProposalOutcome,
+} from './live-arbitration-proposals';
 
 export interface LiveShadowEvaluationResult {
   readonly userUuid: string;
@@ -90,6 +93,20 @@ export interface LiveShadowEvaluationResult {
    * doing" are three facts (Rule 11) and this string says which one happened.
    */
   readonly deferrals: string;
+  /**
+   * ARBITRATIONWIRE-1 (2026-09-05) · what phase-aware arbitration's own
+   * output did on this cycle, ONE STEP PAST THE SHADOW LOG: which lever's
+   * PROGRESS won this cycle's one material slot and was ledgered as a real,
+   * runner-lineage-visible decision (`ARBITRATED_WINNER`), which SUPPORTED
+   * lever was deferred and queued on the durable reassessment scheduler
+   * rather than dropped (`DEFERRED_SUPPORTED_LOSER`), and which push Safety
+   * defeated outright with no schedule to revisit it
+   * (`SAFETY_HELD_NOT_QUEUED`). See `live-arbitration-proposals.ts` for the
+   * full argument. Empty when arbitration had nothing to order (no record
+   * reached `decision === 'PROGRESS'` this cycle) or when the evaluation
+   * itself did not run.
+   */
+  readonly arbitratedProposals: readonly ArbitratedProposalOutcome[];
 }
 
 let tableExists: boolean | null = null;
@@ -221,6 +238,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
       userUuid, ran: false, detail,
       exit: shadowExit('NO_RO_CONNECTION', detail),
       records: [], deferrals: 'not reached — the evaluation did not run.',
+      arbitratedProposals: [],
     };
   }
 
@@ -238,6 +256,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
       userUuid, ran: false, detail,
       exit: shadowExit('INPUT_READ_FAILED', detail),
       records: [], deferrals: 'not reached — the evaluation did not run.',
+      arbitratedProposals: [],
     };
   }
 
@@ -257,6 +276,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
       // did not come from the loader that actually made the decision.
       exit: shadowExit(built.refusalCode ?? 'INPUT_MISSING', detail),
       records: [], deferrals: 'not reached — no input could be built.',
+      arbitratedProposals: [],
     };
   }
 
@@ -276,6 +296,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
       userUuid, ran: false, detail,
       exit: shadowExit('EVALUATION_ERROR', detail),
       records: [], deferrals: 'not reached — the evaluation did not run.',
+      arbitratedProposals: [],
     };
   }
 
@@ -296,8 +317,35 @@ export async function runAndPersistCanonicalShadowEvaluation(
   }
 
   const deferrals = await carryTheQueue(userUuid, built.input, evaluation.records);
+
+  /* ── ARBITRATIONWIRE-1 (2026-09-05) ────────────────────────────────────
+   *
+   * `evaluation.records` already carries phase-aware arbitration's answer —
+   * `resolveArbitrationPriority` ran inside `evaluateAdaptation` above, on
+   * this same real evidence, for every lever. Up to this point that answer
+   * only ever reached `canonical_adaptation_shadow_log`. This is the one
+   * call that lets it reach a real, already-WIRED destination instead:
+   * the decision ledger for the lever arbitration let through this cycle,
+   * the durable reassessment scheduler for a SUPPORTED lever it deferred.
+   * See `live-arbitration-proposals.ts` for the full argument, including why
+   * this needs no new door into the sealed engine (it consumes the already-
+   * computed records as plain data) and why it never mutates a plan
+   * (AUTOMATIC_ADAPTATION_AUTHORITY is untouched; every write here is a
+   * HELD ledger row or a queued reassessment, never plan_workouts). */
+  let arbitratedProposals: readonly ArbitratedProposalOutcome[] = [];
+  try {
+    arbitratedProposals = await persistArbitratedProposals(userUuid, evaluation.records);
+  } catch (e) {
+    // Best-effort, matching every other step in this cycle: a failure here
+    // must not lose the shadow-log rows already written above, or the
+    // deferral-queue carry already performed.
+    console.warn(`[canonical-shadow] persistArbitratedProposals threw for ${userUuid}:`, e instanceof Error ? e.message : e);
+  }
+
   const counts = { recordsEvaluated: evaluation.records.length, recordsPersisted: wrote };
-  const base = { userUuid, ran: true as const, records: results, deferrals };
+  const base = {
+    userUuid, ran: true as const, records: results, deferrals, arbitratedProposals,
+  };
 
   /* ── EXIT 7 · THE INPUT WAS BUILT FROM A READ THAT FAILED ──────────────
    *

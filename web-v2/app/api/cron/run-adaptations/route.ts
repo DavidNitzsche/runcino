@@ -62,6 +62,12 @@ import { raiseAlert } from '@/lib/ops/alerts';
 import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 import { runAndPersistPaceShadowCompare } from '@/lib/adaptation/shadow-compare';
 import { shadowExit, summarisePass, type ShadowExit } from '@/lib/adaptation/canonical-shadow/shadow-exit';
+// ARBITRATIONWIRE-1 (2026-09-05) · type only, for the aggregate below. The
+// function itself (`persistArbitratedProposals`) is never called from this
+// route directly — it runs inside `runAndPersistCanonicalShadowEvaluation`,
+// dynamically imported a few lines down, on the same real evidence that call
+// already builds. This route only reports what it did.
+import type { ArbitratedProposalOutcome } from '@/lib/adaptation/canonical-shadow/live-arbitration-proposals';
 
 export const maxDuration = 120;
 
@@ -130,6 +136,14 @@ export async function POST(req: NextRequest) {
    * from a healthy quiet night in every previous version of this reporting,
    * and that is the exact liveness failure Rule 18 names. */
   const canonicalShadowExits: ShadowExit[] = [];
+  /* ── ARBITRATIONWIRE-1 (2026-09-05) · ONE ENTRY PER LEVER ARBITRATION HAD
+   * an opinion about, across the whole pass. This is the observable half of
+   * step 9 becoming WIRED: `resolveArbitrationPriority`'s answer no longer
+   * only reaches `canonical_adaptation_shadow_log` — every winner it lets
+   * through this cycle, every SUPPORTED lever it defers, and every push
+   * Safety defeats outright is counted here too. See
+   * `live-arbitration-proposals.ts` for what each kind means. */
+  const arbitrationOutcomes: ArbitratedProposalOutcome[] = [];
 
   const results: Array<{
     user_id: string; triggers: number; applied: number; proposed: number;
@@ -256,6 +270,10 @@ export async function POST(req: NextRequest) {
           await import('@/lib/adaptation/canonical-shadow/run-live-shadow-evaluation');
         const canonicalShadow = await runAndPersistCanonicalShadowEvaluation(uid);
         canonicalShadowExits.push(canonicalShadow.exit);
+        // ARBITRATIONWIRE-1 · same call, the arbitration-facing half of its
+        // result. Empty whenever nothing reached `decision === 'PROGRESS'`
+        // this cycle, which is the common case and not a failure.
+        arbitrationOutcomes.push(...canonicalShadow.arbitratedProposals);
         if (canonicalShadow.exit.health === 'DEFECT') {
           console.warn(
             `[canonical-shadow] ${uid}: ${canonicalShadow.exit.code} · ${canonicalShadow.detail}`,
@@ -784,6 +802,20 @@ export async function POST(req: NextRequest) {
     /* SHADOWOBS-1 · the same verdict in the response body, so an operator who
      * curls this route sees it without going to `ops_alerts`. */
     canonical_shadow: canonicalShadowPass,
+    /* ── ARBITRATIONWIRE-1 · phase-aware arbitration's OUTPUT, this pass ────
+     * Counted by kind rather than left as a raw array, so an operator sees
+     * the shape without reading N rows: how many levers arbitration let
+     * through and ledgered for real, how many SUPPORTED levers it deferred
+     * onto the durable reassessment schedule instead of dropping, and how
+     * many pushes Safety defeated outright with nothing scheduled to revisit
+     * them. All three, plus the raw list, so a claim here is checkable. */
+    arbitration: {
+      winners: arbitrationOutcomes.filter((o) => o.kind === 'ARBITRATED_WINNER').length,
+      deferred_supported_losers: arbitrationOutcomes.filter((o) => o.kind === 'DEFERRED_SUPPORTED_LOSER').length,
+      safety_held_not_queued: arbitrationOutcomes.filter((o) => o.kind === 'SAFETY_HELD_NOT_QUEUED').length,
+      not_applicable: arbitrationOutcomes.filter((o) => o.kind === 'NOT_APPLICABLE').length,
+      outcomes: arbitrationOutcomes,
+    },
     results,
     timestamp: new Date().toISOString(),
   });
