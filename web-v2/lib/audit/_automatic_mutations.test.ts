@@ -391,6 +391,17 @@ const PLAN_WRITER_SITE_OWNERS: Record<string, string> = {
     + 'mutatePlan call disappears, and lib/plan/_seal_single_seam.test.ts carries the matching '
     + 'MUTATOR_NAME_EXEMPT entry. If a cron ever imports this module, the exemption is wrong and the '
     + 'import is the bug.',
+  'lib/brain/proposal/undo-apply.ts::writeBack':
+    'runner-initiated: V5UNDO-1 (2026-09-05). Reached ONLY from applyUndo in the same file, whose '
+    + 'only caller is POST /api/plan/workout-proposals/[id]/undo — the runner taking back a change '
+    + 'he had accepted. It runs INSIDE mutatePlan\'s apply callback with authority RUNNER_ACCEPTED, '
+    + 'so the boundary validates the week around the restore and rolls back one that introduces a '
+    + 'doctrine violation. Its column allowlist is NARROWER than the accept path\'s — the four '
+    + 'fields RowBefore records — and it throws rather than issuing an insert or a delete, because '
+    + 'the only kind whose inverse would be an insert is REMOVE_WORKOUT and executor-map.ts sends '
+    + 'that to UNIMPLEMENTED, so it can never have been accepted. It reads '
+    + 'AUTOMATIC_ADAPTATION_AUTHORITY nowhere. If a cron ever imports lib/brain/proposal/undo-apply.ts, '
+    + 'this exemption is wrong and the import is the bug.',
   'lib/plan/reschedule.ts::writeEdits':
     'runner-initiated: reached ONLY from applyReschedule and undoReschedule in the same file, and '
     + 'both of those only from POST /api/plan/reschedule, which requires an option id AND the '

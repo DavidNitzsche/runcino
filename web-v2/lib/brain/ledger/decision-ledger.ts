@@ -234,25 +234,35 @@ export async function recordDecision(entry: LedgerEntry): Promise<LedgerWrite> {
          $12::jsonb, $13, $14,
          $15::jsonb, $16::jsonb,
          $17, $18, $19::jsonb,
-         -- LEDGERRESPONDED-1 (2026-09-05) · responded_at is DERIVED FROM
-         -- runner_response. It is not NULL.
+         -- LEDGERRESPONDED-1 (2026-09-05) · responded_at WAS HARD-CODED NULL,
+         -- and is now derived in SQL from runner_response.
          --
-         -- It WAS the literal NULL, and the CHECK constraint
-         -- plan_decision_ledger_response_is_timed says a settled response
-         -- carries the moment it settled. So every row written with
-         -- runnerResponse ACCEPTED was rejected by the database -- which is
-         -- the whole runner-accept lane, the only lane that can currently
-         -- produce an upward adaptation. mutatePlan logged
+         -- The migration's own constraint says a response and its moment
+         -- arrive together:
+         --
+         --   CHECK ((COALESCE(runner_response,'PENDING') IN
+         --           ('ACCEPTED','DECLINED','EXPIRED')) = (responded_at IS NOT NULL))
+         --
+         -- so ANY insert carrying a terminal response was rejected outright.
+         -- That is the whole runner-accept lane -- the only lane that can
+         -- currently produce an upward adaptation. mutatePlan logged
          -- "DECISION NOT RECORDED" to console.error and returned normally, so
          -- the plan mutated and the ledger stayed empty, silently.
          --
-         -- That is Rule 21's own defect reproduced inside the mechanism built
-         -- to end it: the census of upward adaptations would have read ZERO
-         -- forever, and the reason would have been unfindable, because the
-         -- rows were never there to explain it. Found by
-         -- lib/brain/_threshold_round_trip.db.test.ts on its first end-to-end
-         -- run. No per-stage suite could see it: the constraint and the writer
-         -- are each correct alone and disagree only in composition.
+         -- Rule 21's own defect, reproduced inside the mechanism built to end
+         -- it: the census of upward adaptations would have read ZERO forever,
+         -- and the reason would have been unfindable because the rows were
+         -- never there to explain it.
+         --
+         -- Found INDEPENDENTLY BY TWO WORKSTREAMS on the same day, each on its
+         -- first end-to-end run against a scratch database -- the threshold
+         -- round trip and the V5 accept round trip. Neither could have found it
+         -- from a per-stage suite: the constraint and the writer are each
+         -- correct alone and disagree only in composition. It had simply never
+         -- run, because until this week nothing could accept a proposal.
+         --
+         -- Stamped in SQL rather than by the caller, so the response and its
+         -- time cannot be supplied separately and disagree (Rule 16).
          $20, $21, $22::jsonb, $23,
          CASE WHEN $23 IN ('ACCEPTED', 'DECLINED', 'EXPIRED') THEN now() ELSE NULL END,
          $24, $25::jsonb,

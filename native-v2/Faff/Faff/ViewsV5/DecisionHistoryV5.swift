@@ -52,6 +52,9 @@ struct DecisionHistoryV5: View {
     var onBack: (() -> Void)? = nil
     /// Re-read. Nil in a preview, where there is nothing to re-read from.
     var onRetry: (() -> Void)? = nil
+    /// V5UNDO-1 · take back an accepted decision. Nil in a preview and nil for
+    /// a surface that has nothing to write to.
+    var onUndo: ((V5Decision) -> Void)? = nil
 
     var body: some View {
         ScrollView {
@@ -77,7 +80,9 @@ struct DecisionHistoryV5: View {
                     case .ready(let rows):
                         ForEach(groups(rows), id: \.title) { g in
                             ListGroup(header: g.title) {
-                                ForEach(g.rows) { d in DecisionRowV5(decision: d) }
+                                ForEach(g.rows) { d in
+                                    DecisionRowV5(decision: d, onUndo: onUndo)
+                                }
                             }
                         }
                     }
@@ -118,8 +123,37 @@ struct DecisionHistoryV5: View {
 
 /// One decision. Never tappable: there is nothing behind it to open, and the
 /// design forbids a chevron on a row that opens nothing.
+///
+/// ── V5UNDO-1 (2026-09-05) · THE ONE CONTROL THIS ROW CARRIES ───────────────
+///
+/// An ACCEPTED per-workout decision gets "Take it back", and nothing else does.
+///
+/// The accept response has answered `undoable: true` since it was written and
+/// there was no way to act on it — the promise existed and the button did not.
+/// The owner's own ruling is why it matters: he went 0-for-52 on proposals he
+/// was asked to approve and 4-for-4 on repairs that auto-applied, and the
+/// conclusion he drew was "approval is not the control mechanism; reversibility
+/// is". A card that asks for a yes without offering a way back is asking for
+/// the bet he already stopped taking.
+///
+/// It is HERE and not on the Today card on purpose. Today's card is the
+/// question; this screen is the record, and taking something back is something
+/// you do after you have seen what it did. `PRODUCT_UX_SIMPLIFICATION_DOCTRINE`
+/// asks what decision a control helps the runner make, and "undo" is not a
+/// decision he can make before he has accepted.
+///
+/// Only `w`-prefixed ids: those are `plan_workout_proposals` rows, which is
+/// what `POST /api/plan/workout-proposals/:id/undo` can reverse. A `p` row is a
+/// block-level proposal and belongs to `/api/plan/undo`, which is a different
+/// question — one session against a whole rebuild — and offering one button for
+/// both would be a second answer to two questions (Rule 16).
 struct DecisionRowV5: View {
     let decision: V5Decision
+    var onUndo: ((V5Decision) -> Void)? = nil
+
+    private var isTakeBackable: Bool {
+        decision.outcome == "accepted" && decision.id.hasPrefix("w")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s6) {
@@ -160,6 +194,19 @@ struct DecisionRowV5: View {
                     .font(.faffText(TypeScaleV5.label13))
                     .foregroundStyle(V5.textSecondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if isTakeBackable, let onUndo {
+                Button { onUndo(decision) } label: {
+                    Text("Take it back")
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(V5.textSecondary)
+                        .padding(.horizontal, V5.S.s14)
+                        .frame(height: 32)
+                        .background(V5.materialControl, in: Capsule())
+                }
+                .buttonStyle(V5PressStyle())
+                .padding(.top, V5.S.s4)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

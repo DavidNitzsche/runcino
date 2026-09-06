@@ -3399,7 +3399,8 @@ struct DecisionHistoryHostV5: View {
     var body: some View {
         DecisionHistoryV5(state: state,
                           onBack: { dismiss() },
-                          onRetry: { Task { await load() } })
+                          onRetry: { Task { await load() } },
+                          onUndo: { d in Task { await undo(d) } })
             .task { await load() }
             .navigationBarBackButtonHidden(true)
     }
@@ -3414,6 +3415,27 @@ struct DecisionHistoryHostV5: View {
         case .ok(let env): state = .ready(env.decisions)
         case .absent, .failed: state = .failed
         }
+    }
+
+    /// V5UNDO-1 · put one accepted decision back, then re-read the record.
+    ///
+    /// The re-read is what moves the row from SETTLED back to STILL OPEN, so
+    /// there is no local optimistic state to drift out of sync with the plan —
+    /// the same posture `answerProposal` takes on Today.
+    ///
+    /// A refusal is NOT swallowed. `_ = try? await` would leave this screen
+    /// exactly as it was and the runner would conclude the button does
+    /// nothing, which is the shape this whole change exists to remove. The
+    /// server's 409 means something else has moved the session since and the
+    /// undo would write over it; the failed state carries the outage copy
+    /// rather than a silent no-op.
+    private func undo(_ d: V5Decision) async {
+        let answered = try? await API.undoProposal(id: d.id)
+        if answered?.ok != true {
+            state = .failed
+            return
+        }
+        await load()
     }
 }
 

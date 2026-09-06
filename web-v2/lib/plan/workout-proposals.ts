@@ -537,6 +537,93 @@ export async function acceptProposal(
   };
 }
 
+/**
+ * An ACCEPTED proposal, so it can be put back.
+ *
+ * V5UNDO-1 (2026-09-05) · `undoWritesFor` has computed the inverse of an
+ * accepted action since it was written, and `accept.ts` reports the answer to
+ * the runner as `undoable: true`. Nothing could ever apply it: the function had
+ * exactly two callers, one of which was its own test. A promise the response
+ * makes and no path keeps is the shape CLAUDE.md Rule 21 names, on the half of
+ * the bargain the owner said the whole lane rests on — "approval is not the
+ * control mechanism; reversibility is".
+ *
+ * The sibling of `loadPendingProposalById`, scoped to `accepted` because that
+ * is the only status an undo applies to. Three states for the same reason
+ * (Rule 11): a failed read is not a proposal that was never accepted.
+ */
+export async function loadAcceptedProposalById(
+  userUuid: string,
+  proposalId: number,
+): Promise<ProposalLookup> {
+  const r = await rowOrNull<{
+    id: number;
+    user_uuid: string;
+    plan_workout_id: string;
+    workout_date_iso: string;
+    action_kind: string;
+    action_payload: PendingProposal['actionPayload'];
+    reason: string;
+    evidence: Record<string, unknown>;
+    created_at: Date;
+  }>(
+    'workout-proposals/loadAcceptedProposalById',
+    pool.query(
+      `SELECT id, user_uuid, plan_workout_id, workout_date_iso::text AS workout_date_iso,
+              action_kind, action_payload, reason, evidence, created_at
+         FROM plan_workout_proposals
+        WHERE id = $1 AND user_uuid = $2::uuid AND status = 'accepted'`,
+      [proposalId, userUuid],
+    ),
+  );
+  if (r === null) return { ok: false };
+  return { ok: true, proposal: r === undefined ? null : toPending(r) };
+}
+
+/**
+ * Three states, because there are three: the row was reopened, the row was not
+ * there to reopen, or the write failed. A caller reopening a card is already
+ * handling a failure, and collapsing the last two would hide a second one.
+ */
+export type ReopenResult =
+  | { readonly ok: true; readonly reopened: boolean }
+  | { readonly ok: false };
+
+/**
+ * Put an accepted proposal back to pending.
+ *
+ * NOT to `dismissed`. An undo is not a decline: the runner accepted, saw the
+ * result and reversed it, and the decision is open again rather than answered
+ * no. Collapsing the two would make the decision history say he declined a
+ * change he actually tried — and the history is the surface built to prove what
+ * the coach and the runner each did.
+ */
+export async function reopenProposal(
+  userUuid: string,
+  proposalId: number,
+): Promise<ReopenResult> {
+  /* Rule 11, and the swallow ratchet caught the first cut of this: it ended
+   * `.catch(() => null)` and returned a boolean, so "the row was not accepted"
+   * and "the write failed" arrived as the same `false`. That matters here more
+   * than in most places — every caller reopens a card BECAUSE something else
+   * already went wrong, and a failed reopen leaves a decision marked answered
+   * whose change never landed. The three states are kept apart so the caller
+   * can log the difference rather than guess at it. */
+  const r = await attempt(
+    'plan/workout-proposals · reopenProposal',
+    pool.query(
+      `UPDATE plan_workout_proposals
+          SET status = 'pending', resolved_at = NULL
+        WHERE id = $1
+          AND user_uuid = $2::uuid
+          AND status = 'accepted'`,
+      [proposalId, userUuid],
+    ),
+  );
+  if (!r.ok) return { ok: false };
+  return { ok: true, reopened: (r.value.rowCount ?? 0) > 0 };
+}
+
 /** Mark dismissed. Returns true on success. */
 export async function dismissProposal(
   userUuid: string,

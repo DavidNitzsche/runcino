@@ -1633,10 +1633,48 @@ async function hasRecentGapIntent(userId: string, days: number): Promise<boolean
  * automatic coaching change and a runner-consented one became
  * indistinguishable at the write.
  */
+/**
+ * LEDGERANSWER-1 (2026-09-05) · WHO ANSWERED, AND WHAT THEY ANSWERED.
+ *
+ * The mutation boundary MEASURES direction, lever and scope from the
+ * before/after snapshots, and that half needs no caller. It cannot measure the
+ * other half: whether a PERSON was asked and said yes.
+ *
+ * `accept.ts`'s DIRECT_PLAN_WRITE lane passed `ledger: { proposalId,
+ * runnerResponse: 'ACCEPTED' }` and its ADAPTATION_PIPELINE lane did not,
+ * because this function had nowhere to put it. Every kind a runner can
+ * currently accept — `downgrade`, `shave`, `reschedule`, `field_test`,
+ * `mark_upgrade` — routes to the PIPELINE. So on the one lane that actually
+ * carries the runner's taps, the ledger recorded the change and lost the
+ * consent: `proposal_id` null, `runner_response` null, on a row whose whole
+ * reason for existing is to answer "was this asked for".
+ *
+ * Measured on a scratch database, against a real accepted upgrade, before this
+ * argument existed: `direction UP · authority RUNNER_ACCEPTED · proposal_id
+ * NULL · runner_response NULL`. The authority column said a runner was
+ * involved; nothing said WHICH decision he answered, so the ledger could not
+ * pair a mutation with the card that produced it, and the
+ * `plan_decision_ledger_pending_proposals` index could never resolve.
+ *
+ * Optional, so no existing caller changes and the cron keeps writing exactly
+ * the row it wrote before.
+ */
+export interface AdaptationLedgerAnswer {
+  /** The `plan_workout_proposals` row this applies, as a string. */
+  readonly proposalId?: string;
+  /** The decision as it was raised, for the record. */
+  readonly proposal?: unknown;
+  /** What the runner said. Omit when nobody was asked. */
+  readonly runnerResponse?: 'ACCEPTED' | 'DECLINED' | 'PENDING';
+  /** The runner-facing sentence, so the ledger reads like the card did. */
+  readonly explanation?: string;
+}
+
 export async function applyAdaptations(
   userId: string,
   actions: AdaptationAction[],
   authority: AuthorityClass,
+  answer?: AdaptationLedgerAnswer,
 ): Promise<number> {
   if (actions.length === 0) return 0;
   // 2026-08-17 · citation scrub at the WRITE site. `why` is the one
@@ -1686,6 +1724,18 @@ export async function applyAdaptations(
     todayISO: todayForBoundary,
     touches: 'structural',
     detail: { action_kinds: actions.map((a) => a.kind) },
+    /* LEDGERANSWER-1 · the runner's half of the row. Omitted entirely when
+     * nobody was asked, so an unattended cron pass writes what it always
+     * wrote and a null `runner_response` keeps meaning "no one was asked"
+     * rather than "someone was asked and we lost the answer" (Rule 11). */
+    ...(answer == null ? {} : {
+      ledger: {
+        ...(answer.proposalId == null ? {} : { proposalId: answer.proposalId }),
+        ...(answer.proposal === undefined ? {} : { proposal: answer.proposal }),
+        ...(answer.runnerResponse == null ? {} : { runnerResponse: answer.runnerResponse }),
+        ...(answer.explanation == null ? {} : { explanation: answer.explanation }),
+      },
+    }),
     apply: async (client) => {
     /* ── LOGAPPLIED-1 (2026-09-05) · THE LOG RECORDS WHAT LANDED ───────────
      *
