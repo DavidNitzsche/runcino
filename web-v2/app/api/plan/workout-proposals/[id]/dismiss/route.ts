@@ -26,13 +26,31 @@
  * BEFORE the write, so a NOT_DECLINABLE card is refused rather than consumed.
  * The refusal is not about the runner's judgement: a stop lifts when the signal
  * that raised it clears, and there is no answer he can give that changes that.
+ *
+ * ── DECLINE-1 (2026-09-06) · THE NO NOW REACHES THE LEDGER ─────────────────
+ *
+ * This route used to say, in its own comment, that "the ledger row belongs to
+ * the mutation boundary, and a decline mutates no plan, so there is no
+ * transaction to hang one on" — true about the transaction, and wrong about
+ * the conclusion. `recordDecision` (lane B of `decision-ledger.ts`) exists for
+ * exactly a decision with no mutation to be atomic with. `declineEntry`
+ * (`lib/brain/ledger/ledger-entry.ts`) is the pure builder; this route resolves
+ * the plan lineage the row belongs to and hands the rest off. Best-effort and
+ * never blocking: a ledger outage must not be the thing that fails a runner
+ * tapping "keep original".
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { requireUserId } from '@/lib/auth/session';
-import { dismissProposal, loadPendingProposalById } from '@/lib/plan/workout-proposals';
+import {
+  dismissProposal, loadPendingProposalById, resolveProposalExpirationPromise,
+} from '@/lib/plan/workout-proposals';
 import { actionFromPending } from '@/lib/brain/proposal/staleness';
 import { declineBehaviorOf } from '@/lib/brain/proposal/decline-facet';
+import { recordDecision, resolvePlanLineage } from '@/lib/brain/ledger/decision-ledger';
+import { declineEntry } from '@/lib/brain/ledger/ledger-entry';
 
 export const dynamic = 'force-dynamic';
 
@@ -88,19 +106,61 @@ export async function POST(
     return NextResponse.json({ ok: false, error: 'not_pending' }, { status: 404 });
   }
 
+  /* PROPOSALEXPIRE-1 · this card was answered, so its standing
+   * `PROPOSAL_EXPIRATION` promise (if `writeWorkoutProposals` scheduled one)
+   * is resolved now rather than left to auto-expire later with a false
+   * "not applied" verdict. */
+  await resolveProposalExpirationPromise(
+    userId, proposalId, 'DECLINED',
+    `the runner declined this proposal on ${new Date().toISOString().slice(0, 10)}`,
+  );
+
   /* The runner's no, recorded where it can be counted.
    *
    * Rule 21's measurement — "309 intents, zero upward" — could not separate
    * "never proposed" from "proposed and declined", because nothing recorded the
-   * second. A log line is the weakest form of recording it and it is what this
-   * route can honestly do: the ledger row belongs to the mutation boundary, and
-   * a decline mutates no plan, so there is no transaction to hang one on. Said
-   * here rather than left unsaid, and named as the gap it is. */
+   * second. The log line stays as the immediate, always-visible record; the
+   * ledger row is the durable one. Contained in its own try: a ledger outage
+   * must not turn a successful decline into a failed response. */
   console.log(
     `[proposal/dismiss] ${userId} declined #${proposalId} (${pending.actionKind})`
     + `${decline == null ? '' : ` · ${decline.kind} · ${decline.because}`}`
     + `${decline?.reraise === false ? ' · will not be re-raised' : ''}`,
   );
+
+  try {
+    const planId = (await rowOrNull<{ plan_id: string }>(
+      'proposal/dismiss · ledger plan lookup',
+      pool.query<{ plan_id: string }>(
+        `SELECT plan_id::text AS plan_id FROM plan_workouts WHERE id = $1 LIMIT 1`,
+        [pending.planWorkoutId],
+      ),
+    ))?.plan_id ?? null;
+    const planLineageId = await resolvePlanLineage({ userUuid: userId, planId, replacedPlanId: null });
+    const written = await recordDecision(declineEntry({
+      userUuid: userId,
+      planId,
+      planLineageId,
+      provenance: 'api/plan/workout-proposals/[id]/dismiss',
+      explanation: `the runner declined proposal #${proposalId} (${pending.actionKind}, `
+        + `reason: ${pending.reason})`
+        + `${decline == null ? '' : ` · ${decline.kind} · ${decline.because}`}`,
+      proposalId: String(proposalId),
+      proposal: { actionKind: pending.actionKind, actionPayload: pending.actionPayload },
+      workoutIds: [pending.planWorkoutId],
+      evidence: [pending.evidence],
+    }));
+    if (written.state !== 'written') {
+      console.error(
+        `[proposal/dismiss] DECISION NOT RECORDED (${written.state}) · #${proposalId} · ${written.why}`,
+      );
+    }
+  } catch (e) {
+    console.error(
+      `[proposal/dismiss] ledger write threw and was contained · #${proposalId} ·`,
+      e instanceof Error ? e.message : e,
+    );
+  }
 
   return NextResponse.json({
     ok: true,

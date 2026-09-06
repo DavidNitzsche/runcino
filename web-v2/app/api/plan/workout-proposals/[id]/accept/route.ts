@@ -16,7 +16,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserId } from '@/lib/auth/session';
-import { acceptProposal, reopenProposal } from '@/lib/plan/workout-proposals';
+import { acceptProposal, reopenProposal, resolveProposalExpirationPromise } from '@/lib/plan/workout-proposals';
 import { asRepricePayload } from '@/lib/plan/reprice-payload';
 import { applyAdaptations } from '@/lib/plan/adapt';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
@@ -116,6 +116,15 @@ export async function POST(
   if (!proposal) {
     return NextResponse.json({ ok: false, error: 'not_pending' }, { status: 404 });
   }
+
+  /* PROPOSALEXPIRE-1 · this card was answered, so its standing
+   * `PROPOSAL_EXPIRATION` promise (if `writeWorkoutProposals` scheduled one)
+   * is resolved now rather than left to auto-expire later with a false
+   * "not applied" verdict. */
+  await resolveProposalExpirationPromise(
+    userId, proposalId, 'ACCEPTED',
+    `the runner accepted this proposal on ${new Date().toISOString().slice(0, 10)}`,
+  );
 
   /* ── ACTIONCOMPLETE-1 (2026-09-05) · ONE DOOR, DISPATCHED ON THE ACTION ───
    *

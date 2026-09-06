@@ -27,11 +27,24 @@
  *
  * Cite: audit/SYSTEM_AUDIT_2026-05-30 P0 #1 (proposal flow completion);
  *       parity with accept/route.ts.
+ *
+ * ── DECLINE-1 (2026-09-06) · THE NO NOW REACHES THE LEDGER ─────────────────
+ *
+ * This route flipped `status` and wrote a `coach_intents` row and stopped
+ * there — `plan_decision_ledger` had no idea a `coach_proposals` decline had
+ * ever happened, which is the same gap `plan/workout-proposals/[id]/dismiss`
+ * had for the per-workout lane. `recordDecision` (lane B of
+ * `decision-ledger.ts`) is for exactly this: a decision with no mutation to
+ * be atomic with. Best-effort and never blocking — a ledger outage must not
+ * turn a successful decline into a failed response.
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { requireUserId } from '@/lib/auth/session';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
+import { recordDecision, resolvePlanLineage } from '@/lib/brain/ledger/decision-ledger';
+import { declineEntry } from '@/lib/brain/ledger/ledger-entry';
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -134,6 +147,43 @@ export async function POST(req: NextRequest, { params }: Params): Promise<NextRe
   ).catch(() => {});
 
   await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});
+
+  /* The runner's no, recorded where it can be counted. Contained in its own
+   * try — see the file header's DECLINE-1 note. No `plan_workout_id` on this
+   * table (a `coach_proposals` row is plan-wide, not per-session), so the
+   * plan is resolved the way `mutatePlan` itself resolves an omitted one:
+   * this runner's current active plan. */
+  try {
+    const planId = (await rowOrNull<{ id: string }>(
+      'coach/proposal/decline · ledger plan lookup',
+      pool.query<{ id: string }>(
+        `SELECT id::text AS id FROM training_plans
+          WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+          ORDER BY authored_iso DESC LIMIT 1`,
+        [userId],
+      ),
+    ))?.id ?? null;
+    const planLineageId = await resolvePlanLineage({ userUuid: userId, planId, replacedPlanId: null });
+    const written = await recordDecision(declineEntry({
+      userUuid: userId,
+      planId,
+      planLineageId,
+      provenance: 'api/coach/proposal/[id]/decline',
+      explanation: `the runner declined coach proposal #${proposalId} (${proposal.proposal_type})`,
+      proposalId: String(proposalId),
+      proposal: { proposalType: proposal.proposal_type, payload: proposal.payload },
+    }));
+    if (written.state !== 'written') {
+      console.error(
+        `[coach/proposal/decline] DECISION NOT RECORDED (${written.state}) · #${proposalId} · ${written.why}`,
+      );
+    }
+  } catch (e) {
+    console.error(
+      `[coach/proposal/decline] ledger write threw and was contained · #${proposalId} ·`,
+      e instanceof Error ? e.message : e,
+    );
+  }
 
   return NextResponse.json({
     ok: true,

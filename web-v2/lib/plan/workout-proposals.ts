@@ -22,8 +22,10 @@ import { describesEvidence } from '@/lib/brain/objective';
 import { PROPOSABLE_KINDS } from '@/lib/plan/adaptation-authority';
 import { pool } from '@/lib/db/pool';
 import { attempt, rowOrNull } from '@/lib/db/read';
-import { expireStaleWorkoutProposals } from './proposal-expiry';
+import { expireStaleWorkoutProposals, PROPOSAL_UNANSWERED_EXPIRY_DAYS } from './proposal-expiry';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { addDaysToDayKey } from '@/lib/runtime/day-key';
+import { scheduleReassessment } from '@/lib/ops/reassessment-scheduler';
 import type { AdaptationAction, AdaptationTrigger } from './adapt';
 import { stripResearchCitations } from './strip-citations';
 import type { RepricePayload } from './reprice-payload';
@@ -269,15 +271,53 @@ export async function writeWorkoutProposals(
           planned_distance_mi: row.distance_mi === null ? null : Number(row.distance_mi),
         };
 
-        await pool.query(
+        const inserted = (await pool.query<{ id: number }>(
           `INSERT INTO plan_workout_proposals
              (user_uuid, plan_workout_id, workout_date_iso, action_kind,
               action_payload, reason, evidence, source)
-           VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7::jsonb, 'cron_evening')`,
+           VALUES ($1::uuid, $2, $3, $4, $5::jsonb, $6, $7::jsonb, 'cron_evening')
+           RETURNING id`,
           [userUuid, workoutId, row.date_iso, action.kind,
            JSON.stringify(payload), reason, JSON.stringify(evidenceForRow)],
-        );
+        )).rows[0];
         count++;
+
+        /* ── PROPOSALEXPIRE-1 (2026-09-06) · THE UNANSWERED-CARD PROMISE ────
+         *
+         * `PROPOSAL_EXPIRATION` has been a real `ReassessmentKind` since
+         * migration 167 was drafted and had no production caller — nothing
+         * ever asked the durable scheduler to track "this card must not
+         * stand forever". `proposal-expiry.ts`'s own direct expiry (14 days,
+         * reused here rather than re-derived — Rule 16) still owns the
+         * runner-facing `plan_workout_proposals.status`; this is the second,
+         * independent surface the sweep's own overdue-alert machinery can
+         * see. Resolved on both accept (`[id]/accept`) and decline
+         * (`[id]/dismiss`) before it ever reaches its own overdue date, so
+         * the sweep's auto-expire branch never claims "not applied" about a
+         * card the runner actually answered.
+         *
+         * Best-effort: a scheduler outage must not cost the proposal itself,
+         * which just committed above. */
+        if (inserted?.id != null) {
+          const dueISO = addDaysToDayKey(row.date_iso, PROPOSAL_UNANSWERED_EXPIRY_DAYS);
+          const res = await scheduleReassessment({
+            userUuid,
+            kind: 'PROPOSAL_EXPIRATION',
+            reasonCode: 'workout_proposal_unanswered',
+            reasonDetail: `proposal #${inserted.id} (${action.kind} on ${row.date_iso}) must be `
+              + `answered within ${PROPOSAL_UNANSWERED_EXPIRY_DAYS} days or it no longer stands`,
+            assessOnISO: dueISO,
+            overdueAfterISO: addDaysToDayKey(dueISO, 3),
+            planVersion: `workout-proposal:${inserted.id}:none`,
+            lever: 'RECORD_ONLY',
+            payload: { proposalId: inserted.id, planWorkoutId: workoutId },
+            idempotencyKey: `workout-proposal:${inserted.id}`,
+            queuedAtISO: today,
+          }).catch((e: unknown) => ({ state: 'failed' as const, why: e instanceof Error ? e.message : String(e) }));
+          if (res.state !== 'ok') {
+            console.log(`[workout-proposals] expiration promise not scheduled · ${res.state} · ${res.why}`);
+          }
+        }
       } catch {
         // Single-proposal failure shouldn't stop the rest of the batch
       }
@@ -650,4 +690,44 @@ export async function dismissProposal(
     [proposalId, userUuid],
   ).catch(() => null);
   return (r?.rowCount ?? 0) > 0;
+}
+
+/**
+ * PROPOSALEXPIRE-1 · the one place a `PROPOSAL_EXPIRATION` promise for a
+ * per-workout proposal is resolved, called from both accept and dismiss
+ * (Rule 16 — one resolver, not one copy per caller). Best-effort and never
+ * throws: the proposal itself already committed by the time either route
+ * calls this, and a scheduler outage must not turn that into a failure.
+ *
+ * Silent when nothing is queued for this proposal — most rows predate
+ * PROPOSALEXPIRE-1, and a card raised before this landed has nothing to
+ * resolve.
+ */
+export async function resolveProposalExpirationPromise(
+  userUuid: string,
+  proposalId: number,
+  decision: 'ACCEPTED' | 'DECLINED',
+  detail: string,
+): Promise<void> {
+  try {
+    const { loadLiveQueue, resolveReassessment } = await import('@/lib/ops/reassessment-scheduler');
+    const live = await loadLiveQueue(userUuid, 'PROPOSAL_EXPIRATION');
+    if (live.state !== 'ok') {
+      if (live.state === 'failed') {
+        console.error(`[workout-proposals] could not resolve expiration promise · ${live.why}`);
+      }
+      return;
+    }
+    const item = live.value.find((i) => i.payload?.proposalId === proposalId);
+    if (!item) return;
+    const res = await resolveReassessment({ id: item.id, status: 'RESOLVED', decision, detail });
+    if (res.state !== 'ok') {
+      console.error(`[workout-proposals] expiration promise resolve failed · ${res.state} · ${res.why}`);
+    }
+  } catch (e) {
+    console.error(
+      '[workout-proposals] resolveProposalExpirationPromise threw and was contained ·',
+      e instanceof Error ? e.message : e,
+    );
+  }
 }

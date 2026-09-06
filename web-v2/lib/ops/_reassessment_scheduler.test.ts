@@ -24,7 +24,7 @@
  *   happens next is outside every check in this repo.
  */
 import { describe, it, expect } from 'vitest';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import path from 'node:path';
 import {
   REASSESSMENT_KINDS,
@@ -225,5 +225,199 @@ describe('the scheduler decides NOTHING · it may not reach a plan row', () => {
 
   it('promoting an item to DUE is not applying it', () => {
     expect(src).toContain('never means "apply what was queued"');
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * COVERAGE-1 (2026-09-06) · SEVEN KINDS, AND WHICH OF THEM A REAL CALLER
+ * SCHEDULES — NOT JUST WHICH ONE THE TYPE ALLOWS.
+ *
+ * `ReassessmentKind` is a seven-member union and, before this gate, nothing
+ * checked that a production write site EXISTED for each one. `_sweep_allusers`
+ * grades 11,598 archetypes and Rule 15's own audit found four doctrine
+ * mechanisms dark across the entire corpus because the fixture type could not
+ * reach them — a type that ADMITS seven kinds proves nothing about how many of
+ * them anything ever schedules.
+ *
+ * ── WHAT THIS GATE CANNOT FAIL ON (Rule 22) ────────────────────────────────
+ *
+ * · WHETHER THE SCHEDULED ITEM IS EVER ASSESSED. A caller that schedules a
+ *   promise and nothing that ever reads it back is invisible to a scan for
+ *   `scheduleReassessment(` — this gate proves a write site exists, not that
+ *   the promise is kept.
+ * · A CALL SITE THIS SCAN'S REGEX CANNOT PARSE. The extraction window is
+ *   400 characters after the call; a kind declared further down the object
+ *   literal than that would read as uncovered. None do today, and a change
+ *   that pushed one that far down should be caught by a human reading the
+ *   diff, not silently waved through by a wider window that stops meaning
+ *   anything (the same failure `check-palette-sync.sh` shipped).
+ * · DEFERRAL specifically, which never calls `scheduleReassessment` at all —
+ *   `deferral-store.ts` writes `reassessment_schedule` on its own SQL,
+ *   verbatim `kind = 'DEFERRAL'`, and is checked by name below rather than by
+ *   the same regex.
+ *
+ * ── ORACLE, PER RULE 18 ─────────────────────────────────────────────────────
+ *
+ * A kind removed from every real caller and left off `NO_CALLER_YET` fails
+ * the "every kind not covered has a named exemption" assertion below —
+ * falsified by hand while writing this gate (temporarily commenting out the
+ * RETURN_TO_TRAINING_STAGE call site in `app/api/v5/return/checkin/route.ts`
+ * and re-running: the gate failed exactly as expected, naming
+ * RETURN_TO_TRAINING_STAGE, then the call site was restored and the gate
+ * passed again — verbatim in the round's own report).
+ */
+describe('COVERAGE-1 · every kind has a real production caller, or a named exemption', () => {
+  const ROOT_APP = path.join(ROOT, 'app');
+  const ROOT_LIB = path.join(ROOT, 'lib');
+
+  function walk(dir: string, out: string[]): void {
+    for (const entry of readdirSync(dir)) {
+      if (entry === 'node_modules' || entry.startsWith('.')) continue;
+      const full = path.join(dir, entry);
+      const st = statSync(full);
+      if (st.isDirectory()) { walk(full, out); continue; }
+      if (!entry.endsWith('.ts') && !entry.endsWith('.tsx')) continue;
+      if (entry.includes('.test.') || entry.endsWith('.db.test.ts')) continue;
+      if (full === SCHEDULER) continue; // the export site, not a caller
+      out.push(full);
+    }
+  }
+
+  const files: string[] = [];
+  walk(ROOT_APP, files);
+  walk(ROOT_LIB, files);
+
+  it('liveness · the scan actually read a non-trivial number of files', () => {
+    // Rule 18 point 2 · a scanner states how many files it read and fails on
+    // zero. This repo has shipped gates that reported clean because they
+    // scanned nothing (`check-modelled-mark.sh`'s guards 1-3).
+    expect(files.length, 'the production-code walk found suspiciously few files').toBeGreaterThan(200);
+  });
+
+  /** Every literal `kind: 'X'` within 400 chars of a `scheduleReassessment(`
+   *  call, across every production file the walk found. */
+  const foundKinds = new Set<string>();
+  const foundAt = new Map<string, string[]>();
+  for (const f of files) {
+    const src = readFileSync(f, 'utf8');
+    if (!src.includes('scheduleReassessment(')) continue;
+    for (const m of src.matchAll(/scheduleReassessment\(\{[\s\S]{0,400}?kind:\s*'([A-Z_]+)'/g)) {
+      const kind = m[1];
+      foundKinds.add(kind);
+      const list = foundAt.get(kind) ?? [];
+      list.push(path.relative(ROOT, f));
+      foundAt.set(kind, list);
+    }
+  }
+
+  /**
+   * THE INDIRECT SHAPE, AND WHY THE REGEX ABOVE CANNOT SEE IT.
+   *
+   * `lib/plan/adjudication/rolling-boundary.ts`'s `boundariesForWeek` BUILDS
+   * `ScheduleRequest` objects (carrying `kind: 'EARNING_GATE'` and
+   * `kind: 'CONDITIONAL_DOSE'`, twice) and RETURNS them; the actual
+   * `scheduleReassessment(r)` call lives in `app/api/cron/run-adaptations/
+   * route.ts`, in a loop over the returned array — `r` is a loop variable,
+   * not an inline object literal, so no `kind:` string sits within any window
+   * after that call site. A caller passing a pre-built request is a real
+   * caller, not a weaker one, so this is checked by NAME (the builder + the
+   * loop that calls it), the same posture `deferralWired` already takes for
+   * DEFERRAL's own indirection.
+   */
+  const ROLLING_BOUNDARY = path.join(ROOT_LIB, 'plan/adjudication/rolling-boundary.ts');
+  const ROLLING_BOUNDARY_CALLER = CRON_ROUTE;
+  const rollingBoundaryKinds = (): ReadonlySet<string> => {
+    if (!existsSync(ROLLING_BOUNDARY) || !existsSync(ROLLING_BOUNDARY_CALLER)) return new Set();
+    const builder = readFileSync(ROLLING_BOUNDARY, 'utf8');
+    const caller = readFileSync(ROLLING_BOUNDARY_CALLER, 'utf8');
+    // The caller must actually import the builder AND call scheduleReassessment
+    // on what it returns — not merely have both strings appear coincidentally
+    // somewhere in a 1400-line route file.
+    const wired = caller.includes('boundariesForWeek')
+      && caller.includes('scheduleReassessment')
+      && /boundariesForWeek\(/.test(caller)
+      && /for \(const r of reqs\)/.test(caller);
+    if (!wired) return new Set();
+    const kinds = new Set<string>();
+    for (const m of builder.matchAll(/kind:\s*'([A-Z_]+)'/g)) kinds.add(m[1]);
+    return kinds;
+  };
+
+  for (const kind of rollingBoundaryKinds()) {
+    foundKinds.add(kind);
+    const list = foundAt.get(kind) ?? [];
+    list.push(`${path.relative(ROOT, ROLLING_BOUNDARY)} (built) -> ${path.relative(ROOT, ROLLING_BOUNDARY_CALLER)} (scheduled)`);
+    foundAt.set(kind, list);
+  }
+
+  // DEFERRAL never calls `scheduleReassessment` — `deferral-store.ts` is its
+  // own writer, checked by name rather than by the regex above.
+  const DEFERRAL_STORE = path.join(ROOT_LIB, 'adaptation/canonical-shadow/deferral-store.ts');
+  const DEFERRAL_CALLER = path.join(ROOT_LIB, 'adaptation/canonical-shadow/run-live-shadow-evaluation.ts');
+  const deferralWired = (): boolean => {
+    if (!existsSync(DEFERRAL_STORE) || !existsSync(DEFERRAL_CALLER)) return false;
+    const store = readFileSync(DEFERRAL_STORE, 'utf8');
+    const caller = readFileSync(DEFERRAL_CALLER, 'utf8');
+    return store.includes("'DEFERRAL'") && caller.includes('persistQueueAtBoundary');
+  };
+
+  /**
+   * Kinds with NO real caller found by either check above, and the argued
+   * reason. A RATCHET: shrink-only. A kind that gains a real caller must have
+   * its entry deleted here in the same change, and a kind that loses its only
+   * caller without gaining an entry here fails the assertion below rather
+   * than silently reading as covered.
+   */
+  const NO_CALLER_YET: Readonly<Partial<Record<(typeof REASSESSMENT_KINDS)[number], string>>> = {
+    FAILED_EVALUATION:
+      'no evaluator anywhere in this codebase re-asks a DUE reassessment\'s question and can fail '
+      + 'doing so — the other six kinds are promises with no consumer that assesses them either '
+      + '(this file\'s own RULE 22 note: "whether the evaluator actually re-asks the question... '
+      + 'is that engine\'s contract, not this one\'s"). The one honest caller this kind could have '
+      + '— `recordAssessmentFailure` wired into `sweepReassessments`\' own promotion-failure path '
+      + '(FAILEDEVAL-1) — retries the FAILING item under its OWN kind and never relabels it '
+      + 'FAILED_EVALUATION, so no INSERT anywhere constructs this literal value. A caller invented '
+      + 'only to clear this exemption would be decoration, which Rule 15 warns against as strongly '
+      + 'as an uncovered mechanism.',
+  };
+
+  it('DEFERRAL is wired through its own writer', () => {
+    expect(deferralWired(), 'deferral-store.ts and its cron caller no longer agree').toBe(true);
+  });
+
+  it('EARNING_GATE, CONDITIONAL_DOSE, POST_RACE_RECOVERY_CHECK, RETURN_TO_TRAINING_STAGE and '
+    + 'PROPOSAL_EXPIRATION each have a real scheduleReassessment( call site', () => {
+    const expected = [
+      'EARNING_GATE', 'CONDITIONAL_DOSE', 'POST_RACE_RECOVERY_CHECK',
+      'RETURN_TO_TRAINING_STAGE', 'PROPOSAL_EXPIRATION',
+    ] as const;
+    for (const k of expected) {
+      expect(foundKinds.has(k), `no scheduleReassessment( call site names kind: '${k}'`).toBe(true);
+    }
+  });
+
+  it('every kind is either covered by a real caller or carries a named, argued exemption', () => {
+    const covered = new Set<string>([...foundKinds, ...(deferralWired() ? ['DEFERRAL'] : [])]);
+    for (const k of REASSESSMENT_KINDS) {
+      const exemption = NO_CALLER_YET[k as keyof typeof NO_CALLER_YET];
+      if (covered.has(k)) {
+        expect(exemption, `${k} now has a real caller (${(foundAt.get(k) ?? []).join(', ')}) — `
+          + 'delete its stale exemption from NO_CALLER_YET').toBeUndefined();
+      } else {
+        expect(exemption, `${k} has no real caller and no exemption naming why — this is exactly `
+          + 'the "wired, tested, inert" shape CLAUDE.md warns against').toBeTruthy();
+      }
+    }
+  });
+
+  it('ORACLE · the extraction window actually finds a kind, given a real example', () => {
+    const sample = `
+      const res = await scheduleReassessment({
+        userUuid: uid,
+        kind: 'EARNING_GATE',
+        reasonCode: 'x',
+      });`;
+    const m = sample.matchAll(/scheduleReassessment\(\{[\s\S]{0,400}?kind:\s*'([A-Z_]+)'/g);
+    expect([...m].map((x) => x[1])).toEqual(['EARNING_GATE']);
   });
 });

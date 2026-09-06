@@ -480,3 +480,91 @@ describe('GUARD 2 · a deferred action has a durable scheduler row', () => {
     expect(DURABLE_SINKS.some((s) => planted.includes(s))).toBe(true);
   });
 });
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * GUARD 4 (2026-09-06) · A DECLINE THAT MUTATES NOTHING STILL LANDS IN THE
+ * LEDGER.
+ *
+ * A prior round's own finding: "a decline is NOT in `plan_decision_ledger`."
+ * `mutatePlan`'s exits (GUARD 1) cannot see this class at all — a decline
+ * never reaches `mutatePlan`, because there is nothing for it to mutate. The
+ * two routes that answer a runner's "no" — `plan/workout-proposals/[id]/
+ * dismiss` and `coach/proposal/[id]/decline` — are enumerated here rather
+ * than globbed for the same reason `DEFERRAL_PRODUCERS` are named in GUARD 2:
+ * a NEW decline route is caught by the liveness check below going empty, not
+ * by silence.
+ *
+ * ── WHAT THIS GUARD CANNOT FAIL ON (Rule 22) ───────────────────────────────
+ *
+ * · A THIRD DECLINE SURFACE THIS FILE DOES NOT NAME. Enumerated, not globbed —
+ *   the same limit GUARD 2 states about `DEFERRAL_PRODUCERS`.
+ * · WHETHER THE LEDGER CALL ACTUALLY WRITES A ROW. It scans source; whether
+ *   the write lands is `decision-ledger.ts`'s own contract and a real-database
+ *   question, not this file's.
+ * · AN ACCEPT ROUTE THAT SHOULD ALSO RECORD SOMETHING. Accept already runs
+ *   through `mutatePlan` (GUARD 1's scope) or `applyBrainAction`; this guard is
+ *   about the answer that mutates nothing, which is the one GUARD 1 cannot see.
+ */
+describe('GUARD 4 · a decline that mutates nothing still lands in the ledger', () => {
+  const DISMISS_ROUTE = path.join(ROOT, 'app/api/plan/workout-proposals/[id]/dismiss/route.ts');
+  const COACH_DECLINE_ROUTE = path.join(ROOT, 'app/api/coach/proposal/[id]/decline/route.ts');
+  const LEDGER_ENTRY = path.join(ROOT, 'lib/brain/ledger/ledger-entry.ts');
+  const DECLINE_ROUTES = [DISMISS_ROUTE, COACH_DECLINE_ROUTE];
+
+  it('liveness · both declared decline routes exist and are substantial', () => {
+    for (const f of DECLINE_ROUTES) {
+      expect(existsSync(f), `${f} is missing`).toBe(true);
+      expect(readFileSync(f, 'utf8').length).toBeGreaterThan(1000);
+    }
+  });
+
+  it('declineEntry exists and is what recordDecision is asked to write', () => {
+    const entry = readFileSync(LEDGER_ENTRY, 'utf8');
+    expect(entry).toContain('export function declineEntry');
+    expect(entry).toContain("runnerResponse: 'DECLINED'");
+  });
+
+  it('every decline route calls BOTH declineEntry and recordDecision', () => {
+    const silent: string[] = [];
+    for (const f of DECLINE_ROUTES) {
+      const src = readFileSync(f, 'utf8');
+      const callsBuilder = src.includes('declineEntry(');
+      const callsStore = src.includes('recordDecision(');
+      if (!callsBuilder || !callsStore) silent.push(path.relative(ROOT, f));
+    }
+    expect(
+      silent,
+      silent.length === 0 ? '' :
+        '\nA DECLINE ROUTE NEVER REACHES THE LEDGER:\n  ' + silent.join('\n  ') + '\n\n'
+        + 'The runner answered "no" and nothing durable recorded it. Rule 21\'s own class of '
+        + 'defect, from the other direction: "the engine never pushes" and "the runner never '
+        + 'accepted the push it was offered" are indistinguishable without this row. Call '
+        + 'declineEntry(...) (lib/brain/ledger/ledger-entry.ts) and hand it to recordDecision(...) '
+        + '(lib/brain/ledger/decision-ledger.ts) — lane B, on its own connection, because a '
+        + 'decline never mutates and there is nothing for the row to be atomic with.',
+    ).toEqual([]);
+  });
+
+  it('ORACLE · the scan WOULD flag a decline route with no ledger call', () => {
+    const planted = `
+      const ok = await dismissProposal(userId, proposalId);
+      console.log('declined', proposalId);
+      return NextResponse.json({ ok: true });
+    `;
+    const callsBuilder = planted.includes('declineEntry(');
+    const callsStore = planted.includes('recordDecision(');
+    expect(callsBuilder && callsStore, 'the ORACLE positive control itself calls the ledger').toBe(false);
+  });
+
+  it('ORACLE · and it would NOT flag one that reaches both', () => {
+    const planted = `
+      const ok = await dismissProposal(userId, proposalId);
+      await recordDecision(declineEntry({ userUuid, planId, planLineageId, provenance: 'x',
+        explanation: 'x', proposalId: String(proposalId) }));
+      return NextResponse.json({ ok: true });
+    `;
+    const callsBuilder = planted.includes('declineEntry(');
+    const callsStore = planted.includes('recordDecision(');
+    expect(callsBuilder && callsStore).toBe(true);
+  });
+});

@@ -69,8 +69,86 @@ File: `web-v2/db/migrations/166_plan_decision_ledger.sql`
 
 ### 166.1 · `CREATE TABLE IF NOT EXISTS plan_decision_ledger`
 
-**SQL** — the exact statement is the file's `CREATE TABLE` block, lines 104-215. Its
-shape, in one paragraph: 36 columns (`id`, `user_uuid`, the four plan-lineage
+**SQL** — the literal statement, not a line reference (the owner rejected the
+earlier version of this section for citing lines instead of showing the text):
+
+```sql
+CREATE TABLE IF NOT EXISTS plan_decision_ledger (
+  id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_uuid             uuid NOT NULL,
+  plan_id               text,
+  plan_lineage_id       text NOT NULL,
+  replaced_plan_id      text,
+  plan_version          text,
+  scope                 text NOT NULL
+                          CHECK (scope IN ('PLAN', 'WEEK', 'WORKOUT', 'NONE')),
+  workout_ids           jsonb NOT NULL DEFAULT '[]'::jsonb,
+  scope_from_iso        date,
+  scope_to_iso          date,
+  lever                 text NOT NULL
+                          CHECK (lever IN (
+                            'PACE', 'VOLUME', 'LONG_RUN', 'SESSION_SHAPE',
+                            'SCHEDULE', 'PLAN_STRUCTURE', 'RECORD_ONLY')),
+  direction             text NOT NULL
+                          CHECK (direction IN ('UP', 'DOWN', 'NEUTRAL', 'UNKNOWN')),
+  evidence              jsonb NOT NULL DEFAULT '[]'::jsonb,
+  provenance            text NOT NULL,
+  source_mode           text,
+  before_state          jsonb,
+  after_state           jsonb,
+  authority             text NOT NULL
+                          CHECK (authority IN (
+                            'RUNNER_INITIATED', 'RUNNER_ACCEPTED', 'LIFECYCLE',
+                            'COACHING_ADAPTATION', 'AUTHORSHIP')),
+  authority_verdict     text NOT NULL
+                          CHECK (authority_verdict IN ('PERMITTED', 'REFUSED', 'HELD')),
+  hold                  jsonb,
+  decision              text NOT NULL
+                          CHECK (decision IN (
+                            'PROGRESS', 'HOLD', 'REGRESS', 'REFUSE',
+                            'APPLY', 'DEFER', 'EXPIRE', 'UNDO')),
+  proposal_id           text,
+  proposal              jsonb,
+  runner_response       text
+                          CHECK (runner_response IS NULL OR runner_response IN (
+                            'PENDING', 'ACCEPTED', 'DECLINED', 'EXPIRED')),
+  responded_at          timestamptz,
+  mutation_outcome      text
+                          CHECK (mutation_outcome IS NULL OR mutation_outcome IN (
+                            'applied', 'rejected', 'undeclared_structural', 'bypassed',
+                            'authorship_drift', 'no_plan', 'not_attempted',
+                            'ledger_unwritten', 'duplicate')),
+  mutation_violations   jsonb NOT NULL DEFAULT '[]'::jsonb,
+  explanation           text NOT NULL,
+  model_version         text NOT NULL,
+  at                    timestamptz NOT NULL DEFAULT now(),
+  superseded_by         uuid,
+  superseded_at         timestamptz,
+  undone_at             timestamptz,
+  undo_reason           text,
+  idempotency_key       text,
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT plan_decision_ledger_explanation_is_present
+    CHECK (length(explanation) > 0),
+  CONSTRAINT plan_decision_ledger_supersession_is_explained
+    CHECK ((superseded_at IS NULL AND superseded_by IS NULL)
+        OR (superseded_at IS NOT NULL AND superseded_by IS NOT NULL)),
+  CONSTRAINT plan_decision_ledger_undo_is_explained
+    CHECK ((undone_at IS NULL AND undo_reason IS NULL)
+        OR (undone_at IS NOT NULL AND undo_reason IS NOT NULL AND length(undo_reason) > 0)),
+  CONSTRAINT plan_decision_ledger_response_is_timed
+    CHECK ((COALESCE(runner_response, 'PENDING') IN ('ACCEPTED', 'DECLINED', 'EXPIRED'))
+           = (responded_at IS NOT NULL))
+);
+```
+
+(Comments stripped for length here; the fully-commented, byte-verified-identical
+version of this and every other statement in 166, 167 and 168 is
+`docs/reports/brain-2026-09-05/LITERAL-SQL-166-168.md`, which a script diffed
+against the checked-in `.sql` files statement-by-statement before this round
+closed.)
+
+Its shape, in one paragraph: 36 columns (`id`, `user_uuid`, the four plan-lineage
 columns, the four scope columns, `lever`, `direction`, the three evidence/provenance
 columns, `before_state`/`after_state`, the three authority columns, `decision`, the
 four proposal columns, the two mutation-outcome columns, `explanation`,
@@ -125,15 +203,17 @@ SELECT count(*) FROM training_plans;      -- unchanged from the pre-state
 SELECT count(*) FROM plan_workouts;       -- unchanged from the pre-state
 ```
 
-**Rollback**
-
-```sql
-DROP TABLE IF EXISTS plan_decision_ledger;
-```
-
-Safe at any time: no other table references it, and no code path treats its absence
-as an error (`decision-ledger.ts` probes once per process and returns
-`{ state: 'table_absent' }`, which every caller branches on).
+**Rollback — NOT "safe at any time".** The owner rejected that framing for this
+exact statement. Whether `DROP TABLE IF EXISTS plan_decision_ledger;` is safe
+depends entirely on whether the table has ever been written to — see §H below
+for the full rollback matrix. Pre-use (§H(a)) it is clean: no other table
+references it, and no code path treats its absence as an error
+(`decision-ledger.ts` probes once per process and returns
+`{ state: 'table_absent' }`, which every caller branches on). Once a decision has
+been recorded, the same `DROP` destroys it — §H(c) is the export-first
+procedure required before running it at that point, and §H(d) is the separate,
+explicit approval the DROP itself always needs regardless of row count. §H.8
+covers the one row an exactly-once accept can put beyond a clean rollback.
 
 **What enabling it would allow that is not allowed today.** One thing, and it is the
 point: `mutatePlan` would begin **recording what it did**, not only what it refused.
@@ -212,10 +292,95 @@ File: `web-v2/db/migrations/167_reassessment_schedule.sql`
 
 ### 167.1 · `CREATE TABLE IF NOT EXISTS reassessment_schedule`
 
-**SQL** — the file's `CREATE TABLE` block. 34 columns, three CHECK constraints, no
-foreign keys, covering all seven kinds of scheduled promise: `DEFERRAL`,
-`EARNING_GATE`, `CONDITIONAL_DOSE`, `POST_RACE_RECOVERY_CHECK`,
-`RETURN_TO_TRAINING_STAGE`, `PROPOSAL_EXPIRATION`, `FAILED_EVALUATION`.
+**SQL** — the literal statement, not a line reference:
+
+```sql
+CREATE TABLE IF NOT EXISTS reassessment_schedule (
+  id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+
+  user_uuid              uuid NOT NULL,
+
+  kind                   text NOT NULL
+                           CHECK (kind IN (
+                             'DEFERRAL',
+                             'EARNING_GATE',
+                             'CONDITIONAL_DOSE',
+                             'POST_RACE_RECOVERY_CHECK',
+                             'RETURN_TO_TRAINING_STAGE',
+                             'PROPOSAL_EXPIRATION',
+                             'FAILED_EVALUATION')),
+
+  reason_code            text NOT NULL,
+  reason_detail          text NOT NULL,
+
+  assess_on_iso          date NOT NULL,
+  overdue_after_iso      date,
+
+  required_evidence      jsonb NOT NULL DEFAULT '[]'::jsonb,
+  evidence               jsonb NOT NULL DEFAULT '[]'::jsonb,
+  newest_evidence_iso    date,
+
+  plan_id                text,
+  plan_lineage_id        text,
+  plan_version           text NOT NULL,
+  evidence_version       text,
+  model_version          text,
+
+  lever                  text,
+  before_value           double precision,
+  proposed_after_value   double precision,
+  magnitude              jsonb,
+  payload                jsonb NOT NULL DEFAULT '{}'::jsonb,
+
+  status                 text NOT NULL DEFAULT 'PENDING'
+                           CHECK (status IN (
+                             'PENDING', 'DUE', 'RESOLVED', 'EXPIRED', 'FAILED', 'ABANDONED')),
+
+  attempts               integer NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+  last_error             text,
+  last_attempt_at        timestamptz,
+  next_retry_at          timestamptz,
+
+  resulting_decision     text,
+  resulting_decision_detail text,
+  resulting_ledger_id    uuid,
+  resolved_at            timestamptz,
+
+  origin_ledger_id       uuid,
+
+  idempotency_key        text NOT NULL,
+
+  queued_at_iso          date NOT NULL,
+  created_at             timestamptz NOT NULL DEFAULT now(),
+  updated_at             timestamptz NOT NULL DEFAULT now(),
+
+  CONSTRAINT reassessment_schedule_terminal_is_explained
+    CHECK (
+      (status IN ('PENDING', 'DUE')
+        AND resolved_at IS NULL AND resulting_decision IS NULL)
+      OR
+      (status IN ('RESOLVED', 'EXPIRED', 'FAILED', 'ABANDONED')
+        AND resolved_at IS NOT NULL
+        AND resulting_decision IS NOT NULL
+        AND resulting_decision_detail IS NOT NULL
+        AND length(resulting_decision_detail) > 0)
+    ),
+
+  CONSTRAINT reassessment_schedule_failure_names_its_error
+    CHECK (status <> 'FAILED' OR (last_error IS NOT NULL AND length(last_error) > 0)),
+
+  CONSTRAINT reassessment_schedule_attempts_are_timed
+    CHECK ((attempts = 0) = (last_attempt_at IS NULL))
+);
+```
+
+(Comments stripped for length; the fully-commented version, byte-verified against
+the checked-in `.sql` file, is in `LITERAL-SQL-166-168.md`.)
+
+34 columns, three CHECK constraints, no foreign keys, covering all seven kinds of
+scheduled promise: `DEFERRAL`, `EARNING_GATE`, `CONDITIONAL_DOSE`,
+`POST_RACE_RECOVERY_CHECK`, `RETURN_TO_TRAINING_STAGE`, `PROPOSAL_EXPIRATION`,
+`FAILED_EVALUATION`.
 
 **What it does.** The one durable scheduler. Each row stores the reason (code and
 sentence), the assessment date, the required evidence, the plan and version, the
@@ -267,15 +432,15 @@ SELECT conname FROM pg_constraint
 SELECT to_regclass('public.canonical_adaptation_deferrals');       -- expect NULL
 ```
 
-**Rollback**
-
-```sql
-DROP TABLE IF EXISTS reassessment_schedule;
-```
-
-Safe at any time. `deferral-store.ts` and `reassessment-scheduler.ts` both probe for
-the table and report `table_absent` — a distinct state from "empty queue" — rather
-than throwing, so the app behaves exactly as it does today with the table gone.
+**Rollback — NOT "safe at any time".** Same correction as 166.1's rollback line
+above, applied here: `DROP TABLE IF EXISTS reassessment_schedule;` is clean
+pre-use (§H(a) — `deferral-store.ts` and `reassessment-scheduler.ts` both probe
+for the table and report `table_absent` rather than throwing, so the app
+behaves exactly as it does today with the table gone) and LOSSY once any
+promise has been queued against it (§H(c), export first, then §H(d)'s
+separately-approved DROP) — every EARNING_GATE, CONDITIONAL_DOSE,
+POST_RACE_RECOVERY_CHECK, RETURN_TO_TRAINING_STAGE, PROPOSAL_EXPIRATION and
+DEFERRAL row disappears with it.
 
 **What enabling it would allow that is not allowed today.** A deferred progression,
 an earning gate, a post-race recovery check, a return-to-training stage, a
@@ -612,7 +777,7 @@ not a fault in the migration.
 | `167` errors partway | same | same |
 | both applied, app cannot write | ledger stays empty, `[ledger] table_absent` in logs | restart the service (or wait 60s for the re-probe, post-`MIGRATIONPROBE-1`) |
 | applied to the wrong database | tables exist where they should not | `DROP TABLE IF EXISTS plan_decision_ledger; DROP TABLE IF EXISTS reassessment_schedule;` — nothing references them, so the drop is clean |
-| decision to reverse entirely | — | see ADDENDUM 2 §H, which replaces this row. "No data loss to anything else" was true and misleading: nothing OUTSIDE these two tables is touched, and everything INSIDE the ledger is lost unless it is exported first. §H.3 carries the export step and states what an archive still cannot recover |
+| decision to reverse entirely | — | see ADDENDUM 2 §H, which replaces this row. "No data loss to anything else" was true and misleading: nothing OUTSIDE these three tables is touched, and everything INSIDE the ledger is lost unless it is exported first. §H(c) carries the export step and states what an archive still cannot recover; §H(d) is the separately-approved DROP itself |
 
 **There is no backfill.** Both tables start empty and accumulate forward. No
 historical decision is reconstructed into the ledger, and none should be:
@@ -654,102 +819,168 @@ him. What changed is in section I.
 
 ## H · The rollback matrix
 
-Which row you are in is decided by two facts: has the table ever been WRITTEN
-to, and is the application code deployed.
+**Restructured 2026-09-06 into the four categories the owner asked for,
+explicitly, after "safe at any time" was rejected a second time in review.**
+Which category applies is decided by two facts: has any table ever been
+WRITTEN to, and is the application code deployed. All three tables (166's
+`plan_decision_ledger`, 167's `reassessment_schedule`, 168's
+`plan_decision_outcome`) are covered together below — none references another
+by foreign key (168's `decision_id` points at 166's `id` **by value, no FK**;
+see `LITERAL-SQL-166-168.md`'s cross-migration table), so all three sit in the
+same row of this matrix at any given moment, and every SQL block below acts on
+all three together for that reason, not out of convenience.
 
-### H.1 · Pre-use rollback · both tables still empty · CLEAN
+**The standing rule that governs (c) and, in the degenerate case, (a): a
+`DROP TABLE` is a destructive schema removal, and it is never executed as part
+of this packet's approval.** CLAUDE.md's own operating posture already says
+this generally — "DDL / data writes still require David's explicit
+per-statement go before execution, as always" — and category (d) below is that
+rule applied to this specific action, named rather than left implicit, because
+the earlier "safe at any time" framing let a real `DROP TABLE` slip out from
+under it in review once already.
 
-The window between applying the DDL and the first mutation reaching the
-boundary. Nothing has been recorded, so nothing is lost.
+### (a) · Pre-use rollback · every table still empty · CLEAN
+
+The window between applying the DDL and the first row landing in any of the
+three tables. Nothing has been recorded, so nothing is lost — but the `DROP`
+itself is still category (d), gated below, not a free action just because the
+tables happen to be empty right now.
 
 ```sql
 -- verify you are actually in this row, do not assume it
-SELECT (SELECT count(*) FROM plan_decision_ledger)  AS ledger_rows,   -- must be 0
-       (SELECT count(*) FROM reassessment_schedule) AS schedule_rows; -- must be 0
-
-DROP TABLE IF EXISTS plan_decision_ledger;
-DROP TABLE IF EXISTS reassessment_schedule;
+SELECT (SELECT count(*) FROM plan_decision_ledger)  AS ledger_rows,    -- must be 0
+       (SELECT count(*) FROM reassessment_schedule) AS schedule_rows,  -- must be 0
+       (SELECT count(*) FROM plan_decision_outcome) AS outcome_rows;   -- must be 0
 ```
 
-**Cost: none.** Nothing else references either table, no foreign key points at
-them, and nothing outside this feature reads them. The application returns to
-the `table_absent` branch it is running on today.
+**Cost: none, IF the counts above are all zero and IF the drop itself is
+separately approved per (d).** Nothing else references any of the three
+tables, no foreign key points at them, and nothing outside this feature reads
+them. The application returns to the `table_absent` branch it is running on
+today.
 
 **What it does not recover:** nothing, because nothing was recorded.
 
-### H.2 · Code rollback with the data left in place · CLEAN, AND THE DEFAULT
+### (b) · Code rollback with the data left in place · CLEAN, AND THE DEFAULT
 
-Deploy the previous application build and leave both tables exactly where they
-are. This is the right first move for almost every problem, because it is
-reversible in both directions and loses nothing.
+Deploy the previous application build and leave all three tables exactly
+where they are. This is the right first move for almost every problem: it is
+the only category in this matrix that involves **no DDL at all**, is
+reversible in both directions, and loses nothing.
 
 ```
-revert the deploy only. NO SQL AT ALL.
+revert the deploy only. NO SQL AT ALL. No table is touched, so category (d)'s
+gate does not even apply here — there is nothing destructive to approve.
 ```
 
-**Cost: none.** The old code does not name either table. The rows stop
-accumulating and stay readable by hand.
+**Cost: none.** The old code does not name any of the three tables. The rows
+stop accumulating and stay readable by hand.
 
-**What it does not recover:** nothing. And it is the only row in this matrix
-that can be undone by simply deploying forward again.
+**What it does not recover:** nothing. And it is the only category in this
+matrix that can be undone by simply deploying forward again.
 
-**Prefer this to H.3 unless the schema itself is the problem.**
+**Prefer this to (c) unless the schema itself is the problem.**
 
-### H.3 · Post-use schema rollback · LOSSY UNLESS EXPORTED FIRST
+### (c) · Post-use export/archive, before any destructive step · LOSSY UNLESS EXPORTED FIRST
 
-Dropping a table that has accumulated decisions destroys the only record of
-them. `plan_decision_ledger` has no foreign keys ON PURPOSE — a ledger's whole
-value is that it survives the rows it describes — and the same property means
-nothing else holds a copy. **Export before dropping, or the coaching history of
-every runner since the apply is gone.**
+Once a table has accumulated rows, dropping it destroys the only record of
+them. `plan_decision_ledger` and `plan_decision_outcome` have no foreign keys
+ON PURPOSE — a ledger's whole value is that it survives the rows it
+describes — and the same property means nothing else holds a copy. **Export
+before dropping, or the coaching history of every runner since the apply is
+gone.** This category is the export/archive PROCEDURE only; the DROP that
+would follow it is category (d), separately approved, never run as step 4 of
+this same procedure without a fresh explicit go.
 
 ```sql
 -- 1 · archive, in the same database, so the export cannot be lost in transit.
-CREATE TABLE plan_decision_ledger_archive_20260905 AS
+CREATE TABLE plan_decision_ledger_archive_20260906 AS
   SELECT * FROM plan_decision_ledger;
-CREATE TABLE reassessment_schedule_archive_20260905 AS
+CREATE TABLE reassessment_schedule_archive_20260906 AS
   SELECT * FROM reassessment_schedule;
+CREATE TABLE plan_decision_outcome_archive_20260906 AS
+  SELECT * FROM plan_decision_outcome;
 
--- 2 · prove the archive is complete BEFORE the drop. Counts, not eyeballs.
-SELECT (SELECT count(*) FROM plan_decision_ledger)                  AS live,
-       (SELECT count(*) FROM plan_decision_ledger_archive_20260905) AS archived;
--- and the same pair for reassessment_schedule. They must be equal.
+-- 2 · prove the archive is complete BEFORE anything destructive. Counts, not
+--     eyeballs.
+SELECT (SELECT count(*) FROM plan_decision_ledger)                   AS live,
+       (SELECT count(*) FROM plan_decision_ledger_archive_20260906)  AS archived;
+-- and the same pair for reassessment_schedule and plan_decision_outcome.
+-- Every pair must be equal before proceeding to (d).
 
 -- 3 · and a copy off this database as well.
-
--- 4 · only now
-DROP TABLE IF EXISTS plan_decision_ledger;
-DROP TABLE IF EXISTS reassessment_schedule;
 ```
 
-**Cost:** the archive tables are additive and inert; the drop is not reversible
-without them.
+**Cost:** the archive tables are additive and inert. Nothing is destroyed by
+this category on its own — the archive step is reversible by construction (it
+is a `CREATE TABLE AS SELECT`, not a `DROP`).
 
-**What it does not recover, even with the archive:** the ledger's FUTURE. A
-re-apply creates an empty table, and `resolvePlanLineage` opens a NEW lineage
-for every plan, because rung 1 asks the ledger what lineage it already knows and
-the answer is now nothing. Every runner's history restarts at the re-apply. The
-archive stays readable but no longer joins forward.
+**What it does not recover, even with the archive, once (d) actually runs:**
+the ledger's FUTURE. A re-apply creates an empty table, and
+`resolvePlanLineage` opens a NEW lineage for every plan, because rung 1 asks
+the ledger what lineage it already knows and the answer is now nothing. Every
+runner's history restarts at the re-apply. The archive stays readable but no
+longer joins forward.
 
-**There is no backfill and there must not be.** Reconstructing decisions nobody
-recorded means inventing provenance, which is the fabrication this ledger exists
-to make impossible.
+**There is no backfill and there must not be.** Reconstructing decisions
+nobody recorded means inventing provenance, which is the fabrication this
+ledger exists to make impossible.
 
-### H.4 · Only ONE migration applied · CLEAN, and it needs no repair
+### (d) · Destructive schema removal · ITS OWN APPROVAL, NEVER BUNDLED WITH ANYTHING ELSE
 
-The two tables are independent `CREATE TABLE`s with no foreign keys between
-them. Neither module reads the other's table.
+```sql
+DROP TABLE IF EXISTS plan_decision_ledger;
+DROP TABLE IF EXISTS reassessment_schedule;
+DROP TABLE IF EXISTS plan_decision_outcome;
+```
 
-- **166 applied, 167 not:** decisions record; deferrals do not persist. The
-  scheduler answers `table_absent` and says so. This is a partially-improved
-  system, not a broken one.
-- **167 applied, 166 not:** deferrals persist; decisions do not record. The
-  boundary takes the `table_absent` branch and commits, which is exactly
-  production's behaviour today.
+This statement — or any subset of it — is **only ever run with the owner's
+explicit, separate go for that exact statement, at that exact time.** Not
+implied by approving this packet. Not implied by approving (c)'s export. Not
+bundled with a code deploy, a different migration's approval, or a prior
+approval of the same DROP against a different table. Per-statement DDL
+approval is CLAUDE.md's standing rule for this whole codebase; this category
+is that rule, made explicit for the one action in this matrix capable of
+destroying data.
 
-**Recovery:** apply the other one, or drop the applied one per H.1/H.3. Nothing
-needs repairing in between, and there is no window in which the app is worse off
-than it is today.
+If the tables are empty (category (a)'s precondition), the cost of this
+statement is zero — but the approval is still required, because the person
+running it and the person who last verified the counts are not guaranteed to
+be making the same observation at the same moment, and a DROP does not check
+row counts before it fires. If any row exists, this statement is only run
+AFTER category (c)'s archive is verified complete, never before and never in
+the same breath as the archive.
+
+**What it does not recover, ever:** nothing this document can restore. A
+`DROP` with no prior archive is not a rollback, it is data loss with SQL
+syntax.
+
+### H.4 · Only SOME of the three migrations applied · CLEAN, and it needs no repair
+
+All three tables are independent `CREATE TABLE`s with no foreign keys between
+them (168's `decision_id` is a plain column, not an FK — see the cross-migration
+table above). No module reads another migration's table to decide whether it
+may run.
+
+- **166 applied, 167/168 not:** decisions record; deferrals do not persist;
+  outcomes are never judged. The scheduler and the outcome sweep each answer
+  `table_absent` and say so. Partially-improved, not broken.
+- **167 applied, 166/168 not:** deferrals persist; decisions do not record;
+  outcomes are never judged. The boundary takes the `table_absent` branch and
+  commits, which is exactly production's behaviour today.
+- **168 applied, 166/167 not:** the outcome sweep has somewhere to write, but
+  nothing exists yet for it to judge — `outcome-sweep.ts` reads
+  `plan_decision_ledger` at runtime, and with 166 absent it answers
+  `table_absent` on that read and writes nothing. Inert, not broken.
+- **Any two of three, or all three:** each pairing composes the same way —
+  every table absent from the set answers `table_absent` on its own probe, and
+  every table present behaves exactly as if the others were also present,
+  because none of the three schemas branches on another's existence.
+
+**Recovery:** apply whichever is missing, or drop whichever is applied per
+§H(a) (if empty) or §H(c) then §H(d) (if not). Nothing needs repairing in
+between, and there is no window in which the app is worse off than it is
+today.
 
 ### H.5 · Indexes incomplete · SELF-REPAIRING, WITH ONE THAT IS NOT COSMETIC
 
@@ -758,9 +989,10 @@ a failure partway leaves the table created and some indexes missing. Every
 statement is `IF NOT EXISTS`.
 
 ```sql
--- what SHOULD be there: 6 on the ledger (5 + pkey), 5 on the schedule (4 + pkey)
+-- what SHOULD be there: 6 on the ledger (5 + pkey), 5 on the schedule (4 + pkey),
+-- 5 on the outcome table (4 + pkey)
 SELECT tablename, count(*) FROM pg_indexes
- WHERE tablename IN ('plan_decision_ledger','reassessment_schedule')
+ WHERE tablename IN ('plan_decision_ledger','reassessment_schedule','plan_decision_outcome')
  GROUP BY tablename;
 ```
 
