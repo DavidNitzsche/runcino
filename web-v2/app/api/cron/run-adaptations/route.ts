@@ -483,7 +483,41 @@ export async function POST(req: NextRequest) {
           ? await moved.snapshotSession(uid, movedTarget.dateIso).catch(() => undefined)
           : undefined;
 
-        applied = await applyAdaptations(uid, applyNow, 'COACHING_ADAPTATION');
+        // ── ORGANICPUSH-1 (2026-09-07) · THE "ONE THING THE RULING ALLOWED"
+        // WAS SILENTLY REFUSED SINCE THE 2026-09-05 AUTHORITY CONSOLIDATION.
+        //
+        // `applyNow` is, by `sealAutomaticActions`'s own construction two
+        // paragraphs up, 100% `kind === 'note'` — every plan-mutating action
+        // was already diverted to `propose` or converted to an observational
+        // note in `recorded`. This lane writes `coach_intents` rows only
+        // (`adapt.ts`'s `kind === 'note'` limb calls `writeIntent` and
+        // `continue`s before touching a single `plan_workouts` column), which
+        // is exactly what `AuthorityClass.LIFECYCLE`'s own doc comment
+        // describes: "automatic bookkeeping that does not change the
+        // TRAINING."
+        //
+        // It was declared `'COACHING_ADAPTATION'` instead, which `mutatePlan`
+        // now refuses UNCONDITIONALLY while the seam is closed —
+        // `mutationIsPermitted` runs before `apply` ever executes, so it
+        // cannot see that this particular batch never touches a demand-bearing
+        // column. Measured against this walk's scratch data: every night this
+        // runner has ANY note-worthy observation, `applyAdaptations` throws
+        // `[mutate] REFUSED · ... automatic coaching adaptation is sealed`,
+        // uncaught, which unwinds the rest of THIS user's per-user loop
+        // iteration — including the rolling-boundary evaluator and the option
+        // lane below, the entire organic-PUSH mechanism this file's proof
+        // harness exists to verify. A note that could not be written was
+        // silently taking the whole night's adaptation pass down with it for
+        // any runner who had one to write, which per Rule 20 is a rule
+        // ("notes still get logged") that had no gate and had quietly stopped
+        // being true.
+        //
+        // The fix is the authority label, not the seam: `LIFECYCLE` is
+        // unconditionally permitted and this lane's writes were always
+        // observational, so nothing about what gets written changes — the
+        // batch remains exactly what `sealAutomaticActions` already proved is
+        // note-only.
+        applied = await applyAdaptations(uid, applyNow, 'LIFECYCLE');
 
         if (movedTarget && movedBefore !== undefined) {
           try {
