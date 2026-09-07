@@ -361,6 +361,21 @@ export interface LongRunStructureCandidate {
  * Rule 14 · the population is stated: the ACTIVE plan only
  * (`archived_iso IS NULL`), same scope `nextSessionFor` in
  * `action-proposal-lane.ts` and `readLiveRows` in `staleness.ts` both use.
+ *
+ * RACEDAYSTRUCTURE-1 (2026-09-07) · `is_long` is not exclusive with
+ * `type = 'race'`. A race that replaces the week's long run for volume-
+ * counting purposes is composed with `is_long = true` AND `type = 'race'`
+ * (confirmed live: David's 2026-09-13 Santa Monica 10K, `is_long=true,
+ * type='race', sub_label='RACE'`) — a legitimate convention for sizing the
+ * week, and the wrong row for THIS question. Asking "has the runner earned
+ * a race-pace finish segment on this long run" about a session that already
+ * IS a race is a category error: you do not bolt a race-pace finish test
+ * onto a race. The reader still reached a harmless HOLD in this instance
+ * (an actual race trivially reads as "not earned a finish segment," since
+ * it carries no race-pace sub-label of the kind `extractLongSegments`
+ * looks for), but the runner-facing card made no sense — "holding the plan
+ * as it is" attached to a session that was never a candidate for the
+ * change being held. Excluding `type = 'race'` from both queries below.
  */
 export async function loadLongRunStructureEvidence(
   userUuid: string,
@@ -377,6 +392,7 @@ export async function loadLongRunStructureEvidence(
         WHERE tp.user_uuid = $1::uuid
           AND tp.archived_iso IS NULL
           AND pw.is_long = true
+          AND pw.type != 'race'
           AND pw.date_iso >= $2
         ORDER BY pw.date_iso ASC
         LIMIT 1`,
@@ -398,6 +414,7 @@ export async function loadLongRunStructureEvidence(
         WHERE tp.user_uuid = $1::uuid
           AND tp.archived_iso IS NULL
           AND pw.is_long = true
+          AND pw.type != 'race'
           AND pw.date_iso < $2
         ORDER BY pw.date_iso DESC
         LIMIT ${STRUCTURE_LOOKBACK_COUNT}`,
