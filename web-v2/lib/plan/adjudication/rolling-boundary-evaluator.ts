@@ -388,7 +388,7 @@ export async function readCompletedWeek(
       }>(
         `SELECT pw.date_iso::text AS date_iso, pw.workout_spec, pw.is_quality, pw.is_long
            FROM plan_workouts pw
-          WHERE pw.id = ANY($1::uuid[])`,
+          WHERE pw.id = ANY($1::text[])`,
         [ranQualityRows.map((r) => r.id)],
       );
       specRows = r.rows;
@@ -446,7 +446,7 @@ export async function readProposedWeekDemand(
       }>(
         `SELECT pw.date_iso::text AS date_iso, pw.workout_spec, pw.is_quality, pw.is_long
            FROM plan_workouts pw
-          WHERE pw.id = ANY($1::uuid[])`,
+          WHERE pw.id = ANY($1::text[])`,
         [qualityRows.map((r) => r.id)],
       );
       specRows = r.rows;
