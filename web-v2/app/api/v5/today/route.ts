@@ -2100,12 +2100,12 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // so "Move or skip" said the identical "Move to another day, or skip it"
   // whether or not the runner had already tapped Skip five minutes earlier —
   // no confirmation anywhere on the day. Reproduced live 2026-09-06.
-  const alreadySkipped = ((await pool.query(
+  const alreadySkipped = (await rowOrNull('v5Today · alreadySkipped', pool.query(
     `SELECT 1 FROM day_actions
       WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip'
       LIMIT 1`,
     [userId, today],
-  ).catch(() => ({ rows: [] as any[] }))).rows.length > 0);
+  ))) != null;
 
   const beforeYouGo: V5Row[] = [];
   if (shoePick) {
