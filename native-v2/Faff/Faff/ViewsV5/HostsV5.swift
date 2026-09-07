@@ -316,7 +316,13 @@ struct TodayHostV5: View {
                         initials: initials,
                         onAccount: { accountOpen = true },
                         onPickDay: { day in
-                            if let iso = Self.isoDate(embeddedIn: day.id) ?? day.dateISO {
+                            // WKSTRIP-UTC-1 · `dateISO` first, matching every
+                            // other resolver of this exact question (the
+                            // calendar sheet, `inSharedShell`'s own strip) —
+                            // it is the authoritative field when present;
+                            // `isoDate(embeddedIn:)` is a last-resort guess
+                            // at a substring of `id`, not a first choice.
+                            if let iso = day.dateISO ?? Self.isoDate(embeddedIn: day.id) {
                                 goTo(iso, todayISO: knownTodayISO ?? date)
                             }
                         },
@@ -447,8 +453,7 @@ struct TodayHostV5: View {
               let refFirstISO = reference.first?.dateISO,
               let refFirstDate = Self.iso.date(from: refFirstISO),
               let wantedDate = Self.iso.date(from: date) else { return [] }
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
+        let cal = Self.utcCalendar
         let refWeekday = cal.component(.weekday, from: refFirstDate)
         var start = wantedDate
         var guardCount = 0
@@ -866,7 +871,22 @@ struct TodayHostV5: View {
                         onCalendar: nil,
                         initials: initials,
                         onAccount: { accountOpen = true },
-                        onPickDay: { day in pickDay(day.id, in: model) },
+                        // WKSTRIP-UTC-1 · `stripDays(for:)` above can hand
+                        // back a week `snapshotWeekStripDays` reconstructed
+                        // for a date outside `model`'s own week — the exact
+                        // shape CALCELLWEEK-1 already found on the calendar
+                        // sheet. Those rows carry a real `dateISO`; their
+                        // `id` (a plan_workout row id, or a `date:`-prefixed
+                        // ghost key already equal to it) does NOT reliably
+                        // resolve back through `model.weekStrip`, which is
+                        // still whichever week the model itself loaded for.
+                        // Reproduced live: jump to a future week via the
+                        // calendar, then tap a DIFFERENT day in that same
+                        // week's own strip — the old `day.id`-only lookup
+                        // found nothing in `model.weekStrip` and the tap did
+                        // nothing. Same fix, same reason as the calendar
+                        // sheet's own `onPickDay(day.dateISO ?? day.id)`.
+                        onPickDay: { day in pickDay(day.dateISO ?? day.id, in: model) },
                         onPageWeek: { await stepWeekAndWait($0 * 7, from: model) },
                         canPageBackward: canPageWeek(-1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
                         canPageForward: canPageWeek(1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO)
@@ -920,14 +940,15 @@ struct TodayHostV5: View {
               let firstDate = Self.iso.date(from: firstISO),
               let selectedDate = Self.iso.date(from: selected)
         else { return nil }
-        let daysDiff = Calendar.current.dateComponents([.day], from: firstDate, to: selectedDate).day ?? 0
+        let cal = Self.utcCalendar
+        let daysDiff = cal.dateComponents([.day], from: firstDate, to: selectedDate).day ?? 0
         let weeksOffset = Int(floor(Double(daysDiff) / 7.0))
         return model.weekStrip.map { d in
             guard let base = Self.iso.date(from: d.dateISO),
-                  let moved = Calendar.current.date(byAdding: .day, value: weeksOffset * 7, to: base)
+                  let moved = cal.date(byAdding: .day, value: weeksOffset * 7, to: base)
             else { return d.strip }
             let movedISO = Self.iso.string(from: moved)
-            let number = String(Calendar.current.component(.day, from: moved))
+            let number = String(cal.component(.day, from: moved))
             if let day = store.day(on: movedISO) {
                 return WeekStripDayV5(id: day.plan_workout_id ?? "date:\(movedISO)", dateISO: movedISO,
                                        letter: d.letter, weekday: d.strip.weekday, number: number,
@@ -1789,6 +1810,43 @@ struct TodayHostV5: View {
         f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
         return f
+    }()
+
+    /// WKSTRIP-UTC-1 (2026-09-07) · every `date_iso` this app carries
+    /// (`plan_workouts.date_iso`, `races.meta->>'date'`, `weekStrip[].dateISO`)
+    /// is a bare `yyyy-MM-dd` CALENDAR date, never an instant — there is no
+    /// "time of day" for a training day to have a timezone opinion about.
+    /// `Self.iso` already parses and formats every one of them as UTC
+    /// midnight, purely as a fixed, arbitrary anchor for doing day
+    /// arithmetic — the actual zone is notional. Any `Calendar` operation on
+    /// a `Date` built from `Self.iso` MUST use this same anchor, or the
+    /// illusion breaks: `Calendar.current` resolves to the DEVICE's real
+    /// timezone, and reading a component (`.day`, `.weekday`, …) off a
+    /// UTC-midnight instant through a negative-UTC-offset calendar (Pacific,
+    /// every device this app ships to) lands on the PREVIOUS civil day.
+    ///
+    /// This is exactly what broke `snapshotWeekStripDays`: `moved` (built via
+    /// `Calendar.current.date(byAdding:)`) still ROUND-TRIPPED correctly
+    /// through `Self.iso.string(from:)` — landing back on the right date
+    /// string — but `Calendar.current.component(.day, from: moved)`, read
+    /// through Pacific, reported the PREVIOUS day's number: navigating to
+    /// Monday the 14th correctly opened the 14th's own content (via the
+    /// correct `dateISO` string) while the strip pill under it displayed
+    /// "13" — the number and the day it was labelling had silently
+    /// diverged. Not a timezone edge case; it fires this way for any device
+    /// west of UTC, every single navigation through this path, which is why
+    /// it reproduced immediately and did not depend on DST or a month/year
+    /// boundary to show up.
+    ///
+    /// `weekStripDays(for:)`'s own ghost-week fallback already got this
+    /// right with its own local `cal` — this hoists that SAME pattern to one
+    /// shared instance rather than leaving a second copy to drift, and
+    /// `snapshotWeekStripDays` now uses it for every Calendar call, not just
+    /// the ones that happened to still work by luck.
+    private static let utcCalendar: Calendar = {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        return cal
     }()
 
     /// "UPCOMING" or "EARLIER" — what the place label says when it is not today.
