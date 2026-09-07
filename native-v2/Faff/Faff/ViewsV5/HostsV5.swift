@@ -780,7 +780,17 @@ struct TodayHostV5: View {
             Task { await syncPlanSnapshot() }
         }
         .refreshable { await surface.load(); await syncPlanSnapshot() }
-        .v5ReloadOnForeground { await surface.load(); await syncPlanSnapshot() }
+        // REQUESTSTORM-2 (2026-09-06) · `surface.load()` dropped from here.
+        // `V5Surface`'s own `.faffForegroundRefresh` observer already
+        // reloads this surface once per real foreground (throttled in
+        // `SurfaceStoreV5.swift`); calling it again here, throttled only
+        // against ITSELF, was a third independent trigger for the identical
+        // reload — see `ForegroundWork.shouldLoadOnForeground`'s doc comment.
+        // `syncPlanSnapshot()` stays: this modifier is still the ONLY
+        // foreground trigger for the plan snapshot (PLANSNAPSHOT-1 above),
+        // and its own 3s throttle correctly collapses the app's two
+        // deliberate posts into one snapshot sync.
+        .v5ReloadOnForeground { await syncPlanSnapshot() }
     }
 
     /// SHAREDSHELL-1 (2026-09-04) · the ROOT CAUSE closure for the physical-
@@ -2085,7 +2095,14 @@ struct BlockHostV5: View {
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "block")
         }
         .refreshable { await surface.load() }
-        .v5ReloadOnForeground { await surface.load() }
+        // REQUESTSTORM-2 (2026-09-06) · this modifier removed. It called
+        // `surface.load()` on foreground, throttled only against itself —
+        // but `V5Surface`'s own `.faffForegroundRefresh` observer already
+        // reloads this surface once per real foreground (throttled in
+        // SurfaceStoreV5.swift), so this was a fully redundant third
+        // trigger for the identical reload. See
+        // `ForegroundWork.shouldLoadOnForeground`'s doc comment for the
+        // incident this closes.
     }
 }
 
@@ -2151,7 +2168,12 @@ struct RacesHostV5: View {
                 NotificationCenter.default.post(name: .faffSurfaceReady, object: "races")
             }
             .refreshable { await surface.load() }
-        .v5ReloadOnForeground { await surface.load() }
+            // REQUESTSTORM-2 (2026-09-06) · `.v5ReloadOnForeground { await
+            // surface.load() }` removed from here. It was a fully redundant
+            // third trigger for the same reload `V5Surface`'s own
+            // `.faffForegroundRefresh` observer already fires once per real
+            // foreground — see `ForegroundWork.shouldLoadOnForeground`'s doc
+            // comment for the incident this closes.
             // Coming back from a pushed screen that may have written — adding
             // a race, answering on the detail — the list behind it is stale.
             // The stack does not re-run `.task` on pop, so watch the path.

@@ -81,9 +81,57 @@ enum ForegroundWork {
     /// runner a screen that quietly disagrees with the server, which is the
     /// failure this file is named after.
     ///
-    /// The per-view modifier `v5ReloadOnForeground` still de-duplicates its
-    /// own work at 3 seconds. That is the right place for it — it is
-    /// protecting against one notification arriving twice, not deciding
-    /// whether the app should look at the server at all.
+    /// This decides whether `FaffApp` POSTS `.faffForegroundRefresh` at all.
+    /// It is deliberately blind to how many times that post gets ACTED on —
+    /// see `shouldLoadOnForeground` below for that question, which used to
+    /// have no answer of its own.
     static func shouldRefreshSurfaces(isActive: Bool) -> Bool { isActive }
+
+    /// REQUESTSTORM-2 (2026-09-06) · how long to collapse the app's two
+    /// DELIBERATE `.faffForegroundRefresh` posts (immediate, so the Strava
+    /// banner clears on an OAuth return; and again once the HealthKit import
+    /// lands, so today's run shows up) into one actual surface reload.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// THE COMMENT ABOVE THIS ONE WAS WRONG, AND THAT IS WHY IT SHIPPED TWICE
+    ///
+    /// It said the per-view modifier `v5ReloadOnForeground` was "the right
+    /// place" to de-duplicate the two posts. That is true for what THAT
+    /// modifier calls — `syncPlanSnapshot()`, uniquely — but `V5Surface`
+    /// (`SurfaceStoreV5.swift`) ALSO listens for `.faffForegroundRefresh`,
+    /// directly, in its own `init`, completely independently of any view
+    /// modifier. That observer had no throttle of its own, so Today/Block/
+    /// Races/every other `V5Surface` reloaded on BOTH of the app's two posts
+    /// regardless of what any view layered on top — REQUESTSTORM-1's fix
+    /// (one in-flight GET coalesced per URL) helped only when both loads
+    /// happened to overlap in flight; by the time the HealthKit import
+    /// finishes, the first wave's request has usually already completed and
+    /// left `V5RequestCoalescer`'s in-flight table, so the second wave fired
+    /// as brand-new, uncoalesced traffic. On Today/Block/Races specifically,
+    /// the ALSO-present `v5ReloadOnForeground { await surface.load() }`
+    /// added a THIRD trigger for the exact same reload, throttled only
+    /// against itself.
+    ///
+    /// David's own on-device request log, 2026-09-0x night: paired duplicate
+    /// requests to `/api/v5/today`, `/api/v5/block`, `/api/v5/races` and
+    /// `/api/v5/plan-snapshot`, roughly 0.7-2s apart — sequential, not
+    /// concurrent, which is exactly what a second wave arriving AFTER the
+    /// first wave's coalesced request already completed looks like.
+    ///
+    /// So the de-dupe belongs where `.faffForegroundRefresh` is actually
+    /// turned into a `load()` call — inside `V5Surface` itself, which every
+    /// V5 surface already gets for free — not bolted onto whichever views
+    /// happen to also carry `v5ReloadOnForeground`. Kept at 3 seconds to
+    /// match the window that modifier already used: long enough to absorb
+    /// the gap between the two deliberate posts, short enough that a runner
+    /// who backgrounds and returns a few seconds later still gets a fresh
+    /// read.
+    static let foregroundLoadCoalesceSec: TimeInterval = 3
+
+    /// Should a `.faffForegroundRefresh` observer actually call `load()` now,
+    /// or has this surface already reloaded too recently to be a SECOND real
+    /// foreground rather than the tail of the same one?
+    static func shouldLoadOnForeground(now: Date, lastLoadAt: Date) -> Bool {
+        now.timeIntervalSince(lastLoadAt) > foregroundLoadCoalesceSec
+    }
 }

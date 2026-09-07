@@ -183,6 +183,54 @@ final class LifecycleSweepTests: XCTestCase {
         ledger.settle()
     }
 
+    // MARK: - One foreground, one load — REQUESTSTORM-2
+
+    /// THE DEFECT THIS TEST WAS ADDED FOR. `V5Surface`'s own
+    /// `.faffForegroundRefresh` observer had no throttle at all, so both of
+    /// `FaffApp`'s two deliberate posts (immediate, then again once the
+    /// HealthKit import lands) each turned into a real `load()` — and on
+    /// Today/Block/Races a THIRD trigger, `v5ReloadOnForeground { await
+    /// surface.load() }`, stacked a redundant reload on top, throttled only
+    /// against its own two calls and blind to the surface's own observer.
+    /// David's on-device request log showed the result directly: paired
+    /// duplicate `/api/v5/today`, `/api/v5/block`, `/api/v5/races` and
+    /// `/api/v5/plan-snapshot` requests, roughly 0.7-2s apart.
+    ///
+    /// `ForegroundWork.shouldLoadOnForeground` is the fix's single decision
+    /// point — used by `V5Surface.init`'s observer, so it applies to every
+    /// V5 surface without each host having to remember to opt in.
+    func testForegroundLoadCoalescesTheAppsTwoDeliberatePosts() {
+        let ledger = SweepLedger("lifecycle · foreground load coalescing", floor: 4)
+        let t0 = Date()
+
+        // (name, gap since last load, should this post trigger a NEW load)
+        let cases: [(String, TimeInterval, Bool)] = [
+            ("the tail of the same burst",  1,   false),
+            ("right at the boundary",       3,   false),
+            ("just past the boundary",      3.1, true),
+            ("a genuinely later foreground", 10, true),
+        ]
+
+        for (name, gap, shouldLoad) in cases {
+            ledger.exercised("ForegroundWork.shouldLoadOnForeground")
+            let actual = ForegroundWork.shouldLoadOnForeground(now: t0.addingTimeInterval(gap), lastLoadAt: t0)
+            guard actual != shouldLoad else { continue }
+            ledger.found("ForegroundWork.shouldLoadOnForeground",
+                         "\(name) (\(gap)s): load = \(actual), expected \(shouldLoad)",
+                         onScreen: "a surface reloading twice (or three times) per real foreground, saturating the connection pool with its own duplicate traffic")
+        }
+
+        // THE FIRST EVER POST — `lastLoadAt` starts at `.distantPast` in
+        // `V5Surface` — must always go through. A throttle that also ate the
+        // app's very first foreground would be the coalescing bug's mirror
+        // image: a skipped read instead of a doubled one.
+        ledger.exercised("ForegroundWork.shouldLoadOnForeground")
+        XCTAssertTrue(ForegroundWork.shouldLoadOnForeground(now: Date(), lastLoadAt: .distantPast),
+                     "the very first foreground must still load")
+
+        ledger.settle()
+    }
+
     // MARK: - A failed refresh keeps the old value on screen
 
     /// `V5Surface.load()` on failure keeps `model` and sets `stale`. That is
@@ -270,10 +318,21 @@ final class LifecycleSweepTests: XCTestCase {
 //      on it would itself be stale. No such affordance is drawn today, so there
 //      is nothing to assert against — a loaded gun rather than a live defect.
 //
-//  5 · THE DOUBLE REFRESH. Three tab hosts observe `.faffForegroundRefresh`
-//      twice — once through `V5Surface`'s own unthrottled observer and once
-//      through the 3s-throttled `v5ReloadOnForeground` modifier. Harmless, and
-//      worth knowing before anyone counts requests in a log.
+//  5 · THE DOUBLE REFRESH — WAS NOT HARMLESS, AND IS CLOSED. REQUESTSTORM-2
+//      (2026-09-06): this used to read "harmless, worth knowing before anyone
+//      counts requests in a log." It was not harmless — David's own on-device
+//      request log showed exactly the paired duplicates this predicted, and
+//      REQUESTSTORM-1's connection-coalescing fix could not catch a SECOND
+//      wave that arrives after the first wave's request already completed.
+//      `V5Surface.init`'s own observer now throttles itself via
+//      `ForegroundWork.shouldLoadOnForeground` (see
+//      `testForegroundLoadCoalescesTheAppsTwoDeliberatePosts` above), and the
+//      three hosts' redundant `v5ReloadOnForeground { await surface.load() }`
+//      calls are deleted rather than left as a second, competing throttle.
+//      What is still NOT covered here, and needs a device: whether
+//      `FaffApp`'s `.onChange(of: scenePhase)` actually posts exactly twice
+//      (not more) for one real background→foreground cycle — this file tests
+//      the DECISION each post's arrival produces, same caveat as item 1.
 //
 //  6 · WIDGET AND WATCH TIMELINE STALENESS. A different process with a
 //      different lifecycle. Entirely outside this bundle.

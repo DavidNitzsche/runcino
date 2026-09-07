@@ -2766,6 +2766,19 @@ extension V5PlanChangeRefusal {
 /// prefetch in `API.swift` fires seven reads whose own comment says "every view
 /// still re-fetches". Nobody was wrong locally; the total was never counted.
 ///
+/// REQUESTSTORM-2 (2026-09-06): this coalescer catches duplicates that are
+/// concurrently IN FLIGHT. It could not catch the specific shape David hit
+/// afterward — paired duplicate requests roughly 0.7-2s apart, i.e.
+/// SEQUENTIAL, not concurrent, because by the time `V5Surface`'s own
+/// unthrottled `.faffForegroundRefresh` observer reacted to the app's SECOND
+/// deliberate post, the first wave's request had already completed and left
+/// this actor's `inFlight` table. The follow-up fix throttles at the source
+/// — `ForegroundWork.shouldLoadOnForeground`, used by `V5Surface.init`'s own
+/// observer (`SurfaceStoreV5.swift`) — so a surface now calls `load()` at
+/// most once per `foregroundLoadCoalesceSec`, and this coalescer is left
+/// doing what it was always meant to: catching genuinely concurrent reads
+/// from separate call sites, not absorbing a duplicate the app posts twice.
+///
 /// ── WHY COALESCE RATHER THAN THROTTLE ─────────────────────────────────────
 ///
 /// A throttle drops a request, and a dropped refresh is how a screen goes on

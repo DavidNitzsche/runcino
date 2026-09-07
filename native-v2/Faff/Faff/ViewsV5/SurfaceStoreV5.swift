@@ -236,14 +236,38 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         // Every surface takes the refresh. They are cheap reads, the shell
         // keeps all three stacks alive, and `load()` never blanks what is
         // already on screen.
+        //
+        // REQUESTSTORM-2 (2026-09-06) · throttled against `.foregroundLoadCoalesceSec`.
+        // `FaffApp` posts `.faffForegroundRefresh` TWICE per real foreground
+        // on purpose (see its own comment), and this is the ONE place that
+        // decides how many times THAT turns into an actual `load()` — not a
+        // per-view modifier, because a view can come and go, or add its own
+        // second observer on the same notification, and this surface's own
+        // request count must not depend on which view happens to be showing
+        // it. Without this, every `V5Surface` reloaded twice per foreground,
+        // and Today/Block/Races reloaded a THIRD time on top of that because
+        // `v5ReloadOnForeground` called `surface.load()` again, throttled
+        // only against its own two calls, blind to this observer entirely.
+        // See `ForegroundWork.shouldLoadOnForeground`'s doc comment for the
+        // full incident.
         foreground = NotificationCenter.default.addObserver(
             forName: .faffForegroundRefresh, object: nil, queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in await self?.load() }
+            Task { @MainActor in
+                guard let self else { return }
+                let now = Date()
+                guard ForegroundWork.shouldLoadOnForeground(now: now, lastLoadAt: self.lastForegroundLoadAt) else { return }
+                self.lastForegroundLoadAt = now
+                await self.load()
+            }
         }
     }
 
     private var foreground: NSObjectProtocol?
+    /// REQUESTSTORM-2 · when this surface last acted on `.faffForegroundRefresh`.
+    /// `.distantPast` so the very first post (app launch/first foreground)
+    /// always goes through.
+    private var lastForegroundLoadAt: Date = .distantPast
 
     deinit {
         if let foreground { NotificationCenter.default.removeObserver(foreground) }
@@ -476,6 +500,17 @@ final class PhoneRunGate: ObservableObject {
 // foregrounding starts, so the Strava banner clears after an OAuth return, and
 // again once the HealthKit import lands, because that is what brings today's
 // run in. Both are wanted; two identical fetches a second apart are not.
+//
+// REQUESTSTORM-2 (2026-09-06) · THIS THROTTLE ONLY EVER PROTECTED WHATEVER
+// `reload` CLOSURE A CALLER PASSED IN HERE. It does nothing for `V5Surface`'s
+// OWN `.faffForegroundRefresh` observer above (`init`, ~line 250) — a
+// completely separate registration on the same notification. Today/Block/
+// Races used to pass `{ await surface.load() }` (or `{ await surface.load();
+// await syncPlanSnapshot() }`) to this modifier, which meant that surface's
+// `load()` fired from BOTH places: twice via its own unthrottled observer,
+// once more (throttled, but independently) via this one. Now nothing here
+// calls `surface.load()` — only work that has no other foreground trigger,
+// like `syncPlanSnapshot()`, belongs in a `v5ReloadOnForeground` closure.
 extension View {
     func v5ReloadOnForeground(_ reload: @escaping () async -> Void) -> some View {
         modifier(V5ForegroundReload(reload: reload))
