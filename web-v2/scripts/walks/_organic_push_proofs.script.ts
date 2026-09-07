@@ -16,10 +16,18 @@
  */
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { pool } from '@/lib/db/pool';
+import { spawnSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const UID = '0645f40c-951d-4ccc-b86e-9979cd26c795';
 const WEEK = '2026-09-21';
 const AS_OF = new Date('2026-09-20T19:00:00Z');
+
+/** `web-v2/`, resolved from this file rather than the working directory — the
+ *  same reason `scripts/walk-substrate.ts` climbs to find it, so PROOF 11's
+ *  child process resolves correctly however this suite is invoked. */
+const WEB_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 let sessionToken = '';
 
@@ -380,6 +388,211 @@ describe('organic push walk', () => {
       expect(loser.rows[0]!.reason_detail.length).toBeGreaterThan(20);   // a reason
       expect(loser.rows[0]!.assess_on_iso).toBe(WEEK);           // a reassessment date
       expect(loser.rows[0]!.origin_ledger_id).toBe(raised.decisionId);   // ONE arbitration
+    }, 900_000);
+
+  /* ═══ PROOF 11 · RESTART: A FRESH PROCESS RESOLVES WHAT THIS ONE ONLY
+   * SCHEDULED ═══════════════════════════════════════════════════════════
+   *
+   * This whole route architecture is stateless between HTTP calls in
+   * production — every invocation is its own process (Railway/Vercel-style),
+   * with no in-process object surviving between requests. So the honest
+   * question "does this survive a restart" is never answerable by a second
+   * `it()` block in the same running vitest worker, which still shares this
+   * file's module graph, its live `pg` pool, and `decision-ledger.ts`'s own
+   * in-memory `tableExists` probe cache. PROOF 6 already simulates a lighter
+   * version of this with `vi.resetModules()` for idempotency; this proof goes
+   * further and uses an ACTUAL second OS process with none of that shared.
+   *
+   * Two nightly passes are what raise an organic decision (see
+   * `raiseOrganically`'s own comment) — one schedules the rolling-boundary
+   * item onto `reassessment_schedule`, the next reads it back as DUE and
+   * resolves it into a decision + proposal. This proof splits those two
+   * passes across a process boundary: THIS process fires the first (schedule
+   * only), a completely separate `node` process — spawned fresh via
+   * `scripts/_bundle-script.mjs`, bundled with the same `@` alias, sharing no
+   * memory with this one — fires the second (resolve), and THIS process then
+   * reads the result back from the database only, and acts on it through the
+   * real accept route, proving the pending state is not just legible but
+   * genuinely actionable from a context that did not create it.
+   */
+  it('PROOF 11 · a fresh process resolves the pending state this one only scheduled', async () => {
+    await resetLaneOutput();
+
+    // PASS 1 · THIS PROCESS · schedule only. `sweepReassessments`'s own
+    // examined/promoted counters are inside the returned body; nothing is
+    // DUE yet on this very first pass because nothing was scheduled before it
+    // ran, so the option lane raises nothing here — matching
+    // `raiseOrganically`'s two-pass comment exactly.
+    const scheduledBody = await fireCron();
+    const scheduledLane = scheduledBody.option_lane as { reports: Array<Record<string, unknown>> };
+    const scheduledDecisionId = (scheduledLane.reports[0]?.decisionId as string | null) ?? null;
+    console.log('P11 pass 1 (this process, schedule-only) decisionId:', scheduledDecisionId);
+    expect(scheduledDecisionId).toBeNull();
+
+    const scheduledRows = await pool.query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM reassessment_schedule WHERE payload->>'weekStartISO' = $1`, [WEEK]);
+    console.log('P11 reassessment rows scheduled by pass 1:', scheduledRows.rows[0]!.n);
+    expect(Number(scheduledRows.rows[0]!.n)).toBeGreaterThan(0);
+
+    // PASS 2 · A FRESH, SEPARATE OS PROCESS · resolve. Reads the row PASS 1
+    // just wrote, from the database, with zero access to anything this
+    // process holds in memory.
+    const child = spawnSync(
+      process.execPath,
+      [
+        path.join(WEB_ROOT, 'scripts', '_bundle-script.mjs'),
+        path.join(WEB_ROOT, 'scripts', 'walks', '_organic_push_restart_child.ts'),
+      ],
+      {
+        cwd: WEB_ROOT,
+        env: {
+          ...process.env,
+          DATABASE_URL: 'postgresql://localhost:5432/faff_push_walk',
+          CRON_SECRET: 'probe-secret',
+          WALK_AS_OF_ISO: AS_OF.toISOString(),
+        },
+        encoding: 'utf8',
+        timeout: 180_000,
+        maxBuffer: 32 * 1024 * 1024,
+      },
+    );
+    console.log('P11 child exit:', child.status, child.error?.message ?? '');
+    expect(child.status).toBe(0);
+
+    const marker = child.stdout.match(/@@RESTART_CHILD_RESULT@@(.*)@@END@@/s);
+    expect(marker, `child produced no result marker · stderr:\n${child.stderr}`).not.toBeNull();
+    const childBody = JSON.parse(marker![1]!) as Record<string, unknown>;
+    const childLane = childBody.option_lane as { reports: Array<Record<string, unknown>> };
+    const childReport = childLane.reports[0] ?? {};
+    const decisionId = (childReport.decisionId as string | null) ?? null;
+    const proposalId = childReport.proposalId == null ? null : String(childReport.proposalId);
+    console.log('P11 pass 2 (fresh process) decision:', decisionId, 'proposal:', proposalId,
+      'chosen:', (childReport.trace as { chosen?: string } | null)?.chosen ?? null);
+    expect(decisionId).not.toBeNull();
+    expect(proposalId).not.toBeNull();
+
+    // Read it back in THIS (a THIRD context) process, from the database only —
+    // nothing here was told the child's decisionId/proposalId except by
+    // parsing its stdout, and everything past this line is verified against
+    // Postgres, never against anything the child process asserted about itself.
+    const ledgerRow = await pool.query<{ id: string; decision: string; direction: string }>(
+      `SELECT id, decision, direction FROM plan_decision_ledger WHERE id = $1`, [decisionId]);
+    expect(ledgerRow.rows).toHaveLength(1);
+    console.log('P11 ledger row read back by the ORIGINAL process:', JSON.stringify(ledgerRow.rows[0]));
+
+    const proposalRow = await pool.query<{ status: string }>(
+      `SELECT status FROM plan_workout_proposals WHERE id = $1`, [proposalId]);
+    expect(proposalRow.rows[0]?.status).toBe('pending');
+
+    // And prove it is not merely LEGIBLE but ACTIONABLE from here: accept it
+    // through the real route, in this third process, on a decision a process
+    // that no longer exists produced. Whether arbitration's chosen direction
+    // this run is PUSH or HOLD, the accept route's outcome is a defined,
+    // real one either way (a HOLD is RECORD_ONLY per
+    // `lib/brain/proposal/accept.ts`'s own contract) — this proof is about
+    // whether the WRITE a fresh process made can be found and acted on by a
+    // process that did not make it, not about which direction won tonight.
+    const wid = await widOf(proposalId!);
+    const before = await distanceOf(wid);
+    const res = await acceptViaRoute(proposalId!);
+    console.log('P11 accept from the original process:', res.status, JSON.stringify(res.body));
+    expect(res.status).toBe(200);
+    await restore(wid, before);
+  }, 900_000);
+
+  /* ═══ PROOF 12 · PLAN REBUILD: THE CARD PENDING AGAINST THE OLD PLAN DOES
+   * NOT SURVIVE IT ══════════════════════════════════════════════════════
+   *
+   * Runs LAST in this file on purpose — it is the one proof that leaves the
+   * substrate changed for good (the active plan gets archived and replaced),
+   * which every earlier proof's `resetLaneOutput`/`raiseOrganically` pair
+   * depends on NOT having happened yet.
+   *
+   * The rebuild goes through the real route, `POST /api/cron/silent-rebuild`,
+   * which reaches `fireAutoRebuild` → `generatePlan` → `persistPlan` →
+   * `clearActivePlansFor` (`lib/plan/generate.ts`) — the same archival code
+   * path a genuine plan rebuild uses, not a hand-rolled UPDATE. That function
+   * is also what PROACTIVELY supersedes a pending `plan_workout_proposals`
+   * row pointing at the plan it just archived
+   * (`supersedeWorkoutProposalsForArchivedPlans`, ACKSURVIVE-1) and any
+   * pending `reassessment_schedule` row for it
+   * (`supersedeReassessmentsForArchivedPlans`, STALEPLAN-1).
+   *
+   * Per `lib/brain/proposal/staleness.ts#readLiveRows`, scoped to
+   * `tp.archived_iso IS NULL`, and `lib/plan/workout-proposals.ts
+   * #loadPendingProposalById`, scoped to `status = 'pending'`: the CORRECT,
+   * doctrine-read answer here is not "accept refuses the stale card" (PROOF
+   * 3's 409 shape) — it is that the card is no longer even PENDING by the
+   * time anyone could tap it, because `clearActivePlansFor` retired it at
+   * rebuild time. `loadPendingProposalById` then reads zero rows for it and
+   * the route answers 404 `not_pending`, never reaching the staleness check
+   * PROOF 3 exercises at all. That is determined by READING the real code
+   * above, not assumed — this proof asserts the superseded status AND the
+   * resulting 404 separately, so either half diverging from that reading is
+   * a visible, named failure rather than a silently-adjusted expectation.
+   *
+   * ── KNOWN RED, 2026-09-07 · A REAL, SEPARATE COMPOSER DEFECT, NOT THIS
+   * PROOF'S CONSTRUCTION ──────────────────────────────────────────────────
+   *
+   * As of this date the rebuild step 500s before any of the assertions below
+   * run: `generatePlan` composes week 2026-09-28 (a cutback tune-up week
+   * for the embedded "dodgers" C-priority race on 2026-09-26) with ZERO
+   * quality sessions, and `validateComposedPlan` §5 correctly refuses it
+   * ("every quality-phase week requires at least one"). The engine already
+   * carries a MIDRACE-RESUME-1 mechanism in `lib/plan/generate.ts` (~line
+   * 9120-9165) specifically built to restore the first quality session a
+   * race's recovery window displaced onto the first eligible easy day
+   * afterward, for exactly this shape — it is not firing for this week, and
+   * that is the actual bug, unrelated to anything this proof file seeds or
+   * constructs. Left RED on purpose per Rule 18/20: weakening this
+   * assertion, or catching the 500 and calling it a pass, would be reporting
+   * a real defect as a success. Flagged as a follow-up rather than fixed
+   * here — `lib/plan/generate.ts` is a ~17,000-line, heavily doctrine-cited
+   * composer this session has not otherwise audited, and a same-session
+   * blind fix to it carries more risk than the organic-push proof this file
+   * exists to establish.
+   */
+  it('PROOF 12 · a plan rebuild retires the card that was pending against the old plan',
+    async () => {
+      await resetLaneOutput();
+      const raised = await raiseOrganically();
+      console.log('P12 raised:', JSON.stringify(raised));
+      expect(raised.decisionId).not.toBeNull();
+      expect(raised.proposalId).not.toBeNull();
+
+      const wid = await widOf(raised.proposalId!);
+      const before = await distanceOf(wid);
+      const statusBefore = await statusOf(raised.proposalId!);
+      console.log(`P12 before rebuild: proposal status=${statusBefore} workout=${wid} distance=${before}`);
+      expect(statusBefore).toBe('pending');
+
+      const { POST: rebuildPOST } = await import('@/app/api/cron/silent-rebuild/route');
+      const { NextRequest } = await import('next/server');
+      const rebuildReq = new NextRequest('http://localhost/api/cron/silent-rebuild', {
+        method: 'POST',
+        headers: { authorization: 'Bearer probe-secret', 'content-type': 'application/json' },
+        body: JSON.stringify({ userUuid: UID }),
+      });
+      const rebuildRes = await rebuildPOST(rebuildReq);
+      const rebuildBody = await rebuildRes.json() as Record<string, unknown>;
+      console.log('P12 rebuild:', rebuildRes.status, JSON.stringify(rebuildBody));
+      expect(rebuildRes.status).toBe(200);
+      expect(rebuildBody.ok).toBe(true);
+      expect(rebuildBody.new_plan_id).not.toBe(rebuildBody.prior_plan_id);
+
+      const statusAfter = await statusOf(raised.proposalId!);
+      console.log('P12 proposal status after rebuild:', statusAfter);
+      expect(statusAfter).toBe('superseded');
+
+      const acceptAfterRebuild = await acceptViaRoute(raised.proposalId!);
+      console.log('P12 accept after rebuild:', acceptAfterRebuild.status,
+        JSON.stringify(acceptAfterRebuild.body));
+      expect(acceptAfterRebuild.status).toBe(404);
+      expect((acceptAfterRebuild.body as { error?: string }).error).toBe('not_pending');
+
+      const afterAll = await distanceOf(wid);
+      expect(afterAll).toBe(before);
+      await restore(wid, before);
     }, 900_000);
 });
 
