@@ -378,12 +378,19 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
         resolveRaceOutlookBySlug(userUuid, r.slug, today).catch(() => null),
         2500,
       );
+      // WKSTRIP-UTC-1 verification round · this used to show
+      // `likelyRangeSec` as a range ("42:05–43:49") when the same outlook's
+      // `projectedSec` renders as a single point ("42:57") on both Races
+      // and Race Detail — one quantity read two ways on three surfaces,
+      // exactly the class of bug Rule 16 exists for (the CIM
+      // three-projections incident this file's own header cites). Race
+      // Detail's plate is `formatRaceTime(projection.projectedSec)` and
+      // nothing else (`lib/faff/race-plate.ts`'s `middleSec`); this now
+      // matches it byte-for-byte rather than presenting a second, wider
+      // answer to the same question.
       const projection = raceProjectionFromOutlook(outlook);
       if (projection.projectedSec == null) return;
-      const [lo, hi] = projection.likelyRangeSec ?? [null, null];
-      const text = lo != null && hi != null && hi > lo
-        ? `${formatRaceTime(lo)}–${formatRaceTime(hi)}`
-        : formatRaceTime(projection.projectedSec);
+      const text = formatRaceTime(projection.projectedSec);
       if (text) projectedFinishByDate.set(r.date_iso, { text, modelled: true });
     }));
   }
