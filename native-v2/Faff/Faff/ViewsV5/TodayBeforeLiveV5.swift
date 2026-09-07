@@ -12,22 +12,38 @@
 //  into nothing, because nothing supplied a shoe list, a set of open days,
 //  or a readiness pillar breakdown.
 //
-//  Those need three network reads (`GET /api/shoe`, `GET
-//  /api/readiness/brief`, `GET /api/v5/block`) and three writes (`POST
-//  /api/today/shoe`, `POST /api/today/skip`, `POST /api/today/reschedule`).
-//  `HostsV5.swift` is the composition root that would normally own this,
-//  but per this task's constraints it is not touched here — so this view
-//  sits between `TodayHostV5` and `TodayBeforeV5`: it owns exactly the
-//  local state those three reads need, translates the screen's callbacks
-//  into real API calls, and asks the host to `reload()` its `V5Surface`
-//  after a write lands, the same way every other write in this codebase
-//  re-reads rather than patches local state.
+//  Those need four network reads (`GET /api/shoe`, `GET
+//  /api/readiness/brief`, `GET /api/v5/block`, `GET /api/plan/move`) and
+//  writes to `POST /api/today/shoe`, `POST /api/today/skip`, and
+//  `GET`/`POST /api/plan/move`. `HostsV5.swift` is the composition root
+//  that would normally own this, but per this task's constraints it is not
+//  touched here — so this view sits between `TodayHostV5` and
+//  `TodayBeforeV5`: it owns exactly the local state those reads need,
+//  translates the screen's callbacks into real API calls, and asks the
+//  host to `reload()` its `V5Surface` after a write lands, the same way
+//  every other write in this codebase re-reads rather than patches local
+//  state.
 //
 //  `TodayHostV5` (`HostsV5.swift`) is expected to construct THIS view in
 //  place of the four bare `TodayBeforeV5(...)` calls in its `content(_:)` —
 //  see the exact replacement lines in the audit report. Every parameter
 //  below mirrors `TodayBeforeV5`'s own signature so that swap is a rename,
 //  not a rewrite.
+//
+//  MOVEREADJUDICATE-TODAY-1 (2026-09-06) · the move flow used to call
+//  `POST /api/today/reschedule`, whose own header names itself "the older,
+//  dumber verb" — no re-adjudication against race proximity, hard-session
+//  spacing or the reassessment queue, no ledger row, and no undo. That is
+//  the SAME `recommendReschedule` decision owner and the SAME ranked
+//  options `RescheduleV5.swift` already draws through the canonical
+//  `/api/plan/move` route (MOVEREADJUDICATE-1); this file now calls the
+//  identical `API.fetchReschedule` / `API.applyReschedule` /
+//  `API.undoReschedule` functions that file defines, rather than inventing
+//  a second client for the same protocol. The row's own shape (an
+//  expandable "Move to <day>" list) is unchanged — only which days it
+//  offers, and what applying one actually does, changed: the offered days
+//  are now the coach's own ranked candidates instead of "any rest day this
+//  week", and applying one is re-adjudicated and ledgered server-side.
 //
 
 import SwiftUI
@@ -72,17 +88,40 @@ struct TodayBeforeLiveV5: View {
     @State private var pillarsUnread = false
     @State private var shoesUnread = false
     @State private var block: V5Block? = nil
-    @State private var moveConflict: MoveConflict? = nil
 
-    /// A reschedule the server refused because the target day already holds
-    /// a run. RULE THREE: this is a correct answer, not an error — the
-    /// runner gets asked, not bounced. See `move(to:)` / `confirmReplace()`.
-    struct MoveConflict: Equatable {
-        let targetISO: String
-        let targetLabel: String
-        let existingType: String
-        let existingDistanceMi: Double
-        let existingSubLabel: String?
+    /// MOVEREADJUDICATE-TODAY-1 · the canonical route's own ranked
+    /// recommendation for `model.dateISO`'s workout — the SAME
+    /// `V5Reschedule` `RescheduleV5.swift` decodes from the same
+    /// `GET /api/plan/move`. `reschedule.options` replaces the old
+    /// client-derived "any rest day in `model.weekStrip`" list in
+    /// `moveOptions()` below: the days offered are now the coach's own
+    /// candidates, not a client guess at which days are free.
+    @State private var reschedule: V5Reschedule? = nil
+    /// The engine answered and the answer is no (e.g. the session is
+    /// immovable). A real refusal, not a failed read — Rule 11.
+    @State private var rescheduleAbsent: String? = nil
+    /// RULE THREE · the `GET /api/plan/move` prefetch failed to reach the
+    /// coach at all. Distinct from `rescheduleAbsent` for the same reason
+    /// `pillarsUnread`/`shoesUnread` are distinct from an empty list above.
+    @State private var rescheduleUnread = false
+    /// A move the server refused at APPLY time (re-adjudication runs again
+    /// there regardless of what prefetch showed — see `move(toOptionId:)`).
+    /// RULE THREE, in the UI: this is the engine's own reason, shown in
+    /// place of the option list rather than a generic failure.
+    @State private var moveRefusal: String? = nil
+
+    /// A move that just landed, kept only long enough to offer Undo.
+    /// `reload()` re-fetches `V5Today` for `model.dateISO`, and once that
+    /// day's run has actually moved away, the host renders a different
+    /// screen state for it (nothing left to move or skip) — this view is
+    /// torn down, and any `@State` on it goes with it. So Undo has to be
+    /// offered HERE, before `reload()` runs, or not at all; see
+    /// `move(toOptionId:)` and `undoMove()`.
+    @State private var justMoved: JustMoved? = nil
+
+    struct JustMoved: Equatable {
+        let decisionId: String
+        let originalLabel: String
     }
 
     var body: some View {
@@ -133,7 +172,12 @@ struct TodayBeforeLiveV5: View {
         async let shoesFetch: ShoesResponse? = try? API.fetchShoes()
         async let pillarsFetch: ReadinessBriefSeed? = try? API.fetchReadinessBrief()
         async let blockFetch: API.V5Fetch<V5Block>? = try? API.fetchV5Block()
-        let (s, p, b) = await (shoesFetch, pillarsFetch, blockFetch)
+        // MOVEREADJUDICATE-TODAY-1 · the same canonical GET RescheduleV5.swift
+        // calls at browse time. `to` is a required-but-unused placeholder here
+        // too (see that file's `V5MoveRecommendationEnvelope` comment) — the
+        // ranked `.options` this prefetch wants do not depend on it.
+        async let rescheduleFetch: API.V5RescheduleFetch? = try? await API.fetchReschedule(dateISO: model.dateISO)
+        let (s, p, b, r) = await (shoesFetch, pillarsFetch, blockFetch, rescheduleFetch)
         // nil is "we could not read it"; a payload with an empty list is
         // "we read it and there is nothing". Only the second one is a
         // sentence about the runner.
@@ -142,6 +186,16 @@ struct TodayBeforeLiveV5: View {
         shoes = s?.shoes ?? []
         pillars = p?.pillars ?? []
         if case .ok(let value)? = b { block = value }
+        // Rule 11 · three facts, three states — an answer, a real "no", or a
+        // read that failed — never collapsed into one.
+        switch r {
+        case .ok(let m):
+            reschedule = m; rescheduleAbsent = nil; rescheduleUnread = false
+        case .absent(let text):
+            reschedule = nil; rescheduleAbsent = text; rescheduleUnread = false
+        case .failed, nil:
+            reschedule = nil; rescheduleAbsent = nil; rescheduleUnread = true
+        }
     }
 
     /// The full block once it has loaded; the current week alone until then.
@@ -265,13 +319,12 @@ struct TodayBeforeLiveV5: View {
         case "change_shoe":
             return shoeOptions()
         case "move_skip":
-            if let conflict = moveConflict {
-                return [
-                    TodayBeforeGoOption(id: "replace-\(conflict.targetISO)",
-                                         label: "Replace \(conflict.existingType.capitalized) on \(conflict.targetLabel)",
-                                         sub: replacedSub(conflict)),
-                    TodayBeforeGoOption(id: "cancel-move", label: "Keep both as planned")
-                ]
+            // A move just applied, or the server just refused one — both take
+            // priority over the ordinary list, same precedence the old
+            // conflict state held, and for the same reason: the runner is
+            // mid-decision about the LAST tap, not free to start a new one.
+            if justMoved != nil || moveRefusal != nil {
+                return moveOptions()
             }
             // SKIPCONFIRM-1 · already skipped today. "Skip it" a second time
             // is not an option that means anything — offer the one action
@@ -286,12 +339,6 @@ struct TodayBeforeLiveV5: View {
         default:
             return []
         }
-    }
-
-    private func replacedSub(_ conflict: MoveConflict) -> String {
-        let mi = "\(Units.formatDistance(miles: conflict.existingDistanceMi, decimals: 1)) \(Units.distanceLabel())"
-        if let sub = conflict.existingSubLabel, !sub.isEmpty { return "\(sub) · \(mi) moves aside" }
-        return "\(mi) moves aside"
     }
 
     /// Non-retired shoes from the runner's garage. The one already marked
@@ -314,25 +361,56 @@ struct TodayBeforeLiveV5: View {
         return "\(Units.formatDistance(miles: mi, decimals: 0)) \(Units.distanceLabel()) on them"
     }
 
-    /// Rest days later in the currently-loaded week, from `model.weekStrip`
-    /// — the same array the panel's own strip renders, so a move target can
-    /// never disagree with what the strip shows as open. Each option also
-    /// says whether it sits right before the week's long run, when the next
-    /// day in the strip actually is one — never inferred beyond what the
-    /// payload already states.
+    /// MOVEREADJUDICATE-TODAY-1 · the coach's own ranked candidates from
+    /// `GET /api/plan/move` (`reschedule.options`), the SAME array
+    /// `RescheduleV5.swift`'s option list draws — replacing the old
+    /// client-derived "any rest day in `model.weekStrip`" guess. Each
+    /// option's `id` is prefixed `moveopt-` so `select(_:_:)` can tell a
+    /// real engine option apart from this function's own informational
+    /// sentinel rows (`move-none`, `move-unread`, `move-refused-dismiss`)
+    /// without the two id spaces ever colliding.
+    ///
+    /// Four mutually exclusive states, same shape as the old conflict
+    /// handling: a move just landed (offer Undo), the server just refused
+    /// one (say why), the ranked list came back, or it did not (Rule 11 —
+    /// a real "no" and a failed read are different sentences).
     private func moveOptions() -> [TodayBeforeGoOption] {
-        let strip = model.weekStrip
-        var opts: [TodayBeforeGoOption] = []
-        for (idx, day) in strip.enumerated() where day.isRest && day.dateISO > model.dateISO {
-            let name = weekdayName(day.dateISO)
-            let sub: String
-            if idx + 1 < strip.count, strip[idx + 1].dayState == "long" {
-                sub = "Sits before \(weekdayName(strip[idx + 1].dateISO))’s long run"
-            } else {
-                sub = "\(name) is empty"
-            }
-            opts.append(TodayBeforeGoOption(id: "move-\(day.dateISO)", label: "Move to \(name)", sub: sub))
+        if let justMoved {
+            return [
+                TodayBeforeGoOption(id: "undo-move", label: "Undo the move",
+                                    sub: "Put it back on \(justMoved.originalLabel)"),
+                TodayBeforeGoOption(id: "done-move", label: "Done")
+            ]
         }
+        if let moveRefusal {
+            return [TodayBeforeGoOption(id: "move-refused-dismiss", label: "Could not move it",
+                                        sub: moveRefusal)]
+        }
+
+        var opts: [TodayBeforeGoOption] = []
+        if let reschedule {
+            for o in reschedule.options {
+                opts.append(TodayBeforeGoOption(
+                    id: "moveopt-\(o.id)",
+                    label: "Move to \(weekdayName(o.newDateISO))",
+                    // The coach's own one-line verdict — the exact field
+                    // `RescheduleV5.swift`'s `optionRow` draws as `whyRankedHere`.
+                    // This view composes, it never re-derives a reason to move.
+                    sub: o.whyRankedHere
+                ))
+            }
+            if opts.isEmpty {
+                let reason = reschedule.refusals.first?.reason
+                    ?? "No day in range works without breaking the plan."
+                opts.append(TodayBeforeGoOption(id: "move-none", label: "No day works right now", sub: reason))
+            }
+        } else if rescheduleUnread {
+            opts.append(TodayBeforeGoOption(id: "move-unread", label: "Could not read move options",
+                                            sub: "Nothing about today changed."))
+        } else if let rescheduleAbsent {
+            opts.append(TodayBeforeGoOption(id: "move-none", label: "This can’t move", sub: rescheduleAbsent))
+        }
+
         // The dose goes in `value`, not hand-typed into `sub` — `value` is
         // the one path `beforeYouGoExpansion` renders through `FaffValueText`,
         // which is what actually draws RULE ONE's amber tilde when the
@@ -364,15 +442,22 @@ struct TodayBeforeLiveV5: View {
             } else if option.id == "unskip" {
                 await unskip()
                 return true
-            } else if option.id == "cancel-move" {
-                moveConflict = nil
+            } else if option.id == "undo-move" {
+                await undoMove()
                 return true
-            } else if option.id.hasPrefix("replace-") {
-                await confirmReplace()
+            } else if option.id == "done-move" {
+                justMoved = nil
+                await reload()
                 return true
-            } else if option.id.hasPrefix("move-") {
-                let targetISO = String(option.id.dropFirst("move-".count))
-                return await move(to: targetISO)
+            } else if option.id == "move-refused-dismiss" {
+                moveRefusal = nil
+                return true
+            } else if option.id == "move-none" || option.id == "move-unread" {
+                // Informational only — nothing to apply, nothing to dismiss.
+                return true
+            } else if option.id.hasPrefix("moveopt-") {
+                let engineOptionId = String(option.id.dropFirst("moveopt-".count))
+                return await move(toOptionId: engineOptionId)
             }
             return true
         default:
@@ -407,32 +492,79 @@ struct TodayBeforeLiveV5: View {
         await reload()
     }
 
-    /// Returns whether the row should collapse — false on `.conflict`, so
-    /// the runner sees the replace/keep-both choice instead of the row
-    /// snapping shut on a move that did not happen.
-    private func move(to targetISO: String) async -> Bool {
-        guard let outcome = try? await API.rescheduleRun(from: model.dateISO, to: targetISO) else { return true }
+    /// MOVEREADJUDICATE-TODAY-1 · applies one of the coach's own ranked
+    /// options through the canonical `POST /api/plan/move` — never
+    /// `/api/today/reschedule`, which writes no ledger row and supports no
+    /// undo (see this file's header). `applyMove` on the server always
+    /// re-adjudicates against the ACTUAL requested destination at apply
+    /// time regardless of what the prefetch showed, so this stays correct
+    /// even if the block changed underneath since `prefetch()` ran.
+    ///
+    /// Returns whether the row should collapse — false while showing the
+    /// just-moved Undo offer or a refusal, matching the old conflict state's
+    /// own precedent: the runner is mid-decision about the last tap, not
+    /// free to have the row snap shut under them.
+    private func move(toOptionId engineOptionId: String) async -> Bool {
+        guard let reschedule, let opt = reschedule.options.first(where: { $0.id == engineOptionId }) else {
+            return true
+        }
+        guard let outcome = try? await API.applyReschedule(
+            dateISO: model.dateISO,
+            workoutId: reschedule.target.planWorkoutId,
+            toISO: opt.newDateISO,
+            optionId: opt.id,
+            token: reschedule.token
+        ) else {
+            moveRefusal = "That did not go through, and nothing was changed. Try again."
+            return false
+        }
         switch outcome {
-        case .moved:
-            moveConflict = nil
+        case .applied(let a):
+            justMoved = JustMoved(decisionId: a.summary.decisionId, originalLabel: weekdayName(model.dateISO))
+            return false
+        case .appliedUnreadable:
+            // ACCEPTVOICE-1's own posture (`RescheduleV5.swift`): it landed
+            // and the body did not decode, so there is no `decisionId` to
+            // offer Undo through — a button that cannot do what it says is
+            // worse than its absence. Re-sync and let the day itself show
+            // the change, same as that file's `doneUnreadable`.
+            justMoved = nil
             await reload()
             return true
-        case .conflict(let type, let distanceMi, let subLabel):
-            // RULE THREE, in the UI: the server declined because the target
-            // day is taken, not because anything failed. The row re-expands
-            // with the runner's actual choice — replace it or keep both —
-            // rather than surfacing an error.
-            moveConflict = MoveConflict(targetISO: targetISO, targetLabel: weekdayName(targetISO),
-                                        existingType: type, existingDistanceMi: distanceMi,
-                                        existingSubLabel: subLabel)
+        case .refused(let text):
+            // RULE THREE, in the UI: a 409 here is `readjudication_refused`
+            // with the engine's own named findings, not a generic failure —
+            // `RescheduleRefusalBody` (RescheduleV5.swift) already extracts
+            // that reason text from this exact response shape.
+            moveRefusal = text
+            return false
+        case .failed:
+            moveRefusal = "That did not go through, and nothing was changed. Try again."
             return false
         }
     }
 
-    private func confirmReplace() async {
-        guard let conflict = moveConflict else { return }
-        _ = try? await API.rescheduleRun(from: model.dateISO, to: conflict.targetISO, replace: true)
-        moveConflict = nil
-        await reload()
+    /// RS-6 · put a move back. `undoReschedule` posts `{action: "undo",
+    /// decision_id}` to the SAME `/api/plan/move` route — the old
+    /// `/api/today/reschedule` had no undo at all, which is the gap this
+    /// whole file was repointed to close.
+    private func undoMove() async {
+        guard let justMoved else { return }
+        if let outcome = try? await API.undoReschedule(decisionId: justMoved.decisionId) {
+            switch outcome {
+            case .undone, .undoneUnreadable:
+                self.justMoved = nil
+                await reload()
+            case .refused(let text):
+                moveRefusal = text
+                self.justMoved = nil
+            case .failed:
+                moveRefusal = "That did not go through. Your plan is as the change left it."
+                self.justMoved = nil
+            }
+        } else {
+            moveRefusal = "That did not go through. Your plan is as the change left it."
+            self.justMoved = nil
+        }
     }
 }
