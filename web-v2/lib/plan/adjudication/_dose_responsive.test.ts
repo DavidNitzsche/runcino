@@ -577,22 +577,41 @@ describe('the adapters return an absence, never a zero', () => {
     if (r.ok) expect(r.value).toBe(0);
   });
 
-  it('no heart-rate traces is absent, and an unreadable one is a share of zero', () => {
+  it('no classified runs is absent, and an all-flatlined window is a share of zero', () => {
     expect(credibleTraceShare([]).ok).toBe(false);
-    const r = credibleTraceShare([{ credible: false, why: 'one value carried forward' }]);
+    const r = credibleTraceShare([
+      { context: { flatlinedTelemetry: { kind: 'present' as const, detail: 'one value carried forward' } } },
+    ]);
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.value).toBe(0);
   });
 
+  it('a heart-rate verdict that could not be read is excluded from the share entirely', () => {
+    // RULE16-DOSEEVIDENCE-1 · `unknown` must land in neither the numerator nor
+    // the denominator — one flatlined trace beside one unreadable one is a
+    // share of 0, not 0.5 and not absent.
+    const r = credibleTraceShare([
+      { context: { flatlinedTelemetry: { kind: 'present' as const, detail: 'flatlined' } } },
+      { context: { flatlinedTelemetry: { kind: 'unknown' as const, detail: 'no HR samples to test' } } },
+    ]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value).toBe(0);
+    // Every run unreadable · absent, not a share of anything.
+    const allUnknown = credibleTraceShare([
+      { context: { flatlinedTelemetry: { kind: 'unknown' as const, detail: 'no HR samples to test' } } },
+    ]);
+    expect(allUnknown.ok).toBe(false);
+  });
+
   it('execution counts only tiers at least as strong as the one asked for', () => {
-    const days = [
-      { matchedRun: { match: 'exact' as const } },
-      { matchedRun: { match: 'legacy_type' as const } },
-      { matchedRun: { match: 'supplemental' as const } },
-      { matchedRun: null },
+    const runs = [
+      { identity: { match: 'exact' as const } },
+      { identity: { match: 'legacy_type' as const } },
+      { identity: { match: 'supplemental' as const } },
+      { identity: { match: null } },
     ];
-    const exact = executedAtTier(days, 'exact');
-    const legacy = executedAtTier(days, 'legacy_type');
+    const exact = executedAtTier(runs, 'exact');
+    const legacy = executedAtTier(runs, 'legacy_type');
     if (exact.ok) expect(exact.value).toBe(1);
     if (legacy.ok) expect(legacy.value).toBe(2);
     expect(executedAtTier([], 'exact').ok).toBe(false);
