@@ -58,6 +58,10 @@ import { sleepTargetForMileage } from './tier-rules';
 import { computeAcwr } from './acwr';
 import { loadBiologicalSex } from './biological-sex';
 import type { CoachState } from '@/lib/topics/types';
+// RECOVERY-OWNER-1 (2026-09-07) · the RECOVERY_SPACING hard-session-anchor
+// owner (lib/runner-state/quantity-owners.ts). Pure, no DB import — safe to
+// pull into this module. See expectedDays()'s intervals/tempo/threshold arm.
+import { requiredSeparationDays } from '@/lib/plan/validate';
 
 export type AnchorType = 'race' | 'long' | 'intervals' | 'tempo' | 'threshold';
 
@@ -195,7 +199,24 @@ function expectedDays(type: AnchorType, distanceMi: number): number {
     case 'intervals':
     case 'tempo':
     case 'threshold':
-      return 2;
+      // RECOVERY-OWNER-1 (2026-09-07) · this used to hardcode 2 days for
+      // every hard non-long session. lib/plan/validate.ts §9's
+      // `requiredSeparationDays` is the RECOVERY_SPACING owner for this
+      // exact anchor (lib/runner-state/quantity-owners.ts RECOVERY_SPACING,
+      // maxAbs 1) and its own header says David settled this at ONE day
+      // for intervals/threshold/tempo alike (SEP-1, 2026-09-03 —
+      // `lib/plan/reschedule.ts#requiredRecoveryDaysAfter` was realigned to
+      // the same ruling the same day). This surface still printed the
+      // pre-ruling number: the phone told the runner to wait a day longer
+      // than his own plan actually required before the next hard session.
+      // Delegates to the owner so the two cannot drift apart again — the
+      // owner's non-long branch depends only on `type !== 'easy'` and
+      // `!isLong`, both fixed here by construction, so from this caller's
+      // side it still reads as a plain constant.
+      return requiredSeparationDays({
+        type, isQuality: true, isLong: false, distanceMi,
+        raceGoalPaceSec: null, longRunKind: null,
+      }).min;
   }
 }
 

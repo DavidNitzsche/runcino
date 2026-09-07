@@ -952,7 +952,19 @@ export const QUANTITY_OWNERSHIP: Readonly<Record<QuantityId, QuantityOwnership>>
         comparesTo: 'lib/plan/validate.ts#requiredSeparationDays',
         computes: 'The same function\'s NON-race arm — days until quality '
           + 'after a long run or a rep session. The only producer that '
-          + 'answers this for a surface rather than for the composer.',
+          + 'answers this for a surface rather than for the composer. '
+          + 'PARTIALLY CLOSED 2026-09-07 (RECOVERY-OWNER-1): the rep-session '
+          + '(intervals/tempo/threshold) branch now calls the owner directly '
+          + 'and is measured at zero delta by this registry\'s own probe '
+          + '(which calls this site with type \'intervals\'). The LONG-RUN '
+          + 'branch is UNCHANGED and still computes independently — hand- '
+          + 'traced (not resolved by this gate\'s probe, which never calls '
+          + 'this site with type \'long\') at up to 2 days off the owner '
+          + '(e.g. a 17mi non-quality long: owner {min:1,max:2}, this reads '
+          + '3). Left open because closing it needs `isQuality` / '
+          + '`longRunKind` / `raceGoalPaceSec` for a COMPLETED run, which '
+          + 'this call site only has a bare run row for — an evidence-'
+          + 'classification question, not a wiring one.',
         reachedBy: [
           'lib/coach/run-recap.ts',
           'app/api/v5/today/route.ts',
@@ -1061,20 +1073,16 @@ export const QUANTITY_OWNERSHIP: Readonly<Record<QuantityId, QuantityOwnership>>
           + 'composition, so it is the plan generator owner\'s call and not '
           + 'the window filter\'s.',
       },
-      {
-        between: [
-          'lib/plan/validate.ts#requiredSeparationDays',
-          'lib/coach/recovery-phase.ts#expectedDaysForAnchor:session',
-        ],
-        maxAbs: 1,
-        why: 'For ONE interval session the app can say 1 day (the authoring '
-          + 'gate and the rescheduler) or 2 (the recovery surface the runner '
-          + 'reads). Small in days and large in trust: the phone tells him to '
-          + 'wait a day longer than his own plan does.',
-        closesWhen: 'expectedDaysForAnchor\'s non-race arm reads '
-          + 'requiredSeparationDays, so the surface and the plan cannot '
-          + 'disagree about the same Tuesday.',
-      },
+      // CLOSED 2026-09-07 (RECOVERY-OWNER-1). The
+      // requiredSeparationDays / expectedDaysForAnchor:session pair used to
+      // diverge by 1 day here (the surface hardcoded 2, the owner's
+      // non-long branch is 1). expectedDaysForAnchor's intervals/tempo/
+      // threshold arm now calls requiredSeparationDays directly instead of
+      // its own constant, so the two cannot drift again — see
+      // lib/coach/recovery-phase.ts's expectedDays(). Per this file's own
+      // ratchet rule ("a measured delta AT OR BELOW tolerance fails until
+      // the entry is DELETED"), the exemption entry is removed rather than
+      // left at maxAbs 0.
     ],
   },
 

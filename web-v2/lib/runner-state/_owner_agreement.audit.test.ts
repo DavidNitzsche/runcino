@@ -398,7 +398,10 @@ describe.skipIf(!RO)('OWNER AGREEMENT CENSUS · every live site, on the real acc
       siteId: 'lib/coach/recovery-phase.ts#expectedDaysForAnchor:session',
       value: rp.expectedDaysForAnchor('intervals', 9),
       unit: 'days',
-      note: 'SECOND · what the phone tells him to wait after the same session',
+      note: 'CLOSED 2026-09-07 (RECOVERY-OWNER-1) for this branch · now '
+        + 'calls requiredSeparationDays directly. Still SECOND for the '
+        + 'long-run branch this same siteId also covers — see '
+        + 'quantity-owners.ts\'s note on this site.',
     });
 
     /* ════ THE PACE FAMILY · the canonical anchors, and the five
