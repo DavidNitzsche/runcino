@@ -87,6 +87,11 @@
 --
 -- REVERSED BY: DROP TABLE IF EXISTS reassessment_schedule;
 
+-- MIGRATIONTXN-1 (2026-09-07) · explicit transaction, same argument as
+-- 166's own MIGRATIONTXN-1 note: the table, four indexes and one comment
+-- below are individually atomic but not atomic as a batch without this.
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS reassessment_schedule (
   id                     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -239,3 +244,5 @@ COMMENT ON TABLE reassessment_schedule IS
   'live queue is stamped with a terminal status, a resulting decision and a sentence. '
   'Supersedes the unapplied migration 165 (canonical_adaptation_deferrals), which covered one '
   'of these seven kinds.';
+
+COMMIT;

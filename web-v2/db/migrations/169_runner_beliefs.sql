@@ -64,6 +64,14 @@
 -- rather than thrown as a raw SQL error into the rest of that runner's pass.
 -- The moment this migration is applied, the next cron pass starts writing.
 
+-- MIGRATIONTXN-1 (2026-09-07) · explicit transaction, same argument as
+-- 166's own MIGRATIONTXN-1 note: the table, two indexes and one comment
+-- below are individually atomic but not atomic as a batch without this.
+-- (`ensureBeliefStoreSchema`, the application-code twin this file is a
+-- transcription of, runs its own single CREATE TABLE statement outside any
+-- migration file and is unaffected by this wrap either way.)
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS runner_beliefs (
   id                 bigserial PRIMARY KEY,
   user_uuid          uuid NOT NULL,
@@ -123,3 +131,5 @@ COMMENT ON TABLE runner_beliefs IS
   'Steps 1/5 · the durable belief store. Append-only; the current belief is '
   'the newest row per (user_uuid, registry, belief_key). A reading_ok=false '
   'row is an honest refusal, never a coerced zero.';
+
+COMMIT;

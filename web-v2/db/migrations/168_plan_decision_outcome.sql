@@ -23,6 +23,11 @@
 -- NOT APPLIED TO PRODUCTION. Scratch only until the literal statements are
 -- approved.
 
+-- MIGRATIONTXN-1 (2026-09-07) · explicit transaction, same argument as
+-- 166's own MIGRATIONTXN-1 note: the table, four indexes and one comment
+-- below are individually atomic but not atomic as a batch without this.
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS plan_decision_outcome (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -91,3 +96,5 @@ CREATE INDEX IF NOT EXISTS plan_decision_outcome_by_verdict
 COMMENT ON TABLE plan_decision_outcome IS
   'Step 16 · whether a coaching decision turned out to be right. Written by a '
   'later sweep, never by the decision itself. UNRESOLVED is a real answer.';
+
+COMMIT;

@@ -101,6 +101,19 @@
 --
 -- REVERSED BY: DROP TABLE IF EXISTS plan_decision_ledger;
 
+-- MIGRATIONTXN-1 (2026-09-07) · explicit transaction. Postgres DDL is
+-- individually atomic per statement but NOT atomic as a batch — seven
+-- statements follow (the table, five indexes, one comment), and without
+-- BEGIN/COMMIT a failure on, say, index 4 would leave the table and indexes
+-- 1-3 already committed with no way to tell "fully applied" from "partially
+-- applied" except by inspecting every object by hand. CREATE TABLE and
+-- CREATE INDEX both run inside a transaction in Postgres (unlike CREATE
+-- INDEX CONCURRENTLY, which is deliberately not used here — these are new,
+-- empty tables, so there is no concurrent-write traffic a CONCURRENTLY build
+-- would be protecting). A failure anywhere below rolls back everything in
+-- this file; nothing partial can be left behind.
+BEGIN;
+
 CREATE TABLE IF NOT EXISTS plan_decision_ledger (
   id                    uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -269,3 +282,5 @@ COMMENT ON TABLE plan_decision_ledger IS
   'foreign keys, deliberately. Rows are never deleted; a decision that stops being current is '
   'superseded or undone, with its reason. Replaces training_plans.adaptation_log as the record '
   'of truth (that column is untouched and keeps its max(ts) consumers).';
+
+COMMIT;
