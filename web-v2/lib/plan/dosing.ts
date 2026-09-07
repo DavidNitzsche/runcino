@@ -101,7 +101,7 @@
  * pace those hard miles were run at. Warm-ups, cool-downs and the jog floats
  * between reps are Z1 and are already excluded there.
  */
-import { AT_PACE_WEEKLY_SHARE_CAP } from '@/lib/prescription/levers';
+import { AT_PACE_WEEKLY_SHARE_CAP, AT_PACE_SESSION_MI } from '@/lib/prescription/levers';
 import {
   splitDay,
   SPEC_PROBE_T_PACE_SEC,
@@ -702,11 +702,31 @@ export function weeklyDoseBudgetMi(
 
 /** The at-pace miles ONE session may spend at `pace`, absolute halves only —
  *  M's 18 mi, and the I/R cumulative ceilings, which a single session also
- *  cannot exceed. Percentage halves are the caller's, via the budget above. */
+ *  cannot exceed. Percentage halves are the caller's, via the budget above.
+ *
+ * DOSE-OWNER-2 (2026-09-07) · I/R also min against `AT_PACE_SESSION_MI`'s own
+ * session-band max — `lib/prescription/levers.ts#atPaceSessionCapMi`'s other
+ * absolute half. Both are doctrine-cited ceilings on the SAME single session
+ * and both are meant to bind (the pattern this file already applies to M's
+ * own two halves, `MARATHON_PACE_WORKOUT_CAP.absMi` vs `pctOfWeekly`). For R
+ * the two cells already agree exactly (4.97 mi = 8 km, by construction — see
+ * `AT_PACE_SESSION_MI`'s own comment). For I they did not: the cumulative-km
+ * ceiling alone read 6.21 mi where the session-band caps at 6 — a real,
+ * measured 0.21 mi gap this call site carried at every high-mileage runner,
+ * and — because `sessionDoseCeilingMi('I')` used to return that 6.21
+ * regardless of weeklyMi — a real 5+ mi gap against the OWNER
+ * (`atPaceSessionCapMi`) at any sub-saturating weekly volume, closed here
+ * because `slotDoseBudgetMi` already applies the percentage half via
+ * `weeklyDoseBudgetMi` before reaching this ceiling. See
+ * `lib/runner-state/quantity-owners.ts` INTERVAL_DOSE for the measured
+ * before/after. */
 export function sessionDoseCeilingMi(pace: DosePace): number {
   if (pace === 'M') return MARATHON_PACE_WORKOUT_CAP.absMi;
   const ceilKm = CUMULATIVE_CEILING_KM[pace];
-  return ceilKm != null ? ceilKm * MI_PER_KM : Infinity;
+  const cumulative = ceilKm != null ? ceilKm * MI_PER_KM : Infinity;
+  const family = LEVER_FAMILY[pace];
+  const sessionBand = family ? AT_PACE_SESSION_MI[family].max : Infinity;
+  return Math.min(cumulative, sessionBand);
 }
 
 /**

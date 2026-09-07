@@ -731,6 +731,35 @@ export interface SustainedWeeklyVolume {
 }
 
 /**
+ * The core rank-order-statistic step: sort a series descending and return the
+ * k-th value (1-based), unrounded. Null when the series is shorter than
+ * `rank`.
+ *
+ * WEEKLY_VOLUME-OWNER-1 (2026-09-07) · shared by `sustainedFromWeeks` below
+ * (this file's owner reading, `SUSTAINED_LOOKBACK_WEEKS` = 16) and
+ * `lib/adaptation/volume-evidence/belief.ts#rankWeek` (the volume-evidence
+ * lane's own reading, a 26-week window — `lib/plan/volume-evidence-loader.ts#
+ * LOOKBACK_WEEKS`) so the sort+index arithmetic itself has exactly one
+ * implementation. The two readers still legitimately differ in how much
+ * history they hand it: `_owner_agreement.test.ts`'s own note is that an
+ * order statistic is provably unmoved by low weeks, so the two windows can
+ * only diverge when the extra 10 weeks a 26-week reach adds contain a NEW
+ * top-3 week the 16-week reach does not see — measured against the one real
+ * account with enough representative history to test it
+ * (0645f40c-951d-4ccc-b86e-9979cd26c795, 2026-09-07) and found to agree
+ * exactly (both windows resolved the same 10 representative weeks, so the
+ * extra reach found nothing new). The window-length question itself — should
+ * the evidence lane's confidence read from more history than the owner's
+ * ramp-base read does — is a design call for whoever owns that lane, not
+ * settled here.
+ */
+export function rankOrderStat(weeklyMi: readonly number[], rank: number): number | null {
+  if (weeklyMi.length < rank) return null;
+  const sorted = [...weeklyMi].sort((a, b) => b - a);
+  return sorted[rank - 1];
+}
+
+/**
  * The estimator itself. PURE, so the whole rule is falsifiable with no
  * database (Rule 18) and so a test can argue about a series directly.
  *
@@ -748,8 +777,9 @@ export function sustainedFromWeeks(
   const usable = weeklyMi.filter((x) => Number.isFinite(x) && x >= 0);
   if (usable.length < MIN_SUSTAINED_WEEKS) return null;
   const rank = SUSTAINED_WEEK_RANK;
-  const sorted = [...usable].sort((a, b) => b - a);
-  return { weeklyMi: Math.round(sorted[rank - 1] * 10) / 10, rank };
+  const raw = rankOrderStat(usable, rank);
+  if (raw == null) return null;
+  return { weeklyMi: Math.round(raw * 10) / 10, rank };
 }
 
 /**

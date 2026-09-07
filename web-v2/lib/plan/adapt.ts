@@ -4903,7 +4903,24 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
           `SELECT weekly_frequency FROM profile WHERE user_uuid = $1::uuid LIMIT 1`,
           [userId]
         )).rows[0];
-        weeklyFrequency = freqRow?.weekly_frequency ?? null;
+        // RUNFREQ-OWNER-1 (2026-09-07) · a null stated preference used to
+        // leave weeklyFrequency null, which the guard below reads as "no cap"
+        // and skips outright — so a makeup day could push a week past what the
+        // runner actually runs. `derivedTrainingDaysPerWeek` is the same
+        // Rule-8-filtered rank-3 read `loadGeneratorInputs` already uses when
+        // the profile is unset; falling back to it here instead of leaving the
+        // check unenforced is the RECOVERY-OWNER-1 pattern applied to this
+        // quantity. Measured against production: David's account
+        // (0645f40c-951d-4ccc-b86e-9979cd26c795) has weekly_frequency = null
+        // and derivedTrainingDaysPerWeek = 6 — this check was previously
+        // silently unenforced for him.
+        const { derivedTrainingDaysPerWeek } = await import('@/lib/plan/generate');
+        // No .catch() here on purpose: derivedTrainingDaysPerWeek's only read
+        // goes through rowOrNull, which never rejects (lib/db/read.ts#attempt
+        // catches internally) — a wrapping .catch(() => null) would be a
+        // second, redundant collapse site the coercion scan correctly flags.
+        weeklyFrequency = freqRow?.weekly_frequency
+          ?? await derivedTrainingDaysPerWeek(userId, today);
       } catch { /* frequency unknown → check skipped */ }
 
       // TRAVEL-1 · the runner's declared travel days over the candidate span

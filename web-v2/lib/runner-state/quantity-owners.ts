@@ -290,14 +290,26 @@ export const QUANTITY_OWNERSHIP: Readonly<Record<QuantityId, QuantityOwnership>>
         symbol: 'rankWeek',
         role: 'SECOND',
         probe: 'PURE',
-        computes: 'A third rank-k over a weekly series, fed the volume '
-          + 'evidence lane\'s own 26-week population. It AGREES with the '
-          + 'owner across the whole probe matrix and carries no accepted '
-          + 'divergence, because an order statistic is provably unmoved by '
-          + 'low weeks while three ordinary weeks survive — the Rule 8 filter '
-          + 'cannot separate two rank-3s there. What it could still differ on '
-          + 'is the WINDOW (26 weeks against 16), which this matrix cannot '
-          + 'express and the audit census measures instead.',
+        computes: 'PARTIALLY CLOSED 2026-09-07 (WEEKLY_VOLUME-OWNER-1). Used '
+          + 'to be a second, independent implementation of the sort+index rank '
+          + 'step; now delegates that arithmetic to '
+          + '`lib/training/normal-window.ts#rankOrderStat`, the same primitive '
+          + 'the owner (`sustainedFromWeeks`) calls, so there is exactly one '
+          + 'ranking implementation. Still SECOND rather than CARRIER because '
+          + 'it is fed a genuinely different population — the volume evidence '
+          + 'lane\'s own 26-week window (`lib/plan/volume-evidence-loader.ts#'
+          + 'LOOKBACK_WEEKS`) against the owner\'s 16 — and that window '
+          + 'question is a design call for whoever owns the evidence lane, not '
+          + 'a wiring gap. Measured against the one real account with enough '
+          + 'representative history to test it '
+          + '(0645f40c-951d-4ccc-b86e-9979cd26c795): both windows resolved the '
+          + 'identical 10 representative weeks and agreed exactly (41.4 mi/wk '
+          + 'both), because the account does not yet have 16-26 weeks of '
+          + 'ordinary (non-taper, non-recovery) training back to back. An '
+          + 'order statistic is provably unmoved by low weeks, so the two can '
+          + 'only diverge when the extra 10 weeks a 26-week reach adds contain '
+          + 'a NEW top-3 week the 16-week reach does not see — unmeasured '
+          + 'here, still the audit census\'s job.',
         reachedBy: [
           'lib/adaptation/volume-evidence/belief.ts#updateDemonstratedVolume',
           'lib/plan/volume-evidence-proposal.ts#decideVolumeRaise',
@@ -600,31 +612,33 @@ export const QUANTITY_OWNERSHIP: Readonly<Record<QuantityId, QuantityOwnership>>
         ],
       },
       {
-        siteId: 'lib/plan/dosing.ts#sessionDoseCeilingMi:I',
+        siteId: 'lib/plan/dosing.ts#slotDoseBudgetMi:I',
         module: 'lib/plan/dosing.ts',
-        symbol: 'sessionDoseCeilingMi',
-        role: 'SECOND',
+        symbol: 'slotDoseBudgetMi',
+        role: 'CARRIER',
         probe: 'PURE',
-        computes: 'Daniels\' I cumulative ceiling in miles (10 km), the '
-          + 'ABSOLUTE half only. Independent of the weekly percentage.',
-        reachedBy: ['lib/plan/dosing.ts#slotDoseBudgetMi'],
+        comparesTo: 'lib/prescription/levers.ts#atPaceSessionCapMi:I',
+        computes: 'CLOSED 2026-09-07 (DOSE-OWNER-2). The per-session I dose the '
+          + 'composer actually spends: min(weeklyDoseBudgetMi(I) [percentage '
+          + 'half × cumulative-km absolute], sessionDoseCeilingMi(I)). '
+          + 'weeklyDoseBudgetMi already read the SAME AT_PACE_WEEKLY_SHARE_CAP '
+          + 'percentage the owner uses (via weeklyShareCap), so the only real '
+          + 'gap was sessionDoseCeilingMi(I) carrying a DIFFERENT absolute '
+          + 'ceiling than the owner\'s AT_PACE_SESSION_MI.interval.max (6.21 mi '
+          + 'from the cumulative-km cell vs 6 mi from the session-band cell) — '
+          + 'now min()ed together in sessionDoseCeilingMi itself, the pattern '
+          + 'this file already applies to M\'s own two halves. Measured across '
+          + 'weeklyMi 0..200: exact agreement with the owner at every point '
+          + '(was up to 5.58 mi apart at low weeklyMi, where the raw '
+          + 'sessionDoseCeilingMi(I) constant — 6.21, independent of weeklyMi — '
+          + 'was being compared as if it were the whole per-session answer, '
+          + 'when it was always only the absolute half; slotDoseBudgetMi is the '
+          + 'production-reachable symbol that combines both halves and is what '
+          + 'this site now names).',
+        reachedBy: ['lib/plan/generate.ts#layoutWeek (slotBudgetMi)'],
       },
     ],
-    acceptedDivergence: [
-      {
-        between: [
-          'lib/prescription/levers.ts#atPaceSessionCapMi:I',
-          'lib/plan/dosing.ts#sessionDoseCeilingMi:I',
-        ],
-        maxAbs: 5.58,
-        why: 'Two session ceilings for I, cited from the same doctrine and '
-          + 'never reconciled: the lever\'s percentage-and-band answer and the '
-          + 'doser\'s cumulative-kilometre answer. Neither is wrong; the '
-          + 'composer spends whichever the branch it is in happens to ask.',
-        closesWhen: 'slotDoseBudgetMi mins against atPaceSessionCapMi, so the '
-          + 'per-session answer is one number whichever layer asks for it.',
-      },
-    ],
+    acceptedDivergence: [],
   },
 
   /* ── 6 ─────────────────────────────────────────────────────────────── */
@@ -796,7 +810,27 @@ export const QUANTITY_OWNERSHIP: Readonly<Record<QuantityId, QuantityOwnership>>
           + 'PRESCRIBED count, not a habit — and composeAdaptation coalesces '
           + 'it with the progression gate\'s resolution count, which is a '
           + 'third quantity again (rows the gate resolved, not rows that '
-          + 'exist).',
+          + 'exist). AUDITED 2026-09-07, NOT resolved: this reads BACK what '
+          + 'the owner (`densityForWeek`, an unexported closure) already '
+          + 'wrote to `plan_workouts` at authoring time — it is a DB read of '
+          + 'the owner\'s persisted decision, not an independent computation '
+          + 'of the same decision, so it cannot literally "delegate to the '
+          + 'owner" the way a wiring fix would (the owner is unreachable '
+          + 'outside `composePlan`, and calling it fresh here would answer a '
+          + 'different question — what SHOULD be scheduled now — than what '
+          + 'this site needs — what IS currently scheduled, post any '
+          + 'reschedules/mutations since authoring). Measured against '
+          + 'production: David\'s account currently reads 1 on both sides '
+          + '(exact agreement), because nothing has mutated his week-ahead '
+          + 'since authoring. The two CAN legitimately diverge after a '
+          + 'reschedule or a dropped session, and that divergence is correct, '
+          + 'not a bug. DECISION NEEDED: whether this site\'s role should be '
+          + '`EVIDENCE` (an input to the adaptation engine\'s progression '
+          + 'decision, analogous to `TIER_TARGETS.qualityPerWeek` just above) '
+          + 'rather than `SECOND`, since it does not independently answer '
+          + '"how many quality sessions should this week carry" — it answers '
+          + '"how many does the persisted plan currently carry." Left as '
+          + 'SECOND (conservative) pending that call.',
         reachedBy: ['app/api/cron/run-adaptations/route.ts'],
       },
     ],
@@ -826,33 +860,56 @@ export const QUANTITY_OWNERSHIP: Readonly<Record<QuantityId, QuantityOwnership>>
         siteId: 'lib/plan/injury-builder.ts#weeklyFrequencyFallback',
         module: 'lib/plan/injury-builder.ts',
         symbol: 'MAX_ACTIVE_DAYS_PER_WEEK',
-        role: 'SECOND',
+        role: 'CARRIER',
         probe: 'DB_ONLY',
-        computes: 'profile.weekly_frequency with NO derived fallback: a null '
-          + 'profile reads as 5, where the generator measures the runner. '
-          + 'Rule 11 — "don\'t know" answered with a default that silently '
-          + 'caps a six-day runner.',
-        reachedBy: ['lib/plan/injury-builder.ts#buildInjuryPlan'],
+        comparesTo: 'lib/plan/generate.ts#derivedTrainingDaysPerWeek',
+        computes: 'CLOSED 2026-09-07 (RUNFREQ-OWNER-1). A null profile now '
+          + 'falls back to `derivedTrainingDaysPerWeek` (the owner) instead of '
+          + 'straight to the file\'s own conservative MAX_ACTIVE_DAYS_PER_WEEK '
+          + '(5), which `injuryWeekShape` still applies as an injury-specific '
+          + 'safety ceiling regardless. Measured against production: David\'s '
+          + 'account (weekly_frequency null) derives 6. NOTE: the only '
+          + 'exported entry point, `buildInjuryPlan`, unconditionally refuses '
+          + '("injury-return mode is not available") before reaching this '
+          + 'code, so the fix has no live production effect today — applied '
+          + 'for registry consistency and because four `INJURY.*` doctrine '
+          + 'claims still read this module\'s constants at run time.',
+        reachedBy: ['lib/plan/injury-builder.ts#buildInjuryPlan (unreachable · see computes)'],
       },
       {
         siteId: 'lib/plan/adapt.ts#weeklyFrequencyCap',
         module: 'lib/plan/adapt.ts',
         symbol: 'weekly_frequency',
-        role: 'SECOND',
+        role: 'CARRIER',
         probe: 'DB_ONLY',
-        computes: 'The raw profile column as a hard per-week run-count cap, '
-          + 'with no derived fallback and without the generator\'s 0 -> 3 '
-          + 'coercion.',
+        comparesTo: 'lib/plan/generate.ts#derivedTrainingDaysPerWeek',
+        computes: 'CLOSED 2026-09-07 (RUNFREQ-OWNER-1). A null profile now '
+          + 'falls back to `derivedTrainingDaysPerWeek` (the owner) before the '
+          + 'reschedule search\'s frequency guard, instead of leaving the '
+          + 'guard unenforced (`if (weeklyFrequency != null)` skipped the '
+          + 'check entirely on null). Still does not apply the generator\'s '
+          + '0 -> 3 coercion — a stated 0 is unaffected either side of this '
+          + 'fix, since `0 ?? x` is 0, not the fallback; out of scope here. '
+          + 'Measured against production: David\'s account (weekly_frequency '
+          + 'null) previously left the reschedule cap unenforced for him; now '
+          + 'derives 6 and enforces it.',
         reachedBy: ['lib/plan/adapt.ts#applyAdaptations'],
       },
       {
         siteId: 'lib/plan/mutate.ts#weeklyFrequencyContext',
         module: 'lib/plan/mutate.ts',
         symbol: 'weekly_frequency',
-        role: 'SECOND',
+        role: 'CARRIER',
         probe: 'DB_ONLY',
-        computes: 'The same raw read again, into '
-          + 'PlanValidationContext.trainingDaysPerWeek.',
+        comparesTo: 'lib/plan/generate.ts#derivedTrainingDaysPerWeek',
+        computes: 'CLOSED 2026-09-07 (RUNFREQ-OWNER-1). A null profile now '
+          + 'falls back to `derivedTrainingDaysPerWeek` (the owner) before '
+          + 'feeding `PlanValidationContext.trainingDaysPerWeek`, instead of '
+          + 'passing null straight to `validateComposedPlan`\'s frequency cap '
+          + '(which reads null as "no cap" and skips it) — a mutation could '
+          + 'previously add a day the runner does not actually take without '
+          + 'the validator ever seeing it. Measured against production: '
+          + 'David\'s account (weekly_frequency null) derives 6.',
         reachedBy: ['lib/plan/mutate.ts'],
       },
     ],
@@ -1119,7 +1176,24 @@ export const QUANTITY_OWNERSHIP: Readonly<Record<QuantityId, QuantityOwnership>>
         computes: 'The AUTHORING target: the seasonal VDOT ceiling over the '
           + 'block, floored at max(goal, prescription floor). A different '
           + 'basis from the outlook\'s execution target, and the number the '
-          + 'race row is written at.',
+          + 'race row is written at. AUDITED 2026-09-07, NOT resolved: this '
+          + 'module\'s own header states the split is deliberate — "Two '
+          + 'moments, one rule: authoring bounds what the block rehearses, '
+          + 'execution bounds what the watch shows on the day" — and that it '
+          + 'deliberately does not import `race-outlook.ts` so it stays free '
+          + 'of `pg` for client bundles. Forcing a delegation here would '
+          + 'contradict that stated design. Measured against production: '
+          + 'David\'s active plan stamps no prescribed race pace at all '
+          + '(`achievableRaceTarget` reads ABSENT), so the two sites are not '
+          + 'currently comparable on his account — nothing to reconcile '
+          + 'today. DECISION NEEDED: whether this should be reclassified '
+          + '`EVIDENCE`/its own named sub-quantity (an authoring-time bound, '
+          + 'not a competing answer to "what is this runner prescribed to '
+          + 'race") given the module\'s own stated rationale, the way '
+          + '`lib/race/b-goal.ts#resolveBGoal` just above is already '
+          + 'classified `EVIDENCE` for the same kind of reason ("A SECOND '
+          + 'prescribed time by design and labelled as one"). Left as '
+          + 'SECOND (conservative) pending that call.',
         reachedBy: ['lib/plan/generate.ts#composePlan'],
       },
       {
