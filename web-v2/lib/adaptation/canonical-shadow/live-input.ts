@@ -77,6 +77,21 @@ import { gradeStimulus, type StimulusInput } from '@/lib/adaptation/canonical/st
 import { workHrCeilingFor } from '@/lib/adaptation/canonical/work-hr-ceiling';
 import { workTraceIsCredible } from '@/lib/adaptation/canonical/hr-trace-credibility';
 import { classifyRunContext } from '@/lib/evidence/classify-evidence';
+/* SUPPLEMENTALGRADE-1 · the ONE resolver for "which run satisfied which
+ * prescription" (EXECID-SCAN-1). `classifyDay` is the PURE half of
+ * `lib/execution/day-resolver.ts` — no `pool` call in its own body — so it
+ * can be driven here with rows this loader already fetched over the fenced
+ * `roQuery` connection, without pulling the writable `pool` this file's own
+ * `read-only-db.ts` exists to keep out of its import graph (unlike
+ * `resolveDayExecutions`, the DB-shell half, which opens `@/lib/db/pool`
+ * directly). See this file's own use of it below for why: a same-date
+ * `.find()` is exactly the WORKOUT-EXECUTION-ID-1 shape that resolver was
+ * built to close, and this loader had reintroduced it independently. */
+import {
+  classifyDay,
+  type PrescribedRow as DayResolverPrescribedRow,
+  type RunRow as DayResolverRunRow,
+} from '@/lib/execution/day-resolver';
 /* The phase VOCABULARY and its one translation from the generator's own label.
  * Imported rather than re-implemented so this loader cannot coin a second
  * phase name (Rule 16). */
@@ -176,7 +191,9 @@ interface PlanWeekRow {
   phase_label: string | null;
 }
 
-interface PlanWorkoutRow {
+/** EXPORTED (SUPPLEMENTALGRADE-1) so `buildPrescriptionRunMatches` below can
+ *  be driven by a test with fixture rows, without a database. */
+export interface PlanWorkoutRow {
   id: string;
   week_id: string | null;
   date_iso: string;
@@ -187,6 +204,15 @@ interface PlanWorkoutRow {
   is_quality: boolean;
   is_long: boolean;
   sub_label: string | null;
+}
+
+/** EXPORTED (SUPPLEMENTALGRADE-1) — the shape `buildLiveCanonicalInput`
+ *  reduces its fetched runs to before grading. Kept minimal and duck-typed
+ *  so a test can build one without touching `asRunData`/`runDay`. */
+export interface GradingRunRow {
+  id: string;
+  d: RunData;
+  dateISO: string;
 }
 
 interface RunRow {
@@ -385,6 +411,70 @@ function provenanceFor(run: RunData, activityId: string, dateISO: string): Prove
     truncation: { truncated: false, completeWorkPhasesCaptured: true, note: '' },
     treadmill: indoor,
   };
+}
+
+/**
+ * SUPPLEMENTALGRADE-1 (2026-09-06) · which run, if any, is the CONFIRMED
+ * EXACT/LEGACY execution of each prescription — not merely the run that
+ * shares its calendar date.
+ *
+ * Before this, the quality-session and long-run loops in
+ * `buildLiveCanonicalInput` did `runData.find((r) => r.dateISO === w.date_iso)`
+ * — a pure date match. On any date carrying more than one canonical run (a
+ * supplemental shakeout run alongside the prescribed session, a double-run
+ * day, a second watch payload synced late), `.find()` silently returns
+ * whichever run this loader's fetch order happened to put first, which is not
+ * necessarily the run that satisfied the prescription. A supplemental easy
+ * run could be graded as a missed tempo, or the tempo's own execution could
+ * be skipped in favor of grading an unrelated shakeout against its targets —
+ * the same defect class `lib/postrun/load.ts` fixed for the post-run screen
+ * under POSTRUN-DATE-GRADE-1, in a loader that fix never touched.
+ *
+ * `classifyDay` (`lib/execution/day-resolver.ts`) is the ONE resolver for
+ * this question (EXECID-SCAN-1) — pure, no I/O, so it can be driven here with
+ * rows this loader already fetched over the fenced `roQuery` connection,
+ * never `resolveDayExecutions` (the DB-shell half, which opens the app's
+ * normal writable `pool` directly and would reintroduce exactly the
+ * dependency `read-only-db.ts`'s header says this file must not carry).
+ * Called once per DATE, with every prescription and every canonical run that
+ * date has, so a day carrying two same-type prescriptions still refuses to
+ * guess (`classifyDay`'s own conservatism), rather than once per workout.
+ *
+ * EXPORTED and pure — no I/O — so `_supplementalgrade.test.ts` can drive it
+ * with fixture rows without a database, per Rule 18.
+ */
+export function buildPrescriptionRunMatches(
+  workouts: readonly PlanWorkoutRow[],
+  runData: readonly GradingRunRow[],
+): Map<string, string> {
+  const workoutsByDate = new Map<string, PlanWorkoutRow[]>();
+  for (const w of workouts) {
+    const list = workoutsByDate.get(w.date_iso);
+    if (list) list.push(w); else workoutsByDate.set(w.date_iso, [w]);
+  }
+  const runRowsByDate = new Map<string, DayResolverRunRow[]>();
+  for (const r of runData) {
+    const row: DayResolverRunRow = { id: r.id, day: r.dateISO, data: r.d, shoe_id: null };
+    const list = runRowsByDate.get(r.dateISO);
+    if (list) list.push(row); else runRowsByDate.set(r.dateISO, [row]);
+  }
+  const matches = new Map<string, string>();
+  for (const [dateISO, dayWorkouts] of workoutsByDate) {
+    const prescribedRows: DayResolverPrescribedRow[] = dayWorkouts.map((w) => ({
+      id: w.id,
+      date_iso: w.date_iso,
+      type: w.type ?? '',
+      distance_mi: w.distance_mi == null ? null : String(w.distance_mi),
+      sub_label: w.sub_label,
+      is_quality: w.is_quality,
+      is_long: w.is_long,
+    }));
+    const resolved = classifyDay(dateISO, prescribedRows, runRowsByDate.get(dateISO) ?? []);
+    for (const p of resolved.prescriptions) {
+      if (p.matchedRun) matches.set(p.id, p.matchedRun.runId);
+    }
+  }
+  return matches;
 }
 
 /** See the file header · C1/C2 supplied as `absent()`, which resolves to
@@ -745,11 +835,20 @@ export async function buildLiveCanonicalInput(
     };
   });
 
+  /* ── PRESCRIPTION↔RUN IDENTITY, via THE ONE resolver (SUPPLEMENTALGRADE-1) ─
+   * See `buildPrescriptionRunMatches`'s own header above for the defect this
+   * closes. */
+  const prescriptionRunMatches = buildPrescriptionRunMatches(workouts, runData);
+  const matchedRunFor = (w: PlanWorkoutRow) => {
+    const runId = prescriptionRunMatches.get(w.id);
+    return runId == null ? undefined : runData.find((r) => r.id === runId);
+  };
+
   /* ── QUALITY SESSIONS · matched activity ↔ prescribed quality workout ───── */
 
   const qualitySessions: GradedSession[] = [];
   for (const w of workouts.filter((x) => x.is_quality && x.date_iso < asOf)) {
-    const match = runData.find((r) => r.dateISO === w.date_iso);
+    const match = matchedRunFor(w);
     if (!match) continue;
     qualitySessions.push(buildGradedSession({ activityId: match.id, dateISO: match.dateISO, run: match.d, workout: w }));
   }
@@ -759,11 +858,11 @@ export async function buildLiveCanonicalInput(
   const longRunObservations: LongRunObservation[] = [];
   const longWorkouts = workouts.filter((x) => x.is_long && x.date_iso < asOf).sort((a, b) => b.date_iso.localeCompare(a.date_iso));
   for (const w of longWorkouts) {
-    const match = runData.find((r) => r.dateISO === w.date_iso);
+    const match = matchedRunFor(w);
     if (!match) continue;
     const nextDayWorkout = workoutsByDate.get(addDays(w.date_iso, 1))
       ?? workoutsByDate.get(addDays(w.date_iso, 2));
-    const nextRun = nextDayWorkout ? runData.find((r) => r.dateISO === nextDayWorkout.date_iso) : undefined;
+    const nextRun = nextDayWorkout ? matchedRunFor(nextDayWorkout) : undefined;
     longRunObservations.push({
       provenance: provenanceFor(match.d, match.id, match.dateISO),
       prescribedMi: num(w.distance_mi) ?? 0,
