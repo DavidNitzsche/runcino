@@ -196,7 +196,21 @@ export async function readPendingRepriceProposal(
   );
   const row = r.rows[0];
   if (!row) return null;
-  const payload = asRepricePayload(row.action_payload);
+  // FIX (2026-09-07, found rendering DECISION-2 against a real scratch copy
+  // of production, Rule 13) · `action_payload` is stored as
+  // `{ why, reprice: RepricePayload, action }` — `writeReanchorProposal`'s own
+  // INSERT (lib/plan/reanchor-proposal.ts) and its own re-read of prior rows
+  // both unwrap `.reprice` before calling `asRepricePayload`. This read
+  // passed the WHOLE `{why, reprice, action}` object in, which has no `kind`
+  // field at its own top level, so `asRepricePayload` returned null for
+  // EVERY reprice proposal ever written and this function always answered
+  // "no pending proposal" — meaning `explainPaceDrift` reported every drift
+  // UNEXPLAINED forever, even with a valid, matching, pending card already
+  // sitting in front of the runner. Nothing caught it: no existing test
+  // round-trips a real row through this parse (Rule 15 — the pure
+  // `explainPaceDrift` tests construct `PendingRepriceRow` directly and never
+  // call this function at all).
+  const payload = asRepricePayload((row.action_payload as { reprice?: unknown } | null)?.reprice);
   if (payload == null) return null;
   return {
     id: row.id,
