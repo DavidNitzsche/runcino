@@ -341,6 +341,30 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
         [userUuid, raceDates],
       ),
     );
+    // BANNER-LATENCY-1 (2026-09-07) · `loadPlanSnapshot` runs on every
+    // launch and every foreground (see this file's own header) — the
+    // single hottest read in the app. `resolveRaceOutlookBySlug` composes
+    // real coaching computation (capacity, goal outlook) and is NOT free;
+    // observed 2-6s on its own against a warm dev server. A `Promise.all`
+    // with no ceiling means ONE slow race-outlook resolution (a cold cache,
+    // a contended pool, an upstream hiccup) adds that same delay to every
+    // day's data — including the days that have nothing to do with a race
+    // at all. David saw "Can't reach faff" repeatedly the same day this
+    // shipped; this budget cannot by itself explain a client-side timeout,
+    // but it removes this addition as a plausible contributor rather than
+    // arguing it can't be one. 2500ms — comfortably more than this ever
+    // needs when warm, small next to the 12s client timeout, and it fails
+    // to the exact same "no stat" outcome `raceProjectionFromOutlook(null)`
+    // already produces for a genuinely absent outlook, so a slow resolution
+    // and an absent one are indistinguishable to every consumer, same
+    // argument as the COERCION_ARGUED entry below.
+    const withDeadline = async <T>(p: Promise<T>, ms: number): Promise<T | null> => {
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ms); });
+      const result = await Promise.race([p, deadline]);
+      clearTimeout(timer!);
+      return result;
+    };
     await Promise.all(slugRows.map(async (r) => {
       // COERCION_ARGUED: lib/plan/plan-snapshot.ts::loadPlanSnapshot::catch —
       // a thrown outlook resolution and a genuinely-absent outlook (no goal,
@@ -350,7 +374,10 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       // decorative; failing it closed to "omit the stat" rather than letting
       // one race's projection error the whole block read is the same
       // fail-closed posture this gate's own option 2 asks for.
-      const outlook = await resolveRaceOutlookBySlug(userUuid, r.slug, today).catch(() => null);
+      const outlook = await withDeadline(
+        resolveRaceOutlookBySlug(userUuid, r.slug, today).catch(() => null),
+        2500,
+      );
       const projection = raceProjectionFromOutlook(outlook);
       if (projection.projectedSec == null) return;
       const [lo, hi] = projection.likelyRangeSec ?? [null, null];
