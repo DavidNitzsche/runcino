@@ -56,6 +56,16 @@ export type AlertKind = 'plan_convergence' | 'cron_fail' | 'cron_ok' | 'cron_sta
    * six-field explain rule before this fires; it never fires for a drift a
    * valid pending reprice proposal already accounts for. */
   | 'pace_drift_unexplained'
+  /* DEFERRALCARRYALERT-1 (2026-09-06) · one row per `run-adaptations` pass
+   * saying what carrying the durable deferral queue across this boundary
+   * actually did — OK/EXPECTED/DEFECT per runner, and the first DEFECT's
+   * detail. Before this, `run-live-shadow-evaluation.ts`'s `carryTheQueue`
+   * returned an honest sentence that nothing ever read: the same
+   * "cron_ok does not mean this mechanism did anything" gap
+   * `canonical_shadow_exit` closed for the shadow log, one mechanism over —
+   * a queue read failure or a genuinely-thrown persist would have sat in an
+   * unread string forever. */
+  | 'deferral_queue_carry'
   | 'unknown';
 export type AlertSeverity = 'info' | 'warn' | 'error' | 'critical';
 

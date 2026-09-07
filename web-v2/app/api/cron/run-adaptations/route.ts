@@ -136,6 +136,17 @@ export async function POST(req: NextRequest) {
    * from a healthy quiet night in every previous version of this reporting,
    * and that is the exact liveness failure Rule 18 names. */
   const canonicalShadowExits: ShadowExit[] = [];
+  /* ── DEFERRALCARRYALERT-1 (2026-09-06) · ONE ENTRY PER RUNNER PER PASS ────
+   * `run-live-shadow-evaluation.ts`'s own header explains the gap this
+   * closes: `canonicalShadow.deferrals` (the durable deferral queue's carry
+   * outcome for this boundary) was computed, returned, and never read by
+   * anything — a `carryTheQueue` failure was an honest sentence with no
+   * reader, the exact shape `shadow-exit.ts` exists to prevent for the
+   * SIBLING mechanism one line above this one. Same "accumulate and report
+   * once" posture as `canonicalShadowExits`, kept as its own alert
+   * (`deferral_queue_carry`) rather than folded into `canonical_shadow_exit`
+   * — a different table, a different failure surface, one quantity one name. */
+  const deferralCarryOutcomes: Array<{ uid: string; health: 'OK' | 'EXPECTED' | 'DEFECT'; detail: string }> = [];
   /* ── ORCHESTRATIONWIRE-1 (2026-09-06) · ONE ENTRY PER RUNNER PER PASS ──────
    * Same "accumulate and report once" shape as `canonicalShadowExits` right
    * above, and for the same Rule 23 reason: a refusal on every runner every
@@ -283,10 +294,18 @@ export async function POST(req: NextRequest) {
         // result. Empty whenever nothing reached `decision === 'PROGRESS'`
         // this cycle, which is the common case and not a failure.
         arbitrationOutcomes.push(...canonicalShadow.arbitratedProposals);
+        // DEFERRALCARRYALERT-1 · the durable deferral queue's own carry
+        // outcome for this runner, accumulated the same way.
+        deferralCarryOutcomes.push({
+          uid, health: canonicalShadow.deferralsHealth, detail: canonicalShadow.deferrals,
+        });
         if (canonicalShadow.exit.health === 'DEFECT') {
           console.warn(
             `[canonical-shadow] ${uid}: ${canonicalShadow.exit.code} · ${canonicalShadow.detail}`,
           );
+        }
+        if (canonicalShadow.deferralsHealth === 'DEFECT') {
+          console.warn(`[canonical-shadow] ${uid}: deferral queue carry · ${canonicalShadow.deferrals}`);
         }
       } catch (e) {
         // Rule 11 · a throw from a function whose own contract says it never
@@ -295,6 +314,11 @@ export async function POST(req: NextRequest) {
         // catch the way the RO-connection refusal did.
         const detail = `runAndPersistCanonicalShadowEvaluation threw: ${e instanceof Error ? e.message : String(e)}`;
         canonicalShadowExits.push(shadowExit('EVALUATION_ERROR', detail));
+        // The throw happened somewhere inside the same call that would have
+        // carried the deferral queue — whether the carry itself ran is
+        // unknown, and Rule 11 forbids reading that as "nothing needed
+        // doing". Recorded DEFECT, naming the same throw.
+        deferralCarryOutcomes.push({ uid, health: 'DEFECT', detail });
         console.warn(`[canonical-shadow] ${uid} threw:`, e instanceof Error ? e.message : e);
       }
 
@@ -848,6 +872,37 @@ export async function POST(req: NextRequest) {
       // nobody reads at 3am. First DEFECT only — Rule 17, the reader reads a
       // sentence once, and every DEFECT of the same code has the same remedy.
       remedy: canonicalShadowExits.find((e) => e.health === 'DEFECT')?.remedy ?? null,
+    },
+    source: 'cron/run-adaptations',
+  }).catch(() => {});
+  /* ── DEFERRALCARRYALERT-1 (2026-09-06) · THE DEFERRAL QUEUE'S OWN CARRY
+   *    OUTCOME REPORTS ITSELF, THE SAME WAY THE SHADOW LOG DOES ABOVE ──────
+   *
+   * Reported at INFO while migration 167 is unapplied (`EXPECTED` on every
+   * runner is the declared state, not a defect — every call answers
+   * `table_absent` honestly until then, exactly like the shadow log and
+   * belief-store passes above), and raised as a real DEFECT the moment any
+   * runner's queue could not be read or a persist genuinely threw. Never
+   * blocks the pass. */
+  const deferralDefects = deferralCarryOutcomes.filter((o) => o.health === 'DEFECT');
+  const deferralExpected = deferralCarryOutcomes.filter((o) => o.health === 'EXPECTED').length;
+  const deferralOk = deferralCarryOutcomes.filter((o) => o.health === 'OK').length;
+  await raiseAlert({
+    kind: 'deferral_queue_carry',
+    severity: deferralDefects.length > 0 ? 'error' : 'info',
+    message: deferralDefects.length > 0
+      ? `${deferralDefects.length}/${userIds.length} runners' deferral queue carry FAILED this pass`
+      : deferralOk > 0
+        ? `${deferralOk}/${userIds.length} runners' deferral queue carried clean`
+        : `reassessment_schedule unavailable for all ${userIds.length} runners — migration 167 `
+          + 'unapplied (declared, expected state)',
+    metadata: {
+      users_in_loop: userIds.length,
+      ok: deferralOk,
+      expected_absent: deferralExpected,
+      defects: deferralDefects.length,
+      // First DEFECT only — Rule 17, the reader reads a sentence once.
+      first_defect_detail: deferralDefects[0]?.detail ?? null,
     },
     source: 'cron/run-adaptations',
   }).catch(() => {});

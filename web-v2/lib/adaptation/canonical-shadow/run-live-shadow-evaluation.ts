@@ -94,6 +94,39 @@ export interface LiveShadowEvaluationResult {
    */
   readonly deferrals: string;
   /**
+   * DEFERRALCARRYALERT-1 (2026-09-06) · `deferrals` ABOVE, AS A FACT SOMETHING
+   * OTHER THAN A HUMAN READING THIS ONE RUNNER'S LOG LINE CAN ACT ON.
+   *
+   * Before this field, `deferrals` was the ONLY record of whether the
+   * durable queue actually carried across this boundary, and nothing ever
+   * read it: `app/api/cron/run-adaptations/route.ts` accumulates
+   * `canonicalShadow.exit` into an aggregate alert every pass
+   * (`canonical_shadow_exit`) but never looked at `canonicalShadow.deferrals`
+   * at all. A `carryTheQueue` failure — the live queue unreadable
+   * (`loadLiveQueue`'s `FAILED`), or `persistQueueAtBoundary` reporting
+   * `partial-failure` after a write genuinely threw — read as a sentence in
+   * an unread return value, which is exactly the "returned an honest
+   * sentence into a log buffer and nothing could see it" shape
+   * `shadow-exit.ts`'s own header names as the production defect this whole
+   * taxonomy exists to prevent, one mechanism over.
+   *
+   * Three states, matching `ShadowExitHealth`'s own vocabulary rather than
+   * inventing a second one (Rule 16) — but kept as ITS OWN field rather than
+   * folded into `ShadowExitCode`, because `_shadow_exit_taxonomy.test.ts`
+   * derives that closed set from `shadowExit(` call sites in THIS file and
+   * `live-input.ts`, and the deferral queue's carry outcome is a genuinely
+   * different mechanism (a different table, a different failure surface) —
+   * conflating them would be one health vocabulary standing for two
+   * unrelated facts, which is Rule 16's violation in the other direction:
+   *
+   *   OK       · nothing to carry, or a real carry/retire persisted clean.
+   *   EXPECTED · migration 167 is not applied to this database yet
+   *              (`table-absent` / `ABSENT`) — declared, not a defect.
+   *   DEFECT   · the queue could not be read, or a write genuinely threw.
+   *              A human should look; `deferrals` names what broke.
+   */
+  readonly deferralsHealth: 'OK' | 'EXPECTED' | 'DEFECT';
+  /**
    * ARBITRATIONWIRE-1 (2026-09-05) · what phase-aware arbitration's own
    * output did on this cycle, ONE STEP PAST THE SHADOW LOG: which lever's
    * PROGRESS won this cycle's one material slot and was ledgered as a real,
@@ -237,7 +270,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
     return {
       userUuid, ran: false, detail,
       exit: shadowExit('NO_RO_CONNECTION', detail),
-      records: [], deferrals: 'not reached — the evaluation did not run.',
+      records: [], deferrals: 'not reached — the evaluation did not run.', deferralsHealth: 'OK',
       arbitratedProposals: [],
     };
   }
@@ -255,7 +288,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
     return {
       userUuid, ran: false, detail,
       exit: shadowExit('INPUT_READ_FAILED', detail),
-      records: [], deferrals: 'not reached — the evaluation did not run.',
+      records: [], deferrals: 'not reached — the evaluation did not run.', deferralsHealth: 'OK',
       arbitratedProposals: [],
     };
   }
@@ -275,7 +308,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
       // would be the one place this function could produce an exit whose code
       // did not come from the loader that actually made the decision.
       exit: shadowExit(built.refusalCode ?? 'INPUT_MISSING', detail),
-      records: [], deferrals: 'not reached — no input could be built.',
+      records: [], deferrals: 'not reached — no input could be built.', deferralsHealth: 'OK',
       arbitratedProposals: [],
     };
   }
@@ -295,7 +328,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
     return {
       userUuid, ran: false, detail,
       exit: shadowExit('EVALUATION_ERROR', detail),
-      records: [], deferrals: 'not reached — the evaluation did not run.',
+      records: [], deferrals: 'not reached — the evaluation did not run.', deferralsHealth: 'OK',
       arbitratedProposals: [],
     };
   }
@@ -316,7 +349,8 @@ export async function runAndPersistCanonicalShadowEvaluation(
     results.push({ lever: r.lever, decision: r.decision, persisted: outcome === 'WROTE' });
   }
 
-  const deferrals = await carryTheQueue(userUuid, built.input, evaluation.records);
+  const deferralCarry = await carryTheQueue(userUuid, built.input, evaluation.records);
+  const { detail: deferrals, health: deferralsHealth } = deferralCarry;
 
   /* ── ARBITRATIONWIRE-1 (2026-09-05) ────────────────────────────────────
    *
@@ -344,7 +378,7 @@ export async function runAndPersistCanonicalShadowEvaluation(
 
   const counts = { recordsEvaluated: evaluation.records.length, recordsPersisted: wrote };
   const base = {
-    userUuid, ran: true as const, records: results, deferrals, arbitratedProposals,
+    userUuid, ran: true as const, records: results, deferrals, deferralsHealth, arbitratedProposals,
   };
 
   /* ── EXIT 7 · THE INPUT WAS BUILT FROM A READ THAT FAILED ──────────────
@@ -424,21 +458,41 @@ export async function runAndPersistCanonicalShadowEvaluation(
  * NOTHING HERE APPLIES ANYTHING. A queued item is re-offered to the engine,
  * never auto-applied; `AUTOMATIC_ADAPTATION_AUTHORITY` is untouched and no
  * plan row is reachable from this function.
+ *
+ * ── DEFERRALCARRYALERT-1 (2026-09-06) · THE RETURN CARRIES A HEALTH VERDICT
+ *    TOO, NOT ONLY A SENTENCE ────────────────────────────────────────────
+ *
+ * `runAndPersistCanonicalShadowEvaluation`'s own `deferralsHealth` doc block
+ * explains why: a plain string return here is exactly the "an honest sentence
+ * into a log buffer nothing reads" shape `shadow-exit.ts` was built to stop
+ * one mechanism over — before this, a genuine read failure or a
+ * `persistQueueAtBoundary` `partial-failure` was indistinguishable, to every
+ * caller, from "nothing needed doing" or "migration not applied yet".
  */
+interface DeferralCarryOutcome {
+  readonly detail: string;
+  readonly health: 'OK' | 'EXPECTED' | 'DEFECT';
+}
+
 async function carryTheQueue(
   userUuid: string,
   input: NonNullable<Awaited<ReturnType<typeof buildLiveCanonicalInput>>['input']>,
   records: readonly CanonicalDecisionRecord[],
-): Promise<string> {
+): Promise<DeferralCarryOutcome> {
   const live = await loadLiveQueue(userUuid);
   if (!live.ok) {
     // Three facts, three sentences. `READ` is unreachable on a refusal branch
     // and is written out rather than asserted away, because a `!` here would
     // be the one place this function could produce `undefined` in a report.
-    if (live.why.kind === 'READ') return 'queue not persisted · no reason recorded.';
+    // It is graded DEFECT alongside the genuine `FAILED` branch (not
+    // `EXPECTED`) precisely because it should never happen — an unreachable
+    // branch reached at all is itself the signal something is wrong.
+    if (live.why.kind === 'READ') {
+      return { detail: 'queue not persisted · no reason recorded.', health: 'DEFECT' };
+    }
     return live.why.kind === 'ABSENT'
-      ? `queue not persisted · ${live.why.what}`
-      : `queue NOT touched · ${live.why.what}`;
+      ? { detail: `queue not persisted · ${live.why.what}`, health: 'EXPECTED' }
+      : { detail: `queue NOT touched · ${live.why.what}`, health: 'DEFECT' };
   }
 
   const outcome = reconsiderAtBoundary({
@@ -461,5 +515,11 @@ async function carryTheQueue(
     expired: outcome.expired,
   });
 
-  return `${live.value.length} live on entry, ${outcome.reconsidered.length} reconsidered · ${persisted.detail}`;
+  const detail = `${live.value.length} live on entry, ${outcome.reconsidered.length} reconsidered · ${persisted.detail}`;
+  const health: DeferralCarryOutcome['health'] = persisted.refusal === 'partial-failure'
+    ? 'DEFECT'
+    : persisted.refusal === 'table-absent'
+      ? 'EXPECTED'
+      : 'OK';
+  return { detail, health };
 }
