@@ -72,6 +72,19 @@ export interface CoercionExemption {
  */
 export const COERCION_ARGUED: readonly CoercionExemption[] = [
   {
+    id: 'lib/plan/plan-snapshot.ts::loadPlanSnapshot::catch',
+    reason: 'FINISHEST-1 (2026-09-07) · `resolveRaceOutlookBySlug(userUuid, r.slug, today).catch(() => null)`, '
+      + 'feeding an additive "Projected finish" stat on a race day\'s card. The single consumer is '
+      + '`raceProjectionFromOutlook(outlook)`, which already returns its `EMPTY` sentinel — '
+      + '`projectedSec: null` — for a genuinely absent outlook (no goal, no capacity evidence yet, race '
+      + 'too far out), so a thrown resolution and an absent one reach the IDENTICAL branch: `if '
+      + '(projection.projectedSec == null) return;`, which omits the stat. Every other field on the '
+      + 'day\'s card — pace band, dose, steps, treadmill guidance — is computed independently earlier '
+      + 'in this same function and is unaffected either way. Failing this closed to "no stat" rather '
+      + 'than letting one race\'s outlook computation error the WHOLE block read (every day, not just '
+      + 'race days) is this gate\'s own option 2 (fail closed), not an argument for erasure.',
+  },
+  {
     id: 'lib/plan/reanchor-plan.ts::reanchorMaintenance::catch',
     reason: 'FAILS CLOSED, which is this gate\'s own option 2 rather than an argument for erasure. '
       + 'It is `loadEffectiveMaxHr(...).catch(() => null)`, and the single consumer is `hrCapEasy`, '
@@ -648,6 +661,7 @@ export const SCAN_FLOORS = {
  * this list may still only shrink.
  */
 export const LOAD_BEARING_KNOWN: readonly string[] = [
+  'lib/plan/plan-snapshot.ts::loadPlanSnapshot::catch',
   'lib/adaptation/load.ts::loadAdaptationInput::catch',
   'lib/adaptation/load.ts::loadAdaptationInput::decouplingVerdicts.length',
   'lib/adaptation/load.ts::loadAdaptationInput::executions.length',

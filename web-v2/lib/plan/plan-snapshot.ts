@@ -73,6 +73,7 @@ import type { WorkoutSpec } from '@/lib/plan/spec-builder';
 import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
 import { raceProjectionFromOutlook } from '@/lib/training/race-projection';
 import { formatRaceTime } from '@/lib/training/vdot';
+import { rowsOrEmpty } from '@/lib/db/read';
 
 // Same two doctrine-cited constants `build-workout.ts` uses for its own
 // per-phase treadmill incline — see this file's header for why they are
@@ -326,12 +327,29 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
   const raceDates = Array.from(new Set(rows.filter((r) => r.type === 'race').map((r) => r.date_iso)));
   const projectedFinishByDate = new Map<string, { text: string; modelled: boolean }>();
   if (raceDates.length > 0) {
-    const slugRows = (await pool.query<{ slug: string; date_iso: string }>(
-      `SELECT slug, meta->>'date' AS date_iso FROM races
-        WHERE user_uuid = $1 AND meta->>'date' = ANY($2::text[])`,
-      [userUuid, raceDates],
-    ).catch(() => ({ rows: [] as { slug: string; date_iso: string }[] }))).rows;
+    // A failed slug lookup and "this race has no `races` row yet" reach the
+    // identical outcome for every consumer below: no slug to resolve an
+    // outlook for, so no "Projected finish" stat — every other field on the
+    // day's card (pace band, dose, steps) is computed independently and is
+    // unaffected either way. `rowsOrEmpty` logs the failure rather than
+    // swallowing it silently.
+    const slugRows = await rowsOrEmpty<{ slug: string; date_iso: string }>(
+      'plan-snapshot:race-slugs',
+      pool.query(
+        `SELECT slug, meta->>'date' AS date_iso FROM races
+          WHERE user_uuid = $1 AND meta->>'date' = ANY($2::text[])`,
+        [userUuid, raceDates],
+      ),
+    );
     await Promise.all(slugRows.map(async (r) => {
+      // COERCION_ARGUED: lib/plan/plan-snapshot.ts::loadPlanSnapshot::catch —
+      // a thrown outlook resolution and a genuinely-absent outlook (no goal,
+      // no capacity evidence yet, race too far out) both mean "nothing honest
+      // to project", which is exactly what `raceProjectionFromOutlook(null)`
+      // already returns for the absent case. This stat is additive and
+      // decorative; failing it closed to "omit the stat" rather than letting
+      // one race's projection error the whole block read is the same
+      // fail-closed posture this gate's own option 2 asks for.
       const outlook = await resolveRaceOutlookBySlug(userUuid, r.slug, today).catch(() => null);
       const projection = raceProjectionFromOutlook(outlook);
       if (projection.projectedSec == null) return;
