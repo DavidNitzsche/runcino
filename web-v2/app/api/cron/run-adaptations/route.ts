@@ -68,6 +68,7 @@ import { shadowExit, summarisePass, type ShadowExit } from '@/lib/adaptation/can
 // dynamically imported a few lines down, on the same real evidence that call
 // already builds. This route only reports what it did.
 import type { ArbitratedProposalOutcome } from '@/lib/adaptation/canonical-shadow/live-arbitration-proposals';
+import type { OptionLaneReport } from '@/lib/brain/option-lane';
 
 export const maxDuration = 120;
 
@@ -164,6 +165,13 @@ export async function POST(req: NextRequest) {
    * Safety defeats outright is counted here too. See
    * `live-arbitration-proposals.ts` for what each kind means. */
   const arbitrationOutcomes: ArbitratedProposalOutcome[] = [];
+
+  /* OPTIONLANE-1 · orchestration steps 3 and 7, this pass. Reported per
+   * runner and never collapsed to a count alone: `withheld` is the half that
+   * matters most (Rule 11), because "the option lane raised nothing" and "the
+   * option lane never ran" are the two facts this endpoint has historically
+   * been unable to tell apart. */
+  const optionLaneReports: Array<{ userId: string } & OptionLaneReport> = [];
 
   const results: Array<{
     user_id: string; triggers: number; applied: number; proposed: number;
@@ -756,7 +764,30 @@ export async function POST(req: NextRequest) {
           import('@/lib/runtime/runner-tz'),
         ]);
         const today = await todayForUser(uid);
-        await evaluateDueRollingBoundariesForUser(uid, today);
+        // ── OPTIONLANE-1 (2026-09-07) · THE VERDICT NO LONGER STOPS HERE ────
+        //
+        // This return value was DISCARDED. `evaluateAndResolveRollingBoundary
+        // Item` wrote its verdict onto `reassessment_schedule` and that was
+        // the end of it — a real PROCEED, computed from real completed weeks,
+        // reached a scheduler row and never reached a decision. The evaluator's
+        // own header named this as the follow-on work it would not do blind:
+        // "Surfacing a REDUCE verdict to the runner as an actionable proposal
+        // is real, follow-on work."
+        //
+        // `lib/brain/option-lane.ts` is that work. It takes the SAME evaluated
+        // boundaries this call just produced — no re-evaluation, no second
+        // read, Rule 16 — and carries them into orchestration steps 3 and 7,
+        // the only two of the sixteen that were not WIRED. It never mutates a
+        // plan: it records one decision and may raise one card.
+        const evaluated = await evaluateDueRollingBoundariesForUser(uid, today);
+        const { runOptionLane } = await import('@/lib/brain/option-lane');
+        const lane = await runOptionLane(uid, today, evaluated);
+        optionLaneReports.push({ userId: uid, ...lane });
+        console.log(
+          `[run-adaptations] option lane raised ${lane.raised}`
+          + `${lane.decisionId ? ` · decision ${lane.decisionId}` : ''}`
+          + `${lane.withheld.length > 0 ? ` · withheld ${lane.withheld.join(' | ')}` : ''}`,
+        );
       } catch (e) {
         console.error('[run-adaptations] rolling-boundary evaluator threw:', e);
       }
@@ -967,6 +998,12 @@ export async function POST(req: NextRequest) {
       safety_held_not_queued: arbitrationOutcomes.filter((o) => o.kind === 'SAFETY_HELD_NOT_QUEUED').length,
       not_applicable: arbitrationOutcomes.filter((o) => o.kind === 'NOT_APPLICABLE').length,
       outcomes: arbitrationOutcomes,
+    },
+    /* ── OPTIONLANE-1 · steps 3 and 7, surfaced ─────────────────────────── */
+    option_lane: {
+      raised: optionLaneReports.reduce((n, r) => n + r.raised, 0),
+      decisions: optionLaneReports.filter((r) => r.decisionId !== null).length,
+      reports: optionLaneReports,
     },
     results,
     timestamp: new Date().toISOString(),

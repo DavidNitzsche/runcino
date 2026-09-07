@@ -31,6 +31,38 @@ export async function observeAftermath(
   /* Rule 14 · the scope is stated. Canonical rows only (`mergedIntoId` marks a
    * duplicate that must not be counted twice), and the ACTIVE plan only — the
    * owner alone has 49 plan versions, and a join on user_uuid reads them all. */
+
+  /* ── OBSERVEAFTERMATH-1 (2026-09-07) · THE READ THAT ALWAYS FAILED ───────
+   *
+   * The `comp` CTE below compared `runDaySql()` against `$2::date`, and
+   * `runDaySql()` returns TEXT — `COALESCE(data->>'date', LEFT(data->>
+   * 'startLocal', 10))`. Postgres has no `text >= date` operator, so the whole
+   * statement threw 42883 EVERY TIME, `attempt` returned not-ok, and this
+   * function answered `UNREAD` for every decision ever judged. Step 16's sweep
+   * therefore reported `UNRESOLVED` for all of them — the engine could not
+   * tell whether a single one of its own decisions had worked.
+   *
+   * Found by running the nightly cron against real data (Rule 13). No test
+   * caught it because none of them reached this query with a live pool, which
+   * is Rule 15 exactly: a mechanism no case can reach is untested however many
+   * cases pass.
+   *
+   * The fix compares TEXT on both sides rather than casting the run side to
+   * `::date`. ISO-8601 days sort lexicographically, so the comparison is
+   * exact, and a malformed `startLocal` fallback then MISMATCHES instead of
+   * throwing — one unreadable row can no longer destroy the whole reading
+   * (Rule 11).
+   *
+   * AND THE PART THAT COST A SECOND ROUND. Removing the casts from the `comp`
+   * CTE alone did NOT fix it, and the query kept throwing the identical error.
+   * A bound parameter has ONE type for the whole statement, and the surviving
+   * `$2::date` in the `pres` CTE typed `$2` as `date` — so `comp`'s
+   * cast-free `text >= $2` was still `text >= date`. Both CTEs now compare
+   * text, which is exact for ISO-8601 and is what both columns actually hold
+   * (`plan_workouts.date_iso` is TEXT as well).
+   *
+   * The first fix looked right, typechecked, and was still wrong. It was
+   * caught by running it (Rule 13) and by nothing else. */
   const r = await attempt(
     'ledger/observe-aftermath',
     pool.query<{
@@ -44,15 +76,17 @@ export async function observeAftermath(
            JOIN training_plans tp ON tp.id = pw.plan_id
           WHERE tp.user_uuid = $1::uuid
             AND tp.archived_iso IS NULL
-            AND pw.date_iso::date >= $2::date AND pw.date_iso::date < $3::date
+            -- OBSERVEAFTERMATH-1 · text on both sides here too. See the header.
+            AND pw.date_iso >= $2 AND pw.date_iso < $3
        ), comp AS (
          SELECT coalesce(sum(${runDistanceMiSql()}), 0) AS mi,
                 count(*) AS runs
            FROM runs
           WHERE user_uuid = $1::uuid
             AND ${CANONICAL_ROW_SQL}
-            AND ${runDaySql()} >= $2::date
-            AND ${runDaySql()} < $3::date
+            -- OBSERVEAFTERMATH-1 · text on both sides, deliberately. See above.
+            AND ${runDaySql()} >= $2
+            AND ${runDaySql()} < $3
        )
        SELECT pres.mi::text AS prescribed, comp.mi::text AS completed,
               comp.runs::text AS graded,

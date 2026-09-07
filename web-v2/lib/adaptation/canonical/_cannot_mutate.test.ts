@@ -657,12 +657,47 @@ const ALLOWLIST: readonly AllowedImport[] = [
    * ROLLINGBOUNDARY-1 set: `lib/brain/orchestration/canonical-phase.ts`
    * re-exports it and nothing else in `lib/brain/` reaches this engine. A pure
    * string switch with a Rule 11 UNKNOWN default, in a file guards 1-3 already
-   * prove has no I/O. No evaluator, no lever, no arbitration, and this grant
-   * cannot widen in any direction. */
+   * prove has no I/O.
+   *
+   * OPTIONLANE-1 (2026-09-07) · THE LINE ABOVE USED TO END "No evaluator, no
+   * lever, no arbitration, and this grant cannot widen in any direction", and
+   * it has now widened by exactly one runtime symbol. Saying so plainly rather
+   * than editing the old sentence out, because a grant that quietly loses its
+   * own limiting clause is how an allowlist stops meaning anything.
+   *
+   * WHAT WIDENED, AND WHY: `resolveArbitrationPriority` — step 9's canonical
+   * owner per `lib/brain/orchestration/steps.ts`. `lib/brain/option-lane.ts`
+   * needs one arbitration for a decision it makes inside `lib/brain`, and the
+   * three alternatives were all worse: a second arbitrator (forbidden
+   * outright by `docs/BRAIN_CONSTITUTION.md`), a direct import from
+   * `lib/brain/option-lane.ts` (a SECOND DOOR — the seal check in
+   * `_move_readjudication.test.ts` caught exactly that and failed), or no
+   * arbitration at all, which would let a supported PUSH outrank a safety
+   * posture.
+   *
+   * WHY IT IS SAFE BY THE SAME TEST AS THE SYMBOL ABOVE: it is PURE. Its
+   * input is a `PriorityContext` of five plain values; it reads no plan, opens
+   * no pool and writes nothing. `_forbidden_inputs.test.ts` already scans what
+   * it may read, and `phase-priority.ts` passes guards 1-3, so it cannot carry
+   * a plan write regardless of caller.
+   *
+   * `PriorityContext` / `ResolvedPriority` / `CanonicalLever` are TYPES and
+   * carry no runtime edge; they are listed so a caller can name what it got
+   * back without reaching past the door for the vocabulary.
+   *
+   * The limiting clause that DOES still hold: no evaluator and no lever. */
   {
     file: ALLOWED_MOVE_ORCHESTRATION_DOOR,
     module: '@/lib/adaptation/canonical/phase-priority',
-    symbols: new Set(['phaseFromAuthoredLabel', 'TrainingPhase']),
+    symbols: new Set([
+      'phaseFromAuthoredLabel', 'TrainingPhase',
+      'resolveArbitrationPriority', 'PriorityContext', 'ResolvedPriority',
+    ]),
+  },
+  {
+    file: ALLOWED_MOVE_ORCHESTRATION_DOOR,
+    module: '@/lib/adaptation/canonical/input',
+    symbols: new Set(['CanonicalLever']),
   },
   /* EVIDENCECLASSIFIER-1 (2026-09-05) · see the grant above for the argument.
    * `workTraceIsCredible` is a PURE function of sample arrays — no plan, no

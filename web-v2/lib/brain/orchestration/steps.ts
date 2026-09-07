@@ -91,6 +91,32 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
     n: 3, name: 'Classify evidence',
     owner: 'lib/plan/adjudication/dose-responsive.ts', ownerExports: 'DOSE_EVIDENCE_READERS',
     state: 'UNWIRED',
+    // OPTIONLANE-1 (2026-09-07) · DELIBERATELY LEFT UNWIRED, and the reason is
+    // worth more than the flip would have been.
+    //
+    // `lib/brain/option-lane.ts` now calls `classifyEvidence` (`lib/evidence/
+    // classify-evidence.ts`) for every canonical run in a 28-day window, on the
+    // live nightly path — the FIRST production caller that 19-tag record has
+    // ever had, and the thing that finally gives `completion.partial` and
+    // `completion.overrun` a downstream decision. Measured on the owner's own
+    // block: 23 runs classified, 2 partial, 1 overrun, 13 unreadable, and those
+    // counts reach the appraisal and the decline sentence.
+    //
+    // That is NOT this step as declared. This row's owner is
+    // `DOSE_EVIDENCE_READERS`, and its blocker — "no production caller
+    // assembles them for a runner" — is STILL TRUE WORD FOR WORD. Flipping the
+    // state because a DIFFERENT evidence classifier got wired is exactly the
+    // borrowed-owner defect this file's own header records being caught at
+    // once already ("step 16 pointed at adjudicate.ts, which IS reachable, and
+    // the gate correctly complained").
+    //
+    // What this does surface is a Rule 16 question that predates this change
+    // and is not mine to settle: TWO modules answer "classify evidence" — the
+    // 19-tag `EvidenceClassification` and the dose-axis readers — and the
+    // constitution allows one owner per question. Either they are two
+    // questions and this row needs a name that says which one it is, or one of
+    // them is the answer and the other should go. Named here rather than
+    // resolved by a state flip.
     blocker: 'the readers exist and are unit-tested; no production caller assembles them '
       + 'for a runner.',
   },
@@ -158,9 +184,31 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
   {
     n: 7, name: 'Generate PUSH/HOLD/PULL_BACK options',
     owner: 'lib/plan/adjudication/adjudicate.ts', ownerExports: 'rankOptions',
-    state: 'SHADOW',
-    blocker: 'reached only through the sequence gate, which spends one finding of eleven. '
-      + 'No caller asks it for a full option set on a live lever.',
+    state: 'WIRED',
+    // OPTIONLANE-1 (2026-09-07) · the blocker read "No caller asks it for a
+    // full option set on a live lever", and that is precisely what changed.
+    //
+    // `lib/brain/option-lane.ts#runOptionLane` builds all THREE
+    // `OptionAppraisal`s for one live lever (weekly volume on the week a
+    // resolved rolling boundary just cleared), appraises each through
+    // `athleteEvidenceFor` + `heuristicRankScore`, and calls `rankOptions` on
+    // the set. It is reached from `app/api/cron/run-adaptations/route.ts`
+    // inside the existing per-runner loop, by a genuine value import, in the
+    // same pass that produced the boundary verdict it is deciding about.
+    //
+    // The answer no longer stops at a log line: the ranked set and its winner
+    // are written to `plan_decision_ledger` (step 10) with a DIRECTION, the
+    // runner-up is queued on `reassessment_schedule` (step 12) with its reason
+    // and a date, and a PUSH becomes a `plan_workout_proposals` card (step 11)
+    // the runner can accept. Measured on the owner's own block 2026-09-20:
+    // PUSH SUPPORTED 0.95, HOLD SUPPORTED 0.95, PULL_BACK SUPPORTED 0.95, and
+    // `rankOptions`' stimulus weighting picked PUSH — the first
+    // `direction: 'UP'` decision this ledger has ever held.
+    //
+    // WHAT THIS DOES NOT CLAIM: `checkPromotion`, `earningGateFor`,
+    // `detectStackedStress`, `classifyStep` and `ceilingClaimFrom` in the same
+    // module still have no production caller. This row is about `rankOptions`,
+    // which is what it names.
   },
   {
     n: 8, name: 'Evaluate the surrounding plan sequence',
@@ -330,7 +378,7 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
  * this note exists so the NEXT audit does not have to re-derive it from
  * scratch to trust it.
  */
-export const WIRED_STEP_PIN = 14;
+export const WIRED_STEP_PIN = 15;
 
 /**
  * NOT_BUILT may only FALL. A step becoming fiction again is a regression.

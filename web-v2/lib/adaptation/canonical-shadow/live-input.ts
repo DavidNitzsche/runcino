@@ -77,6 +77,7 @@ import { gradeStimulus, type StimulusInput } from '@/lib/adaptation/canonical/st
 import { workHrCeilingFor } from '@/lib/adaptation/canonical/work-hr-ceiling';
 import { workTraceIsCredible } from '@/lib/adaptation/canonical/hr-trace-credibility';
 import { classifyRunContext } from '@/lib/evidence/classify-evidence';
+import { nearestCanonicalDistance } from '@/lib/race/canonical-distance';
 /* SUPPLEMENTALGRADE-1 · the ONE resolver for "which run satisfied which
  * prescription" (EXECID-SCAN-1). `classifyDay` is the PURE half of
  * `lib/execution/day-resolver.ts` — no `pool` call in its own body — so it
@@ -142,28 +143,13 @@ function weekStartOf(iso: string): string {
   return addDays(day(iso), -dow);
 }
 
-const CANONICAL_RACE_DISTANCES: ReadonlyArray<{ key: 'FIVE_K' | 'TEN_K' | 'HALF' | 'MARATHON'; mi: number }> = [
-  { key: 'FIVE_K', mi: 3.1 },
-  { key: 'TEN_K', mi: 6.2 },
-  { key: 'HALF', mi: 13.1 },
-  { key: 'MARATHON', mi: 26.2 },
-];
-
-/** Nearest of the four canonical race-distance categories, by absolute
- *  difference. `input.ts`'s `RaceCalendar.raceDistance` is a closed union of
- *  exactly these four; a race at a distance the union does not carry (a 10
- *  mile, an ultra) is mapped to its nearest doctrine category rather than
- *  left unrepresentable — the same posture `Research/22`'s own template
- *  table takes for off-menu distances. */
-function nearestCanonicalDistance(mi: number): 'FIVE_K' | 'TEN_K' | 'HALF' | 'MARATHON' {
-  let best = CANONICAL_RACE_DISTANCES[0];
-  let bestDiff = Math.abs(mi - best.mi);
-  for (const c of CANONICAL_RACE_DISTANCES.slice(1)) {
-    const diff = Math.abs(mi - c.mi);
-    if (diff < bestDiff) { best = c; bestDiff = diff; }
-  }
-  return best.key;
-}
+/* OPTIONLANE-1 (2026-09-07) · `nearestCanonicalDistance` MOVED to
+ * `lib/race/canonical-distance.ts`, a neutral module, so `lib/brain/
+ * option-lane.ts` could use the same mapping without importing across this
+ * directory's wall (`_zero_mutation_scan.test.ts` guard 3 refused that, and
+ * was right to). One definition, in a place both sides may reach. It is
+ * still re-exported on `_internal` below, so this file's own tests are
+ * unchanged. */
 
 /* ══════════════════════════════════════════════════════════════════════════
  * DB ROW SHAPES
