@@ -25,13 +25,15 @@ import { attempt, rowOrNull } from '@/lib/db/read';
 import { expireStaleWorkoutProposals, PROPOSAL_UNANSWERED_EXPIRY_DAYS } from './proposal-expiry';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { addDaysToDayKey } from '@/lib/runtime/day-key';
-import { scheduleReassessment } from '@/lib/ops/reassessment-scheduler';
+import { scheduleReassessment, type SchedulerResult } from '@/lib/ops/reassessment-scheduler';
 import type { AdaptationAction, AdaptationTrigger } from './adapt';
 import { stripResearchCitations } from './strip-citations';
 import type { RepricePayload } from './reprice-payload';
 import { actionFromAdaptation } from '@/lib/brain/proposal/generate/from-adaptation';
 import { serializeAction, type StoredAction } from '@/lib/brain/proposal/serialize';
 import type { ActionRowKind } from '@/lib/brain/proposal/write';
+import { recordDecision, type LedgerWrite } from '@/lib/brain/ledger/decision-ledger';
+import { PLAN_MUTATION_BOUNDARY_MODEL_VERSION, type LedgerLever } from '@/lib/brain/ledger/ledger-entry';
 
 export interface PendingProposal {
   id: number;
@@ -100,6 +102,244 @@ export interface PendingProposal {
   evidence: Record<string, unknown>;
   status: 'pending';
   createdAt: string;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * COMPETINGPROPOSAL-1 (2026-09-07) · ARBITRATION, NOT SILENCE.
+ * ══════════════════════════════════════════════════════════════════════════
+ *
+ * David, verbatim: "'Silently skipped by dedup' is not arbitration. Competing
+ * proposals need a durable winner, loser, reason and reassessment date."
+ *
+ * Before this, the dedup check below was `if (dup) continue` — an existing
+ * pending row on this `plan_workout_id` made every OTHER action detected for
+ * it that night evaporate with no record anywhere. The runner's plan never
+ * moved either way (`AUTOMATIC_ADAPTATION_AUTHORITY` is false), but the
+ * LOSING JUDGEMENT vanished — Rule 11's worst shape, a decision and a dropped
+ * read collapsing into the same nothing.
+ *
+ * This does not stand up a second arbitrator. It reuses the exact two
+ * mechanisms `lib/adaptation/canonical-shadow/live-arbitration-proposals.ts`
+ * already wired for lever-vs-lever competition, at workout granularity
+ * instead of whole-plan granularity:
+ *
+ *   · DEFER_INCOMING — the ordinary case. An existing pending proposal already
+ *     occupies this workout's one decision slot; the new action is not
+ *     dropped, it is queued on `reassessment_schedule` (kind 'DEFERRAL') to be
+ *     asked again once the pending card resolves or expires — the same
+ *     "supported loser" lane the sibling file uses for a deferred lever.
+ *     Nothing is ledgered, because nothing was decided against; it was
+ *     deferred.
+ *
+ *   · SUPERSEDE_EXISTING — the one named exception. CLAUDE.md's own "SAFETY
+ *     defeats every PUSH — no exception, ever" (the exact phrase
+ *     `live-arbitration-proposals.ts`'s header cites) is not new judgement
+ *     invented here; applying it at workout granularity is the extension. An
+ *     EVIDENCED load-reducing action (`describesEvidence` already gates this
+ *     everywhere else in this file — see below) that targets a workout
+ *     currently holding a pending `mark_upgrade` retires that push:
+ *     `status = 'superseded'`, guarded on `status = 'pending'` so a race with
+ *     the runner's own tap can never double-resolve a row. The retired push is
+ *     ledgered on `plan_decision_ledger` with `decision: 'HOLD'`, mirroring
+ *     `SAFETY_HELD_NOT_QUEUED` exactly: held, not scheduled, because safety
+ *     lifts it, never a date.
+ *
+ * Neither branch mutates `plan_workouts`. Both are best-effort against tables
+ * that are NOT applied to production today (migrations 166/167) —
+ * `recordDecision` and `scheduleReassessment` already report `table_absent`
+ * rather than throwing, and this function passes that state straight through
+ * as a logged line rather than manufacturing a fake success (Rule 11, Rule 19).
+ */
+
+/**
+ * `AdaptationAction['kind']` → the ledger's controlled lever vocabulary.
+ *
+ * Every kind here changes ONE session, never a weekly axis, so `VOLUME` /
+ * `PACE` / `LONG_RUN` — which mean the WEEKLY lever in `ledger-entry.ts`'s own
+ * vocabulary, per `live-arbitration-proposals.ts`'s `LEVER_TO_LEDGER_LEVER` —
+ * would overstate what moved. `reschedule` maps onto `SCHEDULE` by name.
+ * `recompute_paces` / `mark_dirty` / `note` / `field_test` ask for nothing
+ * durable at this granularity, hence `RECORD_ONLY`.
+ */
+function ledgerLeverForActionKind(kind: AdaptationAction['kind']): LedgerLever {
+  switch (kind) {
+    case 'reschedule': return 'SCHEDULE';
+    case 'downgrade':
+    case 'shave':
+    case 'mark_upgrade':
+    case 'reshape':
+      return 'SESSION_SHAPE';
+    default:
+      return 'RECORD_ONLY';
+  }
+}
+
+/** One outcome per competing-proposal check. Never silent. */
+export interface CompetingProposalOutcome {
+  readonly outcome: 'DEFER_INCOMING' | 'SUPERSEDE_EXISTING';
+  readonly reassessmentWrite: SchedulerResult<string>['state'] | null;
+  readonly ledgerWrite: LedgerWrite['state'] | null;
+  readonly detail: string;
+}
+
+/**
+ * Arbitrate ONE competing pair: an already-pending proposal on this workout
+ * (`existing`) against the action just detected for the same workout
+ * (`incoming`). Never throws — every write inside is best-effort, matching
+ * the loop's own try/catch and every other write in this file.
+ */
+export async function arbitrateCompetingWorkoutProposal(args: {
+  userUuid: string;
+  workoutId: string;
+  dateISO: string;
+  todayISO: string;
+  incomingKind: AdaptationAction['kind'];
+  incomingWhy: string | null;
+  incomingIsEvidencedSafetyDecline: boolean;
+  existing: { id: number; action_kind: string; created_at: Date };
+}): Promise<CompetingProposalOutcome> {
+  const {
+    userUuid, workoutId, dateISO, todayISO, incomingKind, incomingWhy,
+    incomingIsEvidencedSafetyDecline, existing,
+  } = args;
+
+  const existingIsPush = existing.action_kind === 'mark_upgrade';
+
+  /* Set when the safety-override branch below finds the row it meant to
+   * retire already gone (a race with the runner's own tap, or a prior
+   * sweep). Rather than a silent early return — which would be this exact
+   * defect in miniature — that case falls through to the shared
+   * DEFER_INCOMING path at the bottom, still reasoned and still scheduled. */
+  let raceNote: string | null = null;
+
+  if (incomingIsEvidencedSafetyDecline && existingIsPush) {
+    /* ── SUPERSEDE_EXISTING · safety defeats the pending push ──────────── */
+    const retired = await rowOrNull<{ id: number }>(
+      'plan/workout-proposals · competing-proposal supersede',
+      pool.query<{ id: number }>(
+        `UPDATE plan_workout_proposals
+            SET status = 'superseded', resolved_at = NOW()
+          WHERE id = $1 AND status = 'pending'
+          RETURNING id`,
+        [existing.id],
+      ),
+    );
+
+    if (retired === null) {
+      // The UPDATE itself failed (a DB hiccup, not a race) — logged by
+      // rowOrNull's own `attempt`. Rule 11: this is NOT the same fact as
+      // "no row matched the WHERE clause" below, even though both currently
+      // fall through to the same DEFER_INCOMING path — the note says which
+      // one happened rather than collapsing them.
+      raceNote = `the supersede write for existing proposal #${existing.id} failed outright `
+        + '(not a race · the query itself could not run) · deferred instead of retired';
+    } else if (retired === undefined) {
+      // Raced with the runner's own accept/dismiss, or a prior sweep already
+      // resolved it between the SELECT above and this UPDATE. The slot is
+      // either already free or already answered — either way there is
+      // nothing left to supersede. This does NOT return early: doing so
+      // silently (no ledger, no reassessment) would be the exact defect this
+      // function exists to remove, just relocated into a narrower race
+      // window. Instead fall through to the ordinary DEFER_INCOMING path so
+      // the incoming action is still durably queued rather than dropped.
+      raceNote = `existing proposal #${existing.id} was no longer pending by the time this ran `
+        + '(resolved between the dedup read and the supersede write) · deferred instead of retired';
+    } else {
+      const write = await recordDecision({
+        userUuid,
+        planId: null,
+        planLineageId: `workout-proposal-competing:${workoutId}`,
+        replacedPlanId: null,
+        planVersion: `workout-proposal-competing:${workoutId}:none`,
+        scope: 'WORKOUT',
+        workoutIds: [workoutId],
+        scopeFromISO: todayISO,
+        scopeToISO: null,
+        lever: ledgerLeverForActionKind('mark_upgrade'),
+        direction: 'NEUTRAL',
+        evidence: [],
+        provenance: 'lib/plan/workout-proposals#competing-proposal-safety-override',
+        sourceMode: null,
+        beforeState: { pendingProposalId: existing.id, actionKind: existing.action_kind },
+        afterState: null,
+        authority: 'COACHING_ADAPTATION',
+        authorityVerdict: 'HELD',
+        hold: {
+          owner: 'lib/plan/workout-proposals.ts#arbitrateCompetingWorkoutProposal',
+          blocker: `superseded by an evidenced ${incomingKind} on the same workout: `
+            + `${incomingWhy ?? '(no reason recorded)'}`,
+          expiresWhen: 'the safety concern clears · never a scheduled date, per '
+            + '"SAFETY defeats every PUSH, no exception, ever"',
+        },
+        decision: 'HOLD',
+        proposalId: String(existing.id),
+        proposal: { supersededByActionKind: incomingKind },
+        runnerResponse: null,
+        mutationOutcome: null,
+        mutationViolations: [],
+        explanation: `Pending proposal #${existing.id} (${existing.action_kind}, raised `
+          + `${existing.created_at.toISOString()}) was superseded before the runner answered it: `
+          + `an evidenced ${incomingKind} for the same workout on ${dateISO} outranks a push under `
+          + 'the standing safety-over-push rule.',
+        modelVersion: PLAN_MUTATION_BOUNDARY_MODEL_VERSION,
+        idempotencyKey: `workout-proposal-competing:${workoutId}:${existing.id}:superseded`,
+      });
+
+      return {
+        outcome: 'SUPERSEDE_EXISTING',
+        reassessmentWrite: null,
+        ledgerWrite: write.state,
+        detail: `retired pending push #${existing.id} · ${write.state}`,
+      };
+    }
+  }
+
+  /* ── DEFER_INCOMING · the ordinary case (also reached when the
+   * safety-override above raced and found nothing left to retire) ───────
+   * An existing proposal already occupies this workout's one decision slot.
+   * The incoming action is not dropped — it is queued to be asked again once
+   * the existing card resolves or expires, using the same runway
+   * (`PROPOSAL_UNANSWERED_EXPIRY_DAYS`) the existing card itself is held to. */
+  const assessOnISO = addDaysToDayKey(todayISO, PROPOSAL_UNANSWERED_EXPIRY_DAYS);
+  const write = await scheduleReassessment({
+    userUuid,
+    kind: 'DEFERRAL',
+    reasonCode: 'competing_workout_proposal',
+    reasonDetail: `A proposal is already pending for this workout (#${existing.id}, `
+      + `${existing.action_kind}, raised ${existing.created_at.toISOString()}). This session's `
+      + `${incomingKind}${incomingWhy ? ` ("${incomingWhy}")` : ''} was not raised, to avoid `
+      + 'presenting two competing decisions for one workout. Reassess once the pending proposal '
+      + `is resolved or expires.${raceNote ? ` (${raceNote})` : ''}`,
+    assessOnISO,
+    overdueAfterISO: addDaysToDayKey(assessOnISO, 3),
+    requiredEvidence: [{ workoutId, blockedByProposalId: existing.id }],
+    evidence: [],
+    newestEvidenceISO: todayISO,
+    planId: null,
+    planLineageId: `workout-proposal-competing:${workoutId}`,
+    planVersion: `workout-proposal-competing:${workoutId}:none`,
+    lever: ledgerLeverForActionKind(incomingKind),
+    beforeValue: null,
+    proposedAfterValue: null,
+    magnitude: null,
+    payload: {
+      workoutId, incomingActionKind: incomingKind,
+      blockedByProposalId: existing.id, blockedByActionKind: existing.action_kind,
+      ...(raceNote ? { raceNote } : {}),
+    },
+    idempotencyKey: `workout-proposal-competing:${workoutId}:${existing.id}:${incomingKind}`,
+    queuedAtISO: todayISO,
+  }).catch((e: unknown): SchedulerResult<string> => (
+    { state: 'failed', why: e instanceof Error ? e.message : String(e) }
+  ));
+
+  return {
+    outcome: 'DEFER_INCOMING',
+    reassessmentWrite: write.state,
+    ledgerWrite: null,
+    detail: `deferred ${incomingKind} behind pending #${existing.id} · ${write.state}`
+      + (raceNote ? ` · ${raceNote}` : ''),
+  };
 }
 
 /**
@@ -185,17 +425,16 @@ export async function writeWorkoutProposals(
         // and three times over. A proposal skipped tonight comes back with
         // tomorrow's detection; a stack of duplicate cards has to be cleared
         // by hand.
-        const dup = await rowOrNull<{ id: number }>(
+        const dup = await rowOrNull<{ id: number; action_kind: string; created_at: Date }>(
           'plan/workout-proposals · pending-proposal dedup',
-          pool.query<{ id: number }>(
-            `SELECT id FROM plan_workout_proposals
+          pool.query<{ id: number; action_kind: string; created_at: Date }>(
+            `SELECT id, action_kind, created_at FROM plan_workout_proposals
             WHERE plan_workout_id = $1 AND status = 'pending'
             LIMIT 1`,
             [workoutId],
           ),
         );
         if (dup === null) continue;   // read failed · assume already proposed
-        if (dup) continue;            // pending proposal on record
 
         /* ── THE OBJECTIVE, ON THE LIVE PATH (2026-09-05) ─────────────────
          *
@@ -211,9 +450,55 @@ export async function writeWorkoutProposals(
          *
          * Upward kinds are exempt by construction, because they are not
          * declining anything.
+         *
+         * Computed BEFORE the dedup branch below because COMPETINGPROPOSAL-1's
+         * safety-override needs to know whether the incoming action is an
+         * EVIDENCED decline, not just a load-reducing one.
          */
         const reducesLoad = action.kind === 'downgrade' || action.kind === 'shave';
-        if (reducesLoad && !describesEvidence(action.why ?? '')) {
+        const isEvidencedDecline = reducesLoad && describesEvidence(action.why ?? '');
+
+        /* ── COMPETINGPROPOSAL-1 (2026-09-07) · ARBITRATION, NOT SILENCE ────
+         * See the header comment above `arbitrateCompetingWorkoutProposal`
+         * for the full rationale. `dup` is durable already (it is a row in
+         * this very table); what used to be missing is a durable, reasoned
+         * account of what happens to the action that lost the slot. */
+        let supersededProposal: { id: number; actionKind: string; createdAtISO: string } | null = null;
+        if (dup) {
+          const arbitration = await arbitrateCompetingWorkoutProposal({
+            userUuid,
+            workoutId,
+            dateISO: row.date_iso,
+            todayISO: today,
+            incomingKind: action.kind,
+            incomingWhy: action.why ?? null,
+            incomingIsEvidencedSafetyDecline: isEvidencedDecline,
+            existing: dup,
+          }).catch((e: unknown) => {
+            console.error(
+              `[workout-proposals] competing-proposal arbitration threw for workout ${workoutId} `
+              + `· falling back to the ordinary dedup skip · `
+              + `${e instanceof Error ? e.message : String(e)}`,
+            );
+            return null;
+          });
+
+          if (arbitration === null) continue;  // arbitration itself broke · fail closed, as before
+
+          console.log(
+            `[workout-proposals] competing proposal on ${workoutId} · ${arbitration.outcome} · `
+            + `${arbitration.detail}`,
+          );
+
+          if (arbitration.outcome === 'DEFER_INCOMING') continue;
+          // SUPERSEDE_EXISTING · the old pending push is retired; fall through
+          // and let this action take the (now-free) pending slot.
+          supersededProposal = {
+            id: dup.id, actionKind: dup.action_kind, createdAtISO: dup.created_at.toISOString(),
+          };
+        }
+
+        if (reducesLoad && !isEvidencedDecline) {
           skippedForUnevidencedDecline.push(
             `${action.kind} on ${workoutIds.join(',')}: "${action.why ?? ''}"`,
           );
@@ -269,6 +554,11 @@ export async function writeWorkoutProposals(
           ...evidence,
           planned_type: row.type,
           planned_distance_mi: row.distance_mi === null ? null : Number(row.distance_mi),
+          /* COMPETINGPROPOSAL-1 · this row's own durable record of what it
+           * beat, so a reader of `plan_workout_proposals` alone — without
+           * cross-referencing `plan_decision_ledger` — can see this was not
+           * the only proposal raised for this workout tonight. */
+          ...(supersededProposal ? { superseded_proposal: supersededProposal } : {}),
         };
 
         const inserted = (await pool.query<{ id: number }>(
