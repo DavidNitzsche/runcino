@@ -81,6 +81,10 @@ struct BlockV5: View {
 
     @State private var openWeekID: String?
     @State private var openLibraryID: String?
+    /// DECISIONPLACEMENT-1 · which decision's reasoning is open. See
+    /// `TodayBeforeV5`'s identical field and `DecisionsSectionV5`'s header
+    /// for why this lives here rather than inside the shared component.
+    @State private var openProposalDetail: V5Proposal? = nil
 
     @State private var planSheetOpen: Bool
     @State private var stage: PlanStage
@@ -154,6 +158,11 @@ struct BlockV5: View {
                 // one week, "Weeks in 1 of 1", and a blank bar above it.
                 if model.phases.count > 1 { arcSection }
                 coachSection
+                // DECISIONPLACEMENT-1 (2026-09-07) · everything pending that
+                // is not about today lives here, next to the week it is
+                // actually about, rather than on Today. See
+                // `DecisionsSectionV5`'s header for David's ruling.
+                decisionsSection
                 soFarSection
                 // WEEKANSWERS-1 (2026-09-02) · the block's own five answers.
                 // Absent on a block authored before them, which draws nothing.
@@ -206,6 +215,20 @@ struct BlockV5: View {
             // ScrollView's ideal height would collapse them.
             V5SheetHost(isPresented: $planSheetOpen) {
                 planSheetBody
+            }
+
+            // DECISIONPLACEMENT-1 · V5PROPOSALSURFACE-1's detail sheet,
+            // mirrored from `TodayBeforeV5`. Sibling of the sheet above
+            // inside the SAME `.overlay`, which SwiftUI composes like a
+            // ZStack — both read this ScrollView's real screen-sized frame.
+            V5SheetHost(
+                isPresented: Binding(
+                    get: { openProposalDetail != nil },
+                    set: { if !$0 { openProposalDetail = nil } }),
+                title: "The reasoning",
+                tall: true,
+            ) {
+                if let p = openProposalDetail { ProposalDetailV5(proposal: p) }
             }
         }
     }
@@ -347,6 +370,17 @@ struct BlockV5: View {
             }
         }
         .padding(.horizontal, V5.S.s4)
+    }
+
+    // MARK: Pending decisions
+
+    /// DECISIONPLACEMENT-1 · see `DecisionsSectionV5`'s header.
+    private var decisionsSection: some View {
+        DecisionsSectionV5(
+            proposals: model.proposals ?? [],
+            proposalsRead: model.proposalsRead,
+            onDetails: { openProposalDetail = $0 },
+        )
     }
 
     // MARK: So far in this block

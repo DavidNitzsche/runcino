@@ -41,6 +41,7 @@ import type {
   V5ProposalDetailWire,
   V5ProposalDirection,
   V5ProposalOptionWire,
+  V5ProposalReadWire,
   V5ProposalStanding,
   V5ProposalWire,
   V5ProposalWorkoutWire,
@@ -294,6 +295,90 @@ export function toWire(p: PendingProposal, todayISO: string): V5ProposalWire | n
     why,
     detail: detailFor(p),
   };
+}
+
+/**
+ * DECISIONPLACEMENT-1 (2026-09-07) · the one loader, so Today and Block never
+ * answer "what's pending" two different ways.
+ *
+ * Extracted verbatim from `app/api/v5/today/route.ts`'s private
+ * `loadV5Proposals` (V5PROPOSAL-1 / WITHHOLDLOG-1), which is why the log
+ * lines below still say `[v5/today]` — they are Railway diagnostics, not
+ * runner-facing text, and renaming them would only cost grep history for
+ * nothing a runner will ever see.
+ *
+ * Returns every pending proposal, unfiltered by date. WHICH surface shows
+ * WHICH proposal is not this function's question — David's ruling
+ * (2026-09-07): "This decision card should go in the block section though I
+ * think. It's weird to have it on TODAY" — a HOLD about a long run thirteen
+ * days out has no business on the screen for right now. `dateISO` is the
+ * caller's filter: `/api/v5/today` keeps `dateISO === todayISO`, `/api/v5/
+ * block` keeps everything else. A pending proposal's anchor can never be
+ * BEFORE today (`write.ts`'s "the anchor day is already past" guard refuses
+ * that at write time), so the two filters partition the list completely —
+ * neither surface can silently drop a card between them.
+ */
+export async function loadV5PendingProposals(
+  userId: string,
+): Promise<{ items: V5ProposalWire[]; read: V5ProposalReadWire; todayISO: string | null }> {
+  try {
+    const [{ loadPendingProposals }, { runnerToday }] = await Promise.all([
+      import('@/lib/plan/workout-proposals'),
+      import('@/lib/runtime/runner-tz'),
+    ]);
+    // Read `today` FIRST. `items` is always `[]` on any failure branch below,
+    // so `todayISO` only matters to a caller's date filter when there is
+    // something to filter — but it is computed here, once, rather than
+    // re-derived per branch, so a throw from `runnerToday` itself reaches the
+    // same catch as a throw from `loadPendingProposals` instead of needing a
+    // second fallback.
+    const todayISO = await runnerToday(userId);
+    const read = await loadPendingProposals(userId);
+    if (!read.ok) {
+      console.log('[v5/today] proposal read FAILED, showing none · '
+        + 'this is not the same fact as having none · ' + read.error.message.slice(0, 160));
+      return { items: [], read: 'failed', todayISO };
+    }
+    const items = read.proposals
+      .map((r) => toWire(r, todayISO))
+      .filter((w): w is V5ProposalWire => w !== null);
+    /* ── WITHHOLDLOG-1 (2026-09-05) · A CARD WITHHELD IS SAID OUT LOUD ─────
+     *
+     * `toWire` answers null for a row it cannot draw — a kind nobody has
+     * decided how to render, or a decision with no stated reason — and
+     * withholding is the right call: a guessed direction on a card the
+     * runner may act on is worse than no card.
+     *
+     * What was wrong is that it happened in SILENCE. Proven on a scratch
+     * database by writing a proposal whose `action_kind` is a word nothing
+     * has been taught: the row was written, the read succeeded, the card
+     * never appeared, and every layer reported success. Rule 11 says a
+     * withheld read is a third fact rather than an absence. It is a LOG and
+     * not a wire field on purpose: the runner is owed a correct screen, not
+     * an engine console. */
+    const withheld = read.proposals.length - items.length;
+    if (withheld > 0) {
+      const kinds = read.proposals
+        .filter((r) => toWire(r, todayISO) === null)
+        .map((r) => `${r.id}:${r.actionKind}`)
+        .join(', ');
+      console.log(
+        `[v5/today] ${withheld} pending proposal(s) WITHHELD from the phone because nothing `
+        + `here knows how to draw them · ${kinds} · the runner sees no card and the rows stay `
+        + 'pending; this is not the same fact as having none',
+      );
+    }
+    return { items, read: 'ok', todayISO };
+  } catch (err) {
+    console.log('[v5/today] proposal read THREW, showing none · '
+      + 'this is not the same fact as having none · ' + String(err).slice(0, 160));
+    // `todayISO: null` here is Rule 11, not a coerced guess: `items` is
+    // always `[]` on this path, so a caller's date filter has nothing to
+    // apply against — inventing a date (`new Date()`) would assert a fact
+    // ("this is the runner's today") this function does not actually know,
+    // for a value nothing downstream reads.
+    return { items: [], read: 'failed', todayISO: null };
+  }
 }
 
 // ── evidence readers ───────────────────────────────────────────────────────

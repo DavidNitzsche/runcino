@@ -72,6 +72,7 @@ import {
   resolveCoachingThesis, wireThesis, composeCoachLine,
   type ThesisWire, type CoachingThesis,
 } from '@/lib/training/coaching-thesis';
+import { loadV5PendingProposals } from '@/lib/faff/v5-proposals';
 
 // ── small local formatters — presentation only, no doctrine here ───────────
 
@@ -848,9 +849,16 @@ export async function loadV5Block(userId: string) {
     raceDistanceMi = distanceMiFromLabel(label);
   }
 
-  const [library, scenarios, thesis] = await Promise.all([
+  const [library, scenarios, proposalRead, thesis] = await Promise.all([
     buildLibrary(state, raceDistanceMi),
     buildScenarios(userId, state.today),
+    // DECISIONPLACEMENT-1 (2026-09-07) · everything pending that is NOT
+    // about today (Today keeps those) — see `loadV5PendingProposals`'s own
+    // header for David's ruling. `null` todayISO on a failed read means
+    // "unknown", not "today" (Rule 11); showing nothing rather than
+    // guessing which cards belong here is the safe direction on a read that
+    // already failed.
+    loadV5PendingProposals(userId),
     // THE COACHING THESIS, ONCE, AT BLOCK LEVEL (Constitution §F).
     //
     // Quoted, never re-written. `buildCoachLine` above narrates WHERE in the
@@ -889,5 +897,10 @@ export async function loadV5Block(userId: string) {
     blockAnswers: buildBlockAnswers(state),
     library,
     scenarios,
+    // DECISIONPLACEMENT-1 · everything pending that is not about today.
+    proposals: proposalRead.todayISO === null
+      ? []
+      : proposalRead.items.filter((w) => w.dateISO !== proposalRead.todayISO),
+    proposalsRead: proposalRead.read,
   };
 }

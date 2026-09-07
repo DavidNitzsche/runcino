@@ -1035,6 +1035,15 @@ struct V5Block: Decodable, Equatable {
     /// The five change-the-plan scenarios this runner can actually reach right
     /// now, each with its refusal reason if it cannot.
     let scenarios: [V5Scenario]
+    /// DECISIONPLACEMENT-1 (2026-09-07) · everything pending that is NOT
+    /// about today — Today keeps those (`V5Today.proposals`). David's
+    /// ruling: a HOLD about a long run thirteen days out has no business on
+    /// the screen for right now. Optional so a server response from before
+    /// this field existed still decodes as "none", the same convention
+    /// `V5Today.proposals` already uses.
+    let proposals: [V5Proposal]?
+    /// See `V5Today.proposalsRead`. `nil` reads as `"ok"`.
+    let proposalsRead: String?
 }
 
 struct V5Phase: Decodable, Equatable, Hashable, Identifiable {
@@ -2514,6 +2523,7 @@ extension V5Panel {
 extension V5Block {
     enum K: String, CodingKey {
         case panel, phases, coachLine, thesis, soFar, weeks, library, scenarios, blockAnswers
+        case proposals, proposalsRead
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -2530,6 +2540,26 @@ extension V5Block {
         // carries no key and must draw no section, while an empty array would
         // be a block that answered nothing and is worth seeing as a defect.
         blockAnswers = try? c.decodeIfPresent([V5Answer].self, forKey: .blockAnswers)
+        // DECISIONPLACEMENT-1 · same hardening `V5Today` already uses: a
+        // decode failure on one malformed proposal must not take the rest of
+        // the block down with it, and reads as `proposalsRead == "failed"`
+        // rather than silently reporting zero pending decisions.
+        var proposalsDecodeFailed = false
+        do {
+            proposals = try c.decodeIfPresent([V5Proposal].self, forKey: .proposals)
+        } catch {
+            proposals = nil
+            proposalsDecodeFailed = true
+        }
+        if proposalsDecodeFailed {
+            proposalsRead = "failed"
+        } else {
+            do {
+                proposalsRead = try c.decodeIfPresent(String.self, forKey: .proposalsRead)
+            } catch {
+                proposalsRead = "failed"
+            }
+        }
     }
 }
 

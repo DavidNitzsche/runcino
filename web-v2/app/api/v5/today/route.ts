@@ -1,5 +1,6 @@
 import type { V5ProposalReadWire, V5ProposalWire } from '@/lib/faff/v5-today';
 import { planVersionOrNull } from '@/lib/plan/plan-version';
+import { loadV5PendingProposals } from '@/lib/faff/v5-proposals';
 /**
  * GET /api/v5/today
  *
@@ -1820,8 +1821,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // whose one Swift caller is the v4 shell behind -faffLegacy, so the app
       // that ships had no proposal surface at all.
       {
-        const proposalRead = await loadV5Proposals(userId);
-        ctx.proposals = proposalRead.items;
+        // DECISIONPLACEMENT-1 (2026-09-07) · Today shows only what is
+        // pending FOR TODAY. A card whose `dateISO` is any other day belongs
+        // on Block, next to the week it is actually about — see
+        // `loadV5PendingProposals`'s own header for David's ruling.
+        const proposalRead = await loadV5PendingProposals(userId);
+        ctx.proposals = proposalRead.todayISO === null
+          ? []
+          : proposalRead.items.filter((w) => w.dateISO === proposalRead.todayISO);
         ctx.proposalsRead = proposalRead.read;
       }
       return NextResponse.json(composeV5Today(ctx));
@@ -2271,8 +2278,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // whose one Swift caller is the v4 shell behind -faffLegacy, so the app
       // that ships had no proposal surface at all.
       {
-        const proposalRead = await loadV5Proposals(userId);
-        ctx.proposals = proposalRead.items;
+        // DECISIONPLACEMENT-1 (2026-09-07) · Today shows only what is
+        // pending FOR TODAY. A card whose `dateISO` is any other day belongs
+        // on Block, next to the week it is actually about — see
+        // `loadV5PendingProposals`'s own header for David's ruling.
+        const proposalRead = await loadV5PendingProposals(userId);
+        ctx.proposals = proposalRead.todayISO === null
+          ? []
+          : proposalRead.items.filter((w) => w.dateISO === proposalRead.todayISO);
         ctx.proposalsRead = proposalRead.read;
       }
 
@@ -2342,81 +2355,6 @@ function emptyContext(
 const BLOCK_NOTE_KINDS = new Set([
   'recovery_complete', 'plan_elapsed', 'race_graduate', 'maintenance_to_raceprep',
 ]);
-/**
- * V5PROPOSAL-1 · pending adaptations, mapped for the phone.
- *
- * Rule 11 on the failure path, and this is the SECOND cut of it. The first
- * returned an empty list plus a log line, on the argument that the route
- * cannot refuse outright without blanking Today. That much was right; what it
- * missed is that the log line goes to Railway and the runner gets silence, so
- * from his side "the database did not answer" and "your coach has nothing to
- * say" were still one fact.
- *
- * So the failure now travels ON THE WIRE. The list is still empty, Today still
- * renders, and `proposalsRead: 'failed'` is what lets the phone draw the fault
- * treatment instead of nothing at all.
- */
-async function loadV5Proposals(
-  userId: string,
-): Promise<{ items: V5ProposalWire[]; read: V5ProposalReadWire }> {
-  try {
-    const [{ loadPendingProposals }, { toWire }, { runnerToday }] = await Promise.all([
-      import('@/lib/plan/workout-proposals'),
-      import('@/lib/faff/v5-proposals'),
-      import('@/lib/runtime/runner-tz'),
-    ]);
-    const read = await loadPendingProposals(userId);
-    if (!read.ok) {
-      console.log('[v5/today] proposal read FAILED, showing none · '
-        + 'this is not the same fact as having none · ' + read.error.message.slice(0, 160));
-      return { items: [], read: 'failed' };
-    }
-    // The runner's own day decides whether a reassessment date is still in the
-    // future, which is what separates a deferral from a live question.
-    const today = await runnerToday(userId);
-    const items = read.proposals
-      .map((r) => toWire(r, today))
-      .filter((w): w is V5ProposalWire => w !== null);
-    /* ── WITHHOLDLOG-1 (2026-09-05) · A CARD WITHHELD IS SAID OUT LOUD ───────
-     *
-     * `toWire` answers null for a row it cannot draw — a kind nobody has
-     * decided how to render, or a decision with no stated reason — and
-     * withholding is the right call: a guessed direction on a card the runner
-     * may act on is worse than no card.
-     *
-     * What was wrong is that it happened in SILENCE. Proven on a scratch
-     * database by writing a proposal whose `action_kind` is a word nothing has
-     * been taught: the row was written, the read succeeded, the card never
-     * appeared, and every layer reported success. That is this codebase's
-     * signature failure arriving on the one surface where the runner would
-     * never know to look for it, and Rule 11 says a withheld read is a third
-     * fact rather than an absence.
-     *
-     * It is a LOG and not a wire field on purpose: the runner is owed a
-     * correct screen, not an engine console, and there is nothing he can do
-     * about a lever his phone build predates. The person who can do something
-     * is whoever added the kind, and this is what tells them.
-     */
-    const withheld = read.proposals.length - items.length;
-    if (withheld > 0) {
-      const kinds = read.proposals
-        .filter((r) => toWire(r, today) === null)
-        .map((r) => `${r.id}:${r.actionKind}`)
-        .join(', ');
-      console.log(
-        `[v5/today] ${withheld} pending proposal(s) WITHHELD from the phone because nothing `
-        + `here knows how to draw them · ${kinds} · the runner sees no card and the rows stay `
-        + 'pending; this is not the same fact as having none',
-      );
-    }
-    return { items, read: 'ok' };
-  } catch (err) {
-    console.log('[v5/today] proposal read THREW, showing none · '
-      + 'this is not the same fact as having none · ' + String(err).slice(0, 160));
-    return { items: [], read: 'failed' };
-  }
-}
-
 async function loadBlockNote(
   userId: string,
 ): Promise<{ title: string; body: string } | null> {

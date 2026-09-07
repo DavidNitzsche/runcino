@@ -226,18 +226,10 @@ struct TodayBeforeV5: View {
     /// V5PROPOSALSURFACE-1 · which decision's reasoning is open. The proposal
     /// itself, not an id, because the sheet draws from the payload it was
     /// handed and never re-reads: a "Details" that could disagree with the
-    /// card it opened from would be Rule 16 inside one interaction.
+    /// card it opened from would be Rule 16 inside one interaction. Hosted
+    /// here (not inside `DecisionsSectionV5`) because `V5SheetHost` needs
+    /// its container's real screen frame — see that file's header.
     @State private var openProposalDetail: V5Proposal? = nil
-    /// ACCEPTVOICE-1 · the three endings of an answer, kept apart.
-    /// `answerRefusal` holds the ENGINE'S OWN sentence; `answerFailed` is our
-    /// own failure and carries no sentence from the server because there was
-    /// none. Both clear on the next tap, so a stale message can never sit
-    /// over a fresh attempt.
-    @State private var answerRefusal: String? = nil
-    @State private var answerFailed = false
-    /// Which card is mid-flight. A tap used to give no feedback at all for
-    /// the whole 12-second timeout `authedSend` imposes.
-    @State private var answeringProposalID: String? = nil
 
 
     /// The strip's plate — which of the seven cells wears the "you are here"
@@ -520,104 +512,18 @@ struct TodayBeforeV5: View {
 
     // MARK: - Pending adaptations
 
-    /// V5PROPOSAL-1 · the engine asking for an answer.
-    ///
-    /// ABOVE the run itself and below the block note, because a change to what
-    /// the runner is about to do has to be read before the thing it changes.
-    /// Drawn only when there is something to answer: an empty list draws
-    /// nothing at all, which is the correct rendering of "no decision pending"
-    /// and is what `PRODUCT_UX_SIMPLIFICATION_DOCTRINE` asks for.
-    @ViewBuilder
+    /// V5PROPOSAL-1 · the engine asking for an answer, filtered server-side
+    /// to today's own date (`app/api/v5/today/route.ts`'s
+    /// `loadV5PendingProposals` call). ABOVE the run itself and below the
+    /// block note, because a change to what the runner is about to do has to
+    /// be read before the thing it changes. See `DecisionsSectionV5` (Rule
+    /// 16 — Block draws the same component over the rest of the list).
     private var proposalsSection: some View {
-        let pending = model.proposals ?? []
-        // Rule 11 · three states, not two. `proposalsRead == "failed"` means
-        // the list is empty because the server could not read, which is the
-        // opposite fact from having nothing pending. Silence would tell the
-        // runner his coach has nothing to say.
-        let readFailed = model.proposalsRead == "failed"
-        if !pending.isEmpty || readFailed {
-            VStack(alignment: .leading, spacing: V5.S.s10) {
-                // NOT "YOUR CALL". Only an open proposal is the runner's call;
-                // a condition, a deferral and an applied decision are not, and
-                // each card says which it is. A header that asserted otherwise
-                // would contradict the cards under it, which Rule 17 counts as
-                // a correctness bug rather than mere repetition.
-                V5SectionLabel(text: "DECISIONS", color: V5.textSecondary)
-                if readFailed {
-                    ErrorNote(text: "Any decision waiting on you did not load. "
-                              + "Nothing has been applied, we just cannot see it.")
-                }
-                // ACCEPTVOICE-1 · the engine's own refusal, above the cards
-                // it is about. Rendered as `Alert`, not `ErrorNote`: a
-                // refusal is an ANSWER, and drawing it in the outage
-                // treatment would say we went blind about a coach that spoke
-                // clearly.
-                if let refusal = answerRefusal {
-                    Alert(text: refusal)
-                }
-                // And the ending that is ours, not the engine's.
-                if answerFailed {
-                    ErrorNote(text: "That did not go through, and nothing has changed. "
-                              + "Try again.")
-                }
-                ForEach(pending) { p in
-                    ProposalCardV5(
-                        proposal: p,
-                        answering: answeringProposalID == p.id,
-                        onAnswer: { accept in
-                            Task { await answerProposal(p, accept: accept) }
-                        },
-                        onDetails: { openProposalDetail = p },
-                    )
-                }
-            }
-        }
-    }
-
-    /// ACCEPTVOICE-1 (2026-09-05) · A FAILED TAP MUST NEVER LOOK SUCCESSFUL,
-    /// AND MUST NEVER LOOK LIKE NOTHING.
-    ///
-    /// This was `_ = try? await API.answerProposal(...)` followed
-    /// unconditionally by a refresh. Three separate endings — a request that
-    /// was never sent, a request that failed in flight, and an engine that
-    /// REFUSED in a sentence — were all discarded, and the refresh then drew
-    /// the same still-pending card in every case, including the successful
-    /// one. So the button had exactly one rendering for "it worked" and for
-    /// "it did nothing", and that is the hole V5ACCEPTURL-1 lived in for its
-    /// whole life: the accept and leave-it buttons never sent a request, and
-    /// no screen could say so.
-    ///
-    /// Now: `.ok` refreshes (the server owns the mutation, and the card
-    /// disappearing is the confirmation). `.refused` prints the engine's own
-    /// words. `.failed` and a thrown error print our own sentence, and
-    /// deliberately DO NOT refresh — a refresh after a failed write invites
-    /// the runner to read an unchanged screen as a completed action.
-    ///
-    /// Rule 11: three facts, three renderings. Rule 16: the refusal sentence
-    /// is the engine's, never one the phone invented on its behalf.
-    private func answerProposal(_ p: V5Proposal, accept: Bool) async {
-        answerRefusal = nil
-        answerFailed = false
-        answeringProposalID = p.id
-        defer { answeringProposalID = nil }
-        do {
-            switch try await API.answerProposal(id: p.id, accept: accept) {
-            case .ok:
-                NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
-                // The block moved, so the snapshot the week strip reads has
-                // to move with it. Same named trigger the reschedule path
-                // uses (PLANSNAPSHOT-1); accepting a proposal is a plan
-                // mutation by exactly the same definition and was not
-                // posting it.
-                NotificationCenter.default.post(name: .faffPlanMutated, object: nil)
-            case .refused(let text):
-                answerRefusal = text
-            case .failed:
-                answerFailed = true
-            }
-        } catch {
-            answerFailed = true
-        }
+        DecisionsSectionV5(
+            proposals: model.proposals ?? [],
+            proposalsRead: model.proposalsRead,
+            onDetails: { openProposalDetail = $0 },
+        )
     }
 
     @ViewBuilder
