@@ -167,6 +167,13 @@ private extension AnyTransition {
 
 struct TodayHostV5: View {
     @StateObject private var surface = V5Surfaces.today()
+    /// CALCELLWEEK-1 (2026-09-07) · the Training calendar sheet needs every
+    /// week of the block, not just the current one — `/api/v5/today` only
+    /// ever carries `weekStrip`'s own seven days. `V5Surfaces.block()`'s
+    /// init reads straight from `AppCache` with no network call, and
+    /// `prefetchAllOnLaunch()` already warms that cache on every launch, so
+    /// this is a free read here, not a new fetch this screen owns.
+    @StateObject private var blockSurface = V5Surfaces.block()
     @Binding var path: [V5Route]
     /// The runner's own name, for the account sheet.
     var accountName: String = ""
@@ -732,6 +739,12 @@ struct TodayHostV5: View {
             // restored; this fills in a fresher snapshot behind it exactly
             // as `WEEKCACHE-1`'s prefetch does for the week strip.
             Task { await syncPlanSnapshot() }
+            // CALCELLWEEK-1 · not awaited, same reasoning: `blockSurface.
+            // model` already reads whatever `prefetchAllOnLaunch()` cached,
+            // so the calendar sheet works even on the very first frame;
+            // this only refreshes it behind that, for a runner who opens
+            // the calendar before Block's own tab has loaded this session.
+            Task { await blockSurface.load() }
             // The FIRST tap a runner makes is overwhelmingly a neighbour of
             // today — yesterday, tomorrow. `goTo` prefetches around wherever
             // it lands, but that is by definition one step too late for the
@@ -1913,24 +1926,70 @@ struct TodayHostV5: View {
         }
     }
 
-    /// The training calendar. Built from the week strip the payload already
-    /// carries, so the sheet and the strip can never disagree about a day.
+    /// The training calendar. The current week is built from the week strip
+    /// the Today payload already carries, so the sheet and the strip can
+    /// never disagree about it.
+    ///
+    /// CALCELLWEEK-1 (2026-09-07) · every OTHER week now comes from
+    /// `blockSurface.model?.weeks`, which is the whole block, not just seven
+    /// days. Before this, `calendarWeeks` returned exactly one week no
+    /// matter how far into a fifteen-week block the runner was — the sheet's
+    /// own multi-week scaffold (the `ForEach`, the "opens on this week, not
+    /// the top of the block" scroll behaviour) had nothing but that one week
+    /// to ever show. David: "I can't select a specific day in any of the
+    /// future weeks." The block's own `V5BlockDay.dateISO`/`type`/`isDone`
+    /// fields were added 2026-08-20 for exactly this purpose and never
+    /// wired up on this side — see that field's own comment in APIV5.swift.
     private func calendarWeeks(_ model: V5Today) -> [TodayCalendarWeek] {
         guard !model.weekStrip.isEmpty else { return [] }
-        return [
-            TodayCalendarWeek(
-                id: "current",
-                range: model.panel.weekLine ?? "This week",
-                days: model.weekStrip.map { d in
-                    TodayCalendarDay(id: d.id,
-                                     label: "\(d.letter) \(d.number)",
-                                     sub: d.isRest ? "Rest day" : d.dayState.capitalized,
-                                     status: d.isToday ? .measured("Today")
-                                           : d.isDone ? .measured("Done") : nil,
-                                     isToday: d.isToday)
-                }
-            )
-        ]
+        let current = TodayCalendarWeek(
+            id: "current",
+            range: model.panel.weekLine ?? "This week",
+            days: model.weekStrip.map { d in
+                TodayCalendarDay(id: d.id,
+                                 label: "\(d.letter) \(d.number)",
+                                 sub: d.isRest ? "Rest day" : d.dayState.capitalized,
+                                 status: d.isToday ? .measured("Today")
+                                       : d.isDone ? .measured("Done") : nil,
+                                 isToday: d.isToday)
+            }
+        )
+        // `isCurrent` skips the block's own copy of the current week — the
+        // strip above is the authority for it, and showing both would be the
+        // same week listed twice with two different day-label conventions.
+        let others = (blockSurface.model?.weeks ?? [])
+            .filter { !$0.isCurrent }
+            .map { w in
+                TodayCalendarWeek(
+                    id: w.id,
+                    range: w.flag == w.label ? w.label : "\(w.label) · \(w.flag)",
+                    sub: w.miles.text,
+                    days: w.days.map { d in
+                        TodayCalendarDay(
+                            id: d.id,
+                            label: Self.calendarDayLabel(d.dateISO),
+                            sub: d.type ?? (d.race ? "Race" : "Easy"),
+                            status: d.isToday == true ? .measured("Today")
+                                  : d.isDone == true ? .measured("Done") : nil,
+                            isToday: d.isToday,
+                            dateISO: d.dateISO)
+                    }
+                )
+            }
+        return [current] + others
+    }
+
+    /// "M 7" from a `yyyy-MM-dd` string — the same single-letter-weekday +
+    /// day-number shape the week strip's own `letter`/`number` pair draws,
+    /// derived here because `V5BlockDay` (unlike `weekStrip`'s rows) carries
+    /// only the raw date. Falls back to the date string itself on a parse
+    /// failure rather than drawing a blank row.
+    private static func calendarDayLabel(_ dateISO: String?) -> String {
+        guard let dateISO, let date = Self.iso.date(from: dateISO) else { return dateISO ?? "" }
+        let df = DateFormatter()
+        df.dateFormat = "EEEEE d"
+        df.timeZone = TimeZone(identifier: "UTC")
+        return df.string(from: date)
     }
 
     private var coldStart: some View {

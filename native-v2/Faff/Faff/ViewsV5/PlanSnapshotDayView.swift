@@ -104,13 +104,32 @@ struct PlanSnapshotDayView: View {
         return "\(speed) mph · \(incline)"
     }
 
+    /// ROUNDDURATION-1 (2026-09-07) · byte-for-byte the same rule as
+    /// `fmtMinutesCasual` (`lib/format/run.ts`), which composes the hero
+    /// panel's own "about N min"/"about Nh Mm" kicker
+    /// (`HostsV5.swift`'s `snapshotDay.kicker`) from this SAME
+    /// `card.totalDurationSec`. Before this, `statLine` truncated
+    /// (`Int(sec / 60)`) while the hero rounded, so a 42.6-minute estimate
+    /// read "about 43 min" in the hero and "about 42 min" four lines below
+    /// it on David's own phone — one quantity, two answers, on the one
+    /// screen whose whole job is saying how long the day takes. Kept as a
+    /// second implementation only because the two live in different
+    /// languages; the arithmetic itself is a direct port, not a rewrite.
+    private static func fmtMinutesCasual(_ min: Double) -> String {
+        let whole = Int(min.rounded())
+        if whole < 60 { return "\(whole) min" }
+        let h = whole / 60
+        let m = whole % 60
+        return m == 0 ? "\(h)h" : "\(h)h \(m)m"
+    }
+
     private func statLine(_ card: PlanSnapshotCard) -> String {
         var parts: [String] = []
         if card.total_mi > 0 {
             parts.append(String(format: "%.1f mi", card.total_mi))
         }
         if let sec = card.totalDurationSec, sec > 0 {
-            parts.append("about \(Int(sec / 60)) min")
+            parts.append("about \(Self.fmtMinutesCasual(sec / 60))")
         }
         return parts.joined(separator: " · ")
     }

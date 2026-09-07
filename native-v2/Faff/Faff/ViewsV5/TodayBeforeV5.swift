@@ -71,13 +71,25 @@ struct TodayCalendarDay: Identifiable, Equatable {
     let sub: String
     let status: FaffValue?
     let isToday: Bool
+    /// CALCELLWEEK-1 (2026-09-07) · explicit, for every week EXCEPT the
+    /// current one. `id` for a block-sourced day is the plan_workout row id
+    /// (`wko_xxxx`), which embeds no date — only `weekStrip`'s own rows
+    /// (the current week) can be resolved back to a date by id lookup.
+    /// David: "I can't select a specific day in any of the future weeks."
+    /// Root cause: `calendarWeeks` only ever built the current week, so
+    /// every other week was invisible before it could even be tapped, and
+    /// once visible its rows would still have failed to resolve to a date.
+    /// This field is that missing half — see `HostsV5.pickDay`.
+    let dateISO: String?
 
-    init(id: String, label: String, sub: String, status: FaffValue? = nil, isToday: Bool = false) {
+    init(id: String, label: String, sub: String, status: FaffValue? = nil, isToday: Bool = false,
+         dateISO: String? = nil) {
         self.id = id
         self.label = label
         self.sub = sub
         self.status = status
         self.isToday = isToday
+        self.dateISO = dateISO
     }
 }
 
@@ -916,7 +928,11 @@ struct TodayBeforeV5: View {
                                 // may carry one.
                                 ListRow(label: day.label, sub: day.sub, value: day.status, raised: day.isToday,
                                         onTap: {
-                                            onPickDay(day.id)
+                                            // CALCELLWEEK-1 · the current week's rows resolve
+                                            // by id through `model.weekStrip`; every other
+                                            // week's rows carry no date in their id at all, so
+                                            // they need it passed explicitly.
+                                            onPickDay(day.dateISO ?? day.id)
                                             withAnimation(V5.Motion.fill) { calendarOpen = false }
                                         })
                             }

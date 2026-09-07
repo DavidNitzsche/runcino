@@ -221,7 +221,21 @@ struct TodayBeforeLiveV5: View {
                         label: dayLabel(day.dateISO),
                         sub: daySub(day),
                         status: day.isToday ? .measured("Today") : ((day.isDone ?? false) ? .measured("Done") : nil),
-                        isToday: day.isToday
+                        isToday: day.isToday,
+                        // CALCELLWEEK-1 (2026-09-07) · this mapping was the
+                        // one actually serving the sheet (a live `block`
+                        // fetch almost always succeeds, so `HostsV5`'s own
+                        // `calendarWeeks` fallback below is rarely reached)
+                        // and it never carried `dateISO` — a block-sourced
+                        // day's `id` is a plan_workout row id with no date
+                        // embedded in it, so `onPickDay(day.dateISO ??
+                        // day.id)` fell through to `day.id`, which
+                        // `HostsV5.dateISO(forRowID:)` could not resolve for
+                        // any week outside the current one, and the tap
+                        // silently closed the sheet and did nothing. This is
+                        // the missing half of that fix, on the path that was
+                        // actually live.
+                        dateISO: day.dateISO
                     )
                 }
             )

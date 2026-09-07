@@ -70,6 +70,9 @@ import {
 import { hrTargets, narrowToPrescriptionType, strictPrescriptionType } from '@/lib/training/prescriptions';
 import { classifySession, sessionToleranceSec } from '@/lib/training/execution-semantics';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
+import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
+import { raceProjectionFromOutlook } from '@/lib/training/race-projection';
+import { formatRaceTime } from '@/lib/training/vdot';
 
 // Same two doctrine-cited constants `build-workout.ts` uses for its own
 // per-phase treadmill incline — see this file's header for why they are
@@ -311,6 +314,35 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
   // pass — EXECUTION-IDENTITY-1's own resolver, never re-derived here.
   const executionsByDate = await resolveDateRangeExecutions(userUuid, planStartIso, toExclusiveIso);
 
+  // FINISHEST-1 (2026-09-07) · a race day's own card had a pace band and a
+  // "Coach target" line in prose, but nothing answering "how long is this
+  // race" — David, on the Santa Monica 10K day: "I don't know what total
+  // time this is." The projection itself is not re-derived here: same
+  // `resolveRaceOutlookBySlug` + `raceProjectionFromOutlook` the Races list
+  // and Race detail screens call (Rule 16 — one resolver, so this can never
+  // disagree with either). `races.meta->>'date'` is the only link from a
+  // plan_workouts race row to a `races` slug; batched once for the whole
+  // block rather than per day.
+  const raceDates = Array.from(new Set(rows.filter((r) => r.type === 'race').map((r) => r.date_iso)));
+  const projectedFinishByDate = new Map<string, { text: string; modelled: boolean }>();
+  if (raceDates.length > 0) {
+    const slugRows = (await pool.query<{ slug: string; date_iso: string }>(
+      `SELECT slug, meta->>'date' AS date_iso FROM races
+        WHERE user_uuid = $1 AND meta->>'date' = ANY($2::text[])`,
+      [userUuid, raceDates],
+    ).catch(() => ({ rows: [] as { slug: string; date_iso: string }[] }))).rows;
+    await Promise.all(slugRows.map(async (r) => {
+      const outlook = await resolveRaceOutlookBySlug(userUuid, r.slug, today).catch(() => null);
+      const projection = raceProjectionFromOutlook(outlook);
+      if (projection.projectedSec == null) return;
+      const [lo, hi] = projection.likelyRangeSec ?? [null, null];
+      const text = lo != null && hi != null && hi > lo
+        ? `${formatRaceTime(lo)}–${formatRaceTime(hi)}`
+        : formatRaceTime(projection.projectedSec);
+      if (text) projectedFinishByDate.set(r.date_iso, { text, modelled: true });
+    }));
+  }
+
   const days: PlanSnapshotDay[] = rows.map((row) => {
     const rawType = row.type;
     const isRest = rawType === 'rest';
@@ -419,6 +451,12 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
     if (!isRest && (prescriptionType === 'easy' || prescriptionType === 'long')
         && card?.hasRacePaceFinish !== true && hrCapBpm != null) {
       stats.push({ label: 'HR ceiling', value: { text: `${hrCapBpm} bpm`, modelled: true }, tone: null });
+    }
+    // FINISHEST-1 · see the batch resolution above this map for why this is
+    // a lookup, not a derivation.
+    if (isRace) {
+      const finish = projectedFinishByDate.get(row.date_iso);
+      if (finish) stats.push({ label: 'Projected finish', value: finish, tone: null });
     }
 
     return {
