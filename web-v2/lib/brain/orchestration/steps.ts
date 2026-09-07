@@ -89,36 +89,54 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
   },
   {
     n: 3, name: 'Classify evidence',
-    owner: 'lib/plan/adjudication/dose-responsive.ts', ownerExports: 'DOSE_EVIDENCE_READERS',
-    state: 'UNWIRED',
-    // OPTIONLANE-1 (2026-09-07) · DELIBERATELY LEFT UNWIRED, and the reason is
-    // worth more than the flip would have been.
+    owner: 'lib/evidence/classify-evidence.ts', ownerExports: 'classifyEvidence',
+    state: 'WIRED',
+    // RULE16-DOSEEVIDENCE-1 (2026-09-07) · the Rule 16 question OPTIONLANE-1
+    // named and deliberately left open — "TWO modules answer 'classify
+    // evidence' ... either they are two questions ... or one of them is the
+    // answer and the other should go" — is now settled by the owner's own
+    // ruling, verbatim: "classifyEvidence is the canonical owner of general
+    // evidence classification. DOSE_EVIDENCE_READERS are specialized
+    // consumers of that canonical record, not a competing classifier."
     //
-    // `lib/brain/option-lane.ts` now calls `classifyEvidence` (`lib/evidence/
-    // classify-evidence.ts`) for every canonical run in a 28-day window, on the
-    // live nightly path — the FIRST production caller that 19-tag record has
-    // ever had, and the thing that finally gives `completion.partial` and
-    // `completion.overrun` a downstream decision. Measured on the owner's own
-    // block: 23 runs classified, 2 partial, 1 overrun, 13 unreadable, and those
-    // counts reach the appraisal and the decline sentence.
+    // So this row's owner moves from `DOSE_EVIDENCE_READERS` to
+    // `classifyEvidence` itself — not a borrowed-owner flip (the OPTIONLANE-1
+    // comment's own warning): `classifyEvidence` is what `lib/brain/
+    // option-lane.ts` actually calls, once per canonical run in a 28-day
+    // window, from `app/api/cron/run-adaptations/route.ts`'s real per-runner
+    // loop (a dynamic import; `buildModuleGraph` follows those). That is a
+    // genuine route → owner edge, the same bar steps 1/5/7/9/12/16 were held
+    // to before this promotion.
     //
-    // That is NOT this step as declared. This row's owner is
-    // `DOSE_EVIDENCE_READERS`, and its blocker — "no production caller
-    // assembles them for a runner" — is STILL TRUE WORD FOR WORD. Flipping the
-    // state because a DIFFERENT evidence classifier got wired is exactly the
-    // borrowed-owner defect this file's own header records being caught at
-    // once already ("step 16 pointed at adjudicate.ts, which IS reachable, and
-    // the gate correctly complained").
+    // Consumed non-trivially, not just called and discarded: `option-lane.ts`
+    // folds the record into `ExecutionQuality` (`executionQualityFrom`), and
+    // `completion.partial` gates real control flow — `partialPct > 0` and
+    // `partialPct >= 50` select which `because`/`wouldAdvanceIf` sentence a
+    // HOLD or PULL_BACK decline carries, and `optionsMissingEvidence` refuses
+    // the whole decision when no valid decline can be built from it, which is
+    // a real branch, not a log line. `completion.overrun` reaches a written
+    // value that varies by input — it is folded into `execution.describe`,
+    // which is embedded specifically in PUSH's own `risk` field
+    // (`riskLine`) and in the HOLD decline's ACWR-branch sentence, both
+    // persisted to `plan_decision_ledger`/`plan_workout_proposals` rather than
+    // computed and dropped. Measured on the owner's own block: 23 runs
+    // classified, 2 partial, 1 overrun, 13 unreadable, and those counts reach
+    // the ledger row a runner would actually be shown.
     //
-    // What this does surface is a Rule 16 question that predates this change
-    // and is not mine to settle: TWO modules answer "classify evidence" — the
-    // 19-tag `EvidenceClassification` and the dose-axis readers — and the
-    // constitution allows one owner per question. Either they are two
-    // questions and this row needs a name that says which one it is, or one of
-    // them is the answer and the other should go. Named here rather than
-    // resolved by a state flip.
-    blocker: 'the readers exist and are unit-tested; no production caller assembles them '
-      + 'for a runner.',
+    // DOSE_EVIDENCE_READERS did not become fiction. Ten readers answer ten
+    // dose-axis questions; eight of them (STIMULUS_GRADE, DETERIORATION_
+    // PATTERN, WORK_HR_CEILING, HABIT_WEEKLY_MI, ABSORBED_WEEKLY_MI,
+    // PRESCRIBED_NON_NORMAL_DAY, RECOVERY_PHASE, MISSED_TRAINING) answer a
+    // genuinely different question from anything in the 19-tag record and are
+    // untouched. The two that overlapped — HR_TRACE_CREDIBILITY and
+    // EXECUTION_IDENTITY — now name `classifyEvidence` as their reader and
+    // read `context.flatlinedTelemetry`/`identity.match` off the record
+    // instead of re-deriving via a second call to the same primitive owner
+    // (`workTraceIsCredible`, `day-resolver.ts`) — see `dose-responsive.ts`'s
+    // RULE16-DOSEEVIDENCE-1 comment for the full argument. `dose-responsive
+    // .ts` itself stays a real module (`resolveDose` grades a gate once one is
+    // authored) — it is simply no longer this step's OWNER, because it never
+    // computed the classification; it consumes it.
   },
   {
     n: 4, name: 'Grade sessions and the week',
@@ -377,8 +395,48 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
  * describes is exactly what `_orchestration.test.ts` exists to force, and
  * this note exists so the NEXT audit does not have to re-derive it from
  * scratch to trust it.
+ *
+ * RULE16-DOSEEVIDENCE-1 (2026-09-07) · 15 → 16, the last step. Step 3's own
+ * entry above carries the full argument: `classifyEvidence` is reached from
+ * `app/api/cron/run-adaptations/route.ts` through `lib/brain/option-lane.ts`
+ * by a genuine dynamic-then-value import chain, and its result changes real
+ * control flow (`completion.partial` gating which decline sentence is built,
+ * and whether the lane can proceed at all) and a written value that varies by
+ * input (`completion.overrun` inside `execution.describe`, persisted into the
+ * PUSH option's risk line and the ledger row).
+ *
+ * Rule 18 · TRACED, NOT EXECUTED, and said so rather than claimed otherwise.
+ * This worktree had no `node_modules` and the shared volume had no room to
+ * install one (`ENOSPC` mid-install, ~40GiB free against a near-full 7.3TiB
+ * disk shared by other sessions' worktrees) — the exact situation
+ * `feedback_verify_by_self_audit.md` names as a reason to read more carefully,
+ * not a reason to stop. Both directions of `_orchestration.test.ts`'s own
+ * logic were walked BY HAND against its source (read in full above), not run:
+ *   · reverting step 3's `owner`/`ownerExports` to the pre-change
+ *     `lib/plan/adjudication/dose-responsive.ts`/`DOSE_EVIDENCE_READERS` pair
+ *     while leaving `state: 'WIRED'` would fail "a WIRED step is reachable
+ *     from a route" (`reachedFromProduction`), because nothing reaches
+ *     `dose-responsive.ts` from a route — it is a pure, uncalled module, per
+ *     its own entry in `MODULE_ORPHANS`
+ *     (`lib/audit/generated-content-registry.ts`, and independently confirmed
+ *     by grep: every `import ... from '@/lib/plan/adjudication/dose-
+ *     responsive'` in the tree is inside a `.test.ts` file — `_dose_responsive
+ *     .test.ts`, `_dose_responsive_continuity.test.ts`, `_malibu_dose_trace
+ *     .test.ts`, `_runner_state.test.ts`; the five non-test files that mention
+ *     the string "dose-responsive" at all — this file, `generated-content-
+ *     registry.ts`, `evidence-facet.ts`, `facets.ts`, `belief.ts` — do so only
+ *     in prose comments, never as an import clause).
+ *   · reverting `state` to `'UNWIRED'` while keeping the new owner would fail
+ *     "a SHADOW or UNWIRED step is NOT quietly reachable", because
+ *     `classify-evidence.ts` is plainly reached by a real value import from
+ *     `option-lane.ts`, which is reached by a real dynamic import from the
+ *     cron route — the same chain `_option_lane_wired.test.ts` already
+ *     asserts by source-scan for step 7's promotion.
+ * Both are read-through-the-test's-own-algorithm claims, not observed test
+ * runs, and are reported as such rather than as a confident pass this session
+ * did not actually see.
  */
-export const WIRED_STEP_PIN = 15;
+export const WIRED_STEP_PIN = 16;
 
 /**
  * NOT_BUILT may only FALL. A step becoming fiction again is a regression.

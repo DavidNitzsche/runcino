@@ -106,10 +106,17 @@ import type {
 import type { Measured } from '@/lib/adaptation/canonical/input';
 import type { StimulusGrade } from '@/lib/adaptation/canonical/stimulus';
 import type { DeteriorationPattern } from '@/lib/adaptation/canonical/deterioration';
-import type { HrTraceVerdict } from '@/lib/adaptation/canonical/hr-trace-credibility';
 import type { NormalReading } from '@/lib/training/normal-window';
 // Type-only, so no runtime edge is created into a module that opens the pool.
 import type { ExecutionMatch } from '@/lib/execution/day-resolver';
+// Type-only, and RULE16-DOSEEVIDENCE-1 (2026-09-07) is why it is here at all.
+// The owner's ruling: classifyEvidence is the canonical owner of general
+// evidence classification, and a dose reader that answers a question the
+// 19-tag record already answers is a specialized CONSUMER of that record, not
+// a second classifier. `context.flatlinedTelemetry` and `identity.match` are
+// exactly that shape — see `credibleTraceShare` and `executedAtTier` below,
+// the two readers this module used to answer independently.
+import type { TagReading } from '@/lib/evidence/classify-evidence';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * 1 · THE AXES  ·  what a dose-responsive prescription is allowed to resize
@@ -261,11 +268,35 @@ export const DOSE_EVIDENCE_READERS: readonly CanonicalReader[] = [
     answers: 'Is falling away late in a session a pattern across this window.',
     rule8Side: 'NEITHER',
   },
+  /*
+   * RULE16-DOSEEVIDENCE-1 (2026-09-07, owner's ruling) · HR_TRACE_CREDIBILITY
+   * and EXECUTION_IDENTITY used to name the PRIMITIVE owner of their fact
+   * directly (`workTraceIsCredible`, `resolveDateRangeExecutions`), and that
+   * was not wrong about who computes the fact — it was wrong about the READ
+   * PATH once a caller already holds `lib/evidence/classify-evidence.ts`'s
+   * per-run record. That file's own header already says it composes rather
+   * than re-derives: `context.flatlinedTelemetry` IS `workTraceIsCredible`'s
+   * verdict (HRFLATLINE-1), and `identity.match` IS `day-resolver.ts`'s
+   * `resolveDayExecutions` verdict (itself built on `resolveDateRangeExecutions`
+   * — `resolveDayExecutions` is a one-day call into the same range resolver).
+   * A dose caller that already built `EvidenceClassification[]` for its window
+   * and then called the primitive AGAIN for the same runs would be a second
+   * resolution of one fact, not a second fact — the shape the owner's ruling
+   * names: "classifyEvidence is the canonical owner ... DOSE_EVIDENCE_READERS
+   * are specialized consumers of that canonical record, not a competing
+   * classifier." So both rows below now name `classifyEvidence` as the reader,
+   * and `credibleTraceShare`/`executedAtTier` (§10) take `EvidenceClassification[]`
+   * and read the tag rather than re-deriving it. `workTraceIsCredible` and
+   * `day-resolver.ts` are UNCHANGED and still the primitive owners —
+   * `classifyEvidence` is what calls them, exactly once, per run.
+   */
   {
     readerId: 'HR_TRACE_CREDIBILITY',
-    module: 'lib/adaptation/canonical/hr-trace-credibility.ts',
-    symbol: 'workTraceIsCredible',
-    answers: 'Is this a heart-rate measurement or one value carried forward.',
+    module: 'lib/evidence/classify-evidence.ts',
+    symbol: 'classifyEvidence',
+    answers: 'Is this a heart-rate measurement or one value carried forward · read from the '
+      + 'canonical record\'s context.flatlinedTelemetry tag (itself workTraceIsCredible\'s '
+      + 'verdict, HRFLATLINE-1), never re-derived from a second phase-sample extraction.',
     rule8Side: 'NEITHER',
   },
   {
@@ -277,9 +308,11 @@ export const DOSE_EVIDENCE_READERS: readonly CanonicalReader[] = [
   },
   {
     readerId: 'EXECUTION_IDENTITY',
-    module: 'lib/execution/day-resolver.ts',
-    symbol: 'resolveDateRangeExecutions',
-    answers: 'Which run, if any, actually executed this prescription.',
+    module: 'lib/evidence/classify-evidence.ts',
+    symbol: 'classifyEvidence',
+    answers: 'Which run, if any, actually executed this prescription · read from the canonical '
+      + 'record\'s identity.match tag (itself day-resolver.ts\'s classifyDay verdict, '
+      + 'EXECID-SCAN-1), never a second call into the resolver for the same window.',
     rule8Side: 'NEITHER',
   },
   {
@@ -1022,39 +1055,62 @@ export function deterioratedSessions(
   return reading.of(pattern.deterioratedCount);
 }
 
-/** The share of sessions in this window whose work heart rate was readable. */
+/**
+ * The share of classified runs in this window whose work heart rate was a
+ * real measurement rather than a carried-forward value.
+ *
+ * RULE16-DOSEEVIDENCE-1 · reads `context.flatlinedTelemetry` off the
+ * classify-evidence record rather than accepting a fresh `HrTraceVerdict[]`
+ * — see the reader-registry note above. Three states, not two: `unknown`
+ * (no per-phase HR samples to test at all) is excluded from BOTH the
+ * numerator and the denominator, never coerced into "credible" (Rule 11
+ * forbids reading absence-of-data as a good measurement) and never into
+ * "not credible" either (that would punish a session for missing a strap it
+ * never had). `present` on the tag means flatlined, i.e. NOT credible —
+ * the tag and this share are worded oppositely on purpose, and the mapping
+ * is spelled out below rather than inverted silently.
+ */
 export function credibleTraceShare(
-  verdicts: readonly HrTraceVerdict[],
+  records: readonly { readonly context: { readonly flatlinedTelemetry: TagReading } }[],
 ): Measured<number> {
-  if (verdicts.length === 0) {
-    return reading.absent('no heart-rate traces in the window');
+  const readable = records.filter((r) => r.context.flatlinedTelemetry.kind !== 'unknown');
+  if (readable.length === 0) {
+    return reading.absent('no run in the window carries a readable heart-rate-trace verdict');
   }
-  const good = verdicts.filter((v) => v.credible).length;
-  return reading.of(good / verdicts.length);
+  const credible = readable.filter((r) => r.context.flatlinedTelemetry.kind === 'absent').length;
+  return reading.of(credible / readable.length);
 }
 
 /**
- * How many prescriptions in this window were executed at an identity tier at
- * least as strong as `minTier`.
+ * How many classified runs in this window executed a prescription at an
+ * identity tier at least as strong as `minTier`.
  *
- * The parameter is structural rather than the imported `PrescribedWorkout`, so
- * this module keeps no runtime edge into `day-resolver.ts`, which opens the
- * pool. The tier order is the resolver's own: an exact plan-id match is
- * stronger evidence than a type match, which is stronger than a run that merely
- * happened on the day.
+ * RULE16-DOSEEVIDENCE-1 · reads `identity.match` off the classify-evidence
+ * record — per-RUN, one row per canonical activity — rather than walking
+ * `ResolvedDay.prescriptions[]` with a second call into `day-resolver.ts` for
+ * the same window (see the reader-registry note above). This module still
+ * keeps no runtime edge into `day-resolver.ts` itself: the type it reads
+ * (`EvidenceClassification`) is a plain data shape, and the classification
+ * was already produced by whichever caller built the array. `identity.match`
+ * is `null` on a run the resolver could not tie to any prescription (a
+ * supplemental run counts as `'supplemental'`, never null — see
+ * `classify-evidence.ts#classifyIdentity`) and is counted as failing every
+ * tier, the same as the old function's "no matchedRun" branch. The tier order
+ * is the resolver's own: an exact plan-id match is stronger evidence than a
+ * type match, which is stronger than a run that merely happened on the day.
  */
 export function executedAtTier(
-  prescriptions: readonly { readonly matchedRun: { readonly match: ExecutionMatch } | null }[],
+  records: readonly { readonly identity: { readonly match: ExecutionMatch | null } }[],
   minTier: ExecutionMatch,
 ): Measured<number> {
-  if (prescriptions.length === 0) {
-    return reading.absent('no prescriptions in the window');
+  if (records.length === 0) {
+    return reading.absent('no runs classified in the window');
   }
   const rank: Record<ExecutionMatch, number> = { exact: 3, legacy_type: 2, supplemental: 1 };
   const need = rank[minTier];
   let n = 0;
-  for (const p of prescriptions) {
-    if (p.matchedRun && rank[p.matchedRun.match] >= need) n += 1;
+  for (const r of records) {
+    if (r.identity.match && rank[r.identity.match] >= need) n += 1;
   }
   return reading.of(n);
 }

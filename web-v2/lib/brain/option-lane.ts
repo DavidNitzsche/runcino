@@ -315,6 +315,23 @@ export function partialShareOf(q: ExecutionQuality): number | null {
 }
 
 /**
+ * The share of classified runs that materially exceeded their prescription.
+ *
+ * RULE16-DOSEEVIDENCE-1 (2026-09-07) · `completion.overrun`'s only consumer
+ * before this change was `execution.describe`'s narrative text — read, never
+ * branched on, which is the decorative shape the owner's instruction singled
+ * out by name ("wire them or delete them"). This is the wiring: see
+ * `declineJustifications` below, where `overrunShareOf` selects which
+ * PULL_BACK sentence is built, not just which words fill one. Same null-on-
+ * empty posture as `partialShareOf`, for the same reason (Rule 11 · no runs
+ * is not "nothing overran").
+ */
+export function overrunShareOf(q: ExecutionQuality): number | null {
+  if (q.classified === 0) return null;
+  return q.overrun / q.classified;
+}
+
+/**
  * THE LANE.
  *
  * `boundaries` is the SAME array the cron already holds from
@@ -454,6 +471,7 @@ export async function runOptionLane(
   const pullClass = appraise(`weekly volume ${pullTargetMi} mi`, pullTargetMi);
 
   const partialShare = partialShareOf(execution);
+  const overrunShare = overrunShareOf(execution);
   const options: OptionAppraisal[] = [
     {
       option: 'PUSH',
@@ -485,7 +503,7 @@ export async function runOptionLane(
    * Built from the SAME numbers the appraisal used, so the sentence the
    * runner reads and the number the decision rested on cannot drift. */
   const declines = declineJustifications({
-    execution, partialShare, signals, safetyPosture, prescribedWeeklyMi,
+    execution, partialShare, overrunShare, signals, safetyPosture, prescribedWeeklyMi,
     demonstratedPeakMi, tierCeilingMi, pushTargetMi, pullTargetMi,
   });
   const missing = optionsMissingEvidence(ranked, declines);
@@ -890,6 +908,7 @@ function riskLine(
 function declineJustifications(args: {
   execution: ExecutionQuality;
   partialShare: number | null;
+  overrunShare: number | null;
   signals: RampSignals;
   safetyPosture: TrainingSafetyPosture;
   prescribedWeeklyMi: number;
@@ -899,13 +918,14 @@ function declineJustifications(args: {
   pullTargetMi: number;
 }): ReadonlyMap<Option, DeclineJustification> {
   const {
-    execution, partialShare, signals, safetyPosture,
+    execution, partialShare, overrunShare, signals, safetyPosture,
     prescribedWeeklyMi, demonstratedPeakMi, tierCeilingMi, pushTargetMi,
   } = args;
   const m = new Map<Option, DeclineJustification>();
 
   const acwr = signals.details.acwr;
   const partialPct = partialShare === null ? null : Math.round(partialShare * 100);
+  const overrunPct = overrunShare === null ? null : Math.round(overrunShare * 100);
 
   /* HOLD · why standing still is defensible, in facts. */
   const holdBecause = safetyPosture !== 'NORMAL'
@@ -930,15 +950,31 @@ function declineJustifications(args: {
   /* PULL_BACK · why removing work is defensible, in facts. Note this is the
    * option that must be hardest to justify, and the numbers say so: a
    * boundary that returned anything but REFUSE has already priced this week's
-   * demand step as survivable. */
-  m.set('PULL_BACK', {
-    basis: 'ABSORPTION_EVIDENCE',
-    because: partialPct != null && partialPct >= 50
-      ? `${partialPct}% of the ${execution.classified} classified runs finished short of the `
-        + 'prescription, which is a majority of the window'
+   * demand step as survivable.
+   *
+   * RULE16-DOSEEVIDENCE-1 (2026-09-07) · a THREE-way branch, not two. Before
+   * this change `overrunPct` reached only `execution.describe`'s prose —
+   * present in the sentence, absent from the decision, the decorative shape
+   * the owner's instruction named directly. `overrunPct` now selects which
+   * sentence is built, the same way `partialPct` already does: overrun
+   * evidence is CLAUDE.md's mission stated in a number — a runner who ran
+   * materially more than prescribed has pushed forward, and that fact makes
+   * PULL_BACK harder to justify, not easier, so it gets its own branch rather
+   * than being folded silently into the generic "no shortfall" sentence. */
+  const pullBackBecause = partialPct != null && partialPct >= 50
+    ? `${partialPct}% of the ${execution.classified} classified runs finished short of the `
+      + 'prescription, which is a majority of the window'
+    : overrunPct != null && overrunPct > 0
+      ? `the rolling boundary priced this week's demand step and did not refuse it, only `
+        + `${partialPct ?? 0}% of ${execution.classified} classified runs finished short, and `
+        + `${overrunPct}% ran materially past their prescription · the runner has demonstrated `
+        + 'capacity above what is authored, which argues against removing work, not for it'
       : `the rolling boundary priced this week's demand step and did not refuse it, and only `
         + `${partialPct ?? 0}% of ${execution.classified} classified runs finished short — `
-        + 'there is no measured shortfall large enough to remove work for',
+        + 'there is no measured shortfall large enough to remove work for';
+  m.set('PULL_BACK', {
+    basis: 'ABSORPTION_EVIDENCE',
+    because: pullBackBecause,
     wouldAdvanceIf: 'a majority of the classified runs in the window finish short of the '
       + 'prescription, or safety resolves to anything other than NORMAL',
   });

@@ -253,11 +253,40 @@ export interface ClassifyEvidenceInput {
   readonly safety: SafetyInputs | null;
 }
 
-/** Distance tolerance for the `overrun` label. Mirrors the ±30% band
- *  `app/api/watch/workouts/complete/route.ts` and `day-resolver.ts`'s own
- *  header already use for "does this distance still look like the
- *  prescription" — not re-derived from doctrine, a labelling convention kept
- *  consistent with the one already in the codebase. */
+/**
+ * Distance tolerance for the `overrun` label. Mirrors the ±30% band
+ * `app/api/watch/workouts/complete/route.ts` and `day-resolver.ts`'s own
+ * header already use for "does this distance still look like the
+ * prescription" — not re-derived from doctrine, a labelling convention kept
+ * consistent with the one already in the codebase.
+ *
+ * RULE16-DOSEEVIDENCE-1 (2026-09-07) · searched for a doctrine owner and found
+ * none. `Research/` has no citation for a distance-overrun tolerance band —
+ * this is a data-reconciliation heuristic ("does a GPS distance still belong
+ * to this prescription"), not a physiological constant, and nothing in
+ * `lib/doctrine/registry.ts`'s ~289 claims binds it. Per the owner's ruling
+ * ("give the overrun tolerance a doctrine owner and citation; if none exists,
+ * refuse to use it as policy"), this constant stays LABEL-ONLY: it decides
+ * which activities the `overrun` tag reads as `present`, and nothing
+ * downstream may use the 30% NUMBER itself, or this tag's state, to size or
+ * trigger a plan mutation. `lib/brain/option-lane.ts`'s only consumer
+ * (`executionQualityFrom` → `overrunShareOf`) reads the tag strictly as
+ * EVIDENCE inside a HELD decision's decline narrative — it selects which
+ * argued sentence a PULL_BACK decline carries, never the magnitude of a push,
+ * a hold, or a pull-back, all three of which come from `MAX_WEEKLY_BUMP_MI`
+ * and `rankOptions` alone.
+ *
+ * OVERRUN-MATCH-1 (2026-09-04, `lib/runs/plan-type-stamp.ts`) is worth
+ * reading before ever promoting this from label to policy: the codebase
+ * already found a flat ±30% ceiling wrong for a materially similar question
+ * ("is this run still the same prescription, just longer") and replaced it
+ * with an ASYMMETRIC band (-30%/+100%) after a real easy day at +37% was
+ * mis-classified. That fix did not touch this constant — it lives in a
+ * different file answering a different question (type-stamping at ingest,
+ * not evidence labelling after the fact) — but the same failure mode applies
+ * here on the day this constant is ever asked to gate something rather than
+ * describe it.
+ */
 export const OVERRUN_DISTANCE_TOLERANCE_FRAC = 0.30;
 
 /** A pause worth flagging on the label, distinct from `MAX_PAUSED_SHARE`
