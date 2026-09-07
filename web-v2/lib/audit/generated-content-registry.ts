@@ -640,6 +640,17 @@ export const MODULE_ORPHANS: Record<string, string> = {
  * by an operator and always have been.
  */
 export const ROUTE_CALLERS: Record<string, string> = {
+  'web-v2/app/api/up/route.ts':
+    'DEPLOY-GAP-1 (2026-09-07). Railway\'s own deploy healthcheck (railway.json '
+    + '`healthcheckPath`), not a surface the app, phone or watch ever calls — its '
+    + 'caller is the platform, checking a NEW container is actually accepting '
+    + 'connections before it kills the old one. The service ran a single replica '
+    + 'with no healthcheck and no overlap; every deploy was a hard swap with a real '
+    + 'gap where nothing was listening, and it recurred visibly the same afternoon '
+    + 'several fixes were shipped in quick succession — each one causing a fresh '
+    + 'instance of the exact "Can\'t reach faff" symptom it was meant to fix. This '
+    + 'route is deliberately trivial (no DB, no auth) so it can never itself be the '
+    + 'slow or flaky thing a healthcheck is supposed to catch.',
   'web-v2/app/api/race/[slug]/block-preview/route.ts':
     'INSTANCE 3. The route half of block-preview.ts. See MODULE_ORPHANS.',
   'web-v2/app/api/coach/calibration/route.ts':
