@@ -248,21 +248,43 @@ export async function writeActionProposal(
    * Monday's session and re-raised on Tuesday's is ONE withhold and two cards
    * would be Rule 17 with the volume turned up.
    *
+   * STALEPROPOSAL-1 (2026-09-07) · that reasoning assumed the anchor moving
+   * is the SAME decision tracking a session that just slid week to week. It
+   * is not, when the REASON changes underneath it. Found live: a HOLD raised
+   * against David's 2026-09-13 race (`long-run-structure.ts`, before
+   * RACEDAYSTRUCTURE-1 excluded race days from that reader's candidate
+   * query) sat `pending` and, because this dedup ignores anchor for
+   * non-mutating kinds, silently blocked every later cron pass from writing
+   * the CORRECTED hold against the real next long run (2026-09-20) — the
+   * fixed reader ran every night, produced the right verdict, and this dedup
+   * discarded it as "already raised" against a row that was, by then, about
+   * the wrong session for a wrong reason. Rendered live against a walk-
+   * substrate copy of production: the stale Sept 13 card was still the one
+   * on screen the night after the reader fix deployed.
+   *
+   * The fix is narrow: a non-anchored duplicate is only the SAME decision
+   * (skip, no new card, Rule 17 holds) when its stored `reason` still
+   * matches what this pass would say today. A different reason under the
+   * same kind is a different decision wearing the same label — supersede the
+   * stale row (mirrors `workout-proposals.ts`'s own supersede pattern) and
+   * let the new one through, rather than trusting the newer answer to a
+   * dedup key that cannot tell the two apart.
+   *
    * Rule 11 and the swallow ratchet: a failed dedup read is NOT "no pending
    * row on record", because that is the answer that inserts. */
   const anchored = !nonMutatingKind(action.kind);
-  const dup = await rowOrNull<{ id: number }>(
+  const dup = await rowOrNull<{ id: number; reason: string }>(
     'brain/write · pending-proposal dedup',
     anchored
-      ? pool.query<{ id: number }>(
-        `SELECT id FROM plan_workout_proposals
+      ? pool.query<{ id: number; reason: string }>(
+        `SELECT id, reason FROM plan_workout_proposals
           WHERE user_uuid = $1::uuid AND plan_workout_id = $2
             AND action_kind = $3 AND status = 'pending'
           LIMIT 1`,
         [req.userUuid, req.anchorWorkoutId, rowKindOf(action)],
       )
-      : pool.query<{ id: number }>(
-        `SELECT id FROM plan_workout_proposals
+      : pool.query<{ id: number; reason: string }>(
+        `SELECT id, reason FROM plan_workout_proposals
           WHERE user_uuid = $1::uuid AND action_kind = $2 AND status = 'pending'
           LIMIT 1`,
         [req.userUuid, rowKindOf(action)],
@@ -271,8 +293,27 @@ export async function writeActionProposal(
   if (dup === null) {
     return notWritten('the dedup read failed, so this pass assumes the card is already raised');
   }
-  if (dup !== undefined) {
+  if (dup !== undefined && anchored) {
     return notWritten(`a pending ${rowKindOf(action)} is already on record (#${dup.id})`);
+  }
+  if (dup !== undefined && dup.reason === reason) {
+    return notWritten(`a pending ${rowKindOf(action)} with the same reason is already on record (#${dup.id})`);
+  }
+  if (dup !== undefined) {
+    /* Same kind, different reason: the old row no longer describes today's
+     * decision. Supersede it (guarded on status = 'pending' so a race with
+     * the runner accepting/dismissing it loses cleanly) and fall through to
+     * write the real one. */
+    const superseded = await attempt(
+      'brain/write · supersede a stale non-mutating duplicate',
+      pool.query(
+        `UPDATE plan_workout_proposals
+            SET status = 'superseded', resolved_at = NOW()
+          WHERE id = $1 AND status = 'pending'`,
+        [dup.id],
+      ),
+    );
+    if (!superseded.ok) return { ok: false, error: superseded.error };
   }
 
   /* 6 · THE ROW.

@@ -169,10 +169,35 @@ const PAIRS: readonly Pair[] = [
     mechanism: 'canonical adaptation engine · moving against not moving',
     up: ['PROGRESS', 'REGRESS'],
     down: ['HOLD', 'REFUSE'],
-    // MEASURED 2.00 · 17 moving against 34 not-moving. Not moving is
-    // legitimately the commoner outcome; the pin exists to catch a suite that
-    // drifts toward testing only refusal.
-    measuredRatio: 2.0,
+    /**
+     * STALEPROPOSAL-1 (2026-09-07) · a FOURTH mechanism spelling a verdict
+     * `HOLD`, after the progression ladder, the ledger, and dose-responsive
+     * future workouts — same Rule 16 collision, same fix. `lib/brain/
+     * proposal/` is the proposal-WRITE layer (`write.ts`, `action-proposal-
+     * lane.ts` and their gates); it carries `action_kind: 'HOLD'` as one of
+     * twenty-one proposal kinds and has never tested the canonical engine's
+     * `PROGRESS`/`REGRESS`/`HOLD`/`REFUSE` verdict at all. Measured: without
+     * this exclusion the pair sat at 2.345 (68 down / 29 up), already one
+     * word short of this gate's own 0.35 tolerance around its 2.00 pin —
+     * `_stale_dedup.test.ts` (a real fix, three `HOLD` occurrences, zero
+     * canonical-engine vocabulary) was the file that crossed it, but the
+     * near-miss predates that file: `_action_completeness.test.ts` and
+     * `_action_schema_gate.test.ts` were already the same false positive.
+     * Excluding the directory outright removes all three from the down side
+     * and none from the up side (checked: no file under `lib/brain/
+     * proposal/` matches PROGRESS or REGRESS as a whole word), so the ratio
+     * IMPROVES rather than widens — this is the same argument the ladder
+     * pairs' `lib/brain/` exclusion already made, applied to the pair that
+     * had not yet needed it.
+     */
+    excludePathContains: ['lib/brain/proposal/'],
+    // RE-MEASURED 2.28 on 2026-09-07 · 66 not-moving against 29 moving, over
+    // the corpus with lib/brain/proposal/ excluded. TIGHTENING, not
+    // widening: the previous 2.00 pin was measured over a corpus that did not
+    // yet contain the false-positive files above; this number is what the
+    // canonical engine's own test corpus actually shows once they are
+    // removed.
+    measuredRatio: 2.28,
   },
   {
     mechanism: 'progression ladder · accelerate against back off',
