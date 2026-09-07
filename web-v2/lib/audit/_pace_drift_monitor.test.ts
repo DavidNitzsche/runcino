@@ -8,8 +8,10 @@
  * end. The two are not duplicates: this proves the RULE, that file proves the
  * PRODUCTION STATE the rule is applied to.
  */
-import { describe, it, expect } from 'vitest';
-import { explainPaceDrift, type PaceDriftFinding, type PendingRepriceRow } from './pace-drift-monitor';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  explainPaceDrift, readPendingRepriceProposal, type PaceDriftFinding, type PendingRepriceRow,
+} from './pace-drift-monitor';
 import { REPRICE_DISMISSAL_QUIET_DAYS } from '@/lib/plan/reanchor-proposal';
 
 const NOW = '2026-09-06T12:00:00.000Z';
@@ -124,5 +126,85 @@ describe('DECISION-1 · explainPaceDrift · the six fields', () => {
       NOW,
     );
     expect(v.explained).toBe(false);
+  });
+});
+
+/**
+ * `readPendingRepriceProposal` · a real row, parsed the way it is actually
+ * stored, not the way `explainPaceDrift`'s own fixtures assume.
+ *
+ * Found rendering DECISION-2 against a real scratch copy of production data
+ * (Rule 13): `action_payload` is written as `{ why, reprice, action }`
+ * (`writeReanchorProposal`'s own INSERT, lib/plan/reanchor-proposal.ts) —
+ * this function was passing that WHOLE object to `asRepricePayload`, which
+ * checks for `kind === 'reprice'` at the object's own top level and found
+ * none, so it returned null for every real reprice row ever written. Every
+ * one of `explainPaceDrift`'s tests above is falsifiable with a
+ * hand-built `PendingRepriceRow` and could not have caught this — it lives
+ * entirely in the DB round trip this function performs.
+ */
+describe('readPendingRepriceProposal · the real row shape writeReanchorProposal writes', () => {
+  const USER = 'abcdef12-3456-7890-abcd-ef1234567890';
+
+  /** Exactly the shape `lib/plan/reanchor-proposal.ts`'s INSERT stores:
+   *  `JSON.stringify({ why, reprice: payload, action: serializeAction(...) })`. */
+  function realRow(overrides: Partial<{ status: string }> = {}) {
+    return {
+      id: 42,
+      action_payload: {
+        why: 'The canonical pace resolvers put threshold at 7:09 per mile today.',
+        reprice: {
+          kind: 'reprice',
+          planId: 'pln_active',
+          arm: 'race-prep',
+          fromVdot: 47.7,
+          toVdot: 47.9,
+          toSource: 'direct',
+          measured: true,
+          anchorMoves: [{ key: 'threshold_s_per_mi', fromSecPerMi: 430, toSecPerMi: 429 }],
+          meanAnchorDeltaSecPerMi: -1,
+          workoutsAffected: 76,
+          workoutsSealed: 0,
+          computedAt: '2026-09-07T16:34:38.673Z',
+        },
+        action: { v: 1, action: { kind: 'COORDINATED' } },
+      },
+      evidence: { detector: 'pace-drift-monitor' },
+      created_at: '2026-09-07T16:34:38.673Z',
+      status: 'pending',
+      ...overrides,
+    };
+  }
+
+  it('parses a REAL row and returns a usable PendingRepriceRow (was: always null)', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [realRow()] });
+    const proposal = await readPendingRepriceProposal({ query }, USER);
+    expect(proposal).not.toBeNull();
+    expect(proposal?.id).toBe(42);
+    expect(proposal?.planId).toBe('pln_active');
+    expect(proposal?.anchorMoves).toEqual([{ key: 'threshold_s_per_mi', fromSecPerMi: 430, toSecPerMi: 429 }]);
+    expect(proposal?.status).toBe('pending');
+  });
+
+  it('the parsed row EXPLAINS the matching drift end to end (the whole point of DECISION-1)', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [realRow()] });
+    const proposal = await readPendingRepriceProposal({ query }, USER);
+    const finding: PaceDriftFinding = {
+      anchorKey: 'threshold_s_per_mi', persistedSecPerMi: 430, liveSecPerMi: 429, activePlanId: 'pln_active',
+    };
+    const v = explainPaceDrift(finding, proposal, '2026-09-07T18:00:00.000Z');
+    expect(v.explained).toBe(true);
+  });
+
+  it('no row at all still returns null (unchanged behaviour)', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [] });
+    const proposal = await readPendingRepriceProposal({ query }, USER);
+    expect(proposal).toBeNull();
+  });
+
+  it('a row whose payload cannot be parsed as a reprice still returns null, not a throw', async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ ...realRow(), action_payload: { why: 'no reprice key' } }] });
+    const proposal = await readPendingRepriceProposal({ query }, USER);
+    expect(proposal).toBeNull();
   });
 });

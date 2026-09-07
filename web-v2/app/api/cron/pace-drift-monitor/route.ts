@@ -29,12 +29,26 @@
 // Schedule (GitHub Actions, to be added by whoever owns the workflow file):
 // daily, any time — this reads, it does not depend on ordering against any
 // other cron (Rule 23).
+//
+// ── DECISION 2 (2026-09-07) · UNEXPLAINED + RUNNER-VISIBLE RAISES THE CARD ──
+//
+// The owner's ruling: "Implement proposal creation only when the calculated
+// drift changes a runner-visible rounded prescription... Do not silently
+// rewrite accepted paces... require runner acceptance." Every unexplained
+// finding for a plan is handed to `lib/audit/pace-drift-autopropose.ts`,
+// which raises exactly one coordinated `plan_workout_proposals` card through
+// the EXISTING `writeReanchorProposal` writer when at least one finding
+// would change what the runner's own screen prints, and writes nothing
+// otherwise. This route still never touches `plan_workouts` or
+// `training_plans` directly — only the proposal writer's own INSERT can
+// fire, and only after this check.
 
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { recordCronSuccess } from '@/lib/ops/cron-ledger';
 import { raiseAlert } from '@/lib/ops/alerts';
 import { explainPaceDrift, readPendingRepriceProposal, type PaceDriftFinding } from '@/lib/audit/pace-drift-monitor';
+import { autoProposeForUnexplainedDrift } from '@/lib/audit/pace-drift-autopropose';
 
 export const maxDuration = 60;
 
@@ -142,6 +156,7 @@ export async function POST(req: NextRequest) {
     checked: number;
     explained: number;
     unexplained: Array<{ anchorKey: string; reason: string }>;
+    autopropose?: string;
     error?: string;
   }> = [];
 
@@ -151,6 +166,7 @@ export async function POST(req: NextRequest) {
       const checks = await checkedAnchorsFor(userUuid, todayISO, planId);
       const proposal = await readPendingRepriceProposal(pool, userUuid);
       const unexplained: Array<{ anchorKey: string; reason: string }> = [];
+      const unexplainedFindings: PaceDriftFinding[] = [];
       let explainedCount = 0;
 
       for (const c of checks) {
@@ -163,11 +179,43 @@ export async function POST(req: NextRequest) {
           activePlanId: planId,
         };
         const verdict = explainPaceDrift(finding, proposal, new Date().toISOString());
-        if (verdict.explained) explainedCount += 1;
-        else unexplained.push({ anchorKey: c.key, reason: verdict.reason });
+        if (verdict.explained) {
+          explainedCount += 1;
+        } else {
+          unexplained.push({ anchorKey: c.key, reason: verdict.reason });
+          unexplainedFindings.push(finding);
+        }
       }
 
-      results.push({ userUuid, planId, checked: checks.length, explained: explainedCount, unexplained });
+      // DECISION 2 (2026-09-07) · only reached when at least one anchor is
+      // unexplained. `autoProposeForUnexplainedDrift` itself decides whether
+      // any of them is runner-visible before writing anything (see its own
+      // header); this is not a second gate duplicating that logic, it is
+      // simply not calling the function at all when there is nothing to
+      // explain — an empty findings array would just report `not_visible`.
+      let autopropose: string | undefined;
+      if (unexplainedFindings.length > 0) {
+        const outcome = await autoProposeForUnexplainedDrift(userUuid, planId, todayISO, unexplainedFindings);
+        switch (outcome.status) {
+          case 'not_visible':
+            autopropose = 'monitored only · no formatted display change for the runner';
+            break;
+          case 'no_active_plan':
+            autopropose = 'skipped · plan no longer active';
+            break;
+          case 'anchors_unavailable':
+            autopropose = `skipped · anchors unavailable · ${outcome.reason}`;
+            break;
+          case 'proposed':
+            autopropose = `${outcome.outcome.status} · anchors ${outcome.visibleAnchorKeys.join(', ')}`
+              + (outcome.outcome.status === 'written' ? ` · card ${outcome.outcome.proposalId}` : '');
+            break;
+        }
+      }
+
+      results.push({
+        userUuid, planId, checked: checks.length, explained: explainedCount, unexplained, autopropose,
+      });
     } catch (e) {
       results.push({
         userUuid, planId, checked: 0, explained: 0, unexplained: [],
@@ -178,6 +226,7 @@ export async function POST(req: NextRequest) {
 
   const totalUnexplained = results.reduce((s, r) => s + r.unexplained.length, 0);
   const totalErrors = results.filter((r) => r.error).length;
+  const totalCardsWritten = results.filter((r) => r.autopropose?.startsWith('written')).length;
 
   // Rule 23 · a job that finds nothing wrong must still be visible, and one
   // that finds a real drift must be LOUD, not a line in a log nobody tails.
@@ -186,20 +235,24 @@ export async function POST(req: NextRequest) {
     severity: totalUnexplained > 0 ? 'error' : totalErrors > 0 ? 'warn' : 'info',
     message: totalUnexplained > 0
       ? `${totalUnexplained} unexplained pace drift(s) across ${plans.length} active plan(s) — `
-        + 'a live anchor disagrees with the persisted plan and no valid pending proposal explains it'
+        + `a live anchor disagrees with the persisted plan and no valid pending proposal explains it `
+        + `(${totalCardsWritten} raised as a new reprice card this pass)`
       : `pace drift checked across ${plans.length} active plan(s), all explained or agreeing`,
     metadata: {
       plans: plans.length,
       unexplained: totalUnexplained,
       errors: totalErrors,
+      cardsWritten: totalCardsWritten,
       detail: results.filter((r) => r.unexplained.length > 0 || r.error).slice(0, 10),
     },
     source: 'cron/pace-drift-monitor',
   }).catch(() => {});
 
   await recordCronSuccess('pace-drift-monitor', {
-    plans: plans.length, unexplained: totalUnexplained, errors: totalErrors,
+    plans: plans.length, unexplained: totalUnexplained, errors: totalErrors, cardsWritten: totalCardsWritten,
   });
 
-  return NextResponse.json({ ok: true, plans: plans.length, unexplained: totalUnexplained, results });
+  return NextResponse.json({
+    ok: true, plans: plans.length, unexplained: totalUnexplained, cardsWritten: totalCardsWritten, results,
+  });
 }
