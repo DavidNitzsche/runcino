@@ -646,3 +646,63 @@ largest pieces of real remaining engineering work are unchanged in kind from
 round 12 and now precisely scoped: belief-owner consolidation (10 named
 quantities, item 8/§5) and the native/Watch verification checklist (§3) —
 neither started this round, stated plainly rather than rounded up.**
+
+---
+
+## Addendum · everything shipped since this handback was written
+
+`main` now at `eb3c0d1c7` (Railway `SUCCESS`, reconfirmed live just now).
+No production DDL applied — reconfirmed live again, this addendum: zero of
+the four new tables exist. Three real pieces landed since the body above:
+
+**STALEPROPOSAL-1 (`fee07b4a6`) — the Sept 13 race-day card you flagged
+earlier tonight is actually fixed now, not just diagnosed.** Rendering the
+earlier RACEDAYSTRUCTURE-1 fix against a real copy of your data (rather
+than trusting the code read) turned up a second bug hiding behind the
+first: the corrected query worked, but the OLD wrong proposal — written
+before that fix deployed — was still sitting `pending`, and the dedup logic
+for HOLD-type decisions checks only "is there already a pending HOLD for
+this runner," ignoring both the anchor date and the reason. So the stale
+Sept 13 card was silently blocking every subsequent night's attempt to
+write the correct one. Fixed: a duplicate is only the same decision when
+its reason still matches; a changed reason retires the stale row and lets
+the new one through. Verified end to end against a real copy of your data
+— watched the stale row flip to superseded and the correct Sept 20 card
+render on device — and falsified per Rule 18 (reverted the fix, confirmed
+the test catches the regression, restored). **This self-heals in
+production on its own** — the next scheduled overnight pass supersedes the
+stale row and writes the correct card, no manual database write needed.
+
+**Belief-owner consolidation merged (`730a68cb5`).** Dispatched agent
+finished; I dry-ran the merge in an isolated worktree, verified clean
+independently (typecheck, full test suite, all 28 prebuild gates, the
+production-audit test re-run live), then merged for real. Three of twelve
+canonical training quantities closed to one owner: `RUNNING_FREQUENCY`
+(three sites were silently ignoring a null `weekly_frequency` instead of
+falling back correctly — measured against your account, where this
+actually mattered, since yours is null), `INTERVAL_DOSE` (a missing half
+of a doctrine cell in the dosing ceiling), and `WEEKLY_VOLUME`'s duplicate
+rank-statistic arithmetic (de-duplicated into one shared function; the
+real open question — 26-week vs 16-week window — stays open on purpose).
+Registry count re-derived live just now: **16 competing sites left, across
+9 of 12 quantities** (was 20 across 11 of 12). Every remaining site is
+either a named, decision-ready question in the registry itself, or
+flagged as genuine multi-day engineering (`INTERVAL_PACE` and half of
+`MARATHON_PACE_DOSE` need a pace-anchor type threaded through roughly five
+call sites in a 5,300-line file — correctly declined as a same-session
+fix rather than forced).
+
+**The "legacy duplicate-request bundle" finding is moot.** Chased it down:
+the function behind those requests was already rewritten back on
+2026-08-21 to only prefetch what the current phone screens actually
+render — the legacy endpoints it used to warm are unreachable except
+through a debug-only launch flag no real phone launch ever passes.
+Confirmed by reading the current source, not re-tested from scratch. No
+fix needed; the duplicate-request finding from earlier tonight was an
+artifact of the debug harness, not something reachable on your phone.
+
+**Still open, unchanged:** the 9 remaining belief-owner quantities (each
+needs either a doctrine call from you or the multi-day pace-anchor
+threading work); the native calorie-resync dry-run; the two rolling-
+boundary proofs not yet re-verified this round; the pace-drift correction
+mechanism, still your call (§7 above — now 3 unexplained plans, was 1).
