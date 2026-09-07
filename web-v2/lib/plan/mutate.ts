@@ -707,6 +707,21 @@ export async function loadMutationContext(
       : null;
 
   const freq = profRes.rows[0]?.weekly_frequency;
+  // RUNFREQ-OWNER-1 (2026-09-07) · a null stated preference used to leave
+  // trainingDaysPerWeek null here, which validateComposedPlan's frequency cap
+  // reads as "no cap" — so a mutation could add a day the runner does not
+  // actually take without the validator ever seeing it. Fall back to the same
+  // Rule-8-filtered rank-3 read `loadGeneratorInputs` uses at authoring time,
+  // rather than leaving the check silently unenforced. Measured against
+  // production: David's account (0645f40c-951d-4ccc-b86e-9979cd26c795) has
+  // weekly_frequency = null and derivedTrainingDaysPerWeek = 6.
+  // No .catch() here on purpose: derivedTrainingDaysPerWeek's only read goes
+  // through rowOrNull, which never rejects (lib/db/read.ts#attempt catches
+  // internally) — a wrapping .catch(() => null) would be a second, redundant
+  // collapse site the coercion scan correctly flags.
+  const derivedFreq = freq == null
+    ? await (await import('@/lib/plan/generate')).derivedTrainingDaysPerWeek(userUuid, todayISO)
+    : null;
 
   return {
     // 26.2 is the fallback only when nothing at all resolves. It is the most
@@ -719,7 +734,7 @@ export async function loadMutationContext(
     level,
     isSteppingStoneToMarathon: st.horizon_raise != null,
     todayISO,
-    trainingDaysPerWeek: freq != null ? Number(freq) : null,
+    trainingDaysPerWeek: freq != null ? Number(freq) : derivedFreq,
     recentWeeklyMi: num(st.recent_avg_mpw) ?? num((st.derived_from as Record<string, unknown> | undefined)?.recentWeeklyMi),
   };
 }

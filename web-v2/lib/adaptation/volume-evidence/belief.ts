@@ -69,6 +69,7 @@
  *   readable, complete, non-recovery week behind it.
  */
 import { roundTo } from '@/lib/format/run';
+import { rankOrderStat } from '@/lib/training/normal-window';
 import type { IncludedEvidence } from '@/lib/adaptation/canonical/decision-record';
 import type { DemonstratedLoad } from '@/lib/plan/load-progression-contract';
 import {
@@ -115,15 +116,17 @@ export function unmeasuredBelief(asOfISO: string): DemonstratedVolumeBelief {
 
 /**
  * The rank-`k` week, descending, or null when there are not enough weeks to
- * ask. Deliberately the SAME shape as `sustainedFromWeeks` in
- * `lib/training/normal-window.ts` — a rank statistic, not a mean — because
- * "what he has reached repeatedly" has one owner and this must not become a
- * second definition of it.
+ * ask. WEEKLY_VOLUME-OWNER-1 (2026-09-07) · now delegates the sort+index step
+ * to `lib/training/normal-window.ts#rankOrderStat`, the same primitive
+ * `sustainedFromWeeks` (the WEEKLY_VOLUME owner) uses, so "what he has reached
+ * repeatedly" has exactly one ranking implementation. This function still
+ * differs from the owner in the WINDOW it is hunted over — 26 weeks here
+ * (`lib/plan/volume-evidence-loader.ts#LOOKBACK_WEEKS`) against the owner's
+ * 16 — which is an evidence-lane confidence design choice, not settled here.
  */
 export function rankWeek(weeklyMi: readonly number[], rank: number): number | null {
-  if (weeklyMi.length < rank) return null;
-  const sorted = [...weeklyMi].sort((a, b) => b - a);
-  return roundTo(sorted[rank - 1]);
+  const raw = rankOrderStat(weeklyMi, rank);
+  return raw == null ? null : roundTo(raw);
 }
 
 function evidenceFrom(week: WeekSurplus, mi: number): IncludedEvidence[] {

@@ -446,9 +446,13 @@ const RESOLVERS: Record<string, Resolver> = {
     return atPaceSessionCapMi(p.recentWeeklyMi, 'interval');
   },
 
-  'lib/plan/dosing.ts#sessionDoseCeilingMi:I': async () => {
-    const { sessionDoseCeilingMi } = await import('@/lib/plan/dosing');
-    return sessionDoseCeilingMi('I');
+  // DOSE-OWNER-2 (2026-09-07) · resolves the production-reachable symbol
+  // (slotDoseBudgetMi, via layoutWeek's slotBudgetMi) rather than the raw
+  // sessionDoseCeilingMi('I') half-function, which never runs alone in
+  // production and was never the whole per-session answer.
+  'lib/plan/dosing.ts#slotDoseBudgetMi:I': async (p) => {
+    const { slotDoseBudgetMi } = await import('@/lib/plan/dosing');
+    return slotDoseBudgetMi({ weeklyMi: p.recentWeeklyMi, pace: 'I', context: 'training' });
   },
 
   /* ── MARATHON_PACE_DOSE ───────────────────────────────────────────── */

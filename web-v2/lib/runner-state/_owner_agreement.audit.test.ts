@@ -185,29 +185,39 @@ describe.skipIf(!RO)('OWNER AGREEMENT CENSUS · every live site, on the real acc
     } catch (e) {
       statedWhy = `READ FAILED · ${(e as Error).message}`;
     }
-    // Three readers, one column, three different coercions of the same null.
+    // CLOSED 2026-09-07 (RUNFREQ-OWNER-1) · all three now fall back to the
+    // owner (derivedFreq) on a null stated preference, matching
+    // `lib/plan/generate.ts`'s own `statedFreq ?? await
+    // derivedTrainingDaysPerWeek(...)`. injury-builder additionally still
+    // applies its own [1,7] validation and, below that, the file's
+    // conservative MAX_ACTIVE_DAYS_PER_WEEK (5) only when BOTH stated and
+    // derived come up empty.
     push({
       quantity: 'RUNNING_FREQUENCY',
       siteId: 'lib/plan/injury-builder.ts#weeklyFrequencyFallback',
-      value: statedFreq != null && statedFreq >= 1 && statedFreq <= 7 ? statedFreq : 5,
+      value: statedFreq != null && statedFreq >= 1 && statedFreq <= 7
+        ? statedFreq : (derivedFreq ?? 5),
       unit: 'days/wk',
-      note: `SECOND · profile.weekly_frequency (${statedWhy}) with NO derived fallback`
-        + ' · a null answers 5 from a private constant',
+      note: `CARRIER · profile.weekly_frequency (${statedWhy}) falling back to `
+        + `derivedTrainingDaysPerWeek, then to the file's own conservative 5 `
+        + `· NOTE: buildInjuryPlan (the only export) unconditionally refuses, `
+        + `so this site is unreachable in production today`,
     });
     push({
       quantity: 'RUNNING_FREQUENCY',
       siteId: 'lib/plan/adapt.ts#weeklyFrequencyCap',
-      value: statedFreq,
+      value: statedFreq ?? derivedFreq,
       unit: 'days/wk',
-      note: `SECOND · the raw column as a hard per-week run-count cap (${statedWhy})`
-        + ' · no fallback, no 0 -> 3 coercion',
+      note: `CARRIER · the raw column as a hard per-week run-count cap (${statedWhy})`
+        + ' · falls back to derivedTrainingDaysPerWeek on null; no 0 -> 3 coercion',
     });
     push({
       quantity: 'RUNNING_FREQUENCY',
       siteId: 'lib/plan/mutate.ts#weeklyFrequencyContext',
-      value: statedFreq,
+      value: statedFreq ?? derivedFreq,
       unit: 'days/wk',
-      note: `SECOND · the same raw read into PlanValidationContext (${statedWhy})`,
+      note: `CARRIER · the same raw read into PlanValidationContext (${statedWhy})`
+        + ' · falls back to derivedTrainingDaysPerWeek on null',
     });
 
     /* ════ QUALITY_FREQUENCY ═══════════════════════════════════════════ */

@@ -456,6 +456,7 @@ async function buildInjuryPlanBody(input: InjuryBuildInput): Promise<InjuryBuild
   const restDow = dowOf(prefs?.rest_day ?? 'sat');
   const longRunDow = dowOf(prefs?.long_run_day ?? 'sun');
   const weekStartDow = (longRunDow + 1) % 7;  // day after the long run, per /api/plan/week
+  const today = await runnerToday(userId);
   const freqRow = (await pool.query<{ f: number | null }>(
     `SELECT weekly_frequency AS f FROM profile WHERE user_uuid = $1 LIMIT 1`,
     [userId],
@@ -468,8 +469,24 @@ async function buildInjuryPlanBody(input: InjuryBuildInput): Promise<InjuryBuild
   // still wins"). `injuryWeekShape` already floors the cap through
   // `Math.min(..., MAX_ACTIVE_DAYS_PER_WEEK)` and `Math.max(0, ...)`, so a
   // stated 1 or 2 needs no special handling beyond being believed.
+  // RUNFREQ-OWNER-1 (2026-09-07) · a null stated frequency used to fall
+  // straight through to the file's own conservative MAX_ACTIVE_DAYS_PER_WEEK
+  // (5) inside injuryWeekShape, rather than the runner's own measured habit.
+  // Fall back to the same Rule-8-filtered rank-3 read `loadGeneratorInputs`
+  // uses, before the conservative default. NOTE: `buildInjuryPlan` (the only
+  // exported entry point) unconditionally refuses — see its own definition
+  // above — so this function is presently unreachable in production and this
+  // fallback has no live effect; it is applied for registry consistency and
+  // because four `INJURY.*` doctrine claims still read this module's
+  // constants at run time.
+  const { derivedTrainingDaysPerWeek } = await import('@/lib/plan/generate');
+  // No .catch() here on purpose: derivedTrainingDaysPerWeek's only read goes
+  // through rowOrNull, which never rejects (lib/db/read.ts#attempt catches
+  // internally) — a wrapping .catch(() => null) would be a second, redundant
+  // collapse site the coercion scan correctly flags.
   const maxSessions = freqRow?.f != null && Number(freqRow.f) >= 1 && Number(freqRow.f) <= 7
-    ? Number(freqRow.f) : null;
+    ? Number(freqRow.f)
+    : await derivedTrainingDaysPerWeek(userId, today);
 
   // INJ-LOWVOL-1 · the runner's own easy pace, from the slow end of the easy /
   // long band their plans were authored with (the generator derives it from
@@ -490,7 +507,6 @@ async function buildInjuryPlanBody(input: InjuryBuildInput): Promise<InjuryBuild
     ? Number(easyPaceRow.hi) : null;
 
   const planId = id('pln');
-  const today = await runnerToday(userId);
   // Anchor week 0 at the runner's training-week boundary (day after long-run
   // day), not a hardcoded Monday — same convention as /api/plan/week + #10.
   const startMonday = weekStartBoundaryOf(today, weekStartDow);
