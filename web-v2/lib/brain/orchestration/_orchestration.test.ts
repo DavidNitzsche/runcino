@@ -10,6 +10,8 @@
  *   · the owning module EXISTS
  *   · it EXPORTS the symbol the step names
  *   · a WIRED step has a real importer outside its own directory
+ *   · a SHADOW or UNWIRED step's DECLARED SYMBOL has not quietly grown a real
+ *     production caller since the state was last set (AUDIT-2026-09-06 below)
  *   · a step that is not WIRED carries a specific blocker, never a shrug
  *   · the wired count is a RATCHET
  *
@@ -19,11 +21,33 @@
  *   · Whether a WIRED step is reached on the path that MATTERS. An importer is
  *     evidence of reachability, not of being on the nightly coaching path —
  *     which is why `SHADOW` exists as a separate state and is not counted.
+ *   · A symbol used only WITHIN its own owning file and never re-imported by
+ *     name elsewhere (step 6's `loadContextMultiplier`, called once inside
+ *     `computeReadiness` in the same file) — the symbol-level check below
+ *     only sees a name crossing a file boundary, so it is a supplement to
+ *     the by-hand trace this file's own steps.ts comments carry, not a
+ *     replacement for it.
+ *
+ * ── AUDIT-2026-09-06 · WHY THE SYMBOL-LEVEL CHECK WAS ADDED ─────────────────
+ *
+ * The file-level "not quietly reachable" check two tests below only ever
+ * covered UNWIRED, never SHADOW — and SHADOW is exactly the state where this
+ * repo's own steps.ts comments (see step 1's ORCHESTRATIONWIRE-1 note) had
+ * ALREADY asserted "steps 12 and 16 are already WIRED in exactly this state"
+ * while the step-12 array entry still said SHADOW, and step 4 was left SHADOW
+ * a commit after the sibling change (ARBITRATIONWIRE-1) that put its exact
+ * output on a path to `plan_decision_ledger`. File-level reachability could
+ * not have caught either: `stimulus.ts` and `reassessment-scheduler.ts` were
+ * already reachable as FILES (other exports of both are used elsewhere), so
+ * the gap was specifically that the DECLARED symbol's own real importers were
+ * never walked forward to a route. `namedValueImportersOf` below closes that
+ * one gap — it does not replace the by-hand trace, and per the note above it
+ * cannot see a symbol that never leaves its own file.
  */
 import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildModuleGraph } from '@/lib/audit/module-graph';
+import { buildModuleGraph, resolveSpecifier, stripComments } from '@/lib/audit/module-graph';
 import {
   ORCHESTRATION_STEPS, WIRED_STEP_PIN, NOT_BUILT_PIN, wiredCount,
 } from './steps';
@@ -67,6 +91,44 @@ function reachedFromProduction(rel: string): string | null {
     frontier = next;
   }
   return null;
+}
+
+/**
+ * Direct importers of `ownerAbsRel` (web-v2-relative, e.g. `s.owner`) that
+ * bind `symbol` as a real VALUE — never `import type`, never an inline
+ * `type Foo` clause member. Reuses `resolveSpecifier`/`stripComments` from
+ * the same module-graph builder rather than re-deriving specifier resolution
+ * a second way, per this repo's own resolver-reuse rule.
+ *
+ * Deliberately file-boundary-only: it answers "did this name leave its
+ * owning file by name", not "is this name used at all" (see the file header
+ * for why that is a stated limitation, not an oversight — step 6's
+ * `loadContextMultiplier` is the case that only fires inside its own file).
+ */
+function namedValueImportersOf(ownerAbsRel: string, symbol: string): string[] {
+  const ownerRel = `web-v2/${ownerAbsRel}`;
+  const ownerAbs = join(ROOT, ownerAbsRel);
+  const out: string[] = [];
+  for (const importerRel of GRAPH.importedBy.get(ownerRel) ?? []) {
+    if (isTestOrScript(importerRel)) continue;
+    const importerAbs = join(REPO, importerRel);
+    let src: string;
+    try { src = readFileSync(importerAbs, 'utf8'); } catch { continue; }
+    const code = stripComments(src);
+    // Every import/export …from '…' clause in this file, matched the same
+    // shape `module-graph.ts`'s own STATIC_IMPORT_RE uses.
+    const STATIC = /(?:^|[\s;}()])(?:import|export)\s+(type\s+)?((?:[^'"]*?)\sfrom\s*)?['"]([^'"\n]+)['"]/g;
+    for (const m of code.matchAll(STATIC)) {
+      const resolved = resolveSpecifier(m[3], importerAbs, ROOT);
+      if (!resolved || resolved !== ownerAbs) continue;
+      if (m[1]) continue; // whole-statement `import type {...} from '...'`
+      const clause = m[2] ?? '';
+      const nameHit = clause.match(new RegExp(`(^|[^A-Za-z0-9_$])(type\\s+)?${symbol}\\b`));
+      if (!nameHit || nameHit[2]) continue; // absent, or an inline `type Foo` member
+      out.push(importerRel);
+    }
+  }
+  return out;
 }
 
 describe('orchestration · the declaration is true', () => {
@@ -134,6 +196,28 @@ describe('orchestration · the declaration is true', () => {
         `step ${s.n} (${s.name}) is declared UNWIRED but ${via} reaches ${s.owner}. `
         + 'Either it got wired — raise the pin and say so — or the blocker is wrong.')
         .toBeNull();
+    }
+  });
+
+  it('a SHADOW step\'s declared symbol has not quietly grown a real caller either', () => {
+    // AUDIT-2026-09-06 · the gap the test above never covered. `s.owner` being
+    // reachable as a FILE (which SHADOW already tolerates by definition — see
+    // the file header) says nothing about whether `s.ownerExports` itself ever
+    // crosses a file boundary into something a route reaches. Two steps were
+    // found stale this way by hand before this check existed: see steps 4 and
+    // 12's own entries in steps.ts for the traced chains this would have
+    // caught immediately instead of requiring a full re-audit to find.
+    for (const s of ORCHESTRATION_STEPS) {
+      if (s.state !== 'SHADOW' || s.owner === null || s.ownerExports === null) continue;
+      const importers = namedValueImportersOf(s.owner, s.ownerExports);
+      const reached = importers
+        .map((imp) => (/^web-v2\/app\/.*\/(route|page)\.tsx?$/.test(imp) ? imp : reachedFromProduction(imp.replace(/^web-v2\//, ''))))
+        .find((via): via is string => via !== null);
+      expect(reached,
+        `step ${s.n} (${s.name}) is declared SHADOW but its own named export `
+        + `${s.ownerExports} is imported by name from ${importers.join(', ') || '(nothing)'} `
+        + `and ${reached} reaches it from a route. Re-check whether this step should be WIRED.`)
+        .toBeUndefined();
     }
   });
 

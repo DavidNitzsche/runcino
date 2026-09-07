@@ -97,15 +97,47 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
   {
     n: 4, name: 'Grade sessions and the week',
     owner: 'lib/adaptation/canonical/stimulus.ts', ownerExports: 'gradeStimulus',
-    state: 'SHADOW',
-    blocker: 'VOLUMESEAM-1 (2026-09-05) narrowed this and did not close it. The '
-      + 'volume-evidence readers now DO reach the nightly cron, so this module is no longer '
-      + 'unreachable; but what they import from it is the constant set '
-      + 'GRADES_THAT_COUNT_AS_EVIDENCE, not `gradeStimulus`. Nothing on the nightly coaching '
-      + 'path actually GRADES a session through this owner: the volume lane hands its '
-      + 'deterioration and telemetry conditions in as refusals, and the canonical-shadow live '
-      + 'input remains shadow-only. Reachable is not wired, and calling it wired because an '
-      + 'adjacent constant travelled would be the claim Rule 20 exists to stop.',
+    state: 'WIRED',
+    // STIMULUSWIRE-1 (2026-09-06) · this SHADOW claim went stale the same day
+    // it was written, and nobody revisited it when the sibling change landed.
+    // VOLUMESEAM-1 (2026-09-05) was correct about the volume-evidence lane in
+    // isolation, but its "the canonical-shadow live input remains shadow-only"
+    // clause stopped being true within the SAME session, when ARBITRATIONWIRE-1
+    // (also 2026-09-05, and step 9's own promotion above) put that exact live
+    // input on a path that reaches the ledger. Re-traced by hand against the
+    // real source, not the graph tool, because `gradeStimulus` is the case Rule
+    // 20 warns about: an adjacent symbol having travelled is not the same as
+    // THIS one being called, so the chain below is followed one file at a time:
+    //
+    //   app/api/cron/run-adaptations/route.ts:278-280 dynamically imports and
+    //     calls `runAndPersistCanonicalShadowEvaluation`
+    //   → lib/adaptation/canonical-shadow/run-live-shadow-evaluation.ts:252
+    //     calls `buildLiveCanonicalInput(userUuid)`
+    //   → lib/adaptation/canonical-shadow/live-input.ts:754, inside
+    //     `buildLiveCanonicalInput`, calls `buildGradedSession(...)`
+    //   → live-input.ts:455, inside `buildGradedSession`, calls
+    //     `gradeStimulus(input)` and takes `.grade` as the session's grade
+    //     (live-input.ts:460 `grade: assessment.grade`) — THIS is the step
+    //   → that `GradedSession[]` becomes `input.qualitySessions`
+    //     (canonical/input.ts:477), consumed by two levers inside
+    //     evaluate.ts:168-173 (`evaluateWeeklyVolume({ keySessions: … })`) and
+    //     evaluate.ts:186-189 (`evaluateThresholdPace({ sessions: … })`)
+    //   → the grade is not passed through unused: levers/threshold-pace.ts:222
+    //     weights evidence by it (`q.s.grade === 'FULL' ? 1 : 0.5`) and
+    //     levers/weekly-volume.ts:459 filters by it
+    //     (`GRADES_THAT_COUNT_AS_EVIDENCE.has(s.grade)`)
+    //   → the resulting `LeverVerdict[]` become `evaluation.records`, and
+    //     run-live-shadow-evaluation.ts:337 calls
+    //     `persistArbitratedProposals(userUuid, evaluation.records)`
+    //   → live-arbitration-proposals.ts:167/263 calls `recordDecision(...)`
+    //     (step 10's owner), a real write to `plan_decision_ledger`.
+    //
+    // What this does NOT claim: that every runner has a quality session to
+    // grade on every cycle (`qualitySessions` is legitimately empty on an
+    // easy-only day, same as any other evidence-shaped step). It claims the
+    // grading function sits ON the path from a real cron entry point to a
+    // real ledger write, which is the bar steps 1/5/9/12/16 were already held
+    // to in this same file.
   },
   {
     n: 5, name: 'Update beliefs',
@@ -185,9 +217,33 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
   {
     n: 12, name: 'Schedule reassessment',
     owner: 'lib/ops/reassessment-scheduler.ts', ownerExports: 'REASSESSMENT_SCHEDULE_TABLE',
-    state: 'SHADOW',
-    blocker: 'migration 167 is not applied to production, so every write answers '
-      + 'table_absent. Approved in concept; the exact statements are not yet approved.',
+    state: 'WIRED',
+    // SCHEDULERWIRE-1 (2026-09-06) · this SHADOW claim was already stale
+    // before this session touched it: step 1's own ORCHESTRATIONWIRE-1 note
+    // above asserts "steps 12 and 16 are already WIRED in exactly this
+    // state", but the step-12 entry itself was never changed to say so. Two
+    // independent, real call chains, both re-traced against the source:
+    //
+    //   app/api/cron/run-adaptations/route.ts:691 dynamically imports and
+    //     calls `scheduleReassessment` from this file directly, inside the
+    //     ARBITRATIONWIRE-1 boundary loop (step 9's SUPPORTED-lever deferral
+    //     path); and separately
+    //   app/api/cron/reassessment-sweep/route.ts:69 imports and calls
+    //     `runReassessmentEvaluationSweep`
+    //   → lib/ops/reassessment-evaluators.ts:124-127 imports `loadDueItems`,
+    //     `resolveReassessment`, `recordAssessmentFailure` from this file as
+    //     real values and calls them for the two evaluator kinds
+    //     (POST_RACE_RECOVERY_CHECK, RETURN_TO_TRAINING_STAGE).
+    //
+    // Same posture as steps 1, 5 and 16: migration 167 (`reassessment_
+    // schedule`) is drafted and NOT applied to production, so every one of
+    // these calls answers `table_absent` today (this file's own
+    // `requireTable`/`absent()` machinery, `lib/ops/reassessment-scheduler.ts`
+    // lines ~289-328) — a named, visible refusal, not a silent no-op and not
+    // a crash. Reachable-and-blocked-on-a-migration is the state this file
+    // already treats as WIRED elsewhere; leaving step 12 alone as SHADOW
+    // while claiming the opposite one screen up is the exact
+    // documentation-drifts-from-the-array failure this file exists to catch.
   },
   {
     n: 13, name: 'Apply only under valid authority',
@@ -244,8 +300,37 @@ export const ORCHESTRATION_STEPS: readonly OrchestrationStep[] = [
  * every call today (migration 169 is drafted and unapplied), in exactly the
  * declared, reported state steps 12 and 16 already established this pin
  * counts as WIRED rather than UNWIRED.
+ *
+ * AUDIT-2026-09-06 · 12 → 14, and this is a CORRECTION, not new wiring — no
+ * production caller was added for either step in this pass. Re-deriving the
+ * whole map from the real import graph by hand (per this repo's own standing
+ * instruction not to trust a prior session's comment) found two entries that
+ * had already drifted from the array on the day they were written:
+ *
+ *   · Step 4 ("grade sessions") was left SHADOW by VOLUMESEAM-1 on the
+ *     argument that "the canonical-shadow live input remains shadow-only."
+ *     ARBITRATIONWIRE-1, in the SAME session, put that exact live input
+ *     (`live-input.ts`'s `buildGradedSession`, which calls `gradeStimulus`)
+ *     on a path that reaches `plan_decision_ledger` via
+ *     `persistArbitratedProposals` → `recordDecision` — the update needed to
+ *     make step 4 consistent with step 9's own promotion never happened. See
+ *     step 4's entry above for the traced chain.
+ *   · Step 12 ("schedule reassessment") was left SHADOW despite step 1's own
+ *     ORCHESTRATIONWIRE-1 comment, two entries above it in this very file,
+ *     already asserting "steps 12 and 16 are already WIRED in exactly this
+ *     state" — a claim the array contradicted. Independently re-verified
+ *     against the source (not the comment): `run-adaptations/route.ts:691`
+ *     and the newly-landed `app/api/cron/reassessment-sweep/route.ts` both
+ *     reach `reassessment-scheduler.ts` by genuine value imports. See step
+ *     12's entry above for both chains.
+ *
+ * Both were already reachable before this pass touched anything; the array
+ * just hadn't been told. Fixing the declaration to match the code it
+ * describes is exactly what `_orchestration.test.ts` exists to force, and
+ * this note exists so the NEXT audit does not have to re-derive it from
+ * scratch to trust it.
  */
-export const WIRED_STEP_PIN = 12;
+export const WIRED_STEP_PIN = 14;
 
 /**
  * NOT_BUILT may only FALL. A step becoming fiction again is a regression.
