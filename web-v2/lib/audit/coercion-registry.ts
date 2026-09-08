@@ -577,7 +577,12 @@ export const HANDED_BACK_FAILS = false;
 // a machine-readable `refusalCode` alongside the sentence, so the entry point
 // branches on the code rather than coercing an absent string into a generic
 // one. Taken from the scanner's own count, not from arithmetic on the diff.
-export const PERIPHERAL_BASELINE = 174;
+// SIMROW-1 · TODAY (2026-09-08) · 174 -> 173. The v5 Today route's inline
+// `Number(ph.avgHr ?? ph.avg_hr) || null` ladder moved into
+// `workStatsForDisplay` in `lib/runs/work-averages.ts`, which the registry
+// already carries at `workAveragesFromPhases::totalSec`. One peripheral
+// collapse left the peripheral set; none was added.
+export const PERIPHERAL_BASELINE = 173;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

@@ -336,7 +336,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'app/api/v5/today/route.ts::composeToday',
   'app/api/v5/today/route.ts::composeToday',
   'app/api/v5/today/route.ts::composeToday',
-  'app/api/v5/today/route.ts::composeToday',
   'app/api/v5/today/route.ts::loadShoes',
   'app/api/watch/workouts/complete/route.ts::POST',
   'app/dev/route-map-mockups/route.ts::loadRun',
@@ -773,7 +772,18 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // SKIPOWNER-1 (2026-09-07) · 351 -> 350. `loadGlanceState`'s `day_actions`
 // skip read was the last hand-typed copy of that predicate AND a swallowed
 // failure; folding it onto the canonical resolver closed both at once.
-export const EMPTIED_BASELINE = 350;
+// SIMROW-1 · TODAY (2026-09-08) · 350 -> 349. `/api/v5/today` no longer runs
+// its own `watch_completion` lookup at all, so the
+// `.catch(() => ({ rows: [] }))` over it is gone with the query. It was the
+// worst-placed swallow of the eleven this route carried: an empty result there
+// did not degrade the screen visibly, it silently swapped the work-scoped
+// pace, heart rate and cadence for nulls — and the query it guarded was
+// selecting the wrong run's payload anyway. `resolveStoredPhases` owns the
+// read now and deliberately does not catch (Rule 11).
+// MERGE (2026-09-08) · both SKIPOWNER-1 and SIMROW-1 removed a different
+// swallow from 351, each independently landing on 350. Combining them (not
+// picking one) is the correct resolution: 351 -> 350 -> 349.
+export const EMPTIED_BASELINE = 349;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

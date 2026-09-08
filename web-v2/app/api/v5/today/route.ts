@@ -28,7 +28,7 @@ import { zoneTargetForWorkout, zoneTargetsForWorkout } from '@/lib/coach/zone-ta
 import { computeZones } from '@/lib/training/zones';
 import { runAvgHr, runMaxHr, type RunData } from '@/lib/runs/run-shape';
 import { canonicalSessionType } from '@/lib/training/workout-type';
-import { workAveragesFromPhases, formatWorkPace } from '@/lib/runs/work-averages';
+import { workStatsForDisplay } from '@/lib/runs/work-averages';
 import { rowsOrNull } from '@/lib/db/read';
 import { composeRecap } from '@/lib/faff/recap-voice';
 import { loadRunTwins, resolveElevationGain, resolveSplits } from '@/lib/runs/twins';
@@ -39,7 +39,7 @@ import { layerOne } from '@/lib/faff/explanation';
 import {
   resolveCoachingThesis, coachSafeSessionName, wireThesis,
 } from '@/lib/training/coaching-thesis';
-import { runnerToday, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
+import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadActivePlanStrict } from '@/lib/plan/lookup';
 import { outage } from '@/lib/route/failure';
 import { loadGlanceState } from '@/lib/coach/glance-state';
@@ -72,7 +72,7 @@ import { fmtPace as fmtPaceShared, fmtMinutesCasual } from '@/lib/format/run';
 import { computeFueling, type WorkoutFuelingType } from '@/lib/training/fueling';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
-import { loadPostRunExperience } from '@/lib/postrun/load';
+import { loadPostRunExperience, resolveStoredPhases } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 import { resolveWorkoutVerdict } from '@/lib/execution/verdict';
 import { resolveDayExecutions, primaryPrescription, type ResolvedRun } from '@/lib/execution/day-resolver';
@@ -296,14 +296,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const runnerTodayISO = (await runnerToday(userId)).slice(0, 10);
   const requestedDate = url.searchParams.get('date')?.slice(0, 10) || null;
   const today = requestedDate || runnerTodayISO;
-  // Watch-completion date matching (below) needs the runner's own timezone,
-  // not the server's — a UTC insert timestamp for a run logged in the
-  // evening reads as tomorrow's date in UTC.
-  // runnerTimezoneOrPacific, not the plain UTC-fallback variant — this is
-  // exactly the "coach_intents watch-completion day bucketing" use case its
-  // own doc comment names. A runner with no stored timezone is legacy
-  // single-user-era data stamped in Pacific wall time, never UTC.
-  const completionTz = await runnerTimezoneOrPacific(userId).catch(() => 'America/Los_Angeles');
+  // `completionTz` used to be resolved here for this route's own
+  // watch-completion date match. That query is gone (SIMROW-1 · TODAY — see
+  // `completionPhases` below): `resolveStoredPhases` owns the resolution and
+  // resolves the runner's timezone itself, on the one rung that still needs
+  // one. Left as a comment rather than silently deleted because the reason
+  // this route no longer buckets completions by date is the whole point of
+  // the fix, and a future reader reaching for a timezone here should find the
+  // owner instead.
   // 22b. THE SCREEN IS NOT IN THE PRESENT TENSE, SO NEITHER IS ITS CONTEXT.
   //
   // `loadGlanceState` takes no date — it reads readiness, the seven-night
@@ -1037,35 +1037,58 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       const durationSec = facts.timeSec;
       const paceSPerMi = facts.paceSecPerMi;
 
-      // The watch's own completion payload for this day.
-      //
-      // THIS QUERY USED TO RUN ONLY FOR A TREADMILL, which is why the win
-      // line composed on this route never saw a rep. `deriveWin`'s interval
-      // branch prefers real phases and falls back to a per-mile heuristic
-      // when it has none — and on the one run type where per-rep detail is
-      // the whole story, this route was always handing it the fallback. The
-      // recap route has read the same row unconditionally all along; the two
-      // now agree. Same SQL, same `#HHmm`-tolerant field match — see
-      // `lib/coach/run-state.ts` loadPhaseBreakdown for that regex's history.
-      const intent = (await pool.query<{ value: any }>(
-        `SELECT value FROM coach_intents
-          WHERE COALESCE(user_uuid, user_id) = $1 AND reason = 'watch_completion'
-            AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
-                      THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-                      -- 2026-08-27 · was ts::date = $2::date, comparing the
-                      -- UTC insert timestamp's date against the runner's
-                      -- LOCAL "today" with no timezone conversion. A run
-                      -- logged after ~5pm Pacific (UTC already past
-                      -- midnight) failed this match outright -- exactly what
-                      -- silently emptied the belt-averages lookup below,
-                      -- same runnerTimezone convention as goal-projection.ts.
-                      ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
-          ORDER BY ts DESC LIMIT 1`,
-        [userId, today, completionTz],
-      ).catch(() => ({ rows: [] as any[] }))).rows[0];
-      let completion: any = intent?.value ?? null;
-      if (typeof completion === 'string') { try { completion = JSON.parse(completion); } catch { completion = null; } }
-      const completionPhases: any[] = Array.isArray(completion?.phases) ? completion.phases : [];
+      /* ── WHICH COMPLETION IS *THIS RUN'S* (SIMROW-1 · TODAY, 2026-09-08) ────
+       *
+       * This block used to run its own `coach_intents` query: the runner, the
+       * reason, and the DAY, `ORDER BY ts DESC LIMIT 1`. It was never joined
+       * to `runRow.id` — the run this screen is actually about — so on any day
+       * carrying more than one completion payload it took whichever was
+       * written last and composed the whole post-run card from it.
+       *
+       * Confirmed against the owner's real rows, not theorised. Three
+       * `watch_completion` intents land on 2026-09-02:
+       *
+       *     sim-recovery-live#1038                        3 phases  ← taken
+       *     sim-recovery-live#1101                        3 phases
+       *     0645f40c-…-2026-09-02#0919                   13 phases  ← his run
+       *
+       * The simulator payload's one work phase is 31 s / 0.09 mi, so the
+       * screen read "Pace, across the work · 5:44" against his real 8:26 —
+       * and `hrAvgWork` / `cadenceAvgWork`, which come off the SAME array,
+       * were 167 / 184 from somebody's test instead of 137 / 165 from his run.
+       * `completionPhases` also feeds `beltAverages`, `mapWatchPhases`,
+       * `resolveWorkoutVerdict` and `deriveWin`, so one wrong row mis-stated
+       * every one of them at once. Two more production days resolve wrong the
+       * same way (2026-08-27 and 2026-06-01, both to a stranger `trd_` row) —
+       * the defect is not specific to the simulator, it is specific to
+       * "somebody's payload landed on this date".
+       *
+       * Rule 14: filtering on the runner and the day is not filtering on the
+       * right ROWS. Rule 16: `lib/postrun/load.ts#resolveStoredPhases` already
+       * owns "which stored phase array belongs to this run" — the same SIMROW-1
+       * ladder `run detail`, the recap and the post-run experience all read —
+       * and its own header says a second copy of the resolution is a second
+       * answer to that question. So this calls it rather than keeping a fourth
+       * one. Its three rungs, most specific first: the intent this run NAMES
+       * via `watchCompletionRef`; the run row's OWN `data.phases`, written
+       * verbatim by the same request; and only then the legacy date match, for
+       * rows predating `watchCompletionRef`, bounded so a `sim-` field can
+       * never satisfy it. A run with none of the three gets `[]` — which every
+       * consumer below already treats as "no phases" — rather than a
+       * stranger's numbers presented as his.
+       *
+       * NO `.catch`, deliberately, and for the reason the thesis resolve above
+       * states in full: an empty array and a FAILED read are different facts
+       * (Rule 11), and a swallow here would silently blank the work stats and
+       * the verdict rather than surfacing the outage. `resolveStoredPhases`
+       * has the same posture in its own header. The handler's try/catch turns
+       * a genuine database failure into the honest data-outage screen.
+       */
+      const completionPhases: any[] = (await resolveStoredPhases(
+        userId,
+        String(data.date ?? String(data.startLocal ?? '').slice(0, 10)) || today,
+        data,
+      )) as any[];
 
       // Treadmill telemetry — averaged across watch_completion phases
       // (Gap B12). Speed/incline live per-phase, not on the run row itself.
@@ -1464,34 +1487,20 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // blends the reps with their recovery and lands in a zone the session
         // never asked for; scoped to the work it is the number the runner
         // actually held.
-        ...(() => {
-          // FIELD-NAME MISMATCH, FOUND 2026-09-01 · the watch's own completion
-          // payload writes `actualDurationSec` / `actualDistanceMi` (confirmed
-          // against a real completed run, `coach_intents.id = 915`, and against
-          // `runs.data.phases` written verbatim from it — every field is
-          // `actual`-prefixed except `avgHr`/`avgCadence`, which never were).
-          // This read `durationSec`/`distanceMi` — a plain name that plain
-          // grep across the wire shows this account's phases have never
-          // carried — so `sec`/`mi` were NaN-then-null on every phase, of
-          // every watch-completed run, always. `hrAvgWork`/`cadenceAvgWork`/
-          // `paceWork` below have therefore been silently null since this
-          // shipped; `beltAverages()` two screens down already reads the
-          // correct `actualDurationSec`/`actualSpeedMph` names, which is what
-          // exposed the mismatch here as a real divergence rather than a
-          // guess.
-          const w = workAveragesFromPhases(completionPhases.map((ph: any) => ({
-            type: ph.type ?? null,
-            sec: Number(ph.actualDurationSec ?? ph.durationSec ?? ph.duration_sec) || null,
-            mi: Number(ph.actualDistanceMi ?? ph.distanceMi ?? ph.distance_mi) || null,
-            hr: Number(ph.avgHr ?? ph.avg_hr) || null,
-            cadence: Number(ph.avgCadence ?? ph.avg_cadence) || null,
-          })));
-          return {
-            hrAvgWork: w.hrAvg,
-            cadenceAvgWork: w.cadenceAvg,
-            paceWork: formatWorkPace(w.paceSPerMi),
-          };
-        })(),
+        //
+        // ALL THREE OFF ONE ARRAY — `completionPhases`, which SIMROW-1 · TODAY
+        // above resolved to THIS RUN'S completion rather than to whatever
+        // payload was posted last on this date. That matters more here than
+        // anywhere else on the screen: these are the numbers the runner reads
+        // as his own effort, and the wrong row put a simulator's 5:44 / 167 /
+        // 184 where his 8:26 / 137 / 165 belonged.
+        //
+        // The mapping itself lives in `lib/runs/work-averages.ts` — the module
+        // that already owns the arithmetic — so a test can exercise the exact
+        // code this route runs instead of re-implementing its field-name
+        // ladder. See `workStatsForDisplay`'s header for what that ladder is
+        // for.
+        ...workStatsForDisplay(completionPhases),
         // `canonicalSessionType`, which returns NULL for anything it does not
         // recognise rather than falling back to a guess. That matters here more
         // than usual: this value now decides the whole shape of the screen, and
