@@ -50,6 +50,7 @@ import {
   type SafetyResolution,
 } from '@/lib/safety/safety-verdict';
 import { mapWatchPhases } from '@/lib/coach/run-state';
+import { derivePhaseMileSplitsFromCompletion } from '@/lib/runs/derive-phase-splits';
 import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { loadPlanWeek, isDaySkipped } from '@/lib/plan/week-loader';
 import { resolveViewedPlanDay, viewedDayIsUnresolved, viewedDayPrescription } from '@/lib/faff/viewed-day';
@@ -1129,6 +1130,13 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         spec: planRow?.workout_spec ?? null,
         phases: completionPhases,
       });
+      /* PHASE-GRAIN-1 (2026-09-08) · each phase's own mile table, off the SAME
+       * `completionPhases` array `grade` was resolved from, so the two are
+       * aligned by position. Resolved beside the grade rather than inside the
+       * `routePhases` map because it is one pass over the payload, not one per
+       * phase — and because this is where every other read of that array is
+       * already anchored (SIMROW-1 · TODAY, above). */
+      const routePhaseMileSplits = derivePhaseMileSplitsFromCompletion(completionPhases);
       // THE PRESCRIBED WINDOW, for the recap's band-adherence sentence. See
       // `RecapInput.plannedPaceBandSPerMi`: the phone's mile table stopped
       // colouring by this on 2026-08-30 and the fact now travels in words.
@@ -1757,9 +1765,16 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // the phone. Passed through raw (not narrowed to the four known
         // values) because the narrowing already happens client-side, the same
         // posture `run-shape.ts`'s `runPhases()` takes for its own callers.
+        // PHASE-GRAIN-1, 2026-09-08 · `mile_splits`, from the ONE derivation
+        // (`lib/runs/derive-phase-splits.ts`) run detail's `phase_breakdown`
+        // also carries, over the SAME raw payload `grade` was computed from and
+        // aligned to `grade.phases` by position — `gradeStoredPhases` reads its
+        // own raw element the same way. Both screens therefore cut the tempo at
+        // the same mile boundaries, which is Rule 16 on a table rather than on
+        // a headline number.
         routePhases: indoor
           ? []
-          : grade.phases.flatMap((gp) => {
+          : grade.phases.flatMap((gp, gi) => {
               const mi = gp.actualDistanceMi ?? 0;
               const sec = gp.actualDurationSec ?? 0;
               return mi > 0 && sec > 0
@@ -1798,6 +1813,9 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                     // just relabelling the bare target.
                     target_pace_sec: gp.targetSecPerMi,
                     tolerance_pace_sec: gp.toleranceSec,
+                    // Null for all but a phase that crossed two whole-mile
+                    // boundaries of its own — see `PHASE_GRAIN_MIN_WHOLE_MILES`.
+                    mile_splits: routePhaseMileSplits[gi] ?? null,
                   }]
                 : [];
             }),

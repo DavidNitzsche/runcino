@@ -468,6 +468,8 @@ function phase(over: Partial<PhaseBreakdown> & { type: PhaseBreakdown['type']; a
     verdict: null,
     time_in_tolerance_sec: null,
     time_out_of_tolerance_sec: null,
+    // PHASE-GRAIN-1 · presentation only, and nothing in this corpus reads it.
+    mile_splits: null,
     ...over,
   };
 }

@@ -846,7 +846,12 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/plan/week-loader.ts::dayNoteFor::scrubbed.length',
   'lib/plan/zone-anchors.ts::zonePaceSec::p',
   'lib/runs/coherence.ts::pos::n',
-  'lib/runs/derive-splits.ts::deriveSplitsFromPaceSamples::splits.length',
+  // 2026-09-08 · PHASE-GRAIN-1 renamed the local, not the site: the walk moved
+  // into `walkMileSplits` so `derive-phase-splits.ts` could share it, and what
+  // this function returns is now `walk.splits`. Same expression, same line,
+  // same argued reason — the ratchet follows the rename rather than gaining an
+  // entry, and the old id is gone rather than left to rot.
+  'lib/runs/derive-splits.ts::deriveSplitsFromPaceSamples::walk.splits.length',
   'lib/runs/energy.ts::pos::n',
   'lib/runs/run-shape.ts::paceToSec::n',
   'lib/runs/run-shape.ts::paceToSec::p',

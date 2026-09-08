@@ -820,7 +820,11 @@ struct RunDetailV5: View {
                 verdictPhrase: isChosenSkip ? nil : Self.verdictPhrase(p),
                 chosen: isChosenSkip,
                 kind: RepPiece.Kind.of(type: p.type, isWork: p.type == "work"),
-                durationSec: p.actual_duration_sec
+                durationSec: p.actual_duration_sec,
+                // PHASE-GRAIN-1 (2026-09-08) · the phase's own miles, when the
+                // server cut any. Empty for every rep and short tempo, which is
+                // the normal answer — see `RepPiece.mileSplits`.
+                mileSplits: MileBreakdownV5.pieces(fromPhaseSplits: p.mile_splits)
             )
         }
     }

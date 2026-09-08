@@ -701,6 +701,15 @@ struct PhaseBreakdown: Decodable, Identifiable {
     /// This is where raggedness lives now that it is no longer a verdict.
     let time_out_of_tolerance_sec: Int?
 
+    /// PHASE-GRAIN-1 (2026-09-08) · this phase's own miles, counted from the
+    /// START OF THE PHASE. See `PhaseMileSplit`.
+    ///
+    /// Nil on almost every phase and that is the normal answer, not a gap: the
+    /// server refuses below two whole-mile boundaries of the phase's own
+    /// stream (`lib/runs/derive-phase-splits.ts`), which is every rep and every
+    /// short tempo. Nil on any payload from before this field existed.
+    let mile_splits: [PhaseMileSplit]?
+
     enum CodingKeys: String, CodingKey {
         case index, label, type
         case target_pace, target_pace_sec, tolerance_pace_sec
@@ -709,6 +718,7 @@ struct PhaseBreakdown: Decodable, Identifiable {
         case actual_pace, actual_distance_mi, actual_duration_sec
         case avg_hr, max_hr, avg_cadence, completed, status
         case verdict, time_in_tolerance_sec, time_out_of_tolerance_sec
+        case mile_splits
     }
 
     /// WRITTEN OUT, NOT SYNTHESISED, and the reason is in `decodeFlexInt`'s
@@ -748,6 +758,63 @@ struct PhaseBreakdown: Decodable, Identifiable {
         self.verdict = try? c.decodeIfPresent(String.self, forKey: .verdict)
         self.time_in_tolerance_sec = c.decodeFlexInt(forKey: .time_in_tolerance_sec)
         self.time_out_of_tolerance_sec = c.decodeFlexInt(forKey: .time_out_of_tolerance_sec)
+        // `try?`, like every line above it, for the reason this initialiser is
+        // written out at all: one throw inside a nested Codable used to fail
+        // the whole parent array, and a mile table is the least important thing
+        // on this screen to lose run detail over.
+        self.mile_splits = (try? c.decodeIfPresent([PhaseMileSplit].self, forKey: .mile_splits)) ?? nil
+    }
+}
+
+/// PHASE-GRAIN-1 (2026-09-08) · ONE MILE OF ONE PHASE.
+///
+/// The runner's ask, over a 3.5-mile tempo phase drawn as a single average:
+/// "the 3.5 tempo shows just one number but I'd like to see it broken down by
+/// mile. the shorter tempos obv wont but 3.5 miles is long enough that seeing
+/// the mile breakdown would be helpful."
+///
+/// `mile` counts from the start of the PHASE, not of the run — mile 1 of a
+/// tempo that began 1.5 miles into the session is the session's second mile,
+/// and calling it anything else would be a number that means two things.
+///
+/// PARITY-1 · decoded identically off `PhaseBreakdown.mile_splits` (run
+/// detail) and `V5RoutePhase.mileSplits` (the post-run sheet), so the same
+/// phase cuts into the same rows on both screens by construction. Both wires
+/// send the same snake_case object, so this one struct reads either.
+///
+/// NO TARGET AND NO TOLERANCE, deliberately. A stored phase carries ONE
+/// tolerance for the whole phase; splitting it across the miles would be a
+/// second, quieter grader disagreeing with the phase's own verdict a line
+/// above (Rule 16). These rows are readings, and only readings.
+struct PhaseMileSplit: Decodable, Equatable {
+    let mile: Int
+    /// Bare "7:14", the same shape `RunSplit.pace` carries.
+    let pace: String?
+    /// Average heart rate over this piece. Nil means the piece carried none —
+    /// never a neighbour's.
+    let hr: Int?
+    /// How much of a mile this row covers: 1 for a whole mile, a fraction for
+    /// the trailing piece. Always sent, because the server's walk always knows
+    /// it — this is what turns the last row's numeral into its own length.
+    ///
+    /// `distanceMi`, camelCase, because that is the spelling `RunSplit` already
+    /// uses for the identical quantity and one screen reads both.
+    let distanceMi: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case mile, pace, hr, distanceMi
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.mile = c.decodeFlexInt(forKey: .mile) ?? 0
+        self.pace = try? c.decodeIfPresent(String.self, forKey: .pace)
+        self.hr = c.decodeFlexInt(forKey: .hr)
+        self.distanceMi = try? c.decodeIfPresent(Double.self, forKey: .distanceMi)
+    }
+
+    init(mile: Int, pace: String?, hr: Int?, distanceMi: Double?) {
+        self.mile = mile; self.pace = pace; self.hr = hr; self.distanceMi = distanceMi
     }
 }
 
