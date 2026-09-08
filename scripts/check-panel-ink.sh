@@ -86,14 +86,24 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VIEWS="$ROOT/native-v2/Faff/Faff/ViewsV5"
 DESIGN="$ROOT/native-v2/Faff/Faff/DesignV5"
 
-if [ ! -d "$VIEWS" ]; then
-  echo "check-panel-ink: $VIEWS not found · skipping"
-  exit 0
-fi
-
 fail=0
 
+# LIVENESS (Rule 18 §2), and it covers the whole script, not just guard 1.
+# The original version of this check exited 0 the instant $VIEWS was missing —
+# silently disarming guards 2 and 3 as well, both of which have their OWN
+# liveness assertions below that a directory rename would have skipped past
+# entirely. A missing ViewsV5 means the tree moved; that is a failure to
+# report, never a clean run to wave through.
+if [ ! -d "$VIEWS" ]; then
+  echo "check-panel-ink: $VIEWS not found · the tree moved, every guard in this"
+  echo "  script is dead until it is repointed. Reporting FAILURE, not clean."
+  fail=1
+  guard1_scanned=0
+else
+guard1_scanned=0
 for f in "$VIEWS"/*.swift; do
+  [ -f "$f" ] || continue
+  guard1_scanned=$((guard1_scanned + 1))
   base="$(basename "$f")"
 
   # Does this file render a DayPanel with a STATE fill? A `.quiet` panel is
@@ -115,6 +125,11 @@ for f in "$VIEWS"/*.swift; do
     fail=1
   fi
 done
+if [ "$guard1_scanned" -eq 0 ]; then
+  echo "check-panel-ink: guard 1 scanned ZERO files in $VIEWS"
+  fail=1
+fi
+fi
 
 # ── GUARD 2 · mark: and fault: are threaded in pairs ─────────────────────────
 #
