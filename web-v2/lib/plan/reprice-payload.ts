@@ -224,9 +224,18 @@ export interface RepriceSubject {
  * Pick the anchor a sentence is entitled to talk about, or refuse.
  *
  * Returns `null` when NO anchor moved visibly — three facts, not one
- * (Rule 11): a caller that gets null must not invent a subject, and the
- * sentence generators fall back to their existing "the fitness anchor moved"
- * wording rather than printing two identical numbers.
+ * (Rule 11): a caller that gets null must not invent a subject. What the
+ * sentence generators do with a null is THEIRS to decide, not this
+ * function's claim — as of 2026-09-08, `repriceReason` in
+ * `reanchor-plan.ts` actually falls back to its ORIGINAL threshold-pair
+ * wording in that case (which can print two identical numbers; that is
+ * the exact defect this file exists to route around when a real mover
+ * exists). This path is currently UNREACHABLE from both live writers —
+ * `writeReanchorProposal` refuses as `unchanged` when every anchor moves
+ * &lt;1 s/mi, and `autoProposeForUnexplainedDrift` returns early when no
+ * visible finding exists — so no shipped card can reach it today. Stated
+ * here rather than left to contradict `reanchor-plan.ts`'s own header,
+ * which describes the fallback correctly (found by independent review).
  *
  * Selection, in order:
  *   1. threshold, if it moved visibly — the anchor a marathoner reasons in,
