@@ -91,6 +91,44 @@ struct TodayCalendarDay: Identifiable, Equatable {
         self.isToday = isToday
         self.dateISO = dateISO
     }
+
+    /// SKIPCAL-1 (2026-09-08) · WHAT THE STATUS COLUMN SAYS ABOUT ONE DAY.
+    ///
+    /// Two views build these rows — `HostsV5.calendarWeeks` (the fallback,
+    /// current week off the week strip) and `TodayBeforeLiveV5
+    /// .resolvedCalendarWeeks` (the live one, every week off the block) — and
+    /// both were writing the same nested ternary by hand. That is how the two
+    /// paths would come to disagree about the same day, so the ladder is one
+    /// function and it is the only place that decides.
+    ///
+    /// THE ORDER, AND WHY.
+    ///
+    /// `isToday` first, unchanged: it is the navigational anchor of this list
+    /// and the reason the row is `raised`. `isDone` next, also unchanged: a
+    /// run that actually happened is stronger evidence than a declaration made
+    /// before it, so a day that was skipped and then run reads "Done".
+    ///
+    /// `skipped` is appended, not inserted, precisely so nothing that already
+    /// rendered moves. It is the new fact, and the one the sheet existed to
+    /// show and could not: before this, a skipped day drew a blank status
+    /// column — visually identical to an ordinary un-skipped day of the same
+    /// type, on the one scannable list a runner reads to answer "what did I
+    /// miss this week".
+    ///
+    /// WHAT THIS CANNOT SAY (Rule 11). The three inputs are two booleans and a
+    /// third; there is no "we could not read the skip state" among them. The
+    /// block payload does carry that fact (`skipStateUnknown`, added by
+    /// SKIPAGREE-1 for exactly this reason), and this ladder does not consult
+    /// it — because with only these four outcomes, a refusal and a
+    /// not-skipped day render identically anyway, so wiring it would add a
+    /// field with no observable effect. If this column ever gains a treatment
+    /// that would DIFFER under a failed read, that flag is where to start.
+    static func status(isToday: Bool, isDone: Bool, skipped: Bool) -> FaffValue? {
+        if isToday { return .measured("Today") }
+        if isDone { return .measured("Done") }
+        if skipped { return .skipped }
+        return nil
+    }
 }
 
 /// One week's group in the calendar sheet.

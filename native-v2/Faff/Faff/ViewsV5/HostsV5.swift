@@ -2052,6 +2052,24 @@ struct TodayHostV5: View {
     /// wired up on this side — see that field's own comment in APIV5.swift.
     private func calendarWeeks(_ model: V5Today) -> [TodayCalendarWeek] {
         guard !model.weekStrip.isEmpty else { return [] }
+        // SKIPCAL-1 (2026-09-08) · THE CURRENT WEEK'S SKIPS COME FROM THE
+        // BLOCK, NOT FROM THE STRIP.
+        //
+        // `/api/v5/today`'s `weekStrip` carries no skip field, and adding one
+        // is a wire change deliberately out of this fix's scope. But the block
+        // payload already knows: it carries EVERY week including the current
+        // one, and only `!isCurrent` filtering below keeps its copy of this
+        // week off the screen. So the fact is in hand — it just needs joining
+        // by date, which `V5WeekStripDay.dateISO` and `V5BlockDay.dateISO`
+        // both carry.
+        //
+        // Without this the fix would answer "what did I miss" for every week
+        // EXCEPT the one the question is usually about.
+        let skippedDates: Set<String> = Set(
+            (blockSurface.model?.weeks ?? [])
+                .flatMap(\.days)
+                .filter(\.isSkipped)
+                .compactMap(\.dateISO))
         let current = TodayCalendarWeek(
             id: "current",
             range: model.panel.weekLine ?? "This week",
@@ -2059,8 +2077,10 @@ struct TodayHostV5: View {
                 TodayCalendarDay(id: d.id,
                                  label: "\(d.letter) \(d.number)",
                                  sub: d.isRest ? "Rest day" : d.dayState.capitalized,
-                                 status: d.isToday ? .measured("Today")
-                                       : d.isDone ? .measured("Done") : nil,
+                                 status: TodayCalendarDay.status(
+                                    isToday: d.isToday,
+                                    isDone: d.isDone,
+                                    skipped: skippedDates.contains(d.dateISO)),
                                  isToday: d.isToday)
             }
         )
@@ -2079,8 +2099,9 @@ struct TodayHostV5: View {
                             id: d.id,
                             label: Self.calendarDayLabel(d.dateISO),
                             sub: d.type ?? (d.race ? "Race" : "Easy"),
-                            status: d.isToday == true ? .measured("Today")
-                                  : d.isDone == true ? .measured("Done") : nil,
+                            status: TodayCalendarDay.status(isToday: d.isToday,
+                                                            isDone: d.isDone == true,
+                                                            skipped: d.isSkipped),
                             isToday: d.isToday,
                             dateISO: d.dateISO)
                     }

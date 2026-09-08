@@ -888,9 +888,30 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       const finish = projectedFinishByDate.get(row.date_iso) ?? null;
       stats.push(finish
         ? { label: 'Projected finish', value: finish, tone: null }
-        // `text: null` → `FaffValue.unreadable` on the phone: a fault-red dash
-        // in the slot where the figure goes. Visibly different from a race day
-        // with no stat at all, which is what a genuine absence still renders.
+        // `text: null` → `FaffValue.unreadable` on the phone: a dash in the
+        // slot where the figure goes, under the label that names it. Visibly
+        // different from a race day with no stat at all, which is what a
+        // genuine absence still renders.
+        //
+        // SKIPPROJ-CONTRAST-1 (2026-09-08) · this comment used to say
+        // "fault-red dash", and on the one screen that draws it that was a
+        // claim nothing checked and nothing delivered. `FaffValueText`
+        // hard-coded `V5.fault` #FF4438, a race day is always the `race`
+        // gradient, and red on that warm ground measured 1.02:1 — so the
+        // sentence above was true of the LABEL and the DASH and false of the
+        // colour, which was the half the sentence leaned on. The dash now
+        // takes the panel's own ink (`V5.PanelInk.fault`) and keeps the fault
+        // meaning in its glyph and in VoiceOver's "could not be read".
+        //
+        // Measured off the RENDERED PIXELS of this exact stat, this exact
+        // state, driven against a scratch copy of the owner's own block with
+        // the outlook resolution forced to time out — same slot, same plate
+        // (#D67656), before and after:
+        //
+        //     #FF4438  1.08:1        #3A1410  5.11:1
+        //
+        // `tone` stays 'fault' — the engine's statement about the read is
+        // unchanged; only what the phone paints with it is.
         : { label: 'Projected finish', value: { text: null, modelled: true }, tone: 'fault' });
     }
 

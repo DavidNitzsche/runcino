@@ -82,6 +82,22 @@ struct FaffValue: Equatable, Hashable {
     /// We could not read it.
     static let unreadable = FaffValue(text: "—", basis: .unreadable)
 
+    /// THE RUNNER EXPLICITLY DECLINED THIS DAY. One wording, one owner.
+    ///
+    /// `day_actions action='skip'`, stated plainly and never judged — the same
+    /// coach-voice rule the rest of this surface follows.
+    ///
+    /// It lives here because it is now drawn by two unrelated views:
+    /// `PlanSnapshotDayView`, which says it as a line under the headline, and
+    /// the training-calendar sheet, which says it in a day row's status
+    /// column. Rule 16 wants one canonical presentation of a fact, not a
+    /// second one that drifts — and a status column and a body line are
+    /// exactly the pair that drifts, because nobody edits both.
+    ///
+    /// `.measured`, deliberately: a skip is something the runner did and the
+    /// server recorded, not something the engine inferred.
+    static let skipped = FaffValue(text: "Skipped.", basis: .measured)
+
     /// The common shape at a call site: an optional the engine may not have
     /// been able to produce. Nil becomes `.unreadable` rather than an empty
     /// string, because a blank space reads as "zero", not as "unknown".
@@ -164,17 +180,37 @@ struct FaffValueText: View {
     /// thing on the screen. Those call sites pass `panelInk.mark`, which keeps
     /// the tilde and drops the hue. See `V5.PanelInk.mark`.
     var mark: Color = V5.attention
+    /// The ink of the unreadable dash.
+    ///
+    /// A FAULT MARK HAS TO BE VISIBLE TO BE A FAULT MARK.
+    ///
+    /// This was hard-coded to `V5.fault` inside the `.unreadable` case below,
+    /// on the same reasoning that once hard-coded the tilde to `V5.attention`:
+    /// fault red measures 6.6:1 on a tile and that is the surface it was
+    /// checked against. On a day-state gradient it fails on all six ramps, and
+    /// worst of all on `race` — 1.02:1 on the stats plate, where the
+    /// "Projected finish" stat lives and where a dash is the WHOLE content of
+    /// the slot. See `V5.PanelInk.fault` for the measurements and for why the
+    /// on-panel answer is the panel's own ink rather than a second red.
+    ///
+    /// Defaults to `V5.fault`, which is right off a panel and wrong on one, so
+    /// every call site drawn inside a `DayPanel` passes `panelInk.fault` — the
+    /// same discipline `mark` above already carries, checked the same way by
+    /// `scripts/check-panel-ink.sh`.
+    var fault: Color = V5.fault
 
     init(_ value: FaffValue,
          font: Font,
          color: Color = V5.textPrimary,
          markScale: CGFloat = 0.62,
-         mark: Color = V5.attention) {
+         mark: Color = V5.attention,
+         fault: Color = V5.fault) {
         self.value = value
         self.font = font
         self.color = color
         self.markScale = markScale
         self.mark = mark
+        self.fault = fault
     }
 
     var body: some View {
@@ -211,9 +247,11 @@ struct FaffValueText: View {
                 .accessibilityLabel(value.voiceOverLabel)
 
         case .unreadable:
+            // `fault`, not `V5.fault`. On a gradient panel the red is
+            // invisible against the ground — see the property's own comment.
             Text(value.text)
                 .font(font)
-                .foregroundStyle(V5.fault)
+                .foregroundStyle(fault)
                 .accessibilityLabel(value.voiceOverLabel)
         }
     }

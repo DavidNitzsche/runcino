@@ -176,6 +176,45 @@ enum V5 {
         /// readable. An invisible amber mark breaks rule one; a visible dark
         /// one does not.
         let mark: Color
+        /// The "we could not read this" dash, ON THIS PANEL.
+        ///
+        /// A FAULT MARK HAS TO BE VISIBLE TO BE A FAULT MARK — the same
+        /// sentence as `mark` above, and the same sign error, found the same
+        /// way (a reviewer fault-injected the state and measured what
+        /// rendered rather than reading the code).
+        ///
+        /// `FaffValueText` hard-coded the unreadable dash to `V5.fault`
+        /// `#FF4438`, which measures 6.6:1 on a tile and is where the token
+        /// was ever checked. On a day-state ramp it is a mid-luminance
+        /// saturated colour against a mid-luminance saturated ground, and it
+        /// fails on ALL SIX ramps — measured against each ramp's own stats
+        /// plate, worst of the five plate depths:
+        ///
+        ///     race     1.02:1      easy     1.62:1
+        ///     quality  1.02:1      long     1.95:1
+        ///                          phase    2.05:1
+        ///                          rest     2.80:1
+        ///
+        /// The race ramp is the one that matters most, because the
+        /// "Projected finish" stat only ever appears on a race day and a race
+        /// day is always this ramp: the one slot on the panel whose entire
+        /// content is that dash was, systematically, the least legible thing
+        /// on the screen. Against the 3:1 large text needs, 1.02:1 is not a
+        /// dim mark, it is an absent one.
+        ///
+        /// THE DASH KEEPS ITS GLYPH AND GIVES UP ITS HUE. Exactly the trade
+        /// `mark` above already made, and it is available here where it was
+        /// not there: a modelled tilde sits BESIDE a number, so on a dark ramp
+        /// a white tilde before a white number is not a mark at all — but the
+        /// unreadable dash REPLACES the number. There is no adjacent value for
+        /// it to be confused with, so the panel's own primary ink reads it
+        /// unambiguously on all six ramps (4.88:1 worst on race/quality,
+        /// 5.53:1 worst on easy) and no colour in the locked palette reads as
+        /// "fault" against a saturated ground anyway.
+        ///
+        /// OFF a panel — the black page, a tile — `V5.fault` is unchanged and
+        /// still correct. This token is only ever consulted inside a fill.
+        let fault: Color
         /// What the status bar glyphs must be for this ramp. The panel reaches
         /// behind the clock, so the system's own ink is on our surface.
         let statusBar: ColorScheme
@@ -230,6 +269,7 @@ enum V5 {
             plate:     .black.opacity(0.20),
             control:   .black.opacity(0.22),
             mark:      V5.attention,
+            fault:     .white,
             statusBar: .dark)
 
         /// ON A LIGHT RAMP THERE IS NO OPACITY LEFT TO SPEND.
@@ -266,6 +306,7 @@ enum V5 {
             plate:     .white.opacity(0.22),
             control:   .white.opacity(0.28),
             mark:      Theme.V5.DayState.darkInk,
+            fault:     Theme.V5.DayState.darkInk,
             statusBar: .light)
     }
 
@@ -278,6 +319,7 @@ enum V5 {
         static let plate     = PanelInk.onDarkRamp.plate
         static let control   = PanelInk.onDarkRamp.control
         static let mark      = PanelInk.onDarkRamp.mark
+        static let fault     = PanelInk.onDarkRamp.fault
     }
 
     // ═════════════════════════════════════════════════════════════════════

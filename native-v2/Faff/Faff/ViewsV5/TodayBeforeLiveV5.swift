@@ -220,7 +220,13 @@ struct TodayBeforeLiveV5: View {
                         id: day.id,
                         label: dayLabel(day.dateISO),
                         sub: daySub(day),
-                        status: day.isToday ? .measured("Today") : ((day.isDone ?? false) ? .measured("Done") : nil),
+                        // SKIPCAL-1 · one ladder, shared with `HostsV5
+                        // .calendarWeeks`, so the live path and the fallback
+                        // cannot disagree about a day. `isSkipped` is the new
+                        // third input — see `V5BlockDay.skipped`.
+                        status: TodayCalendarDay.status(isToday: day.isToday,
+                                                        isDone: day.isDone ?? false,
+                                                        skipped: day.isSkipped),
                         isToday: day.isToday,
                         // CALCELLWEEK-1 (2026-09-07) · this mapping was the
                         // one actually serving the sheet (a live `block`
