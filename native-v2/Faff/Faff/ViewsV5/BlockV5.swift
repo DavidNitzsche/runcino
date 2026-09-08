@@ -156,7 +156,17 @@ struct BlockV5: View {
                 //
                 // Seen on the owner's phone on 2026-08-30: a RECOVERY block of
                 // one week, "Weeks in 1 of 1", and a blank bar above it.
-                if model.phases.count > 1 { arcSection }
+                // PHASEANSWERS-PHONE-1 (2026-09-08) · the OR is the whole
+                // reason this gate moved. `phases.count > 1` was a Rule 17
+                // judgement about the BAR, which carries nothing a one-phase
+                // block has not already said three times over. It is not a
+                // judgement about the phase's hold/progress sentences, which
+                // a one-phase RECOVERY block does carry (see the `default`
+                // arm of `buildPhaseAnswers`) and which nothing else on this
+                // screen says. Gating those on the bar would have re-created
+                // the same silence this change exists to end, one block
+                // shape further in.
+                if model.phases.count > 1 || currentPhaseHasProgression { arcSection }
                 coachSection
                 // DECISIONPLACEMENT-1 (2026-09-07) · everything pending that
                 // is not about today lives here, next to the week it is
@@ -322,10 +332,53 @@ struct BlockV5: View {
 
     // MARK: The arc
 
+    /// PHASEANSWERS-PHONE-1 · what the arc says about the phase the runner is
+    /// standing in. Resolved by `V5Block.arcProgressionLines` and NOT here:
+    /// the scope ("the current phase, and no other") is the load-bearing half
+    /// of this fix, so it lives where a test can hold it (Rule 16). This view
+    /// draws what that resolver returns and decides nothing.
+    private var arcProgression: [(label: String, text: String)] { model.arcProgressionLines }
+
+    private var currentPhaseHasProgression: Bool { !arcProgression.isEmpty }
+
     private var arcSection: some View {
         VStack(alignment: .leading, spacing: V5.S.s12) {
             V5SectionLabel(text: "The arc")
-            PhaseBar(phases: model.phases.map(\.segment), height: 30)
+            // The bar keeps its own gate. One phase is one full-width block
+            // with the phase name already 56pt above it, which is the third
+            // printing of a word that carries no position of its own.
+            if model.phases.count > 1 {
+                PhaseBar(phases: model.phases.map(\.segment), height: 30)
+            }
+            // ── What holds this phase, and what earns the next step ────────
+            //
+            // Both sentences are the plan engine's own, written at authoring
+            // by `lib/plan/phase-answers.ts` and stored on the plan. Nothing
+            // here composes, shortens, reorders or re-words them: this screen
+            // has no standing to decide what a runner must demonstrate, and
+            // the two labels above them name the engine's own question rather
+            // than adding a claim of their own. Rule 4 of this file's header,
+            // unchanged: every line of copy is either the engine's string or a
+            // short structural label.
+            //
+            // Nothing draws when the phase answers neither, which is the state
+            // of every block authored before 2026-09-01. A titled blank would
+            // be worse than the silence it replaced.
+            if !arcProgression.isEmpty {
+                VStack(alignment: .leading, spacing: V5.S.s14) {
+                    ForEach(arcProgression, id: \.label) { line in
+                        VStack(alignment: .leading, spacing: V5.S.s4) {
+                            V5SectionLabel(text: line.label, size: TypeScaleV5.label13)
+                            Text(line.text)
+                                .font(.faffText(15))
+                                .foregroundStyle(V5.textSecondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(.top, V5.S.s4)
+            }
         }
         .padding(.horizontal, V5.S.s4)
     }
@@ -1298,6 +1351,16 @@ extension V5Block {
             """)
         }
 
+        // PHASEANSWERS-PHONE-1 (2026-09-08) · the `phases` array below carries
+        // the six phase answers, because a catalogue sample that cannot express
+        // a field cannot show the section that draws it (Rule 15). Every
+        // sentence in it is copied VERBATIM out of `lib/plan/phase-answers.ts`
+        // — the BASE arm on the current phase, the QUALITY arm on a phase that
+        // is not current — so the catalogue shows the engine's real voice and
+        // not a hand-written imitation of it. The QUALITY answers are there on
+        // purpose: they are the demonstration that a non-current phase's
+        // sentences do NOT draw. This fixture is for the catalogue only; the
+        // fix itself was verified by rendering the real account (Rule 13).
         return """
         {
           "panel": {
@@ -1316,8 +1379,16 @@ extension V5Block {
             ]
           },
           "phases": [
-            {"id": "base", "name": "Base", "weeks": 8, "current": true, "at": 0.72},
-            {"id": "quality", "name": "Quality", "weeks": 4, "current": false, "at": null},
+            {"id": "base", "name": "Base", "weeks": 8, "current": true, "at": 0.72,
+             "developing": "Aerobic volume and run frequency, with strides on the easy days. No structured quality yet.",
+             "whyNow": "Volume is rebuilt before intensity. 8 weeks are spent here with 8 weeks still to the marathon.",
+             "evidence": "You have held 43.5 mi a week repeatedly and are running 41.0 mi now, with a biggest week of 48.0 mi.",
+             "hold": "Easy days that run above the heart-rate ceiling, or a week that is not absorbed, hold volume where it is.",
+             "progress": "Weeks absorbed at the prescribed volume earn the next step, toward 48 mi by the end of the phase.",
+             "restructure": "A layoff longer than 3 weeks hands the block to the comeback protocol and it is re-authored. An injury or illness flag stops normal training first."},
+            {"id": "quality", "name": "Quality", "weeks": 4, "current": false, "at": null,
+             "hold": "Quality sessions not held with control, or heart rate climbing well past the band for the pace, hold pace where it is. A long run that fades late holds duration.",
+             "progress": "Three corroborated sessions faster than target with heart rate in the band move the threshold anchor. A long run finished under control earns the next step in duration. One stressor moves at a time."},
             {"id": "race-specific", "name": "Race specific", "weeks": 3, "current": false, "at": null},
             {"id": "taper", "name": "Taper", "weeks": 1, "current": false, "at": null}
           ],

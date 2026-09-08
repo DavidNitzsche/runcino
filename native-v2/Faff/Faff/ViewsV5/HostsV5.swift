@@ -3426,7 +3426,33 @@ struct SettingsHostV5: View {
 /// shell entirely, and the consoles own their own machinery.
 struct FaffV5Root<LiveContent: View>: View {
     @StateObject private var runGate = PhoneRunGate()
-    @State private var selected: FaffTabV5 = .today
+    @State private var selected: FaffTabV5 = FaffV5Root.launchTab
+
+    /// DEBUG-only opening tab, the fourth sibling of `-faffToken`,
+    /// `-faffHost` and `-faffRunDetail` in `FaffApp.swift`, and it exists for
+    /// the same stated reason those three do: CLAUDE.md Rule 13 requires a
+    /// runner-facing change to be verified by RENDERING it, and the tab bar is
+    /// the only way onto Block or Races. Where a simulator cannot be driven by
+    /// hand, verification either stopped at Today or reached for a temporary
+    /// edit to this file — which is precisely the risk `-faffHost`'s own
+    /// header says the launch-argument mechanism was introduced to remove.
+    ///
+    ///     xcrun simctl launch <udid> run.faff.app -faffTab block
+    ///
+    /// It selects a tab and nothing else: no data is substituted, no request
+    /// is skipped, and the screen that draws is the real one against the real
+    /// server. An unrecognised value opens Today, so a typo cannot produce a
+    /// blank shell. Never compiled into a release build.
+    static var launchTab: FaffTabV5 {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        if let i = args.firstIndex(of: "-faffTab"), i + 1 < args.count,
+           let tab = FaffTabV5(rawValue: args[i + 1]) {
+            return tab
+        }
+        #endif
+        return .today
+    }
     /// Read from the profile rather than passed in, so the account button
     /// shows the runner's own initials instead of an empty disc.
     @State private var accountName: String = ""

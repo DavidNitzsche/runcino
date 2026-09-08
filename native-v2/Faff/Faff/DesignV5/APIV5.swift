@@ -1044,6 +1044,24 @@ struct V5Block: Decodable, Equatable {
     let proposals: [V5Proposal]?
     /// See `V5Today.proposalsRead`. `nil` reads as `"ok"`.
     let proposalsRead: String?
+
+    /// PHASEANSWERS-PHONE-1 · what "The arc" draws under the phase bar: the
+    /// hold and progress sentences of the phase the runner is standing in
+    /// RIGHT NOW, and no other.
+    ///
+    /// THE SCOPING LIVES HERE, not in the view, and that is the point. Every
+    /// phase on the wire carries these sentences; a screen that drew all of
+    /// them would put three "what earns the next step" answers on one page,
+    /// two about a phase nobody is in (Rule 17). Resolving it in one place
+    /// means the assertion that a NON-current phase does not contribute is a
+    /// real check on the thing the screen calls, rather than a test quietly
+    /// re-deriving the scope it is supposed to be testing (Rule 16).
+    ///
+    /// Empty when no phase is current — a block between phases gets silence,
+    /// never a confident answer about the first phase in the list.
+    var arcProgressionLines: [(label: String, text: String)] {
+        phases.first(where: \.current)?.progressionLines ?? []
+    }
 }
 
 struct V5Phase: Decodable, Equatable, Hashable, Identifiable {
@@ -1054,9 +1072,113 @@ struct V5Phase: Decodable, Equatable, Hashable, Identifiable {
     /// 0…1 through the current phase.
     let at: Double?
 
+    // ── PHASEANSWERS-PHONE-1 (2026-09-08) · SIX FIELDS THAT NEVER LANDED ──
+    //
+    // `lib/plan/phase-answers.ts` (PHASE-ANSWERS-1, 2026-09-01) writes six
+    // sentences per phase and `lib/plan/v5-block.ts:buildPhases` has spread
+    // all six onto the wire ever since, with a comment saying so outright:
+    // "ADDITIVE keys on the wire (`developing`, `whyNow`, `evidence`, `hold`,
+    // `progress`, `restructure`) — the phone's lenient decoder ignores what it
+    // does not read".
+    //
+    // It ignored all six. `V5Phase` had five properties and a SYNTHESISED
+    // `Decodable`, which drops an unmatched key in perfect silence, so the
+    // block screen drew a progress bar and nothing else. Two of the six are
+    // the phone's only answer to the question the runner actually has:
+    //
+    //   hold      "Quality sessions not held with control, or heart rate
+    //              climbing well past the band for the pace, hold pace where
+    //              it is. A long run that fades late holds duration."
+    //   progress  "Three corroborated sessions faster than target with heart
+    //              rate in the band move the threshold anchor. A long run
+    //              finished under control earns the next step in duration.
+    //              One stressor moves at a time."
+    //
+    // That is the whole of "what must I demonstrate to earn the next step",
+    // composed by the engine, stored on the plan, and never shown.
+    //
+    // ALL SIX ARE DECODED, TWO ARE RENDERED. `hold` and `progress` are drawn
+    // under "The arc" for the CURRENT phase (see `BlockV5.arcSection`); the
+    // other four are decoded and not yet placed. `developing` and `whyNow`
+    // would restate the panel headline and "Where this goes" that already sit
+    // on this screen (Rule 17), `evidence` belongs beside the anchors rather
+    // than the arc, and `restructure` is about a layoff that has not happened.
+    // Decoding them now is what stops the next reader believing the wire is
+    // silent, which is the exact belief that produced this bug.
+    //
+    // OPTIONAL, and `decodeIfPresent` throughout: a block authored before
+    // 2026-09-01 carries `phase_answers: null`, so `buildPhases` spreads no
+    // keys at all and every one of these is absent rather than empty. Rule 11
+    // — "this block predates the answers" is a different fact from "this phase
+    // answered nothing", and the wire says which by absence. The phone must
+    // not turn either into a rendered blank.
+
+    /// What this phase is developing.
+    let developing: String?
+    /// Why this phase sits where it does in the block.
+    let whyNow: String?
+    /// What the runner has already shown that says they can absorb it.
+    let evidence: String?
+    /// What holds the phase where it is. RENDERED under "The arc".
+    let hold: String?
+    /// What earns the next step. RENDERED under "The arc".
+    let progress: String?
+    /// What would re-author the phase outright.
+    let restructure: String?
+
+    // A hand-written `enum K` and `init(from:)` rather than synthesis, for two
+    // reasons. `scripts/check-wire-keys.sh` extracts `enum K: String,
+    // CodingKey` blocks and checks every case against the server's own source
+    // — a struct relying on synthesis is invisible to it, which is a green
+    // light over a road nobody is watching. And the lenient helpers below are
+    // what make a malformed value degrade to "absent" instead of taking the
+    // whole `phases` array down with it: `V5Block.phases` is `c.list(.phases)`,
+    // which swallows a throw on the ARRAY, so one bad phase would have emptied
+    // the arc entirely.
+    enum K: String, CodingKey {
+        case id, name, weeks, current, at
+        case developing, whyNow, evidence, hold, progress, restructure
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        id = c.text(.id)
+        name = c.text(.name)
+        weeks = c.int(.weeks)
+        current = c.flag(.current)
+        at = c.opt(.at)
+        developing = c.opt(.developing)
+        whyNow = c.opt(.whyNow)
+        evidence = c.opt(.evidence)
+        hold = c.opt(.hold)
+        progress = c.opt(.progress)
+        restructure = c.opt(.restructure)
+    }
+
     var segment: PhaseSegment {
         PhaseSegment(name, weeks: weeks, current: current, at: at)
     }
+
+    /// The two sentences this screen draws, in the order the engine's own
+    /// question asks them ("what would cause the phase to hold, progress, or
+    /// restructure?"). Empty when the phase carries neither, which is what
+    /// makes the section disappear rather than draw a titled blank. A phase
+    /// that answered one and not the other still renders the one it has: half
+    /// an answer is not a reason to show none.
+    var progressionLines: [(label: String, text: String)] {
+        var out: [(label: String, text: String)] = []
+        if let hold, !hold.isEmpty { out.append((V5Phase.holdLabel, hold)) }
+        if let progress, !progress.isEmpty { out.append((V5Phase.progressLabel, progress)) }
+        return out
+    }
+
+    /// The two structural labels. Not coaching copy — they name the question
+    /// the engine already answered, in the engine's own words: every `hold`
+    /// sentence `phase-answers.ts` writes ends in "hold(s) … where it is", and
+    /// every `progress` sentence is built around "earns the next step". Held
+    /// as constants so the two call sites cannot drift (Rule 16).
+    static let holdLabel = "What holds this phase where it is"
+    static let progressLabel = "What earns the next step"
 }
 
 struct V5BlockWeek: Decodable, Equatable, Hashable, Identifiable {

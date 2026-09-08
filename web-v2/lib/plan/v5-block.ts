@@ -183,9 +183,22 @@ export function buildPhases(state: TrainingState) {
     // PHASE-ANSWERS-1 (2026-09-01) · the phase's structured answers, by
     // position: `authored_state.phase_answers` is written in the same order
     // `plan_phases` is. ADDITIVE keys on the wire (`developing`, `whyNow`,
-    // `evidence`, `hold`, `progress`, `restructure`) — the phone's lenient
-    // decoder ignores what it does not read, and a block authored before the
-    // key existed carries none, so every key is absent rather than empty.
+    // `evidence`, `hold`, `progress`, `restructure`), and a block authored
+    // before the key existed carries none, so every key is absent rather than
+    // empty.
+    //
+    // PHASEANSWERS-PHONE-1 (2026-09-08) · this comment used to end "the
+    // phone's lenient decoder ignores what it does not read", and that was
+    // true for a week in the worst way: `V5Phase` in APIV5.swift had five
+    // properties and a synthesised `Decodable`, so it ignored ALL SIX. The
+    // sentences were composed, stored, serialised and dropped one line short
+    // of the screen. The phone now decodes all six and draws `hold` and
+    // `progress` for the current phase under "The arc".
+    //
+    // Leniency is still the contract here — do not start assuming the phone
+    // reads a key just because this function sends it. It is what lets a key
+    // be added ahead of the client, and what let this one rot unnoticed; the
+    // check that would have caught it is named in the handback.
     const answers = state.phaseAnswers?.[phaseIdx] ?? null;
     const weeksCount = Math.max(1, p.endWeekIdx - p.startWeekIdx + 1);
     const isCurrent =
