@@ -3307,10 +3307,22 @@ struct SettingsHostV5: View {
         /// and the screen's optimistic value is about to be confirmed by the
         /// reload rather than contradicted by it.
         case serverChanged
-        /// It did not land. The server holds exactly what it held before, so
-        /// what we cached is still the truth — AND the screen is currently
-        /// showing something that was never saved. Restating the held value
-        /// is not a fallback here; it is the correction.
+        /// It did not land — or we could not tell. `landed(_:)` below treats
+        /// "the write call threw" as the one signal it has, and a throw
+        /// covers two different facts: the server genuinely refused (its
+        /// value truly is what we cached), and a transport failure where the
+        /// request may have reached the server but its response never came
+        /// back (the server's value is UNKNOWN, not confirmed unchanged).
+        /// Restating the held value is the correct correction for the first
+        /// case and an argued, accepted risk for the second: a review of
+        /// this fix (2026-09-08) measured a landed write whose response was
+        /// lost, and the screen held the stale pre-write value indefinitely
+        /// (no self-heal short of another successful write or an app
+        /// restart) rather than the true, already-saved one. Splitting this
+        /// into a real three-state settlement (landed / refused / unknown)
+        /// would close that gap; whether to show the optimistic value or the
+        /// last-confirmed one in the unknown case is a product call, not
+        /// something to decide silently here.
         case serverUnchanged
     }
 
@@ -3335,6 +3347,15 @@ struct SettingsHostV5: View {
             revision &+= 1
         }
     }
+
+    // A known, accepted consequence of restating one mirror as a single unit
+    // (2026-09-08 review, F2): a `.serverUnchanged` settlement restates every
+    // field in `SettingsMirror`, not just the one whose write failed. A
+    // second field with its OWN write concurrently in flight can be visibly
+    // reverted and then correctly restored moments later when that write's
+    // own reload lands — a transient flicker on a field that did not fail.
+    // The single-comparison design is otherwise the right shape; this is its
+    // known cost, not a bug to chase.
 
     /// True when the write actually landed. `patchSettings`/`updateProfile`
     /// both THROW on any non-2xx, and their `Bool` return is `replanned` —
