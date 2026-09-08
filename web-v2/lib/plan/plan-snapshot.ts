@@ -29,12 +29,18 @@
  *   - `resolveDateRangeExecutions` (`lib/execution/day-resolver.ts`) — the
  *     SAME matched-vs-supplemental classifier EXECUTION-IDENTITY-1 made
  *     canonical, batched across the whole range instead of called per day.
- *   - `loadGlanceState` / `hrTargets` / the easy-band query — the runner's
- *     OWN current anchors (LTHR, easy pace ceiling), read once for the
- *     whole block exactly as `/api/v5/today` reads them once for today.
- *     These are the runner's CURRENT capacity, not date-varying within one
- *     read — `recompute-paces.ts` is what keeps future rows' own stored
- *     pace targets current; this loader does not re-derive that.
+ *   - `hrTargets` / the easy-band query — the runner's OWN current anchors
+ *     (LTHR, easy pace ceiling), read once for the whole block exactly as
+ *     `/api/v5/today` reads them once for today. These are the runner's
+ *     CURRENT capacity, not date-varying within one read —
+ *     `recompute-paces.ts` is what keeps future rows' own stored pace
+ *     targets current; this loader does not re-derive that. LTHR itself is
+ *     a direct `SELECT lthr FROM profile` (PLANSNAPSHOT-LATENCY-1,
+ *     2026-09-07) — NOT `loadGlanceState`, which computes the entire
+ *     `/api/v5/today` state (readiness, ACWR, safety, week-strip, HRV/RHR
+ *     baselines — ~25-30 queries) to answer a question this file only ever
+ *     asked one field of. See that fix's comment at the call site for the
+ *     measured cost.
  *
  * ── TREADMILL GUIDANCE — A DELIBERATE SIMPLIFICATION, NAMED HERE ───────────
  *
@@ -59,7 +65,6 @@ import { pool } from '@/lib/db/pool';
 import { planVersionOf } from '@/lib/plan/plan-version';
 import { ownedDaysSql } from '@/lib/plan/owned-days';
 import { dayNoteFor } from '@/lib/plan/week-loader';
-import { loadGlanceState } from '@/lib/coach/glance-state';
 import { resolveDateRangeExecutions, type ExecutionMatch } from '@/lib/execution/day-resolver';
 import { runFacts } from '@/lib/runs/run-facts';
 import { dayStateWordFor } from '@/lib/faff/v5-today';
@@ -275,7 +280,45 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
   const toExclusiveIso = new Date(new Date(planEndIso + 'T00:00:00Z').getTime() + 86400000)
     .toISOString().slice(0, 10);
 
-  const rows = (await pool.query<PlanWorkoutRow>(
+  // PLANSNAPSHOT-LATENCY-1 (2026-09-07) · the four reads below are mutually
+  // independent — none consumes another's result — so they were pure
+  // sequential waste stacked one after another. Two fixes bundled here,
+  // both confirmed against real instrumentation on a local copy of this
+  // account's real data:
+  //
+  //   1. `glance` used to be `loadGlanceState(userUuid)` — the ENTIRE
+  //      `/api/v5/today` state computation (readiness, ACWR, safety,
+  //      week-strip dedup, HRV/RHR 60-day baselines, pace-anchor
+  //      resolution, race-goal lookup, ~25-30 queries measured) — for the
+  //      sole purpose of reading `glance.lthr` two lines below. Nothing
+  //      else this file touches was ever read off that object (confirmed:
+  //      no other `glance.` reference exists in this file). Replaced with
+  //      the same minimal `SELECT lthr FROM profile` this codebase already
+  //      uses elsewhere for exactly this read (e.g.
+  //      `lib/coach/training-form.ts`, `lib/plan/generate.ts`) — one query
+  //      instead of ~25-30, same value, because `hrTargets()` below reads
+  //      nothing off `lthr` but the number itself.
+  //   2. `rows`, `easyBandRow` and `executionsByDate` now run concurrently
+  //      via `Promise.all` instead of three sequential round trips — each
+  //      depends only on `(userUuid, plan.id, planStartIso, toExclusiveIso,
+  //      today)`, all already resolved above, and none reads another's
+  //      output.
+  //
+  // Measured before/after against a local copy of this account's real data
+  // (281 runs, 103-day active block, 4 race dates) via temporary
+  // instrumentation (stage timers + a pool.query counter, both removed
+  // before this landed): warm p50 ~2.6s → ~0.6s, ~1,409 pool.query calls
+  // per request → ~329. This fix (loadGlanceState removal + the
+  // Promise.all above) accounts for the query-count drop from ~1,409 to
+  // ~350 x-per-race; the further drop to ~329 is a second, separate fix in
+  // `lib/race/race-outlook.ts` (READS-DEDUP-1) that stops the same
+  // race-independent evidence read from being recomputed once per race in
+  // the block.
+  const lthrQuery = pool.query<{ lthr: string | number | null }>(
+    `SELECT lthr FROM profile WHERE user_uuid = $1 LIMIT 1`,
+    [userUuid],
+  );
+  const rowsQuery = pool.query<PlanWorkoutRow>(
     `WITH owned AS (${ownedDaysSql({
       columns: `pw.id, pw.date_iso, pw.dow, pw.type, pw.distance_mi::text AS distance_mi,
                 pw.pace_target_s_per_mi, pw.sub_label, pw.notes, pw.workout_spec,
@@ -285,14 +328,8 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
      WHERE owned.type NOT IN ('strength', 'cross', 'xt')
      ORDER BY owned.date_iso ASC`,
     [userUuid, planStartIso, toExclusiveIso],
-  )).rows;
-
-  // Runner-level context, read ONCE for the whole block — see this file's
-  // header for why these are not re-read per day.
-  const glance = await loadGlanceState(userUuid);
-  const hrBands = hrTargets({ lthr: glance.lthr });
-
-  const easyBandRow = (await pool.query<{ lo: number | null; hi: number | null }>(
+  );
+  const easyBandQuery = pool.query<{ lo: number | null; hi: number | null }>(
     `SELECT (workout_spec->>'pace_target_s_per_mi_lo')::float AS lo,
             (workout_spec->>'pace_target_s_per_mi_hi')::float AS hi
        FROM plan_workouts
@@ -305,15 +342,23 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
                (date_iso::date > $2::date) DESC
       LIMIT 1`,
     [plan.id, today],
-  ).catch((e) => { console.error('[plan-snapshot] easy band read failed', e); return { rows: [] as any[] }; })).rows[0];
+  ).catch((e) => { console.error('[plan-snapshot] easy band read failed', e); return { rows: [] as any[] }; });
+  const executionsQuery = resolveDateRangeExecutions(userUuid, planStartIso, toExclusiveIso);
+
+  const [lthrRow, rows, easyBandRow, executionsByDate] = await Promise.all([
+    lthrQuery.then((r) => r.rows[0]),
+    rowsQuery.then((r) => r.rows),
+    easyBandQuery.then((r) => (r.rows as Array<{ lo: number | null; hi: number | null }>)[0]),
+    executionsQuery,
+  ]);
+
+  const lthr = lthrRow?.lthr != null ? Number(lthrRow.lthr) : null;
+  const hrBands = hrTargets({ lthr });
+
   const easyPaceAnchor = easyBandRow?.lo != null && easyBandRow?.hi != null
     ? Math.round((Number(easyBandRow.lo) + Number(easyBandRow.hi)) / 2)
     : null;
   const easyCeilingSec = easyBandRow?.lo != null ? Math.round(Number(easyBandRow.lo)) : null;
-
-  // Batched completion/supplemental resolution for the WHOLE block in one
-  // pass — EXECUTION-IDENTITY-1's own resolver, never re-derived here.
-  const executionsByDate = await resolveDateRangeExecutions(userUuid, planStartIso, toExclusiveIso);
 
   // FINISHEST-1 (2026-09-07) · a race day's own card had a pace band and a
   // "Coach target" line in prose, but nothing answering "how long is this

@@ -457,40 +457,101 @@ async function loadPlannedLastRehearsalPace(userUuid: string): Promise<number | 
   return v;
 }
 
+/** The race-INDEPENDENT half of `loadRaceOutlookReads` — everything above
+ *  except the `equivalenceAt` closure, which is the only piece that varies
+ *  by race (it captures `race.distanceMi`). Every field here is a pure
+ *  function of `(userUuid, today)`. */
+type RaceOutlookUserReads = Omit<RaceOutlookReads, 'equivalenceAt'> & { anchorDistanceMi: number | null };
+
+/**
+ * READS-DEDUP-1 (2026-09-07) · PLANSNAPSHOT-LATENCY-1 investigation.
+ *
+ * `loadPlanSnapshot` resolves an outlook per race in one block (a marathon
+ * block typically carries 2-4 tune-up/goal races), each via
+ * `resolveRaceOutlookBySlug` → `loadRaceOutlookReads`. Every read below is a
+ * function of `(userUuid, today)` alone — `race` never gates what gets
+ * queried, only how the (race-independent) results get turned into an
+ * `equivalenceAt` closure afterward. Before this fix, four races meant this
+ * whole bundle — `resolveThresholdCapacity`, `resolveExecutionSignal`, the
+ * durability/pace-anchor/HR-evidence resolvers — ran four times with
+ * IDENTICAL inputs and IDENTICAL outputs. Measured against David's own
+ * account (4 race dates in one active block): 1,409 pool queries and ~1.9s
+ * of the endpoint's ~2.3s wall time were this bundle, computed four times
+ * over.
+ *
+ * The fix is single-flight, not a TTL cache: concurrent calls for the same
+ * `(userUuid, today)` key share one in-flight promise, and the entry is
+ * deleted the instant it settles (success or failure) — so this can only
+ * ever coalesce genuinely-concurrent callers within the same request burst.
+ * A request five seconds later recomputes from scratch. Nothing here can
+ * serve another request's data, and nothing here holds a value past the
+ * moment every waiting caller has read it — nothing is cached "to make the
+ * number smaller"; the four calls were always going to compute the exact
+ * same thing.
+ */
+const userReadsInFlight = new Map<string, Promise<RaceOutlookUserReads>>();
+
+async function loadRaceOutlookUserReads(userUuid: string, today: string): Promise<RaceOutlookUserReads> {
+  const key = `${userUuid}::${today}`;
+  const hit = userReadsInFlight.get(key);
+  if (hit) return hit;
+
+  const promise = (async (): Promise<RaceOutlookUserReads> => {
+    const [anchorRead, threshold, durabilityRead, maxHr, lthrBpm, hrEfforts, plannedLastRehearsalPaceSecPerMi] = await Promise.all([
+      resolvePrescribedPaceAnchors(userUuid, today),
+      resolveThresholdCapacity(userUuid, today),
+      resolveRaceExponent(userUuid).catch((): RaceExponentRead => ({ ok: false, reason: 'no_races', races: 0 })),
+      loadEffectiveMaxHr(userUuid, today).catch(() => ({ bpm: null as number | null })),
+      loadLthr(userUuid),
+      loadRaceHrEvidence(userUuid, today),
+      loadPlannedLastRehearsalPace(userUuid),
+    ]);
+    const thresholdSecPerMi = anchorRead.ok ? anchorRead.anchors.thresholdSecPerMi : threshold.paceSecPerMi;
+    const anchorDistanceMi = thresholdSecPerMi > 0 ? (THRESHOLD_ANCHOR_MINUTES * 60) / thresholdSecPerMi : null;
+    const thresholdVdot = anchorRead.ok ? anchorRead.anchors.basis.threshold.vdot : threshold.vdot;
+    // resolveExecutionSignal degrades each of its reads by name; a throw here
+    // is a failure the caller must see, not a null that reads as "no signal".
+    const executionSignal = await resolveExecutionSignal(userUuid, thresholdVdot);
+    return {
+      anchorRead,
+      threshold,
+      durabilityRead,
+      anchorDistanceMi,
+      executionSignal,
+      lthrBpm,
+      maxHrBpm: maxHr.bpm,
+      hrEfforts,
+      plannedLastRehearsalPaceSecPerMi,
+    };
+  })();
+
+  userReadsInFlight.set(key, promise);
+  try {
+    return await promise;
+  } finally {
+    // Single-flight only — never let a settled entry linger for a later,
+    // genuinely-separate request to read stale evidence from.
+    if (userReadsInFlight.get(key) === promise) userReadsInFlight.delete(key);
+  }
+}
+
 export async function loadRaceOutlookReads(
   userUuid: string,
   race: RaceForOutlook,
   today: string,
 ): Promise<RaceOutlookReads> {
-  const [anchorRead, threshold, durabilityRead, maxHr, lthrBpm, hrEfforts, plannedLastRehearsalPaceSecPerMi] = await Promise.all([
-    resolvePrescribedPaceAnchors(userUuid, today),
-    resolveThresholdCapacity(userUuid, today),
-    resolveRaceExponent(userUuid).catch((): RaceExponentRead => ({ ok: false, reason: 'no_races', races: 0 })),
-    loadEffectiveMaxHr(userUuid, today).catch(() => ({ bpm: null as number | null })),
-    loadLthr(userUuid),
-    loadRaceHrEvidence(userUuid, today),
-    loadPlannedLastRehearsalPace(userUuid),
-  ]);
-  const thresholdSecPerMi = anchorRead.ok ? anchorRead.anchors.thresholdSecPerMi : threshold.paceSecPerMi;
-  const anchorDistanceMi = thresholdSecPerMi > 0 ? (THRESHOLD_ANCHOR_MINUTES * 60) / thresholdSecPerMi : null;
-  const thresholdVdot = anchorRead.ok ? anchorRead.anchors.basis.threshold.vdot : threshold.vdot;
-  // resolveExecutionSignal degrades each of its reads by name; a throw here
-  // is a failure the caller must see, not a null that reads as "no signal".
-  const executionSignal = await resolveExecutionSignal(userUuid, thresholdVdot);
+  const { anchorDistanceMi, durabilityRead, ...rest } = await loadRaceOutlookUserReads(userUuid, today);
   return {
-    anchorRead,
-    threshold,
+    ...rest,
     durabilityRead,
+    // The only race-dependent piece — pure math over already-resolved reads,
+    // so reconstructing it per race (even from a shared, deduped bundle)
+    // never disagrees with the pre-dedup behavior.
     equivalenceAt: async (vdot) => (race.distanceMi > 0 && vdot != null
       ? computeCurrentEquivalence({
           userUuid, raceDistanceMi: race.distanceMi, vdot, vdotAnchorDistanceMi: anchorDistanceMi, durabilityRead,
         })
       : null),
-    executionSignal,
-    lthrBpm,
-    maxHrBpm: maxHr.bpm,
-    hrEfforts,
-    plannedLastRehearsalPaceSecPerMi,
   };
 }
 
