@@ -169,8 +169,15 @@ struct InjuryFlareV5: View {
     let model: V5Injury
     var onOpenAccount: () -> Void = {}
     /// Fires when a check-in option is tapped, so the caller can write it
-    /// back. This view does not fetch or persist anything itself.
-    var onCheckIn: (V5Row) -> Void = { _ in }
+    /// back, and answers whether the server took it. This view does not
+    /// fetch or persist anything itself.
+    ///
+    /// TODAYWRITE-1 (2026-09-08 review) · it used to be `-> Void`, and the
+    /// note under the tile ("Logged.") was drawn from `checkedRowID`, set
+    /// in the tap handler. So a `POST /api/niggle/recovery` that recorded
+    /// nothing still read back as logged — the same fabrication measured on
+    /// the niggle flag and the sick report. See `V5WriteSettlement`.
+    var onCheckIn: (V5Row) async -> V5WriteSettlement = { _ in .landed }
     /// The way onward once the flare has cleared — pushes `V5Route.returnToRunning`,
     /// the eight-stage walk-run ladder (19a). Absent (`returnAvailable == false`)
     /// draws nothing rather than a disabled row.
@@ -180,7 +187,33 @@ struct InjuryFlareV5: View {
     /// own doc comment for why this exists and who sets it.
     var suppressOwnHeader: Bool = false
 
-    @State private var checkedRowID: String?
+    /// TODAYWRITE-1 · was `checkedRowID: String?`, set in the tap handler.
+    /// One state machine now, and the `.done` case — the only one the
+    /// "Logged." note is drawn from — is reachable only from a write the
+    /// server confirmed. See `V5RowWriteState`.
+    @State private var checkInState: V5RowWriteState = .idle
+
+    /// The row the server has confirmed, if any.
+    private var checkedRowID: String? {
+        if case .done(let id) = checkInState { return id }
+        return nil
+    }
+
+    private var failedRow: V5Row? {
+        guard case .failed(let id) = checkInState else { return nil }
+        return model.checkIn.first { $0.id == id }
+    }
+
+    /// The one place a check-in is attempted, so the row and the Retry
+    /// cannot drift apart (Rule 16).
+    private func checkIn(_ row: V5Row) {
+        guard !checkInState.isSending else { return }
+        checkInState = .sending(row.id)
+        Task {
+            let settlement = await onCheckIn(row)
+            checkInState = .settled(settlement, token: row.id)
+        }
+    }
 
     var body: some View {
         StateScreenScaffold {
@@ -222,20 +255,27 @@ struct InjuryFlareV5: View {
                 V5SectionLabel(text: "How does it feel today")
                 VStack(spacing: 0) {
                     ForEach(model.checkIn) { row in
-                        ListRow(label: row.label, sub: row.sub) {
-                            checkedRowID = row.id
-                            onCheckIn(row)
+                        ListRow(label: row.label,
+                                sub: checkInState == .sending(row.id) ? "Sending" : row.sub) {
+                            checkIn(row)
                         }
                     }
                 }
                 .background(V5.materialTile,
                             in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
 
+                // TODAYWRITE-1 · the note under the tile is the app saying
+                // "we have this". Only a confirmed write earns it.
                 if let checked = model.checkIn.first(where: { $0.id == checkedRowID }) {
                     Text(checked.sub ?? "Logged.")
                         .font(.faffText(TypeScaleV5.label13))
                         .foregroundStyle(V5.textSecondary)
                         .padding(.horizontal, V5.S.s4)
+                }
+
+                if let failed = failedRow {
+                    ErrorNote(text: "That did not save, so the coach has not seen it. Nothing was written, so it is safe to try again.",
+                              onRetry: { checkIn(failed) })
                 }
             }
 
