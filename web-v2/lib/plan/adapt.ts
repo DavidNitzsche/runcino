@@ -75,6 +75,7 @@ import { trainingWeekWindow } from '@/lib/notifications/week-window';
 // Rule 10 note there for why `users.max_hr` is never read directly.
 import { loadEffectiveMaxHr } from '@/lib/training/max-hr';
 import { getCanonicalRunIds, isoDaysBefore, mileageByDay, observableCoverageDays, weeklyAvgFromWindow } from '@/lib/runs/volume';
+import { loadSkippedDates } from '@/lib/plan/week-loader';
 import {
   loadPrescribedWindows,
   normalTrainingDaySql,
@@ -2952,18 +2953,18 @@ export async function detectMissedKeyWorkout(userId: string): Promise<Adaptation
   // unreadable table must not turn passive misses into respected skips, and
   // the reverse error (rescheduling a skipped session once) is the pre-fix
   // behavior for one day, not a new failure.
-  const skippedDates = new Set<string>(
-    (await pool.query<{ d: string }>(
-      `SELECT date_iso::date::text AS d FROM day_actions
-        WHERE COALESCE(user_uuid, user_id) = $1::uuid
-          AND action = 'skip'
-          AND date_iso::date BETWEEN $2::date - 7 AND $2::date - 1`,
-      [userId, today],
-    ).catch((e) => {
-      logReadFailure('plan/adapt · detectMissedKeyWorkout skips', e);
-      return { rows: [] as Array<{ d: string }> };
-    })).rows.map((r) => r.d),
-  );
+  //
+  // SKIPOWNER-1 (2026-09-07) · was this file's own inline copy of the skip
+  // predicate — the fourth live at once, and the only one written as a range.
+  // `loadSkippedDates` (`lib/plan/week-loader.ts`) is the one owner; the
+  // window is unchanged (the same seven days, both ends inclusive, which is
+  // what that resolver's `BETWEEN` gives) and so is the fail-closed posture
+  // below. See that function's header for the data check behind the fold.
+  const skipWindowStart = isoDaysBefore(today, 7);
+  const skipWindowEnd = isoDaysBefore(today, 1);
+  const skipRead = await loadSkippedDates(userId, skipWindowStart, skipWindowEnd);
+  if (skipRead.failed) logReadFailure('plan/adapt · detectMissedKeyWorkout skips', new Error('day_actions skip read failed'));
+  const skippedDates = skipRead.skippedDates;
 
   const notCompleted = candidates
     .map((c) => ({

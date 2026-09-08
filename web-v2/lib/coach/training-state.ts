@@ -12,6 +12,7 @@ import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { getCanonicalRunIds, mileageByDay } from '@/lib/runs/volume';
 import { loadActivePlan } from '@/lib/plan/lookup';
+import { loadSkippedDates } from '@/lib/plan/week-loader';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import { coherentPace } from '@/lib/runs/coherence';
@@ -43,6 +44,22 @@ export interface PlanWeek {
      *  heuristic re-derived per caller. */
     isQuality: boolean;
     isLong: boolean;
+    /**
+     * SKIPAGREE-1 (2026-09-07) · `day_actions action='skip'` — the runner
+     * explicitly declining this prescribed day (`POST /api/today/skip`).
+     *
+     * This field did not exist, and its absence is why "Today, Block and Plan
+     * Snapshot agree" could only ever be checked TWO ways: the Block screen
+     * (`/api/v5/block`, which renders from these rows) was structurally unable
+     * to participate in the agreement, so a skip could be true on two surfaces
+     * and unrepresentable on the third and nothing could say so.
+     *
+     * Backed by `loadSkippedDates` (`lib/plan/week-loader.ts`), the same one
+     * resolver Today and Plan Snapshot read — not a third query. See
+     * `skipStateUnknown` on `TrainingState` for what a FAILED read does to it
+     * (Rule 11: best-effort `false` here, honest flag there).
+     */
+    skipped: boolean;
     // 2026-05-30: workout_spec jsonb (migration 120) so the train-view week
     // strip can render real Daniels-VDOT paces per day (P0 #4 backfill)
     // instead of the canonical PACE_DEFAULT placeholder.
@@ -92,6 +109,16 @@ export interface TrainingState {
   race: { slug: string; name: string; date: string; goal: string | null; days_to_race: number } | null;
   phases: PlanPhase[];
   weeks: PlanWeek[];
+  /**
+   * SKIPAGREE-1 · mirrors `PlanWeekResult.skipStateUnknown` and
+   * `PlanSnapshotResult.skip_state_unknown` exactly — same name-for-name
+   * contract, same reason. True when the `day_actions` skip read FAILED rather
+   * than legitimately came back empty. `PlanWeek.days[].skipped` stays a plain
+   * boolean (best-effort `false` under a failed read); this is what lets a
+   * caller tell "no day was skipped" apart from "we could not find out"
+   * (Rule 11). Absent means the read succeeded.
+   */
+  skipStateUnknown?: true;
   currentPhase: string | null;
   currentWeekIdx: number | null;
   /**
@@ -268,6 +295,21 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
   const phaseFor = (idx: number) =>
     phases.find((p) => idx >= p.startWeekIdx && idx <= p.endWeekIdx)?.label ?? 'BASE';
 
+  // SKIPAGREE-1 (2026-09-07) · the Block screen could not answer "did the
+  // runner skip this day" at all, so the acceptance criterion "Today, Block
+  // and Plan Snapshot agree" was a two-way check with a silent third party.
+  // ONE resolver for the whole authored block, in one round trip — the same
+  // `loadSkippedDates` Today's week strip and the plan snapshot read, never a
+  // third copy of the predicate (Rule 16).
+  //
+  // The window is the authored rows' own span rather than the week rows',
+  // because `workouts` is what these days are built from and a plan can carry
+  // a day outside the week grid.
+  const workoutDates = (workouts as Array<{ date_iso: string }>).map((w) => w.date_iso).sort();
+  const skipRead = workoutDates.length
+    ? await loadSkippedDates(userId, workoutDates[0], workoutDates[workoutDates.length - 1])
+    : { skippedDates: new Set<string>(), failed: false };
+
   // Pull all strava activities in plan range, indexed by date for fast lookup
   const planRangeStart = weekRows[0]?.week_start_iso;
   const planRangeEnd = weekRows.length
@@ -387,6 +429,9 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
           spec: d.workout_spec ?? null,
           isQuality: d.is_quality === true,
           isLong: d.is_long === true,
+          // SKIPAGREE-1 · best-effort per day; `TrainingState.skipStateUnknown`
+          // is the honest signal when the read itself failed (Rule 11).
+          skipped: skipRead.skippedDates.has(d.date_iso),
           doneMi: actual ? Math.round(actual.mi * 10) / 10 : 0,
           activityId: actual?.id ?? null,
           donePaceSec: actual?.paceSec ?? null,
@@ -494,6 +539,9 @@ export async function loadTrainingState(userId: string): Promise<TrainingState> 
 
   return {
     plan_id: plan.id, today, race, phases, weeks,
+    // SKIPAGREE-1 · absent (not `false`) on a successful read, mirroring the
+    // other two surfaces' own flags byte for byte.
+    ...(skipRead.failed ? { skipStateUnknown: true as const } : {}),
     currentPhase, currentWeekIdx, currentWeekOrdinal, nextQuality, weekDone, weekPlanned,
     weekWindow, weekWindowDays,
     last_adapted_at: plan.last_adapted_at,
