@@ -2823,10 +2823,19 @@ extension V5PlanChangeRefusal {
 /// not `private` — `API.swift`'s `/api/watch/today` fetchers route through
 /// this SAME actor rather than a second, endpoint-specific coalescer, since
 /// this one is already URL-keyed (a `?date=` query string is a different
-/// map key, so a dated request falls out of "today"'s slot for free) and
-/// already unit-tested via `TestableCoalescer` in
-/// `RequestCoalescingTests.swift`. One in-flight-GET question, one owner —
-/// see that test file's header for the falsification proof.
+/// map key, so a dated request falls out of "today"'s slot for free). One
+/// in-flight-GET question, one owner.
+///
+/// `internal` is also what lets a test reach THIS actor rather than a copy
+/// of it. `RealRequestCoalescerTests` in `RequestCoalescingTests.swift`
+/// drives `V5RequestCoalescer.shared` directly, over the real
+/// `API.authedGET` path with a counting `URLProtocol` in front of the wire,
+/// and it was falsified against this actor: injecting an `await
+/// Task.yield()` between the in-flight check and the in-flight store below
+/// turns 14 coalesced callers into 14 transport calls and takes those tests
+/// red. The older cases in that file drive `TestableCoalescer`, a mirror,
+/// and stayed green through that same injection — which is why they are not
+/// the enforcement and this note no longer cites them as it.
 actor V5RequestCoalescer {
     static let shared = V5RequestCoalescer()
 

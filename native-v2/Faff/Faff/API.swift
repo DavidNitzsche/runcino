@@ -1934,9 +1934,16 @@ struct TodayWorkoutWrapper: Decodable {
 // The concurrency-safety property this whole mechanism depends on — no
 // suspension point between checking for an in-flight task and storing a
 // new one, or two callers can both miss and both fire a transport call —
-// is enforced by `RequestCoalescingTests.swift`'s falsification test, not
-// just described here. `TodayWorkoutWrapper` below is still read directly
-// by the AppCache hydration path in `TodayView.swift`.
+// is enforced by `RealRequestCoalescerTests` in
+// `RequestCoalescingTests.swift`, which drives `V5RequestCoalescer.shared`
+// itself and was made to fail against it (WATCH-TODAY-SINGLEFLIGHT-2). The
+// first version of this note cited that file's OTHER tests, which drive a
+// hand-maintained copy of the actor and cannot fail on the actor at all.
+// `testWatchTodayFetchersShareOneTransportCallThroughTheRealCoalescer` is
+// the one that also holds the WIRING above: it drives the three cold-launch
+// callers listed at the top of this note and fails if any of them stops
+// routing through the shared coalescer. `TodayWorkoutWrapper` below is
+// still read directly by the AppCache hydration path in `TodayView.swift`.
 
 // MARK: - PlanWeek wire model
 //
