@@ -1133,29 +1133,53 @@ enum API {
     /// unchanged to the watch via applicationContext (preserves field shape
     /// exactly — the watch decodes from Data into its own WatchWorkout).
     ///
-    /// Routes through `WatchTodayGate` (below `TodayWorkoutWrapper`) so this
+    /// Routes through `V5RequestCoalescer` (DesignV5/APIV5.swift) so this
     /// and `fetchWatchWorkout(date: nil)` share ONE in-flight network
     /// request instead of each firing its own — see
-    /// WATCH-TODAY-SINGLEFLIGHT-1 on that actor.
+    /// WATCH-TODAY-SINGLEFLIGHT-1 below `TodayWorkoutWrapper` for the
+    /// three cold-launch callers this fixes and why a second,
+    /// endpoint-specific coalescer was deleted in favor of the one that
+    /// already owns "may two concurrent identical GETs share one transport
+    /// call".
     static func fetchWatchTodayRaw() async throws -> Data {
-        try await WatchTodayGate.shared.raw()
+        try await fetchWatchTodayCoalesced(date: nil)
     }
 
     /// Same as fetchWatchTodayRaw but decoded into WatchWorkout so the
     /// iPhone can render the structured workout card. Optional `date`
-    /// override lets the WorkoutDetailModal preview any day's tile.
+    /// lets the v4/legacy shell (`Views/TodayView.swift`, reachable only
+    /// under the `-faffLegacy` launch flag) preview a different day's
+    /// tile — its day-strip tap handler and background week-strip
+    /// prefetch. `V5RequestCoalescer` is keyed on the full URL, query
+    /// string included, so a dated request never shares "today"'s
+    /// in-flight slot; no special-casing needed here.
     /// Returns nil on the rest/no-workout branch.
     static func fetchWatchWorkout(date: String? = nil) async throws -> WatchWorkout? {
-        let data = try await WatchTodayGate.shared.raw(date: date)
+        let data = try await fetchWatchTodayCoalesced(date: date)
         let w = try JSONDecoder().decode(TodayWorkoutWrapper.self, from: data)
         // Cache the *raw* wrapper (not just the workout) so the next
         // launch decodes back through the same shape. Today's workout
-        // only — caching the WorkoutDetailModal preview-for-tomorrow
-        // would just cause stale-data confusion.
+        // only — caching a different day's preview would just cause
+        // stale-data confusion.
         if date == nil {
             AppCache.writeRaw(.todayWorkout, data: data)
         }
         return w.workout
+    }
+
+    /// Shared GET for both fetchers above, routed through
+    /// `V5RequestCoalescer.shared` — see WATCH-TODAY-SINGLEFLIGHT-1.
+    private static func fetchWatchTodayCoalesced(date: String?) async throws -> Data {
+        var comps = URLComponents(
+            url: baseURL.appendingPathComponent("api/watch/today"),
+            resolvingAgainstBaseURL: false
+        )!
+        if let date { comps.queryItems = [URLQueryItem(name: "date", value: date)] }
+        let (data, http): (Data, HTTPURLResponse) = try await V5RequestCoalescer.shared.get(comps.url!)
+        guard (200..<300).contains(http.statusCode) else {
+            throw API.APIError.badStatus(http.statusCode)
+        }
+        return data
     }
 
     /// Run log (P28). Returns weeks of runs for iPhone /log tab.
@@ -1877,10 +1901,10 @@ struct TodayWorkoutWrapper: Decodable {
     let workout: WatchWorkout?
 }
 
-// MARK: - WatchTodayGate — single-flight for /api/watch/today
+// MARK: - WATCH-TODAY-SINGLEFLIGHT-1 — /api/watch/today's three cold-launch callers
 //
-// WATCH-TODAY-SINGLEFLIGHT-1 (2026-09-07) · a cold launch fired
-// `/api/watch/today` three times, confirmed via Request Diagnostics:
+// (2026-09-07) · a cold launch fired `/api/watch/today` three times,
+// confirmed via Request Diagnostics:
 //   1. `WatchSync.shared.start()` → `pushTodayToWatch()` →
 //      `fetchWatchTodayRaw()`, called synchronously from
 //      `NotificationsAppDelegate.application(_:didFinishLaunchingWithOptions:)`
@@ -1891,57 +1915,28 @@ struct TodayWorkoutWrapper: Decodable {
 //      view's own `.task` — RunLobbyV5 is mounted (not lazily) on cold
 //      launch because ShellV5 keeps every tab destination alive.
 //
-// Three independent call sites, none aware of the others, and `API` is a
-// plain enum (no actor isolation) so a bare `static var` guard would race
-// across a UIKit delegate hook, a detached Task, and a SwiftUI View's
-// `.task`. This actor is modelled on `SettingsCache.inflightSettings`
-// (Util/SettingsCache.swift) — the same "multiple callers, different
-// execution contexts, need real concurrency-safe single-flight" shape —
-// rather than `TodayHostV5`'s simpler same-actor `Task<Bool, Never>?`
-// pattern, which only works because that caller is itself a View.
+// The first fix (this same commit's original version) answered this with a
+// bespoke `WatchTodayGate` actor. An independent review the same week
+// flagged that as a SIXTH ad-hoc single-flight mechanism in this app
+// (`V5RequestCoalescer`, two `SettingsCache` slots, `DayFetchCoordinator
+// .inFlight`, PLANSNAPSHOT-SINGLEFLIGHT-1, and this one) answering a
+// question `V5RequestCoalescer` (DesignV5/APIV5.swift) already owns: "may
+// two concurrent identical GETs share one transport call." `WatchTodayGate`
+// is deleted; both wrapper functions above now call
+// `fetchWatchTodayCoalesced(date:)`, which routes through
+// `V5RequestCoalescer.shared.get(_:)`. That actor is URL-keyed, so a
+// `?date=` query string is a different map key and a dated request (the
+// v4/legacy shell's day-preview calls, see the doc comment on
+// `fetchWatchWorkout` above) never shares "today"'s in-flight slot — the
+// exact behavior `WatchTodayGate` special-cased by hand falls out of the
+// URL-keyed design for free.
 //
-// Both wrapper functions above route through `raw()` so there is exactly
-// ONE underlying network request no matter which of the two is called
-// first or how many callers pile on behind it. The slot clears itself the
-// instant the in-flight fetch settles (success or failure), so a later,
-// genuinely separate refresh — pull-to-refresh, or WatchSync.refresh()
-// once its own 60s throttle window has passed — still issues a real new
-// request rather than being coalesced away forever.
-private actor WatchTodayGate {
-    static let shared = WatchTodayGate()
-
-    private var inflight: Task<Data, Error>?
-
-    /// `date == nil` (every one of the three cold-launch callers above)
-    /// shares the one in-flight slot. `date != nil` (WorkoutDetailModal's
-    /// preview of a different day) bypasses the slot entirely — it is not
-    /// "today" and must never be coalesced with it.
-    func raw(date: String? = nil) async throws -> Data {
-        guard date == nil else {
-            return try await Self.fetchUncached(date: date)
-        }
-        if let inflight {
-            return try await inflight.value
-        }
-        let task = Task<Data, Error> { try await Self.fetchUncached(date: nil) }
-        inflight = task
-        defer { inflight = nil }
-        return try await task.value
-    }
-
-    private static func fetchUncached(date: String?) async throws -> Data {
-        var comps = URLComponents(
-            url: API.baseURL.appendingPathComponent("api/watch/today"),
-            resolvingAgainstBaseURL: false
-        )!
-        if let date { comps.queryItems = [URLQueryItem(name: "date", value: date)] }
-        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
-        guard (200..<300).contains(http.statusCode) else {
-            throw API.APIError.badStatus(http.statusCode)
-        }
-        return data
-    }
-}
+// The concurrency-safety property this whole mechanism depends on — no
+// suspension point between checking for an in-flight task and storing a
+// new one, or two callers can both miss and both fire a transport call —
+// is enforced by `RequestCoalescingTests.swift`'s falsification test, not
+// just described here. `TodayWorkoutWrapper` below is still read directly
+// by the AppCache hydration path in `TodayView.swift`.
 
 // MARK: - PlanWeek wire model
 //

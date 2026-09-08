@@ -2818,7 +2818,16 @@ extension V5PlanChangeRefusal {
 ///
 /// Scoped to GET, and to reads only. A write must never be coalesced: two
 /// identical POSTs are two intents.
-private actor V5RequestCoalescer {
+///
+/// WATCH-TODAY-SINGLEFLIGHT-1 (2026-09-07 review) · deliberately `internal`,
+/// not `private` — `API.swift`'s `/api/watch/today` fetchers route through
+/// this SAME actor rather than a second, endpoint-specific coalescer, since
+/// this one is already URL-keyed (a `?date=` query string is a different
+/// map key, so a dated request falls out of "today"'s slot for free) and
+/// already unit-tested via `TestableCoalescer` in
+/// `RequestCoalescingTests.swift`. One in-flight-GET question, one owner —
+/// see that test file's header for the falsification proof.
+actor V5RequestCoalescer {
     static let shared = V5RequestCoalescer()
 
     private var inFlight: [String: Task<(Data, HTTPURLResponse), Error>] = [:]

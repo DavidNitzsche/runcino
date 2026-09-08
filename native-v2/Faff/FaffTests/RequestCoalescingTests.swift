@@ -30,6 +30,18 @@
 //  only reachable from the GET helper. If a future caller routes a POST
 //  through it, nothing here notices, and two identical POSTs are two intents.
 //
+//  ─────────────────────────────────────────────────────────────────────────
+//  WATCH-TODAY-SINGLEFLIGHT-1 (2026-09-07 review)
+//
+//  `/api/watch/today` briefly had its own bespoke single-flight actor
+//  (`WatchTodayGate`, `API.swift`) rather than routing through this one — a
+//  duplicate answer to the question this file already tests. That actor is
+//  deleted; the endpoint now shares `V5RequestCoalescer` with every other
+//  `/api/v5/*` GET, and `testDatedWatchTodayRequestDoesNotShareTodaysSlot`
+//  below proves the one behavior that was previously hand-written
+//  (`date != nil` must not share "today"'s slot) falls out of URL-keying
+//  for free.
+//
 
 import XCTest
 @testable import Faff
@@ -88,6 +100,37 @@ final class RequestCoalescingTests: XCTestCase {
         _ = try await coalescer.get(url)
         let runs = await counter.runs
         XCTAssertEqual(runs, 2, "sequential calls are separate requests")
+    }
+
+    /// WATCH-TODAY-SINGLEFLIGHT-1 (2026-09-07 review) · `/api/watch/today`
+    /// used to be single-flighted by a bespoke `WatchTodayGate` actor with
+    /// its own hand-written `date == nil` special case. That actor is
+    /// deleted; the endpoint now routes through this same
+    /// `V5RequestCoalescer`/`TestableCoalescer` shape, and the special case
+    /// falls out of URL-keying for free — a `?date=` query string is a
+    /// different map key. This proves that property directly against the
+    /// real request shapes: two of the three cold-launch callers ask for
+    /// "today" (no date) while a concurrent legacy-shell day-preview asks
+    /// for a specific date, and the dated call must NOT share today's
+    /// in-flight slot.
+    func testDatedWatchTodayRequestDoesNotShareTodaysSlot() async throws {
+        let counter = Counter()
+        let coalescer = TestableCoalescer { _ in
+            _ = await counter.bump()
+            try await Task.sleep(nanoseconds: 30_000_000)
+            return Data("ok".utf8)
+        }
+        let today = URL(string: "https://example.test/api/watch/today")!
+        let dated = URL(string: "https://example.test/api/watch/today?date=2026-09-10")!
+
+        async let a = coalescer.get(today)
+        async let b = coalescer.get(today)
+        async let c = coalescer.get(dated)
+        let results = try await [a, b, c]
+
+        let runs = await counter.runs
+        XCTAssertEqual(runs, 2, "the two undated callers share one call; the dated one gets its own")
+        XCTAssertEqual(results.count, 3, "every caller still gets an answer")
     }
 
     func testAFailureIsDeliveredToEveryJoinedCallerAndDoesNotStickToTheSlot() async throws {

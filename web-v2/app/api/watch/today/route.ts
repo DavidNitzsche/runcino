@@ -28,9 +28,14 @@ export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
-  // Optional ?date=YYYY-MM-DD lets the iPhone WorkoutDetailModal fetch the
-  // structured payload for ANY day's tile, not just today's. The watch
-  // never sends this param — it always wants today.
+  // Optional ?date=YYYY-MM-DD lets the iPhone fetch the structured payload
+  // for ANY day's tile, not just today's — the v4/legacy shell's
+  // `Views/TodayView.swift` (reachable only under its `-faffLegacy` launch
+  // flag), for its day-strip tap handler and background week-strip
+  // prefetch. `WorkoutDetailModal` is a retired legacy-web React component
+  // that never existed on iOS; corrected 2026-09-07 (see API.swift's
+  // WATCH-TODAY-SINGLEFLIGHT-1). The watch never sends this param — it
+  // always wants today.
   const date = req.nextUrl.searchParams.get('date') || undefined;
   try {
     const payload = await buildWatchToday(userId, date);
