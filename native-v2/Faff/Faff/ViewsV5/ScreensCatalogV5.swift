@@ -91,7 +91,7 @@ struct ScreensCatalogV5: View {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.outdoor,
                                      onOpenAccount: {},
                                      onFlagNiggle: { _ in .landed }, onOpenInjuryFlare: {},
-                                     onChangeShoe: {}, onPickShoe: { _ in .landed }, onRowAction: { _ in }, onPushStrava: {}))
+                                     onChangeShoe: {}, onPickShoe: { _ in .landed }, onRowAction: { _ in .cancelled }, onPushStrava: {}))
             },
             // Asked 5, ran 11. The case the table was built for and could not
             // describe until the Distance row landed.
@@ -99,7 +99,7 @@ struct ScreensCatalogV5: View {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.overshot,
                                      onOpenAccount: {},
                                      onFlagNiggle: { _ in .landed }, onOpenInjuryFlare: {},
-                                     onChangeShoe: {}, onPickShoe: { _ in .landed }, onRowAction: { _ in }, onPushStrava: {}))
+                                     onChangeShoe: {}, onPickShoe: { _ in .landed }, onRowAction: { _ in .cancelled }, onPushStrava: {}))
             },
             // THE POST-RUN BREAKDOWN, ON BOTH GRAINS AND ON ITS AWKWARD CASES.
             //
@@ -148,7 +148,7 @@ struct ScreensCatalogV5: View {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.treadmill,
                                      onOpenAccount: {},
                                      onFlagNiggle: { _ in .landed }, onOpenInjuryFlare: {},
-                                     onChangeShoe: {}, onPickShoe: { _ in .landed }, onRowAction: { _ in }, onPushStrava: {}))
+                                     onChangeShoe: {}, onPickShoe: { _ in .landed }, onRowAction: { _ in .cancelled }, onPushStrava: {}))
             },
             // BLOCK — THE SECOND TAB — HAD NO ENTRY HERE UNTIL 2026-08-24.
             //

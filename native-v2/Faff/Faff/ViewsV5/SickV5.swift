@@ -144,6 +144,15 @@ struct SickFlareV5: View {
                                     onTap: { logTrend(row) })
                         }
                     }
+                    // INJURYCHECKIN-1 · a refusal is an ANSWER, so it is an
+                    // `Alert` with no Retry. `/api/sick/recovery` 404s when
+                    // nothing is open — which is exactly what a "recovered"
+                    // that landed and lost its answer leaves behind, and the
+                    // Retry below would have sent the runner round that loop
+                    // forever under the words "trying again is safe".
+                    if let refusal = trendState.refusal {
+                        Alert(text: refusal, tone: .attention)
+                    }
                     if let failed = failedRow {
                         ErrorNote(text: V5UnconfirmedCopy.sickTrend,
                                   onRetry: { logTrend(failed) })
@@ -259,6 +268,12 @@ struct SickReportRowV5: View {
         // Both asserted a fact about the SERVER off a settlement that cannot
         // tell a refusal from a lost answer. See `V5WriteSettlement.didNotLand`.
         case .failed:  return ("Not confirmed", "The coach may not have this yet")
+        // INJURYCHECKIN-1 · `POST /api/sick` has no refusal body, so this is
+        // unreachable today. It is spelled out rather than folded into
+        // `.failed` because the two are opposite facts (Rule 11) and because
+        // the day that route grows a refusal, this row must not go on saying
+        // "may not have this yet" about an answer the server already gave.
+        case .refused: return ("Not accepted", "The coach answered, and it was a no")
         case .idle:    return ("Not feeling right", "Report symptoms and pause today")
         }
     }

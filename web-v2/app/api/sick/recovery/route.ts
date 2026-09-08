@@ -22,6 +22,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { attempt } from '@/lib/db/read';
 import { requireUserId } from '@/lib/auth/session';
+import { runnerTimezone } from '@/lib/runtime/runner-tz';
+import { nothingOpenBody } from '@/lib/health/checkin-refusal';
 
 type SickTrend = 'better' | 'same' | 'worse' | 'recovered';
 
@@ -62,7 +64,11 @@ export async function POST(req: NextRequest) {
     )).rows[0];
 
     if (!active) {
-      return NextResponse.json({ error: 'no active sick episode' }, { status: 404 });
+      // INJURYCHECKIN-1 · the same permanent refusal as the niggle twin. A
+      // "recovered" that landed and lost its answer clears the episode, so the
+      // Retry the phone offers arrives HERE — and "trying again is safe" over
+      // a request that can never succeed again is the lie this closes.
+      return NextResponse.json(nothingOpenBody('sick'), { status: 404 });
     }
 
     // 2026-08-24 · `sick_recovery` did not exist in production — migration 117
@@ -79,13 +85,38 @@ export async function POST(req: NextRequest) {
     // be reachable by a failure in the line above it. Falsified by injecting an
     // INSERT failure on a local clone — the episode still cleared, Today still
     // handed the day back to the plan, and the failure was loud in the log.
-    await attempt(
+    // INJURYCHECKIN-1 · A RETRY MUST NOT LOG THE SAME ANSWER TWICE.
+    // Identical guard, identical mechanism, as `api/niggle/recovery` — read
+    // that route's comment for why the natural key is (episode, answer, the
+    // RUNNER'S day) and what it deliberately still lets through.
+    const tz = await runnerTimezone(userId);
+    const trendRow = await attempt(
       'api/sick/recovery · trend row',
       pool.query(
-        `INSERT INTO sick_recovery (episode_id, response) VALUES ($1, $2)`,
-        [active.id, body.today],
+        `WITH existing AS (
+           SELECT id FROM sick_recovery
+            WHERE episode_id = $1::bigint
+              AND response = $2
+              AND (logged_at AT TIME ZONE $3)::date = (now() AT TIME ZONE $3)::date
+            ORDER BY logged_at ASC
+            LIMIT 1
+         ), inserted AS (
+           INSERT INTO sick_recovery (episode_id, response)
+           SELECT $1::bigint, $2
+            WHERE NOT EXISTS (SELECT 1 FROM existing)
+           RETURNING id
+         )
+         SELECT id, true  AS is_new FROM inserted
+         UNION ALL
+         SELECT id, false AS is_new FROM existing`,
+        [active.id, body.today, tz],
       ),
     );
+    // Rule 11 · THREE facts, not two. `attempt` returns null when the append
+    // -only log could not be written at all, and that is NOT the same as
+    // "already had it". A failed log must never read as a successful dedup,
+    // so `deduplicated` is only ever true on a row this query actually saw.
+    const deduplicated = trendRow.ok && trendRow.value.rows[0]?.is_new === false;
 
     if (body.today === 'recovered') {
       // ───────────────────────────────────────────────────────────────────
@@ -119,10 +150,11 @@ export async function POST(req: NextRequest) {
         // Observable on purpose: >1 means a duplicate existed and was
         // resolved rather than silently left behind.
         cleared: cleared.rowCount ?? 0,
+        deduplicated,
       });
     }
 
-    return NextResponse.json({ active: true, trend: body.today });
+    return NextResponse.json({ active: true, trend: body.today, deduplicated });
   } catch (err: any) {
     return NextResponse.json(
       { error: 'recovery insert failed', detail: err?.message ?? String(err) },

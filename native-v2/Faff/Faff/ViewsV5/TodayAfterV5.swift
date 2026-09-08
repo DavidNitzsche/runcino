@@ -64,7 +64,15 @@ struct TodayAfterV5: View {
     var onPickShoe: (String) async -> V5WriteSettlement
     /// Any `whatThisDidToTheWeek` row the server marked actionable, other
     /// than the niggle row this view composes itself.
-    var onRowAction: (V5Row) -> Void
+    ///
+    /// INJURYCHECKIN-1 (2026-09-08 review) · `async -> V5WriteSettlement`,
+    /// not `-> Void`. `TodayHostV5` passed `{ _ in }` — a literal no-op — and
+    /// the only row that reaches this closure is the SERVER'S flagged-niggle
+    /// row, whose action is `undo_niggle`. So after a flag landed and the
+    /// surface reloaded, the local `.done` row (which has a working Undo) was
+    /// replaced by the server's row, which fired nothing. There was no way
+    /// anywhere in the app for a runner to clear a niggle from Today.
+    var onRowAction: (V5Row) async -> V5WriteSettlement
     var onPushStrava: () -> Void
     /// Day stepping, shared with the before-run screen — a finished day is
     /// just as steppable as a planned one.
@@ -99,6 +107,9 @@ struct TodayAfterV5: View {
     @State private var niggleState: V5RowWriteState = .idle
     /// The same machine for the shoe pick.
     @State private var shoeState: V5RowWriteState = .idle
+    /// INJURYCHECKIN-1 · and for the server row's Undo, which had no state at
+    /// all because it had no write at all.
+    @State private var undoState: V5RowWriteState = .idle
 
     /// Ported from `Components/TodayPostRunBody.swift`'s Strava section —
     /// same states, same sheet, same poll. The old naive version here just
@@ -127,7 +138,7 @@ struct TodayAfterV5: View {
          onOpenInjuryFlare: @escaping () -> Void = {},
          onChangeShoe: @escaping () -> Void = {},
          onPickShoe: @escaping (String) async -> V5WriteSettlement = { _ in .cancelled },
-         onRowAction: @escaping (V5Row) -> Void = { _ in },
+         onRowAction: @escaping (V5Row) async -> V5WriteSettlement = { _ in .cancelled },
          onPushStrava: @escaping () -> Void = {},
          onPickDay: @escaping (String) -> Void = { _ in },
          viewingDayLabel: String? = nil,
@@ -326,9 +337,20 @@ struct TodayAfterV5: View {
                 whatThisDidSection
                 // TODAYWRITE-1 · "If it's still there tomorrow, see Injury"
                 // is advice ABOUT a flag the coach is holding. It is only
-                // true once one actually is, so it follows `.flagged` and
-                // not the attempt.
-                if case .done = niggleState {
+                // true once one actually is, so it follows a confirmed write
+                // and not the attempt.
+                //
+                // INJURYCHECKIN-1 (2026-09-08 review) · AND IT VANISHED THE
+                // MOMENT IT BECAME TRUE. `niggleState` is this SESSION'S
+                // write, not the coach's state: it is `.done` for the minute
+                // after you flag something and `.idle` on the next launch. So
+                // the link showed while "tomorrow" was still today, and was
+                // gone by the morning the sentence is actually about.
+                //
+                // The server's own row is the persistent fact, and this
+                // screen already resolves it for the picker directly below.
+                // Same source, so the two cannot disagree (Rule 16).
+                if niggleIsOnFile {
                     niggleLink
                 }
                 SickReportRowV5(onReport: onReportSick)
@@ -1644,9 +1666,21 @@ struct TodayAfterV5: View {
         // action the runner cannot find is an action that does not exist.
         ListGroup(header: "Log") {
             // The server's own flagged-niggle row, when it carries one.
+            //
+            // INJURYCHECKIN-1 · IT DREW A CHEVRON AND DID NOTHING.
+            //
+            // `row.value` is null on the wire, so `ListRow` rendered no value
+            // cell — and because `onTap` was non-nil it drew a chevron, which
+            // in this app promises somewhere to go. The tap then landed in
+            // `TodayHostV5`'s `{ _ in }`. A runner looking at "Left calf
+            // flagged" had a control that looked like navigation, was
+            // actually meant to be Undo, and fired zero requests.
+            //
+            // Now: the same "Undo" affordance the local `.done` row shows,
+            // from the same constant so the two cannot drift (Rule 16), and a
+            // real write behind it.
             ForEach(model.whatThisDidToTheWeek.filter { $0.action != nil }) { row in
-                ListRow(label: row.label, sub: row.sub, value: Self.fv(row.value),
-                        onTap: { onRowAction(row) })
+                serverActionRow(row)
             }
             // Only when the server is not already carrying one. Its row is
             // the persisted truth (with Undo); this screen's is the picker
@@ -1667,6 +1701,90 @@ struct TodayAfterV5: View {
     /// than by the label — the label is copy and copy moves.
     private var serverFlaggedNiggle: String? {
         model.whatThisDidToTheWeek.first { $0.action == "undo_niggle" }?.label
+    }
+
+    /// INJURYCHECKIN-1 · IS THERE A NIGGLE ON FILE RIGHT NOW.
+    ///
+    /// The server's row is the durable answer and survives a relaunch;
+    /// `niggleState == .done` covers the seconds between a confirmed write
+    /// and the reload that brings the server's row back. Both, because either
+    /// alone is wrong half the time — and `.done` and nothing weaker, so a
+    /// write that only MIGHT have landed still says nothing about a flag.
+    /// Pure, so a test can read the three cases that matter rather than
+    /// assert the absence of a bad one (Rule 13 §3, Rule 18). The RELAUNCH
+    /// case — server row present, this session has written nothing — is the
+    /// one the defect got wrong, and it is the one a behavioural test on
+    /// `niggleState` alone can never reach.
+    static func showsInjuryLink(serverFlagged: String?, niggleState: V5RowWriteState) -> Bool {
+        if serverFlagged != nil { return true }
+        if case .done = niggleState { return true }
+        return false
+    }
+
+    private var niggleIsOnFile: Bool {
+        Self.showsInjuryLink(serverFlagged: serverFlaggedNiggle, niggleState: niggleState)
+    }
+
+    /// INJURYCHECKIN-1 · the word on the control that clears a flag. ONE
+    /// constant, because it is drawn twice — on the local `.done` row and on
+    /// the server's own row after a reload — and a runner who saw "Undo"
+    /// before a reload and a bare chevron after it is being shown two
+    /// different affordances for one action.
+    static let undoLabel = "Undo"
+
+    /// The action verb the server marks a clearable niggle row with.
+    static let undoNiggleAction = "undo_niggle"
+
+    /// The row the LOCAL just-flagged state hands to the shared undo write,
+    /// before a reload has replaced it with the server's own. Same `action`,
+    /// so the host resolves it through the same branch and there is exactly
+    /// one place that knows what "undo a niggle" means.
+    static func localUndoRow(_ part: String) -> V5Row {
+        V5Row(id: "niggle", label: part, action: undoNiggleAction)
+    }
+
+    /// INJURYCHECKIN-1 · the server's flagged-niggle row, with a real Undo.
+    ///
+    /// The write state is kept per row id, so a failure names the row it
+    /// belongs to and the Retry resends THAT one — the same discipline
+    /// `flagNiggle` and `pickShoe` already follow.
+    @ViewBuilder
+    private func serverActionRow(_ row: V5Row) -> some View {
+        let isUndo = row.action == Self.undoNiggleAction
+        let sending = undoState == .sending(row.id)
+        VStack(alignment: .leading, spacing: V5.S.s8) {
+            ListRow(label: row.label,
+                    sub: sending ? "Clearing" : row.sub,
+                    // An Undo row's value cell IS the affordance. Anything
+                    // else keeps whatever the server put there.
+                    value: isUndo ? .measured(Self.undoLabel) : Self.fv(row.value),
+                    onTap: sending ? nil : { runRowAction(row) })
+            if undoState == .failed(row.id) {
+                ErrorNote(text: V5UnconfirmedCopy.coachMayNotHaveIt,
+                          onRetry: { runRowAction(row) })
+            }
+            if let refusal = undoState.refusal, undoState.token == row.id {
+                Alert(text: refusal, tone: .attention)
+            }
+        }
+    }
+
+    /// The one place a server row's action is attempted (Rule 16).
+    private func runRowAction(_ row: V5Row) {
+        guard !undoState.isSending else { return }
+        undoState = .sending(row.id)
+        Task {
+            let settlement = await onRowAction(row)
+            undoState = .settled(settlement, token: row.id)
+            // A confirmed undo retires the local flag too, so the picker
+            // comes back instead of a row still offering to undo something
+            // that is already gone. `.landed` and nothing else — the same
+            // line every other write on this screen holds.
+            if settlement == .landed, row.action == Self.undoNiggleAction {
+                niggleState = .idle
+                undoState = .idle
+            }
+        }
     }
 
     /// TODAYWRITE-1 · WHAT THE NIGGLE ROW SAYS IN EACH STATE, as a pure
@@ -1690,6 +1808,12 @@ struct TodayAfterV5: View {
             // refusal AND a write that landed and lost its answer, so the
             // row reports what it knows: no confirmation came back.
             return (part, "Not confirmed")
+        case .refused:
+            // INJURYCHECKIN-1 · `POST /api/niggle` carries no refusal body, so
+            // this is unreachable today. Spelled out anyway: `.refused` and
+            // `.failed` are opposite facts (Rule 11), and the row must never
+            // fall through to "Not confirmed" about an answer the server gave.
+            return (state.token ?? "", "Not accepted")
         }
     }
 
@@ -1707,8 +1831,14 @@ struct TodayAfterV5: View {
             let copy = Self.niggleCopy(niggleState)
             ListRow(label: copy?.label ?? "",
                     sub: copy?.sub,
-                    value: .measured("Undo"),
-                    onTap: { niggleState = .idle })
+                    value: .measured(Self.undoLabel),
+                    // INJURYCHECKIN-1 · this used to be `niggleState = .idle`
+                    // — a purely local dismissal of a flag the SERVER had
+                    // just confirmed. It made the row disappear and left the
+                    // niggle active, which is the same defect as the server
+                    // row's dead chevron wearing different clothes. It now
+                    // routes through the one write both Undos share.
+                    onTap: { runRowAction(Self.localUndoRow(niggleState.token ?? "")) })
         case .sending:
             let copy = Self.niggleCopy(niggleState)
             ListRow(label: copy?.label ?? "", sub: copy?.sub, value: nil, onTap: nil)
@@ -1718,6 +1848,13 @@ struct TodayAfterV5: View {
                 ListRow(label: copy?.label ?? "", sub: copy?.sub, value: nil, onTap: nil)
                 ErrorNote(text: V5UnconfirmedCopy.coachMayNotHaveIt,
                           onRetry: { flagNiggle(part) })
+            }
+        case .refused(_, let reason):
+            // INJURYCHECKIN-1 · an answer, so `Alert` and no Retry.
+            let copy = Self.niggleCopy(niggleState)
+            VStack(alignment: .leading, spacing: V5.S.s8) {
+                ListRow(label: copy?.label ?? "", sub: copy?.sub, value: nil, onTap: nil)
+                Alert(text: reason, tone: .attention)
             }
         case .idle:
             ExpandingRow(label: "Flag a niggle",

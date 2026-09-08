@@ -433,14 +433,40 @@ enum V5WriteSettlement: Equatable {
     /// honest copy over a duplicating write is still a trap, and a
     /// de-duplicating write under lying copy still misinforms the runner.
     ///
-    /// Deliberately one case and not two. A non-2xx and a dropped
-    /// connection are different facts, but the phone cannot tell them apart
-    /// here (`API.authedSend` returns non-2xx rather than throwing, and the
-    /// niggle/sick/shoe routes carry no refusal sentence a 4xx could be
-    /// rendered from), and inventing a distinction the wire does not carry
-    /// would be a second fabrication. When those routes grow a refusal
-    /// body, this splits — `AddRaceV5.saveRefusal` is the shape to copy.
+    /// INJURYCHECKIN-1 (2026-09-08) · THIS CASE SPLIT, EXACTLY AS THE
+    /// PARAGRAPH BELOW SAID IT WOULD.
+    ///
+    /// It used to read: "a non-2xx and a dropped connection are different
+    /// facts, but the phone cannot tell them apart here … when those routes
+    /// grow a refusal body, this splits." They have. `.refused` is that
+    /// split, and everything else still lands here.
+    ///
+    /// A non-2xx with NO refusal sentence stays `.didNotLand` on purpose: a
+    /// 500, a 404 from a proxy, a route that has not learned the contract —
+    /// the phone genuinely does not know, and must not pretend either way.
     case didNotLand
+    /// The server answered, in words, that this request can NEVER succeed as
+    /// sent. Not a failure to reach it and not a slow success: a permanent,
+    /// deterministic no.
+    ///
+    /// INJURYCHECKIN-1 · WHY THIS IS NOT `.didNotLand`. The injury-flare
+    /// check-in (13a) POSTs to `/api/niggle/recovery`, which reads `niggles`,
+    /// while the screen itself is drawn off `runner_injuries`. Two tables,
+    /// two lifecycles, and nothing in the app writes the second from the
+    /// phone at all. So a runner with an open injury and no active niggle got
+    /// `404 no active niggle` EVERY TIME, on a healthy network, and the row
+    /// rendered `.didNotLand`'s copy: "The coach may not have it yet. Trying
+    /// again is safe." Trying again could not work, and the runner had no way
+    /// to learn that from the screen.
+    ///
+    /// Rule 11 one layer deeper than TODAYWRITE-2 took it. "It failed",
+    /// "we could not tell" and "it can never work" are three facts, and only
+    /// the third one the SERVER can state in words — which is why the
+    /// associated value is the server's own sentence rather than a literal
+    /// invented here. A screen renders it as an `Alert` with NO Retry, the
+    /// shape `AddRaceV5.saveRefusal` already uses for a refusal that is an
+    /// answer rather than an outage.
+    case refused(String)
     /// The runner's own navigation tore this down before it settled. Not a
     /// failure and not a success: nothing to report, nothing to retry.
     /// Same distinction, same helper, as `load()`'s catch block above.
@@ -494,6 +520,24 @@ enum V5UnconfirmedCopy {
     }
 }
 
+/// INJURYCHECKIN-1 · WHAT A `.refused` ROW SAYS WHEN THE SERVER SENT NO WORDS.
+///
+/// The sentence normally comes from the server (`lib/health/checkin-refusal.ts`),
+/// because only the server knows WHY. This is the floor under that: a 4xx that
+/// carries a refusal marker but an empty sentence still must not fall back to
+/// `V5UnconfirmedCopy`, whose every line ends "Trying again is safe."
+///
+/// The one thing this fallback is allowed to assert is the thing the STATUS
+/// CODE itself established — that the request was refused, not lost.
+enum V5RefusedCopy {
+    static let cannotSucceed =
+        "The coach answered: there is nothing open to check in on. Trying again will not change that."
+
+    /// Every sentence, for the gate to walk. Same contract as
+    /// `V5UnconfirmedCopy.all`.
+    static var all: [String] { [cannotSucceed] }
+}
+
 /// The whole decision, as a pure function over the two things a write can
 /// hand back, so a test can walk every branch without a live outage — the
 /// same reason `API.isCancellation` and `SettingsHostV5.settlement(landed:)`
@@ -518,6 +562,46 @@ func v5SettleWrite(_ write: () async throws -> Bool) async -> V5WriteSettlement 
     catch { return v5WriteSettlement(.failure(error)) }
 }
 
+/// INJURYCHECKIN-1 · THE REFUSAL-AWARE SETTLEMENT, AS A PURE FUNCTION OVER
+/// WHAT THE WIRE ACTUALLY CARRIED, so a test can walk every branch without a
+/// server. Same reason `v5WriteSettlement` above is extracted.
+///
+/// `.refused` is keyed on the SENTENCE, not on the status code. That is the
+/// load-bearing choice:
+///
+///   · a 404 from a mistyped path, a proxy, or a route that predates this
+///     contract carries no sentence, so it stays `.didNotLand` — the phone
+///     does not know what happened and must not claim to.
+///   · a 5xx NEVER refuses however it is worded. A server that fell over is
+///     the textbook "we could not tell", and suppressing the Retry there
+///     would strand a runner on a transient outage.
+///
+/// So the server opts in, in words, and the phone never infers a permanent
+/// answer from a bare number.
+func v5RefusalSettlement(status: Int, body: Data?) -> V5WriteSettlement {
+    if (200..<300).contains(status) { return .landed }
+    guard (400..<500).contains(status), let body else { return .didNotLand }
+    guard
+        let obj = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
+        // Presence of the key is the marker. A route that has not learned
+        // this contract cannot accidentally suppress a Retry.
+        obj["refusal"] != nil
+    else { return .didNotLand }
+    let sentence = (obj["refusal"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+    return .refused(sentence?.isEmpty == false ? sentence! : V5RefusedCopy.cannotSucceed)
+}
+
+/// Send one authenticated write and settle it, refusal included. The pair to
+/// `v5SettleWrite` for the routes that answer a refusal in words.
+func v5SettleAuthedWrite(_ req: URLRequest) async -> V5WriteSettlement {
+    do {
+        let (data, http) = try await API.authedSend(req)
+        return v5RefusalSettlement(status: http.statusCode, body: data)
+    } catch {
+        return API.isCancellation(error) ? .cancelled : .didNotLand
+    }
+}
+
 /// TODAYWRITE-1 · WHAT A ROW THAT SUBMITTED SOMETHING IS CURRENTLY ALLOWED
 /// TO SAY.
 ///
@@ -538,8 +622,14 @@ enum V5RowWriteState: Equatable {
     case sending(String)
     /// The server confirmed it. The ONLY state that may carry done copy.
     case done(String)
-    /// It did not land. The row says so and offers the write again.
+    /// It did not land, OR we could not tell. The row says so and offers the
+    /// write again.
     case failed(String)
+    /// INJURYCHECKIN-1 · the server refused it, in words. The row prints the
+    /// server's own sentence and offers NO Retry, because a Retry here can
+    /// only ever repeat a request that is structurally unable to succeed.
+    /// The second value is the sentence, never a phone-authored guess at why.
+    case refused(String, String)
 
     /// The whole transition, as a pure function. This is the line the four
     /// defects crossed: `.done` is reachable from `.landed` and from nothing
@@ -548,6 +638,7 @@ enum V5RowWriteState: Equatable {
         switch settlement {
         case .landed:     return .done(token)
         case .didNotLand: return .failed(token)
+        case .refused(let reason): return .refused(token, reason)
         // Torn down mid-write — see `V5WriteSettlement.cancelled`. Back to
         // the picker, claiming nothing in either direction.
         case .cancelled:  return .idle
@@ -558,8 +649,14 @@ enum V5RowWriteState: Equatable {
     var token: String? {
         switch self {
         case .idle: return nil
-        case .sending(let t), .done(let t), .failed(let t): return t
+        case .sending(let t), .done(let t), .failed(let t), .refused(let t, _): return t
         }
+    }
+
+    /// The server's refusal sentence, when this row carries one.
+    var refusal: String? {
+        if case .refused(_, let reason) = self { return reason }
+        return nil
     }
 
     /// True while a write this row started has not settled. Guards a second
