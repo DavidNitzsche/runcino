@@ -52,7 +52,7 @@ import {
 import { mapWatchPhases } from '@/lib/coach/run-state';
 import { deriveReadingScopes } from '@/lib/coach/reading-scope';
 import { loadPlanWeek } from '@/lib/plan/week-loader';
-import { resolveViewedPlanDay, viewedDayIsUnresolved } from '@/lib/faff/viewed-day';
+import { resolveViewedPlanDay, viewedDayIsUnresolved, viewedDayPrescription } from '@/lib/faff/viewed-day';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
 import {
   prescriptionFor, cardPaceTargets, hrTargets, narrowToPrescriptionType, strictPrescriptionType,
@@ -95,6 +95,7 @@ import { resolveHrZoneShares } from '@/lib/coach/hr-zone-bucket';
 // `data.avgHr` raw passes a sensor sentinel straight into the recap's prose.
 import {
   composeV5Today,
+  dayPrescribesARun,
   type V5TodayContext,
   type V5PrescriptionLike,
   type V5RecentRunCtx,
@@ -767,6 +768,26 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         originalSubLabel: null,
       }
     : null;
+
+  /* TODAYHERO-2 (2026-09-07) · the four-state answer, resolved once, here.
+   *
+   * `todayPlan` and `todayPlanUnresolved` cannot answer "did the plan
+   * prescribe rest for this date" between them, and neither can `todayPlan`
+   * on its own: `viewedDayIsUnresolved` folds "no plan loaded" into false on
+   * purpose, and `todayPlan` is null on a rest day only down its SECOND
+   * branch — glance hands a rest day back as `plannedType: 'rest'`, which the
+   * first branch keeps. So the running-ness of the type is asked explicitly,
+   * through the predicate `dayStateWordFor` already owns.
+   *
+   * The composer needs the difference: it is what separates "Scheduled rest,
+   * logged anyway" from a sentence invented over a runner with no block at
+   * all, and what stops a matched session's name being erased from the hero
+   * when the watch happened to record no phases. */
+  const todayPrescription = viewedDayPrescription({
+    planLoaded: planWeek.plan_id != null,
+    viewedDay: todayWeekDay,
+    hasSession: todayPlan != null && dayPrescribesARun(todayPlan.type),
+  });
 
   // BYFEEL-1 (2026-08-30) · "BY FEEL" IS A PRESCRIPTION, NOT A SHRUG.
   //
@@ -1800,6 +1821,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       ctx.supplementalRuns = supplementalRunsWire(resolvedToday?.supplementalRuns ?? []);
       ctx.todayPlan = todayPlan;
       ctx.todayPlanUnresolved = todayPlanUnresolved;
+      ctx.todayPrescription = todayPrescription;
       ctx.weekLine = weekLine;
   // The panel's line, beside the week line. Where the runner is in the block
   // beats what today's date is: the strip already highlights the day and the
@@ -2163,6 +2185,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // what lets the phone draw the run underneath it rather than nowhere.
   ctx.supplementalRuns = supplementalRunsWire(resolvedToday?.supplementalRuns ?? []);
   ctx.todayPlanUnresolved = todayPlanUnresolved;
+  ctx.todayPrescription = todayPrescription;
   ctx.weekLine = weekLine;
   // The phase belongs on every branch that composes a real panel, not just
   // the after-run one — a before-run day was falling back to the date and

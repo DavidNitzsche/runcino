@@ -84,3 +84,46 @@ export function viewedDayIsUnresolved(args: {
   // block does not prescribe this date", never "the generator omits rests".
   return args.viewedDay == null || args.viewedDay.plan_workout_id == null;
 }
+
+/**
+ * RULE 11 · WHAT THE PLAN SAYS ABOUT ONE DAY. FOUR FACTS, NEVER FEWER.
+ *
+ * `viewedDayIsUnresolved` above answers a two-way question and answers it
+ * well, but it deliberately folds "no plan is loaded" into `false`, so that a
+ * surface cannot assert an absence it never established. That is right for the
+ * question it asks and insufficient for the one TODAYHERO-2 had to ask,
+ * because `false` there covers BOTH "the plan says rest" and "there is no
+ * plan at all". Those two produce opposite sentences: "Scheduled rest, logged
+ * anyway" is honest over a real REST row and a fabrication over a runner with
+ * no active block, a day past the end of one, or the no-goal "just run" mode.
+ *
+ * So the four states are named, and a caller has to say which one it means:
+ *
+ *   'session'  a real RUNNING prescription resolved for this date
+ *   'rest'     a real REST row exists for this date — an actual prescription
+ *   'none'     the plan is live and prescribes nothing for this date
+ *   'unknown'  no plan was loaded (none active, or the read failed)
+ *
+ * `viewedDayIsUnresolved` stays the single owner of the "live plan, no row"
+ * predicate — this calls it rather than restating its `plan_workout_id` rule,
+ * so the synthesised-day subtlety documented on it cannot drift into a second
+ * copy (Rule 16).
+ */
+export type ViewedDayPrescription = 'session' | 'rest' | 'none' | 'unknown';
+
+export function viewedDayPrescription(args: {
+  planLoaded: boolean;
+  viewedDay: { plan_workout_id: string | null } | null;
+  /**
+   * True when a real RUNNING prescription resolved for this date. The caller
+   * owns this because the route resolves it from glance-with-adaptation first
+   * and the plan row second, and a REST day deliberately resolves to null
+   * there — which is precisely why `false` cannot be read as "rest" on its own.
+   */
+  hasSession: boolean;
+}): ViewedDayPrescription {
+  if (args.hasSession) return 'session';
+  if (!args.planLoaded) return 'unknown';
+  if (viewedDayIsUnresolved({ planLoaded: true, viewedDay: args.viewedDay })) return 'none';
+  return 'rest';
+}

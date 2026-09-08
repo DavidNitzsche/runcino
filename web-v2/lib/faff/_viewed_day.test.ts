@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { resolveViewedPlanDay, viewedDayIsUnresolved } from './viewed-day';
-import { dayStateWordFor, displayTypeFor } from './v5-today';
+import { resolveViewedPlanDay, viewedDayIsUnresolved, viewedDayPrescription } from './viewed-day';
+import { dayPrescribesARun, dayStateWordFor, displayTypeFor } from './v5-today';
 
 /**
  * WHAT THIS FILE CANNOT FAIL ON (Rule 22).
@@ -123,5 +123,76 @@ describe('Rule 11 · rest, absent, and unread are three different facts', () => 
     expect(dayStateWordFor(undefined)).toBe('rest');
     expect(displayTypeFor('rest', 'REST')).toBe('Rest');
     expect(displayTypeFor(undefined, null)).toBe('Rest');
+  });
+});
+
+/**
+ * TODAYHERO-2 · the four-state answer.
+ *
+ * WHAT THIS BLOCK CANNOT FAIL ON (Rule 22): it grades the resolver against
+ * inputs a test hands it. It cannot see the route computing `hasSession` from
+ * the wrong field — the exact mistake this fix made on its first cut, where
+ * `todayPlan != null` was passed straight in and a glance-sourced REST day
+ * came back as 'session'. `dayPrescribesARun` is asserted below precisely
+ * because it is the predicate that has to sit between them, but nothing here
+ * proves the route actually calls it. Only the substrate render does.
+ */
+describe('viewedDayPrescription · four facts, never fewer', () => {
+  const realRow = { plan_workout_id: 'wko_1f2073df0458fa43' };
+  const synthesised = { plan_workout_id: null };
+
+  it('a real running session is a session', () => {
+    expect(viewedDayPrescription({ planLoaded: true, viewedDay: realRow, hasSession: true }))
+      .toBe('session');
+  });
+
+  it('a real row with no run in it is REST, which is a prescription', () => {
+    expect(viewedDayPrescription({ planLoaded: true, viewedDay: realRow, hasSession: false }))
+      .toBe('rest');
+  });
+
+  it('a live plan with no row for this date says NOTHING — which is not rest', () => {
+    expect(viewedDayPrescription({ planLoaded: true, viewedDay: synthesised, hasSession: false }))
+      .toBe('none');
+    expect(viewedDayPrescription({ planLoaded: true, viewedDay: null, hasSession: false }))
+      .toBe('none');
+  });
+
+  it('no plan loaded is UNKNOWN — never rest, never an established absence', () => {
+    expect(viewedDayPrescription({ planLoaded: false, viewedDay: null, hasSession: false }))
+      .toBe('unknown');
+    // And it stays unknown even where a stale day object is lying around: a
+    // read that did not happen cannot be rescued by a row it did not return.
+    expect(viewedDayPrescription({ planLoaded: false, viewedDay: realRow, hasSession: false }))
+      .toBe('unknown');
+  });
+
+  it('the three non-session states are three DIFFERENT values', () => {
+    // The assertion the defect violated. `viewedDayIsUnresolved` answers
+    // false for both 'rest' and 'unknown', which is correct for its own
+    // question and is why it could not be reused for this one.
+    const states = new Set([
+      viewedDayPrescription({ planLoaded: true, viewedDay: realRow, hasSession: false }),
+      viewedDayPrescription({ planLoaded: true, viewedDay: synthesised, hasSession: false }),
+      viewedDayPrescription({ planLoaded: false, viewedDay: null, hasSession: false }),
+    ]);
+    expect(states.size).toBe(3);
+    expect(viewedDayIsUnresolved({ planLoaded: true, viewedDay: realRow })).toBe(false);
+    expect(viewedDayIsUnresolved({ planLoaded: false, viewedDay: synthesised })).toBe(false);
+  });
+
+  it('dayPrescribesARun is the predicate the caller owes this resolver', () => {
+    // Every type that is a run.
+    for (const t of ['easy', 'long', 'threshold', 'tempo', 'intervals', 'interval',
+                     'recovery', 'race', 'shakeout', 'fartlek', 'progression']) {
+      expect(dayPrescribesARun(t), t).toBe(true);
+    }
+    // And every spelling of "no run in this day". `rest` is the one that
+    // matters: glance hands a rest day back with this exact type, and reading
+    // its non-null `todayPlan` as a session is what put the REST hero back
+    // over David's bonus run.
+    for (const t of ['rest', 'strength', 'cross', 'xt', 'mobility', '', null, undefined]) {
+      expect(dayPrescribesARun(t), String(t)).toBe(false);
+    }
   });
 });
