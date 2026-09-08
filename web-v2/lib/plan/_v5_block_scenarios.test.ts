@@ -221,7 +221,7 @@ function windowDays(): TrainingStateShape['weekWindowDays'] {
   return dates.map((date, i) => ({
     id: `d${i}`, date, dow: new Date(date + 'T12:00:00Z').getUTCDay(),
     type: i === 6 ? 'long' : 'easy', mi: i === 6 ? 10 : 4, label: null,
-    isQuality: i === 1, isLong: i === 6, spec: null,
+    isQuality: i === 1, isLong: i === 6, skipped: false, spec: null,
     doneMi: 0, activityId: null, donePaceSec: null, doneAvgHr: null, adaptation: null,
   }));
 }

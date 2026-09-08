@@ -312,7 +312,6 @@ type Form = Awaited<ReturnType<typeof loadFormMetrics>>;
  *  Drives the .skipped flag on week[i] + the .day card grayscale. */
 async function loadWeekSkips(uid: string): Promise<{ ok: true; value: Set<string> }> {
   try {
-    const { pool } = await import('@/lib/db/pool');
     const todayISO = await runnerToday(uid);
     const todayMs = Date.parse(todayISO + 'T12:00:00Z');
     const dow = new Date(todayMs).getUTCDay();
@@ -320,13 +319,15 @@ async function loadWeekSkips(uid: string): Promise<{ ok: true; value: Set<string
     const monday = new Date(todayMs + shift * 86400000).toISOString().slice(0, 10);
     const sundayDt = new Date(todayMs + (shift + 6) * 86400000);
     const sunday = sundayDt.toISOString().slice(0, 10);
-    const r = await pool.query(
-      `SELECT date_iso FROM day_actions
-        WHERE user_id = $1 AND action = 'skip'
-          AND date_iso BETWEEN $2 AND $3`,
-      [uid, monday, sunday]
-    ).catch(() => ({ rows: [] as Array<{ date_iso: string }> }));
-    return { ok: true, value: new Set(r.rows.map((x) => x.date_iso)) };
+    // SKIPOWNER-1 (2026-09-07) · was a fifth hand-typed copy of the skip
+    // predicate, and the worst of them: `user_id = $1` with no `user_uuid`
+    // fallback at all. Folded onto `loadSkippedDates`, the one resolver, for
+    // the same reason as the other four — this file is not the web frontend's
+    // product surface, it is a server-side loader, and a query that answers
+    // "which dates did this runner skip" belongs to whoever owns that question.
+    const { loadSkippedDates } = await import('@/lib/plan/week-loader');
+    const { skippedDates } = await loadSkippedDates(uid, monday, sunday);
+    return { ok: true, value: skippedDates };
   } catch {
     return { ok: true, value: new Set<string>() };
   }

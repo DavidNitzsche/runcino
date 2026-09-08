@@ -20,6 +20,7 @@ import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { computeAcwr } from './acwr';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 import { loadActivePlan } from '@/lib/plan/lookup';
+import { isDaySkipped } from '@/lib/plan/week-loader';
 import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
@@ -149,6 +150,19 @@ export interface GlanceState {
   // (planned), missed (passive), sick/niggle (health). Drives the `skipped`
   // DayState in lib/faff/glance-adapter.ts → resolveDayState().
   todaySkipped: boolean;
+  /**
+   * SKIPOWNER-1 (2026-09-07) · RULE 11, the same contract `injuryReadFailed`
+   * below carries and for the same reason. True when the `day_actions` skip
+   * read FAILED, as distinct from finding no skip row. `todaySkipped` is
+   * `false` in both cases and they are opposite facts.
+   *
+   * This field exists because the read it describes used to end in
+   * `.catch(() => ({ rows: [] }))` — a failed read that silently, and
+   * indistinguishably, meant "nothing skipped". Optional so pre-existing
+   * fixtures and personas stay structurally valid; absent means the read
+   * succeeded.
+   */
+  todaySkipReadFailed?: boolean;
   // Niggle + Sick logging (P-NIGGLE-SICK, 2026-05-28). Rows live in
   // `niggles` (mig 116) + `sick_episodes` (mig 117). The active row (most
   // recent WHERE cleared_at IS NULL) drives the `niggle` / `sick` DayState
@@ -614,16 +628,19 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
   const loadChronic28 = load.chronic28;
   const loadAcwr = load.acwr;
 
-  // Skip Today (P-SKIP, 2026-05-28). One-row point read against day_actions
-  // (migration 114). Index on (user_id, date_iso, action) makes this ~O(1).
-  // If the table doesn't exist yet (migration not applied) we default to
-  // false so the loader doesn't hard-fail.
-  const skipRow = await pool.query(
-    `SELECT 1 FROM day_actions
-      WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip' LIMIT 1`,
-    [userId, today],
-  ).catch(() => ({ rows: [] as any[] }));
-  const todaySkipped = skipRow.rows.length > 0;
+  // Skip Today (P-SKIP, 2026-05-28). SKIPOWNER-1 (2026-09-07): this was one of
+  // four hand-typed copies of the skip predicate, and the only one that also
+  // ended in `.catch(() => ({ rows: [] }))` — a live Rule 11 violation, since
+  // a failed read came back as a confident "nothing skipped" and drove the
+  // `skipped` DayState, the fact-reciter and the glance adapter from it. The
+  // migration-not-applied reasoning that catch was written under expired in
+  // 2026-05.
+  //
+  // `isDaySkipped` (`lib/plan/week-loader.ts`) is the one owner of this
+  // question and reports the failure as its own fact.
+  const skipRead = await isDaySkipped(userId, today);
+  const todaySkipped = skipRead.skipped;
+  const todaySkipReadFailed = skipRead.failed;
   // ── SAFETY · DELEGATED TO THE CANONICAL OWNER, 2026-09-02 ──────────────
   //
   // THREE SEPARATE READS of `niggles`, `sick_episodes` and `runner_injuries`
@@ -826,6 +843,9 @@ export async function loadGlanceState(userId: string): Promise<GlanceState> {
     readiness,
     todayExecution,
     todaySkipped,
+    // SKIPOWNER-1 · absent (not `false`) when the read succeeded, mirroring
+    // `injuryReadFailed`'s own contract exactly.
+    ...(todaySkipReadFailed ? { todaySkipReadFailed: true as const } : {}),
     activeNiggle,
     activeSick,
     activeInjury,

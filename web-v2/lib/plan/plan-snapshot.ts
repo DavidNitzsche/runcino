@@ -87,6 +87,205 @@ import { rowsOrEmpty } from '@/lib/db/read';
 const TREADMILL_HILL_INCLINE_PCT = 5;       // Research/04 §8.3 · medium hill repeats, midpoint of the 4-6% band
 const TREADMILL_BASELINE_INCLINE_PCT = 1;   // TERRAIN.treadmill-air-resistance-grade
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * FINISHEST-DETERMINISM-1 (2026-09-07) · THE "PROJECTED FINISH" STAT MUST NOT
+ * BLINK
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * WHAT WAS STILL WRONG AFTER FINISHEST-RELIABILITY-1. That fix stopped a
+ * timeout from being INDISTINGUISHABLE from a genuine absence in the LOGS. It
+ * did not stop the two from being indistinguishable ON THE SCREEN, and it left
+ * the decision resting on a wall-clock threshold sitting inside the measured
+ * cost distribution. An independent review ran `loadPlanSnapshot` ten times in
+ * one process against real production-shaped data and got two different
+ * screens for identical underlying rows.
+ *
+ * Reproduced here, first try, with `scripts/probe-snapshot-flicker.sh` against
+ * a scratch copy of the owner's own block (4 race days):
+ *
+ *   load  1 ·   2569ms · projected 3/4      ← CIM, his GOAL race, missing
+ *   load  2 ·   2536ms · projected 4/4
+ *   loads 3-10 · 1977-2358ms · projected 4/4
+ *
+ * That is Rule 9 exactly: "a hair's difference in input must never produce a
+ * categorically different plan." Half a second of ordinary cold-start variance
+ * decided whether the runner's goal-race day showed a finish time or showed
+ * nothing at all.
+ *
+ * WHICH FIX, AND WHY NOT THE OTHER TWO. Three were on the table.
+ *
+ *   · HOIST THE SHARED BUNDLE out of the per-race loop and race the deadline
+ *     against that one resolution. REJECTED ON EVIDENCE. It was the right
+ *     hypothesis — the shared `loadRaceOutlookUserReads` bundle is ~1.9-2.4s
+ *     of the ~2.0-2.6s total — but `userReadsInFlight` (READS-DEDUP-1) is a
+ *     SINGLE-FLIGHT, not a cache: it deletes its entry the instant the promise
+ *     settles, deliberately, so nothing can serve another request stale
+ *     evidence. Awaiting the bundle to completion BEFORE the per-race loop
+ *     therefore drops the entry and makes all four races recompute it, roughly
+ *     doubling the very cost the change was meant to bound. Verified by
+ *     reading that file's own single-flight, not assumed.
+ *   · RAISE THE DEADLINE ALONE. Insufficient, and Rule 9 says why: "widening a
+ *     tolerance around the same threshold relocates the cliff, it does not
+ *     remove it." The review measured an outlier at 34s. No number both keeps
+ *     the latency guard meaningful and covers that.
+ *   · LAST-KNOWN-GOOD (below), plus a budget that covers the MEASURED cost,
+ *     plus an honest third state when neither is available. CHOSEN, because it
+ *     is the only one where the runner-facing output stops being a function of
+ *     latency at all.
+ */
+
+/**
+ * How long the WHOLE "Projected finish" feature may delay the block read.
+ *
+ * BANNER-LATENCY-1's posture is unchanged and is the reason a budget exists at
+ * all: `loadPlanSnapshot` runs on every launch and every foreground, and a
+ * decorative, additive stat on four race days may never delay or break the 100+
+ * other days' data. What CHANGED is the number, and it changed for a measured
+ * reason rather than a hopeful one.
+ *
+ * 2500ms was chosen as "comfortably more than this ever needs when warm". It
+ * was not: warm is 1977-2358ms and cold is 2536-2569ms locally, and the
+ * independent review measured 2.0-3.5s against a dev server. The old value sat
+ * INSIDE the distribution it was supposed to sit above, which is what made
+ * ordinary variance a screen-state change.
+ *
+ * 8000ms clears the measured worst case (3.5s) with better than 2x margin and
+ * still leaves ~4s of headroom under the phone's 12s client timeout. It is a
+ * ceiling on a pathology, not a budget anything normally spends — and because
+ * of the last-known-good below, exceeding it no longer changes what the runner
+ * reads once this race has resolved successfully even once.
+ */
+const RACE_PROJECTION_DEADLINE_MS = 8_000;
+
+/**
+ * How stale a last-known-good projection may be before it stops being served.
+ *
+ * Rule 16 is the constraint that sets this, not comfort: Race Detail and the
+ * Races list resolve this same quantity FRESH on their own screens, so a value
+ * served here after a mid-day evidence change could disagree with them. Fifteen
+ * minutes bounds that window to something a runner cannot practically observe
+ * (it takes a new run landing, plus a snapshot load whose fresh resolution
+ * FAILED, plus opening Race Detail, inside the same quarter hour), while still
+ * covering a burst of foregrounds — which is the case this exists for.
+ *
+ * Rule 10 posture, stated explicitly as that rule requires: RECOMPUTE. The
+ * anchor is `(userUuid, today)` and it is in the key, so nothing here can
+ * outlive the day it was derived for or cross to another runner; every request
+ * that beats the budget re-derives and overwrites. This is a fallback for a
+ * read that could not complete, never a substitute for doing the read.
+ */
+const RACE_PROJECTION_LKG_MAX_AGE_MS = 15 * 60_000;
+
+/** Hard ceiling on the map, so a long-lived process cannot grow it without
+ *  bound if pruning by age alone is not enough (many users, many races). */
+const RACE_PROJECTION_LKG_MAX_ENTRIES = 500;
+
+/**
+ * The last projection this process resolved SUCCESSFULLY, per runner, per race,
+ * per day.
+ *
+ * WHY THIS IS NOT THE THING READS-DEDUP-1 REFUSED TO BUILD. That file's header
+ * argues, correctly, against a TTL cache over the EVIDENCE BUNDLE: those reads
+ * decide coaching, and one request must never serve another request's view of
+ * the runner. This holds something categorically smaller and later — a
+ * formatted string that has already been through `raceProjectionFromOutlook`,
+ * kept only so that a resolution which FAILED does not silently change what is
+ * on the screen. It is never consulted on a successful resolution, so it can
+ * never override live evidence; the only thing it can do is stop a timeout from
+ * blanking a figure this process has already stood behind.
+ *
+ * WHAT IT DELIBERATELY DOES NOT DO: label itself differently to the runner. An
+ * identical stat IS the fix — a value that changes appearance when the backend
+ * was slow is the same flicker in a different costume. The honesty is paid
+ * where it is actionable: a distinct `console.error` per serve, and
+ * `PlanSnapshotResult.projection_served_stale` on the response.
+ */
+const lastKnownGoodProjection = new Map<string, { text: string; at: number }>();
+
+function projectionCacheKey(userUuid: string, slug: string, today: string): string {
+  return `${userUuid}::${slug}::${today}`;
+}
+
+function readLastKnownGoodProjection(key: string): { text: string; at: number } | null {
+  const hit = lastKnownGoodProjection.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > RACE_PROJECTION_LKG_MAX_AGE_MS) {
+    lastKnownGoodProjection.delete(key);
+    return null;
+  }
+  return hit;
+}
+
+function writeLastKnownGoodProjection(key: string, text: string): void {
+  lastKnownGoodProjection.set(key, { text, at: Date.now() });
+  const cutoff = Date.now() - RACE_PROJECTION_LKG_MAX_AGE_MS;
+  for (const [k, v] of lastKnownGoodProjection) {
+    if (v.at < cutoff) lastKnownGoodProjection.delete(k);
+  }
+  // Insertion order is eviction order; `set` on an existing key does not move
+  // it, so a hot entry can be evicted — acceptable, because eviction costs at
+  // most one render of the honest third state, never a wrong number.
+  while (lastKnownGoodProjection.size > RACE_PROJECTION_LKG_MAX_ENTRIES) {
+    const oldest = lastKnownGoodProjection.keys().next();
+    if (oldest.done) break;
+    lastKnownGoodProjection.delete(oldest.value);
+  }
+}
+
+/** Test-only reset. The cache is process-global by design, which is exactly
+ *  what makes it invisible to a test that cannot clear it. */
+export function __resetLastKnownGoodProjectionsForTest(): void {
+  lastKnownGoodProjection.clear();
+}
+
+/**
+ * FINISHEST-RELIABILITY-1's tagged result, unchanged in contract and now
+ * EXPORTED and defined at module scope rather than re-declared inside
+ * `loadPlanSnapshot` on every call.
+ *
+ * It was a closure, so nothing could unit-test it, which is precisely how the
+ * review was able to collapse the timeout branch back into
+ * `{status:'ok', value: null}` and watch the entire suite stay green. A
+ * discriminated union is the whole mechanism: the `timeout` and `error`
+ * branches carry NO `value` field, so `attempt.value` does not compile until
+ * the caller has narrowed to `ok` — the same discipline `NormalReading<T>`
+ * uses for Rule 8's refusal-versus-zero distinction, and the reason a
+ * genuinely-null projection can never be mistaken for one we never got.
+ */
+export type DeadlineResult<T> =
+  | { status: 'ok'; value: T }
+  | { status: 'timeout' }
+  | { status: 'error'; error: unknown };
+
+/**
+ * Race `p` against `ms`. Three outcomes, never two.
+ *
+ * NO RETRY AND NO PER-CALL EXTENSION. `loadRaceOutlookUserReads`'s single-flight
+ * (READS-DEDUP-1) already makes every race in one block share ONE evidence
+ * computation — these calls are issued together, so they attach to the same
+ * in-flight promise. A timeout here is therefore a signal about that SHARED
+ * bundle; retrying or padding one call would hide the signal rather than
+ * surface it.
+ */
+export async function withDeadline<T>(p: Promise<T>, ms: number): Promise<DeadlineResult<T>> {
+  let timer: ReturnType<typeof setTimeout>;
+  const timeout = new Promise<DeadlineResult<T>>((resolve) => {
+    timer = setTimeout(() => resolve({ status: 'timeout' }), ms);
+  });
+  try {
+    return await Promise.race([
+      p.then((value): DeadlineResult<T> => ({ status: 'ok', value })),
+      timeout,
+    ]);
+  } catch (error) {
+    // Observed and tagged, never swallowed — the consumer logs this distinctly
+    // from a genuine absence before deciding what the runner sees.
+    return { status: 'error', error };
+  } finally {
+    clearTimeout(timer!);
+  }
+}
+
 export interface PlanSnapshotMatchedRun {
   runId: string;
   distanceMi: number | null;
@@ -198,9 +397,20 @@ export interface PlanSnapshotDay {
   stats: PlanSnapshotStat[];
 }
 
-/** Mirrors the client's `V5Number` wire shape exactly — see APIV5.swift. */
+/**
+ * Mirrors the client's `V5Number` wire shape exactly — see APIV5.swift.
+ *
+ * `text` is NULLABLE because the phone's own contract makes null mean
+ * something no string can: `FaffValue.from(nil, modelled:)` returns
+ * `.unreadable`, which the design paints as a fault-red em dash with no value
+ * beside it ("We could not read this"). A stat that omits `text` is therefore
+ * the app's existing, rendered answer to "we could not find this out" —
+ * distinct from a stat that is absent (nothing to say) and from one carrying a
+ * figure. FINISHEST-DETERMINISM-1 spends exactly that third state; nothing on
+ * the phone had to change to receive it.
+ */
 export interface PlanSnapshotNumber {
-  text: string;
+  text: string | null;
   modelled: boolean;
 }
 
@@ -230,6 +440,19 @@ export interface PlanSnapshotResult {
    * succeeded.
    */
   skip_state_unknown?: true;
+  /**
+   * FINISHEST-DETERMINISM-1 · true when at least one "Projected finish" on this
+   * response was served from the last-known-good cache rather than resolved on
+   * this request, because the fresh resolution failed or ran out of budget.
+   *
+   * Same Rule 11 contract as `skip_state_unknown` above, and the same posture:
+   * absent (not `false`) when nothing was served stale. The runner-facing stat
+   * is deliberately IDENTICAL in both cases — a value that changed appearance
+   * when the backend was slow would be the same flicker in a new costume — so
+   * this flag, and the distinct `console.error` beside it, are where the
+   * honesty is paid.
+   */
+  projection_served_stale?: true;
 }
 
 interface PlanWorkoutRow {
@@ -404,7 +627,12 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
   // plan_workouts race row to a `races` slug; batched once for the whole
   // block rather than per day.
   const raceDates = Array.from(new Set(rows.filter((r) => r.type === 'race').map((r) => r.date_iso)));
-  const projectedFinishByDate = new Map<string, { text: string; modelled: boolean }>();
+  // FINISHEST-DETERMINISM-1 · three outcomes now reach the day map, not two.
+  // `null` is the third: "we could not find out", which the phone renders as
+  // `FaffValue.unreadable` (see `PlanSnapshotNumber`). A date absent from the
+  // map is the fourth and oldest fact: nothing to project, say nothing.
+  const projectedFinishByDate = new Map<string, PlanSnapshotNumber | null>();
+  let projectionServedStale = false;
   if (raceDates.length > 0) {
     // A failed slug lookup and "this race has no `races` row yet" reach the
     // identical outcome for every consumer below: no slug to resolve an
@@ -420,94 +648,44 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
         [userUuid, raceDates],
       ),
     );
-    // BANNER-LATENCY-1 (2026-09-07) · `loadPlanSnapshot` runs on every
-    // launch and every foreground (see this file's own header) — the
-    // single hottest read in the app. `resolveRaceOutlookBySlug` composes
-    // real coaching computation (capacity, goal outlook) and is NOT free;
-    // observed 2-6s on its own against a warm dev server. A `Promise.all`
-    // with no ceiling means ONE slow race-outlook resolution (a cold cache,
-    // a contended pool, an upstream hiccup) adds that same delay to every
-    // day's data — including the days that have nothing to do with a race
-    // at all. David saw "Can't reach faff" repeatedly the same day this
-    // shipped; this budget cannot by itself explain a client-side timeout,
-    // but it removes this addition as a plausible contributor rather than
-    // arguing it can't be one. 2500ms — comfortably more than this ever
-    // needs when warm, small next to the 12s client timeout. THIS DEADLINE
-    // STILL PROTECTS THE REST OF THE PAYLOAD — the ceiling below is unchanged
-    // by FINISHEST-RELIABILITY-1 (next comment): a slow or failed projection
-    // still cannot delay or break any other day's data on this response.
-    //
-    // FINISHEST-RELIABILITY-1 (2026-09-07) · WHAT CHANGED, AND WHY. This used
-    // to be `Promise<T | null>`: a real outlook that genuinely has nothing to
-    // project, a resolution that threw, and a resolution that missed this
-    // deadline all collapsed to the identical literal `null`, one line below
-    // feeding the identical `raceProjectionFromOutlook(null)` branch. Verified
-    // live on David's account, 2026-09-07: Santa Monica 10K showed "Projected
-    // finish"; Dodgers, Run Malibu and CIM — his GOAL race — did not, and
-    // nothing distinguished "nothing to project" from "did not get to find
-    // out" anywhere, including the logs. Those are different facts (Rule 11):
-    //
-    //   1 · AVAILABLE            — a real projection. Render the stat.
-    //   2 · GENUINELY UNAVAILABLE — the outlook resolved; evidence-classification
-    //       (or the race lookup itself) concluded there is nothing honest to
-    //       project. Render nothing, correctly — same as before.
-    //   3 · FAILED OR TIMED OUT   — the resolution threw, or missed the
-    //       deadline. Must NOT read as case 2. The runner-facing OUTCOME is
-    //       still "no stat" (this is a decorative, additive field, and
-    //       BANNER-LATENCY-1's fail-closed posture — never let one race's
-    //       projection error or delay the WHOLE block read — is unchanged),
-    //       but this case is now LOGGED DISTINCTLY from case 2, so an ops
-    //       read can tell "no evidence yet" apart from "this kept timing
-    //       out" instead of the two being indistinguishable forever.
-    //
-    // `withDeadline` returns a TAGGED result rather than collapsing to
-    // `T | null`, so a caller cannot accidentally read a timeout or a throw as
-    // the same value a genuine absence produces — the type itself makes case 3
-    // impossible to mistake for case 2, the same discipline `NormalReading<T>`
-    // uses for Rule 8's refusal-vs-zero distinction.
-    //
-    // NO RETRY, NO EXTENDED DEADLINE FOR THIS CALL. `loadRaceOutlookUserReads`'s
-    // single-flight (READS-DEDUP-1) already makes every race in one block
-    // share ONE evidence computation — these calls are issued together in the
-    // `Promise.all` below, so they hit the same in-flight promise. A genuine
-    // timeout here is therefore a signal that the SHARED bundle itself is
-    // slow; retrying or padding just this call would hide that signal rather
-    // than surface it, and it is exactly the same bundle every race in the
-    // block depends on.
-    type RaceOutlookAttempt<T> =
-      | { status: 'ok'; value: T }
-      | { status: 'timeout' }
-      | { status: 'error'; error: unknown };
-    const withDeadline = async <T>(p: Promise<T>, ms: number): Promise<RaceOutlookAttempt<T>> => {
-      let timer: ReturnType<typeof setTimeout>;
-      const timeout = new Promise<RaceOutlookAttempt<T>>((resolve) => {
-        timer = setTimeout(() => resolve({ status: 'timeout' }), ms);
-      });
-      try {
-        return await Promise.race([
-          p.then((value): RaceOutlookAttempt<T> => ({ status: 'ok', value })),
-          timeout,
-        ]);
-      } catch (error) {
-        // Observed and tagged, never swallowed — the consumer below logs this
-        // distinctly from case 2 before failing the stat closed.
-        return { status: 'error', error };
-      } finally {
-        clearTimeout(timer!);
-      }
-    };
     await Promise.all(slugRows.map(async (r) => {
-      const attempt = await withDeadline(resolveRaceOutlookBySlug(userUuid, r.slug, today), 2500);
+      const lkgKey = projectionCacheKey(userUuid, r.slug, today);
+      const attempt = await withDeadline(
+        resolveRaceOutlookBySlug(userUuid, r.slug, today),
+        RACE_PROJECTION_DEADLINE_MS,
+      );
+
       if (attempt.status !== 'ok') {
-        // Case 3 · failed or timed out. Fails CLOSED to "no stat" — same
-        // decorative, additive posture as case 2 — but visible as its OWN
-        // fact rather than silently indistinguishable from a genuine absence.
+        // ── CASE 3 · the resolution failed or ran out of budget ────────────
+        //
+        // Logged as its own fact, never silently folded into case 2. What the
+        // RUNNER sees is decided by whether this same race, this same day,
+        // has already been resolved successfully in this process.
         console.error(
           `[plan-snapshot] race outlook resolution ${attempt.status} for slug=${r.slug} date=${r.date_iso}`,
           attempt.status === 'error' ? attempt.error : undefined,
         );
+        const lastGood = readLastKnownGoodProjection(lkgKey);
+        if (lastGood) {
+          // The screen does not move. This is the whole point of the cache —
+          // see its own doc comment: an identical stat is what "no flicker"
+          // MEANS, so the honesty owed here is owed to OPS, not to the pixel.
+          // `projection_served_stale` on the result is where it is paid.
+          projectionServedStale = true;
+          console.error(
+            `[plan-snapshot] serving last-known-good projection for slug=${r.slug} ` +
+            `date=${r.date_iso} (resolved ${Math.round((Date.now() - lastGood.at) / 1000)}s ago)`,
+          );
+          projectedFinishByDate.set(r.date_iso, { text: lastGood.text, modelled: true });
+          return;
+        }
+        // Nothing known, and we could not find out. NOT the same as case 2,
+        // and no longer rendered the same way: `text: null` is the phone's
+        // own `unreadable` — a fault-red dash where the figure would be.
+        projectedFinishByDate.set(r.date_iso, null);
         return;
       }
+
       const outlook = attempt.value;
       // WKSTRIP-UTC-1 verification round · this used to show
       // `likelyRangeSec` as a range ("42:05–43:49") when the same outlook's
@@ -520,13 +698,17 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       // matches it byte-for-byte rather than presenting a second, wider
       // answer to the same question.
       const projection = raceProjectionFromOutlook(outlook);
-      // Case 2 · genuinely nothing to project (no goal, no capacity evidence
-      // yet, race too far out, or no `races` row for this slug at all) —
-      // correct, silent, and NOT logged: this is the expected steady state
-      // for a race with no evidence behind it yet, not an anomaly.
+      // ── CASE 2 · genuinely nothing to project ───────────────────────────
+      // No goal, no capacity evidence yet, race too far out, or no `races`
+      // row for this slug at all. Correct, silent, and NOT logged: the
+      // expected steady state for a race with no evidence behind it, not an
+      // anomaly. The date stays OUT of the map entirely, so no stat renders.
       if (projection.projectedSec == null) return;
       const text = formatRaceTime(projection.projectedSec);
-      if (text) projectedFinishByDate.set(r.date_iso, { text, modelled: true });
+      if (!text) return;
+      // ── CASE 1 · a real projection. Render it, and remember it. ──────────
+      writeLastKnownGoodProjection(lkgKey, text);
+      projectedFinishByDate.set(r.date_iso, { text, modelled: true });
     }));
   }
 
@@ -641,9 +823,19 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
     }
     // FINISHEST-1 · see the batch resolution above this map for why this is
     // a lookup, not a derivation.
-    if (isRace) {
-      const finish = projectedFinishByDate.get(row.date_iso);
-      if (finish) stats.push({ label: 'Projected finish', value: finish, tone: null });
+    if (isRace && projectedFinishByDate.has(row.date_iso)) {
+      // FINISHEST-DETERMINISM-1 · `has` and not a truthiness test, because
+      // `null` is a VALUE in this map and not an absence. A date that is
+      // present with null is "we could not find out"; a date that is absent is
+      // "there is nothing to project". Collapsing them with `if (finish)` is
+      // the exact defect this fix exists to close, one layer further down.
+      const finish = projectedFinishByDate.get(row.date_iso) ?? null;
+      stats.push(finish
+        ? { label: 'Projected finish', value: finish, tone: null }
+        // `text: null` → `FaffValue.unreadable` on the phone: a fault-red dash
+        // in the slot where the figure goes. Visibly different from a race day
+        // with no stat at all, which is what a genuine absence still renders.
+        : { label: 'Projected finish', value: { text: null, modelled: true }, tone: 'fault' });
     }
 
     return {
@@ -687,5 +879,8 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
     // PLANSNAPSHOT-SKIP-1 · mirrors `PlanWeekResult.skipStateUnknown` — see
     // that field's own doc comment. Absent (not `false`) on a successful read.
     ...(skipReadFailed ? { skip_state_unknown: true as const } : {}),
+    // FINISHEST-DETERMINISM-1 · see the field's own doc comment. Absent, not
+    // `false`, when every projection on this response was resolved live.
+    ...(projectionServedStale ? { projection_served_stale: true as const } : {}),
   };
 }
