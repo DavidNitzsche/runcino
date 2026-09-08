@@ -1167,8 +1167,18 @@ struct V5Phase: Decodable, Equatable, Hashable, Identifiable {
     /// an answer is not a reason to show none.
     var progressionLines: [(label: String, text: String)] {
         var out: [(label: String, text: String)] = []
-        if let hold, !hold.isEmpty { out.append((V5Phase.holdLabel, hold)) }
-        if let progress, !progress.isEmpty { out.append((V5Phase.progressLabel, progress)) }
+        // Trimmed, not just non-empty: `!hold.isEmpty` alone lets a
+        // whitespace-only string through as a "titled blank" — the exact
+        // failure this section exists to avoid. Unreached by today's engine
+        // (every `phase-answers.ts` arm is literal-anchored), found by an
+        // independent review (2026-09-08) as latent robustness, not a live
+        // defect.
+        if let hold, !hold.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            out.append((V5Phase.holdLabel, hold))
+        }
+        if let progress, !progress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            out.append((V5Phase.progressLabel, progress))
+        }
         return out
     }
 
