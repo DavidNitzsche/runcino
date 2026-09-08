@@ -30,10 +30,17 @@
 //    "onSignOut" closure to wire — adding one would just be a second path to
 //    the same door.
 //
-//  Every other control keeps a small local `@State` mirror seeded from the
+//  Every other control draws from ONE local `@State` mirror seeded from the
 //  model so the row updates instantly, and reports the change outward
 //  through its own closure — the composition root owns the real PATCH and
 //  the real field name for those.
+//
+//  That mirror is optimistic, which means it can be WRONG: it moves the
+//  instant the runner touches a control, before any PATCH has been sent, let
+//  alone answered. Everything that puts it back is SETTINGSREVERT-1, and it
+//  is one value (`SettingsMirror`) rather than six properties precisely so
+//  that putting it back is one assignment that cannot cover five controls
+//  and miss the sixth.
 //
 
 import SwiftUI
@@ -85,6 +92,38 @@ struct SettingsV5Model: Equatable {
     /// failed source render `UnavailableRow` instead of a value. Defaults to
     /// `.healthy`, which is what every preview and every whole load is.
     var health: SettingsSourceHealth = .healthy
+
+    /// SETTINGSREVERT-1 · the server's own answer for every control the
+    /// runner can touch, as ONE value. See `SettingsMirror`.
+    var mirror: SettingsMirror {
+        SettingsMirror(longRunDay: longRunDay,
+                       daysPerWeek: daysPerWeek,
+                       phoneRunEnabled: phoneRunEnabled,
+                       sessionReminders: sessionReminders,
+                       weeklySummary: weeklySummary,
+                       units: units)
+    }
+}
+
+// MARK: - SETTINGSREVERT-1 · the optimistic mirror
+
+/// EVERY VALUE THE RUNNER CAN CHANGE ON THIS SCREEN, AS ONE VALUE.
+///
+/// These six used to be six separate `@State` properties, each seeded from
+/// the model and each corrected back independently. That made "the screen
+/// agrees with the server" six comparisons that no single line of code, and
+/// no single assertion, could make at once — and a fix that put five of them
+/// back would have looked exactly like a fix that put all six back.
+///
+/// As one `Equatable` value it is one comparison: `mirror == model.mirror`.
+/// The screen is either showing what the server holds, or it is not.
+struct SettingsMirror: Equatable {
+    var longRunDay: String
+    var daysPerWeek: Int
+    var phoneRunEnabled: Bool
+    var sessionReminders: Bool
+    var weeklySummary: Bool
+    var units: String
 }
 
 // MARK: - Screen
@@ -119,13 +158,29 @@ struct SettingsV5: View {
     /// banner. Same closure the full failure state's Retry runs. Nil drops
     /// the button (a preview has nothing to retry), never the sentence.
     var onRetry: (() -> Void)? = nil
+    /// SETTINGSREVERT-1 (2026-09-08 review) · THE HOST SAYING "WHAT YOU ARE
+    /// SHOWING WAS NEVER SAVED."
+    ///
+    /// A monotonic counter, bumped by `SettingsHostV5` every time a write did
+    /// not land. Its VALUE means nothing; only that it moved.
+    ///
+    /// Why it has to exist at all: the correction below rides on
+    /// `.onChange(of: model)`, and `onChange` is equality-gated. When a write
+    /// fails, `applyWrite` correctly leaves the cached copy alone (a write
+    /// that changed nothing on the server invalidates nothing — SETTINGSWRITE-1),
+    /// so the reload rebuilds an IDENTICAL model and `onChange` never fires.
+    /// The optimistic value the runner set before the PATCH was even sent then
+    /// stood, unchallenged, over a server that still held the old one. Two
+    /// individually-correct fixes, and the gap was between them.
+    ///
+    /// So the restatement is carried as its own signal rather than inferred
+    /// from the model moving. The host bumps it the instant the write comes
+    /// back unlanded — no reload round trip in between, because the value we
+    /// are reverting TO is the one already on this screen.
+    var serverTruthRevision: Int = 0
 
-    @State private var longRunDay: String
-    @State private var daysPerWeek: Int
-    @State private var phoneRunEnabled: Bool
-    @State private var sessionReminders: Bool
-    @State private var weeklySummary: Bool
-    @State private var units: String
+    /// SETTINGSREVERT-1 · one value, not six. See `SettingsMirror`.
+    @State private var mirror: SettingsMirror
     init(model: SettingsV5Model,
          onSetLongRunDay: @escaping (String) -> Void,
          onSetDaysPerWeek: @escaping (Int) -> Void,
@@ -137,9 +192,11 @@ struct SettingsV5: View {
          onOpenTravel: (() -> Void)? = nil,
          onOpenDecisions: (() -> Void)? = nil,
          onBack: (() -> Void)? = nil,
-         onRetry: (() -> Void)? = nil) {
+         onRetry: (() -> Void)? = nil,
+         serverTruthRevision: Int = 0) {
         self.model = model
         self.onRetry = onRetry
+        self.serverTruthRevision = serverTruthRevision
         self.onSetLongRunDay = onSetLongRunDay
         self.onSetDaysPerWeek = onSetDaysPerWeek
         self.onToggleSessionReminders = onToggleSessionReminders
@@ -150,16 +207,11 @@ struct SettingsV5: View {
         self.onOpenTravel = onOpenTravel
         self.onOpenDecisions = onOpenDecisions
         self.onBack = onBack
-        _longRunDay = State(initialValue: model.longRunDay)
-        _daysPerWeek = State(initialValue: model.daysPerWeek)
-        _phoneRunEnabled = State(initialValue: model.phoneRunEnabled)
-        _sessionReminders = State(initialValue: model.sessionReminders)
-        _weeklySummary = State(initialValue: model.weeklySummary)
-        _units = State(initialValue: model.units)
+        _mirror = State(initialValue: model.mirror)
     }
 
     private var phoneRunSub: String {
-        phoneRunEnabled ? "RUN sits in the bottom bar" : "Your watch starts every session"
+        mirror.phoneRunEnabled ? "RUN sits in the bottom bar" : "Your watch starts every session"
     }
 
     /// The weekly summary fires on the runner's own long-run evening — the
@@ -178,7 +230,7 @@ struct SettingsV5: View {
         guard model.health.settings == nil else {
             return "The evening of your long run"
         }
-        return "\(longRunDay) evening, after the long run"
+        return "\(mirror.longRunDay) evening, after the long run"
     }
 
     var body: some View {
@@ -226,7 +278,7 @@ struct SettingsV5: View {
         .scrollIndicators(.hidden)
         // The phone-run switch is the ONE control here that talks to the
         // network directly — see the file header.
-        .onChange(of: phoneRunEnabled) { _, newValue in
+        .onChange(of: mirror.phoneRunEnabled) { _, newValue in
             // Only write a value the server does not already have. Without
             // this the revert below (a failed write putting the local state
             // back) would itself look like a toggle and write again.
@@ -244,7 +296,18 @@ struct SettingsV5: View {
                     // same footgun and a reader finding this line first
                     // should not learn the wrong pattern from it.
                     let landed = (try? await API.patchSettings(["phone_run_enabled": newValue])) != nil
-                    if landed { await SettingsCache.shared.invalidate() }
+                    if landed {
+                        await SettingsCache.shared.invalidate()
+                    } else {
+                        // SETTINGSREVERT-1 · and the other half of the same
+                        // footgun. With no host to restate the server's value
+                        // there is nobody to bump `serverTruthRevision`, so
+                        // this path puts the switch back itself. Preview-only,
+                        // like the line above it, and here for the same
+                        // reason: the next reader should not learn half a
+                        // pattern from it.
+                        mirror.phoneRunEnabled = model.phoneRunEnabled
+                    }
                 }
             }
         }
@@ -272,14 +335,24 @@ struct SettingsV5: View {
         // Following the model means a failed write now visibly reverts. That
         // is not the same as saying so, which the host should — noted in the
         // report — but a silent revert beats a silent lie.
-        .onChange(of: model) { _, m in
-            longRunDay = m.longRunDay
-            daysPerWeek = m.daysPerWeek
-            phoneRunEnabled = m.phoneRunEnabled
-            sessionReminders = m.sessionReminders
-            weeklySummary = m.weeklySummary
-            units = m.units
-        }
+        //
+        // SETTINGSREVERT-1 (2026-09-08 review) · AND THIS GATE IS NOT ENOUGH
+        // ON ITS OWN. `onChange` fires only when the new value is UNEQUAL to
+        // the old one. When ONLY the write fails and the reads stay healthy,
+        // the reload rebuilds a model identical to the one already here — so
+        // this handler never ran, and the optimistic value stood over a
+        // server that never took it. The restatement below is the other half;
+        // both deliver the same thing, so they share one function.
+        .onChange(of: model) { _, m in follow(m) }
+        .onChange(of: serverTruthRevision) { _, _ in follow(model) }
+    }
+
+    /// SETTINGSREVERT-1 · THE SERVER HAS SPOKEN; EVERYTHING OPTIMISTIC YIELDS.
+    ///
+    /// One assignment, because the mirror is one value. Six assignments is
+    /// how a correction covers five controls and misses the sixth.
+    private func follow(_ m: SettingsV5Model) {
+        mirror = m.mirror
     }
 
     // MARK: Training
@@ -294,10 +367,10 @@ struct SettingsV5: View {
                 // day" is still real and "Days per week" is not.
                 if model.health.settings == nil {
                     FaffSelect(label: "Long run day",
-                               value: longRunDay,
+                               value: mirror.longRunDay,
                                options: model.longRunDayOptions,
                                onChange: { day in
-                        longRunDay = day
+                        mirror.longRunDay = day
                         onSetLongRunDay(day)
                     })
                 } else {
@@ -305,7 +378,7 @@ struct SettingsV5: View {
                 }
                 if model.health.profile == nil {
                     FaffStepper(label: "Days per week",
-                                value: $daysPerWeek,
+                                value: $mirror.daysPerWeek,
                                 range: model.daysPerWeekRange,
                                 onChange: onSetDaysPerWeek)
                 } else {
@@ -314,7 +387,7 @@ struct SettingsV5: View {
                 if model.health.settings == nil {
                     FaffSwitch(label: "Start runs from this phone",
                                sub: phoneRunSub,
-                               isOn: $phoneRunEnabled)
+                               isOn: $mirror.phoneRunEnabled)
                 } else {
                     UnavailableRow(label: "Start runs from this phone")
                 }
@@ -379,10 +452,10 @@ struct SettingsV5: View {
                 if model.health.prefs == nil {
                     FaffSwitch(label: "Skipped-run check",
                                sub: "The morning after a skip \u{00B7} are you good for today",
-                               isOn: $sessionReminders)
+                               isOn: $mirror.sessionReminders)
                     FaffSwitch(label: "Weekly summary",
                                sub: weeklySummarySub,
-                               isOn: $weeklySummary)
+                               isOn: $mirror.weeklySummary)
                 } else {
                     UnavailableRow(label: "Skipped-run check")
                     UnavailableRow(label: "Weekly summary")
@@ -392,11 +465,11 @@ struct SettingsV5: View {
             .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
         }
         // Same guard as the phone-run switch above · a revert is not a tap.
-        .onChange(of: sessionReminders) { _, newValue in
+        .onChange(of: mirror.sessionReminders) { _, newValue in
             guard newValue != model.sessionReminders else { return }
             onToggleSessionReminders(newValue)
         }
-        .onChange(of: weeklySummary) { _, newValue in
+        .onChange(of: mirror.weeklySummary) { _, newValue in
             guard newValue != model.weeklySummary else { return }
             onToggleWeeklySummary(newValue)
         }
@@ -413,10 +486,10 @@ struct SettingsV5: View {
                 // shown "Miles" in exactly the ink a real answer uses.
                 if model.health.settings == nil {
                     FaffSelect(label: "Distance",
-                               value: units,
+                               value: mirror.units,
                                options: model.unitsOptions,
                                onChange: { u in
-                        units = u
+                        mirror.units = u
                         onSetUnits(u)
                     })
                 } else {
