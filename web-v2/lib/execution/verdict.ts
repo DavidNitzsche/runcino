@@ -188,13 +188,21 @@ export interface WorkoutVerdict {
 
 /* ══════════════════════════════ 2 · parsing ═════════════════════════════ */
 
-/** The phase type as older payloads spell it, folded to the four the grader
- *  knows. `run-shape.ts#runPhases` returns null for anything outside the four;
- *  these five are older spellings of a WORK phase that some rows still carry,
- *  and reading them as `unknown` would drop real reps out of the work set. */
+/** The phase type as older payloads spell it, folded to the five the grader
+ *  knows. `run-shape.ts#runPhases` returns null for anything outside them;
+ *  the five below (`rep`/`tempo`/`threshold`/`intervals`/`race`) are older
+ *  spellings of a WORK phase that some rows still carry, and reading them as
+ *  `unknown` would drop real reps out of the work set.
+ *
+ *  OVERTIME-PHASE-1 · `overtime` joined the known set on 2026-09-08. It is
+ *  emphatically NOT folded to `work`: it is running after the last
+ *  prescribed piece, `paceShapeFor` grades it `none`, and it stays out of
+ *  `workPhases` below — the same place `unknown` left it, now for a stated
+ *  reason instead of by accident. */
 function phaseType(v: unknown): PhaseType | 'unknown' {
   const t = String(v ?? '').toLowerCase();
-  if (t === 'warmup' || t === 'work' || t === 'recovery' || t === 'cooldown') return t as PhaseType;
+  if (t === 'warmup' || t === 'work' || t === 'recovery' || t === 'cooldown'
+      || t === 'overtime') return t as PhaseType;
   if (t === 'rep' || t === 'tempo' || t === 'threshold' || t === 'intervals' || t === 'race') return 'work';
   return 'unknown';
 }
@@ -340,6 +348,8 @@ export function gradeStoredPhases(
             ? paceShapeFor(gradable, sessionClass, { hasTarget, byEffort })
             : byEffort ? 'effort'
               : !hasTarget ? 'none'
+              // OVERTIME-PHASE-1 · never graded, with or without a target.
+              : gradable === 'overtime' ? 'none'
               : gradable === 'recovery' ? 'none'
               : gradable === 'warmup' || gradable === 'cooldown' ? 'ceiling'
               : 'window');

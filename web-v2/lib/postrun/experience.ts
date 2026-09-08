@@ -786,6 +786,27 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
   const insideBound = bound === 'ceiling' ? 'stayed under the ceiling'
     : bound === 'window' ? 'landed inside the window'
     : 'landed on target';
+  /* COACH-VOICE-1 (2026-09-08) · THE ONE-BLOCK SENTENCE SAYS THE NUMBERS.
+   *
+   * "The work block landed inside the window." is engine nouns, twice over:
+   * "work block" is this composer's own word for `work[0]`, and "the window"
+   * is `paceShapeFor`'s word for its shape. Rendered on the owner's real
+   * 2026-09-08 tempo it is a sentence a coach would never say about a run
+   * he had just watched — it describes a data structure agreeing with
+   * itself, and names neither the distance nor the pace that made it true.
+   *
+   * The design brief's coach voice is short, direct, concrete: state the
+   * numbers plainly, then the verdict. "3.5 miles at 7:11. Right in the
+   * window."
+   *
+   * Rule 11: it degrades rather than fabricates. When the single block did
+   * not record both a distance and a pace there is nothing concrete to say,
+   * so the old structural sentence stands — never a sentence with a hole in
+   * it, and never a guessed number. */
+  const insidePlain = bound === 'window' ? 'Right in the window'
+    : bound === 'ceiling' ? 'Right under the ceiling'
+    : 'Right on target';
+  const soloInsideSentence = single ? soloBlockSentence(work[0], insidePlain) : null;
   // PACE-SHAPE-AUDIT-1, 2026-09-05 · a ceiling's ONLY failure mode is
   // running FASTER than it, so this branch means the ceiling was violated —
   // and "came in ahead of the ceiling" reads as a good thing (got ahead,
@@ -998,7 +1019,8 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
     headline: controlled ? 'Controlled work' : 'Work executed',
     summary: (s.fasts > 0
       ? `${cap1(reps)} landed, with ${numberWord(s.fasts)} quicker than the ${bound}.`
-      : `${cap1(reps)} ${insideBound}.`) + strideClause,
+      // COACH-VOICE-1 · the numbers, when the one block recorded them.
+      : (soloInsideSentence ?? `${cap1(reps)} ${insideBound}.`)) + strideClause,
     intendedStimulus: stimulus,
     stimulusDelivered: 'FULL',
     confidence: 'HIGH',
@@ -1006,6 +1028,29 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
     targetProvenanceNote,
     reasons,
   };
+}
+
+/**
+ * COACH-VOICE-1 (2026-09-08) · the one-block session's own sentence.
+ *
+ * "3.5 miles at 7:11. Right in the window." — the numbers plainly, then the
+ * verdict. It replaces "The work block landed inside the window.", which was
+ * engine nouns twice in eight words and named no number at all.
+ *
+ * REFUSES rather than degrades (Rule 11): each missing input returns null on
+ * its own line, and the caller falls back to the structural sentence. There
+ * is deliberately no `?? 0` and no `x ? f(x) : null` collapse anywhere in
+ * here — a sentence with a hole in it is worse than the old sentence, and a
+ * fabricated zero is worse than both.
+ */
+function soloBlockSentence(p: GradedPhase | undefined, insidePlain: string): string | null {
+  if (!p) return null;
+  const mi = p.actualDistanceMi;
+  if (mi == null || !(mi > 0)) return null;
+  const pace = fmtPace(p.avgSecPerMi);
+  if (pace == null) return null;
+  const unit = mi === 1 ? 'mile' : 'miles';
+  return `${mi1(mi)} ${unit} at ${pace}. ${insidePlain}.`;
 }
 
 /* ═══════════════════ 3b · strides · 2026-09-02 ══════════════════════════ */
@@ -1338,6 +1383,24 @@ const DOMAIN_WORD: Record<EvidenceDomain, string> = {
   READINESS: 'recovery',
 };
 
+/**
+ * TENSION-DIRECTION-1 (2026-09-08) · what the BELIEF is called when a
+ * sentence has to name the thing the observation disagreed with.
+ *
+ * Separate from `DOMAIN_WORD` because that map answers "what does this run
+ * demonstrate" ("threshold range") and this one answers "what number is
+ * under question" ("threshold pace"). The tension sentence needs the second:
+ * "the next one like it will" is a promise about a specific number, and
+ * "whether the number moves" — the phrase this replaced — never said which.
+ */
+const BELIEF_WORD: Record<EvidenceDomain, string> = {
+  THRESHOLD: 'threshold pace',
+  HIGH_INTENSITY: 'speed',
+  DURABILITY: 'ability to hold pace late',
+  LOAD_TOLERANCE: 'tolerance for this much running',
+  READINESS: 'recovery',
+};
+
 function listWords(xs: string[]): string {
   if (xs.length === 0) return '';
   if (xs.length === 1) return xs[0];
@@ -1428,12 +1491,46 @@ export function readEvidence(input: PostRunInput): PostRunEvidenceImpact {
   const words = listWords(supporting.map((d) => DOMAIN_WORD[d]));
 
   if (tension) {
-    // The third outcome. The belief is NOT changed and the type cannot say it
-    // was — `anchorEffect` is the single literal `no_change_flag_for_reexamination`.
+    /* The third outcome. The belief is NOT changed and the type cannot say it
+     * was — `anchorEffect` is the single literal `no_change_flag_for_reexamination`.
+     *
+     * ── TENSION-DIRECTION-1 (2026-09-08) · THE SENTENCE NOW KNOWS WHICH WAY
+     *
+     * `BeliefTensionRead` is a discriminated union carrying an explicit
+     * `direction`, and this composer read every field on it EXCEPT that one.
+     * One direction-blind sentence was emitted for both arms:
+     *
+     *   "This sits outside what your current threshold range predicts. It is
+     *    noted, and the next session like it will settle whether the number
+     *    moves."
+     *
+     * Rendered on the owner's real 2026-09-08 tempo — 3.5 mi at 7:11 held at
+     * an average of 159 bpm against a 164 ceiling, the stronger-than-belief
+     * arm — that reads as an ANOMALY REPORT over the best signal of his day.
+     * "Sits outside" is the vocabulary of a reading that went wrong; what
+     * actually happened is that he held threshold pace deeper into the
+     * session, at a lower cardiac cost, than the current belief predicts.
+     * That is durability evidence, and doctrine's own framing of this
+     * outcome (§11 of `activity-evidence.ts`) is that the belief "deserves
+     * re-examination" — an invitation, not a fault.
+     *
+     * Rule 16: a sentence asserting a fact about a measurement is gated on
+     * that measurement. Direction is measured, it was on the object, and it
+     * was being thrown away — so one string had to serve two opposite facts
+     * and could only do it by saying neither.
+     *
+     * Both arms name the direction, and both name the NUMBER under question
+     * ("your current threshold pace") rather than the old "whether the
+     * number moves", which never said which number. */
+    const beliefWord = BELIEF_WORD[DOMAIN_FOR_CAPACITY[tension.capacity] ?? 'THRESHOLD'];
+    const runnerSummary =
+      tension.direction === 'observation_stronger_than_belief'
+        ? `You held that pace deeper into the session than your current ${beliefWord} predicts. One session does not move it. The next one like it will.`
+        : `That came in slower than your current ${beliefWord} predicts. One session does not move it. The next one like it will.`;
     return {
       role: 'CHALLENGES',
       domains: supporting.length > 0 ? supporting : [DOMAIN_FOR_CAPACITY[tension.capacity] ?? 'THRESHOLD'],
-      runnerSummary: `This sits outside what your current ${DOMAIN_WORD[DOMAIN_FOR_CAPACITY[tension.capacity] ?? 'THRESHOLD']} predicts. It is noted, and the next session like it will settle whether the number moves.`,
+      runnerSummary,
       beliefChanged: false,
       planAuthorityEligible: ev.anchorMoveCandidate,
       reasons: [...reasons, ...tension.reasons],

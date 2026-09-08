@@ -90,7 +90,16 @@ describe.skipIf(!RO)('post-run experience · live payload', () => {
      * `no_change_flag_for_reexamination`), which is the third outcome the
      * Evidence Engine exists to express. */
     expect(out.evidence.role).toBe('CHALLENGES');
-    expect(out.evidence.runnerSummary).toMatch(/sits outside what your current/);
+    /* TENSION-DIRECTION-1, 2026-09-08 · WAS `/sits outside what your current/`
+     * — one direction-blind sentence for both arms of a union that carries an
+     * explicit `direction`. This session is the STRONGER arm (he matched the
+     * believed threshold pace deep into the session), and the sentence now
+     * says which way and names the number under question. Asserted on the
+     * DIRECTION, not just on the presence of prose, so a regression to a
+     * both-arms-fit string fails here. */
+    expect(out.evidence.runnerSummary).toMatch(/deeper into the session/);
+    expect(out.evidence.runnerSummary).toContain('threshold pace');
+    expect(out.evidence.runnerSummary).not.toMatch(/sits outside/);
     expect(out.evidence.beliefChanged).toBe(false);
     // The read HAPPENED. This is the assertion that would have caught the gap.
     expect(out.evidence.reasons).not.toContain('CURRENT_BELIEF_NOT_SUPPLIED_TO_CLASSIFIER');

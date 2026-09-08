@@ -301,7 +301,12 @@ describe('run-type states', () => {
       { index: 1, type: 'work', label: 'Tempo', completed: true, avgHr: 160, actualDurationSec: 1800, actualDistanceMi: 4.2, targetPaceSPerMi: 430, actualPaceSPerMi: 428 },
     ];
     const out = compose({ phases: tempo, sessionClass: 'threshold', plannedTypeDisplay: 'Tempo' });
-    expect(out.execution.summary).toBe('The work block landed inside the window.');
+    /* COACH-VOICE-1, 2026-09-08 · WAS 'The work block landed inside the
+     * window.' — engine nouns twice in eight words, naming no number. A
+     * one-block session now states its own distance and pace. The thing THIS
+     * test exists for is unchanged and is the second assertion: one
+     * continuous block is never "rep 1 of 1". */
+    expect(out.execution.summary).toBe('4.2 miles at 7:08. Right in the window.');
     expect(out.execution.summary).not.toMatch(/\brep\b/i);
   });
 
@@ -615,7 +620,15 @@ describe('Rule 21 · the evidence layer can say a run was strong enough to push'
     });
     expect(out.evidence.role).toBe('CHALLENGES');
     expect(out.evidence.beliefChanged).toBe(false);
-    expect(out.evidence.runnerSummary).toContain('the next session like it will settle');
+    /* TENSION-DIRECTION-1, 2026-09-08 · WAS `toContain('the next session like
+     * it will settle')`, over a sentence that read the same for both arms of
+     * a union carrying an explicit `direction`. The fixture above is the
+     * STRONGER arm, so it now says so. The invariant this test is actually
+     * for — the belief did NOT move — is the assertion above and is
+     * untouched. Direction-by-direction wording is
+     * `_tension_direction_and_voice.test.ts`. */
+    expect(out.evidence.runnerSummary).toContain('deeper into the session');
+    expect(out.evidence.runnerSummary).toContain('One session does not move it.');
   });
 
   it('an UPDATED plan quotes the engine and drops the doctrine citation', () => {
