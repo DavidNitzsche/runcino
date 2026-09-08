@@ -137,6 +137,23 @@ struct MilePiece: Identifiable, Equatable {
         guard let d = distanceMi else { return false }
         return d < 0.95
     }
+
+    /// WHAT THE FIRST COLUMN SAYS — a numeral for a whole mile, the piece's own
+    /// length for the remainder, so the column reads 1, 2, 3, 0.50 mi.
+    ///
+    /// ONE DEFINITION (2026-09-08), read by the whole-run table below and by
+    /// the per-phase table nested in `RepBreakdownV5`. The convention is
+    /// argued in this file's own header ("THE TRAILING PIECE"): a numeral
+    /// claims a whole mile whatever a subtitle says underneath it, so the
+    /// remainder gives its numeral up. Two tables spelling that rule twice is
+    /// how they end up spelling it differently.
+    ///
+    /// In miles, for the same reason the header says MILE: this is a mile-cut
+    /// piece, so its length is a fraction of a mile.
+    var columnLabel: String {
+        if isPartial, let d = distanceMi { return String(format: "%.2f mi", d) }
+        return "\(mile)"
+    }
 }
 
 // MARK: - The section
@@ -298,18 +315,14 @@ struct MileBreakdownV5: View {
             // In miles, for the same reason the header says MILE: this is a
             // mile-cut piece, so its length is a fraction of a mile. "0.18 km"
             // would describe it in a unit it was never measured in.
-            Group {
-                if p.isPartial, let d = p.distanceMi {
-                    Text(String(format: "%.2f mi", d))
-                        .font(.faffText(TypeScaleV5.body17))
-                        .foregroundStyle(V5.textSecondary)
-                } else {
-                    Text("\(p.mile)")
-                        .font(.faffText(TypeScaleV5.body17))
-                        .foregroundStyle(V5.textPrimary)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            //
+            // The TEXT is `MilePiece.columnLabel`, shared with the nested
+            // per-phase table so the two cannot disagree about what a
+            // remainder is called. Only the INK is decided here.
+            Text(p.columnLabel)
+                .font(.faffText(TypeScaleV5.body17))
+                .foregroundStyle(p.isPartial ? V5.textSecondary : V5.textPrimary)
+                .frame(maxWidth: .infinity, alignment: .leading)
 
             // THE PACE COLUMN IS THE ONLY COLOURED ONE, and what it carries
             // is INTENSITY, not a verdict: amber at this run's slowest, orange
@@ -430,6 +443,31 @@ extension MileBreakdownV5 {
                              elevFt: s.elev_change_ft,
                              cadence: (s.cadence ?? 0) > 0 ? s.cadence : nil,
                              distanceMi: derived)
+        }
+    }
+
+    /// PHASE-GRAIN-1 (2026-09-08) · a PHASE'S own mile splits → rows, for the
+    /// compact table `RepBreakdownV5` nests under a long work piece.
+    ///
+    /// PARITY-1 · both screens call THIS — `RunDetailV5.repPieces` off
+    /// `PhaseBreakdown.mile_splits`, `TodayAfterV5.sectionPieces` off
+    /// `V5RoutePhase.mileSplits`. The two wires carry the same objects from the
+    /// same server derivation, so one mapping is all either needs and neither
+    /// can cut the phase into different rows.
+    ///
+    /// Nothing is invented on the way through. `distanceMi` is whatever the
+    /// server measured — it always sends one, which is why the trailing piece
+    /// can name its own length — and climb and cadence are nil because a stored
+    /// phase sample carries neither. Nil is "we were not told"; it is not zero.
+    static func pieces(fromPhaseSplits splits: [PhaseMileSplit]?) -> [MilePiece] {
+        (splits ?? []).map { s in
+            MilePiece(id: s.mile,
+                      mile: s.mile,
+                      paceSec: paceSeconds(s.pace),
+                      hr: (s.hr ?? 0) > 0 ? s.hr : nil,
+                      elevFt: nil,
+                      cadence: nil,
+                      distanceMi: s.distanceMi)
         }
     }
 

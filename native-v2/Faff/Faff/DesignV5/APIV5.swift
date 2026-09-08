@@ -235,6 +235,15 @@ struct V5RoutePhase: Decodable, Equatable {
     /// .repCompletionGrid` may print "completed" only for an explicit
     /// `true`; see that property's own header for why `nil` is not `true`.
     let completed: Bool?
+    /// PHASE-GRAIN-1, 2026-09-08 · the same `mile_splits` array
+    /// `PhaseBreakdown` (run detail's own wire type) now carries, decoded into
+    /// the same `PhaseMileSplit` struct off the same server derivation
+    /// (`lib/runs/derive-phase-splits.ts`) — so a 3.5-mile tempo cuts into the
+    /// same rows on this sheet and on run detail rather than on two authors
+    /// agreeing to. Nil for every phase that crossed fewer than two whole-mile
+    /// boundaries of its own, which is every rep and every short tempo, and on
+    /// any payload from before this field existed.
+    let mileSplits: [PhaseMileSplit]?
 
     enum K: String, CodingKey {
         case mi, sec, type, verdict
@@ -247,6 +256,7 @@ struct V5RoutePhase: Decodable, Equatable {
         case targetPaceSec = "target_pace_sec"
         case tolerancePaceSec = "tolerance_pace_sec"
         case completed
+        case mileSplits = "mile_splits"
     }
 
     init(from decoder: Decoder) throws {
@@ -264,18 +274,21 @@ struct V5RoutePhase: Decodable, Equatable {
         targetPaceSec = try c.decodeIfPresent(Double.self, forKey: .targetPaceSec)
         tolerancePaceSec = try c.decodeIfPresent(Double.self, forKey: .tolerancePaceSec)
         completed = try c.decodeIfPresent(Bool.self, forKey: .completed)
+        mileSplits = try c.decodeIfPresent([PhaseMileSplit].self, forKey: .mileSplits)
     }
 
     init(mi: Double, sec: Int, type: String?, verdict: String? = nil, statusLabel: String? = nil,
          label: String? = nil, paceShape: String? = nil, targetPace: String? = nil,
          actualPace: String? = nil, avgHr: Int? = nil, targetPaceSec: Double? = nil,
-         tolerancePaceSec: Double? = nil, completed: Bool? = nil) {
+         tolerancePaceSec: Double? = nil, completed: Bool? = nil,
+         mileSplits: [PhaseMileSplit]? = nil) {
         self.mi = mi; self.sec = sec; self.type = type
         self.verdict = verdict; self.statusLabel = statusLabel
         self.label = label; self.paceShape = paceShape
         self.targetPace = targetPace; self.actualPace = actualPace; self.avgHr = avgHr
         self.targetPaceSec = targetPaceSec; self.tolerancePaceSec = tolerancePaceSec
         self.completed = completed
+        self.mileSplits = mileSplits
     }
 }
 

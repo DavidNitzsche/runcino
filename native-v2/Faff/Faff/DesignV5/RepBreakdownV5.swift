@@ -149,6 +149,28 @@ struct RepPiece: Identifiable, Equatable {
     /// backwards. Nil draws a nominal sliver rather than vanishing the
     /// segment from the shape.
     var durationSec: Int? = nil
+
+    /// PHASE-GRAIN-1 (2026-09-08) · THIS PIECE, MILE BY MILE, when it was long
+    /// enough to have miles of its own.
+    ///
+    /// The runner, on his own 3.5-mile tempo drawn as one number: "the 3.5
+    /// tempo shows just one number but I'd like to see it broken down by mile.
+    /// the shorter tempos obv wont but 3.5 miles is long enough that seeing
+    /// the mile breakdown would be helpful." His row is the argument for it —
+    /// 7:14 / 7:08 / 7:14 at 154 / 157 / 162 bpm, then a closing half mile at
+    /// 165. Flat pace, eleven beats of drift, and a single "7:11/mi · HR 160"
+    /// cannot say so.
+    ///
+    /// EMPTY IS THE NORMAL VALUE. The server refuses below two whole-mile
+    /// boundaries of the piece's own sample stream, so a rep, a jog and a
+    /// short tempo all arrive empty and draw nothing — the same treatment as a
+    /// piece whose samples were never recorded, because Rule Three says a
+    /// header over an empty list reads as a section that failed to load.
+    ///
+    /// Counted from the START OF THIS PIECE, never from the start of the run:
+    /// mile 1 of a tempo that began a mile and a half in is the session's
+    /// third mile, and the row does not claim otherwise.
+    var mileSplits: [MilePiece] = []
 }
 
 // MARK: - Shared verdict phrasing
@@ -435,7 +457,27 @@ struct RepBreakdownV5: View {
         // and a hit rep are the same weight.
         let primary = V5.textPrimary
 
-        return HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
+        return VStack(alignment: .leading, spacing: 0) {
+            fullRowHead(p, primary: primary)
+            // PHASE-GRAIN-1 · NESTED UNDER THE PIECE, not as a section of its
+            // own beside this one. These miles are miles OF this rep, and a
+            // sibling section with its own header would be a second "how did
+            // the pieces go" heading two inches under the first — the
+            // duplicate-header problem this screen already has. Nesting also
+            // means an eight-rep session that somehow qualified twice reads as
+            // two indented tables under their own reps, not as two anonymous
+            // ones at the bottom.
+            if !p.mileSplits.isEmpty { mileTable(p.mileSplits) }
+        }
+        // One element per piece. Read as five separate strings a rep becomes
+        // "Interval · 1 km" followed by four orphaned fragments, and the
+        // fragment that says whose decision the skip was is the one that
+        // stops the row sounding like a confession.
+        .accessibilityElement(children: .contain)
+    }
+
+    private func fullRowHead(_ p: RepPiece, primary: Color) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
             VStack(alignment: .leading, spacing: V5.S.s4) {
                 Text(p.label)
                     .font(.faffText(TypeScaleV5.body17))
@@ -489,6 +531,109 @@ struct RepBreakdownV5: View {
         // stops the row sounding like a confession.
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(spoken(p))
+    }
+
+    // MARK: - The piece, mile by mile
+    //
+    // PHASE-GRAIN-1 (2026-09-08). A COMPACT table, not a second
+    // `MileBreakdownV5`: that component carries a section label, a tile of its
+    // own, a colour ramp and up to two captions, all of which belong to a
+    // top-level section and none of which a nested three-row table has any use
+    // for. What it DOES share is the thing that matters — `MilePiece`, and
+    // `MilePiece.columnLabel`, so the remainder is named the same way in both.
+    //
+    // PACE IS NOT COLOURED HERE. `MileBreakdownV5`'s ramp is normalised over
+    // the WHOLE RUN and drawn to match the route line above it; a nested table
+    // has no map beside it and no access to that normalisation, and inventing
+    // a second, phase-local ramp would put two meanings on one orange — the
+    // exact collision that component's own header records being fixed. Plain
+    // ink is a missing colour, never a wrong one.
+    //
+    // NO CLIMB AND NO CADENCE COLUMNS: a stored phase sample carries neither,
+    // so there is nothing to draw and a header over blanks reads as a failure
+    // to load.
+
+    private static let mileNumberColumn: CGFloat = 52
+
+    private func mileTable(_ pieces: [MilePiece]) -> some View {
+        // Only where at least one mile has one — same rule the whole-run table
+        // applies, for the same reason.
+        let showsHr = pieces.contains { $0.hr != nil }
+        return VStack(alignment: .leading, spacing: V5.S.s6) {
+            HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
+                // "OF THIS PIECE" IS LOAD-BEARING, not decoration. Run detail
+                // draws `MileBreakdownV5` on the same screen, under a column
+                // also headed MILE, and those miles are cut from the START OF
+                // THE RUN — the run's mile 3 spans the end of the warm-up and
+                // the start of the tempo. Two columns headed MILE counting from
+                // two origins is Rule 16 in its plainest form, and the cheaper
+                // half of the fix is the one word that says which is which.
+                //
+                // The tables both stay: the run-relative one cannot answer what
+                // the tempo's own first mile did, which is the entire reason
+                // this section exists.
+                Text("MILE OF THIS PIECE").frame(maxWidth: .infinity, alignment: .leading)
+                Text("PACE").frame(width: Self.mileNumberColumn, alignment: .trailing)
+                if showsHr { Text("HR").frame(width: Self.mileNumberColumn, alignment: .trailing) }
+            }
+            .font(.faffText(TypeScaleV5.label12))
+            .foregroundStyle(V5.textQuiet)
+            .accessibilityHidden(true)
+
+            ForEach(pieces) { m in
+                HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
+                    Text(m.columnLabel)
+                        .font(.faffText(TypeScaleV5.label13))
+                        .foregroundStyle(m.isPartial ? V5.textQuiet : V5.textSecondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    mileCell(m.paceSec.map { Units.formatPaceBare(secPerMile: $0) })
+                    if showsHr { mileCell(m.hr.map { "\($0)" }) }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(Self.spokenMile(m))
+            }
+        }
+        // INDENTED, and under a hairline, so the table reads as belonging to
+        // the row above it rather than as the next row of the list.
+        .padding(.leading, V5.S.s16)
+        .padding(.trailing, V5.S.tilePad)
+        .padding(.bottom, V5.S.s12)
+    }
+
+    /// NOTHING, NOT A DASH, when the mile carried no reading — the whole-run
+    /// table's rule, and its reasoning: `.measured(nil)` draws a fault-red dash
+    /// meaning "we tried and failed", which a mile that simply recorded no
+    /// heart rate did not do.
+    @ViewBuilder
+    private func mileCell(_ text: String?) -> some View {
+        if let text {
+            FaffValueText(.measured(text),
+                          font: .faffText(TypeScaleV5.label13, weight: .semibold),
+                          color: V5.textSecondary)
+                .frame(width: Self.mileNumberColumn, alignment: .trailing)
+        } else {
+            Color.clear.frame(width: Self.mileNumberColumn, height: 1)
+        }
+    }
+
+    /// "Mile 2 of this piece, 7:08 per mile, heart rate 157." Says nothing about
+    /// a column the mile had no reading for, and names the remainder by its
+    /// length rather than claiming a mile it did not cover.
+    ///
+    /// "OF THIS PIECE" IS SPOKEN TOO, for the reason the header carries it: a
+    /// reader who cannot see the indent has nothing else to tell these miles
+    /// apart from the run's own, which are read out under the same word two
+    /// sections down.
+    private static func spokenMile(_ m: MilePiece) -> String {
+        var out: [String] = []
+        if m.isPartial, let d = m.distanceMi {
+            out.append(String(format: "Final %.2f of a mile of this piece", d))
+        } else {
+            out.append("Mile \(m.mile) of this piece")
+        }
+        if let s = m.paceSec { out.append("\(Units.formatPaceBare(secPerMile: s)) per mile") }
+        if let hr = m.hr { out.append("heart rate \(hr)") }
+        return out.joined(separator: ", ") + "."
     }
 
     // MARK: - The timeline strip

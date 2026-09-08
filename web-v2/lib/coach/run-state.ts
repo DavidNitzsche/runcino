@@ -24,6 +24,10 @@ import {
   type SessionClass,
 } from '@/lib/training/execution-semantics';
 import { gradeStoredPhases } from '@/lib/execution/verdict';
+import {
+  derivePhaseMileSplitsFromCompletion,
+  type PhaseMileSplit,
+} from '@/lib/runs/derive-phase-splits';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
 import { coerceShoeType, resolveShoeCapMi, type ShoeType } from '@/lib/shoe/lifespan';
 import { resolveRunTerrain } from '@/lib/terrain/run-terrain';
@@ -159,6 +163,24 @@ export interface PhaseBreakdown {
   /** Seconds outside it. `in + out` is the graded time, which is shorter than
    *  `actual_duration_sec` — the device grades only while it has a pace. */
   time_out_of_tolerance_sec: number | null;
+  /**
+   * PHASE-GRAIN-1 (2026-09-08) · THIS PHASE, MILE BY MILE, cut from its own
+   * sample stream and rebased to its own start.
+   *
+   * The runner's own ask, over a 3.5-mile tempo shown as one number: "the 3.5
+   * tempo shows just one number but I'd like to see it broken down by mile.
+   * the shorter tempos obv wont but 3.5 miles is long enough that seeing the
+   * mile breakdown would be helpful."
+   *
+   * NULL is the normal answer and carries no complaint: `lib/runs/
+   * derive-phase-splits.ts` refuses for a phase that crossed fewer than two
+   * whole-mile boundaries (a 1 km rep has nothing to break down), for one that
+   * carries no samples, and for one whose walk came out with a hole in it.
+   * Those are three distinguishable facts there; they collapse to one null
+   * here because the SCREEN treatment is identical for all three — no section,
+   * per Rule Three.
+   */
+  mile_splits: PhaseMileSplit[] | null;
 }
 
 /** Shoe entry surfaced inline on the run detail so the picker doesn't
@@ -1728,6 +1750,11 @@ export function mapWatchPhases(
    * "Not a workout" (`Research/04` §7.2). With it they arrive `effort` /
    * `not_graded` / `status: null`, which is what a form drill is. */
   const graded = gradeStoredPhases(raw, sessionClass ?? 'other', { stridesPrescribed });
+  /* PHASE-GRAIN-1 (2026-09-08) · the per-phase mile table, cut from the SAME
+   * raw payload the grader just read and aligned to it by POSITION — which is
+   * how `gradeStoredPhases` reads its own raw element (`list[i]`) over the same
+   * filter. Presentation only: nothing here votes on the verdict above. */
+  const mileSplits = derivePhaseMileSplitsFromCompletion(raw);
   return graded.phases.map((g, i): PhaseBreakdown => {
     const type: PhaseBreakdown['type'] = g.type;
     const status: 'on' | 'fast' | 'slow' | null =
@@ -1758,6 +1785,7 @@ export function mapWatchPhases(
       verdict: g.storedVerdict,
       time_in_tolerance_sec: g.timeInToleranceSec,
       time_out_of_tolerance_sec: g.timeOutOfToleranceSec,
+      mile_splits: mileSplits[i] ?? null,
     };
   });
 }

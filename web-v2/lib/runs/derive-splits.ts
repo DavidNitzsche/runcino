@@ -61,9 +61,67 @@ export function deriveSplitsFromPaceSamples(
 ): DerivedSplit[] | null {
   if (!Array.isArray(phases) || phases.length === 0) return null;
 
-  // Flatten phases into a single timeline with dist + time offsets
-  interface FlatSample { tSec: number; distMi: number; bpm: number | null }
-  const flat: FlatSample[] = [];
+  const flat = flattenPhaseSamples(phases);
+  if (flat.length < 2) return null;
+
+  const walk = walkMileSplits(flat);
+  return walk.splits.length > 0 ? walk.splits : null;
+}
+
+/* ══════════════════ the walk, as its own two halves ══════════════════════ */
+//
+// SPLIT OUT 2026-09-08 so `derive-phase-splits.ts` can run the SAME walk over
+// ONE phase's stream, rebased to that phase's own start, rather than carrying
+// a second copy of the interpolation (Rule 16 · one quantity, one name — and
+// a mile boundary is a quantity). `deriveSplitsFromPaceSamples` above is now
+// nothing but these two calls, so a change to the arithmetic cannot reach one
+// caller and miss the other.
+//
+// Behaviour is unchanged: the flatten is the loop that used to be inline, the
+// walk is the loop that used to follow it, and the whole-run entry point still
+// returns whole miles only. The trailing REMAINDER the walk now reports is new
+// information, not new behaviour — this function ignores it, exactly as it
+// always has.
+
+/** One sample on the flattened timeline: seconds and cumulative miles from the
+ *  start of the FIRST phase handed in, plus that instant's heart rate. */
+export interface FlatMileSample { tSec: number; distMi: number; bpm: number | null }
+
+/** The piece after the last whole-mile boundary. Never a mile, so it is never
+ *  numbered — see `MileBreakdownV5`'s "THE TRAILING PIECE". */
+export interface MileRemainder {
+  distanceMi: number;
+  elapsedSec: number;
+  paceSecPerMi: number;
+  hr: number | null;
+}
+
+export interface MileWalk {
+  /** Whole-mile splits, sanity-guarded (120 s ≤ elapsed ≤ 3600 s per mile). */
+  splits: DerivedSplit[];
+  /**
+   * Mile boundaries the stream ACTUALLY crossed, counted before the sanity
+   * guard. `splits.length` can be smaller — a mile dropped by the guard is a
+   * hole in the table, and a caller that needs a complete table has to be able
+   * to tell that apart from a mile that was never run (Rule 11).
+   */
+  wholeMilesCrossed: number;
+  /** Seconds at the last crossing, from the timeline's own zero. 0 when none. */
+  lastCrossingSec: number;
+  /** The final sample, i.e. where the stream stops. */
+  endSec: number;
+  endDistMi: number;
+}
+
+/**
+ * Phases → one timeline. Distance and time offsets come from each phase's own
+ * ACTUAL totals, not from its last sample, so GPS rounding does not accumulate
+ * across phases. Handed a single phase, both offsets stay zero and the result
+ * is that phase rebased to its own start, which is exactly what a per-phase
+ * mile breakdown needs.
+ */
+export function flattenPhaseSamples(phases: SplitSourcePhase[]): FlatMileSample[] {
+  const flat: FlatMileSample[] = [];
   let distOffset = 0;
   let tOffset = 0;
 
@@ -91,12 +149,26 @@ export function deriveSplitsFromPaceSamples(
     tOffset += Number(phase.actualDurationSec ?? (ps[ps.length-1]?.tSec ?? 0));
   }
 
-  if (flat.length < 2) return null;
+  return flat;
+}
+
+/**
+ * The mile-boundary walk. Interpolates the exact second at each whole-mile
+ * crossing, averages HR over the window between crossings, and reports what is
+ * left over after the last one.
+ *
+ * Sorts `flat` in place, as the inline version always did.
+ */
+export function walkMileSplits(flat: FlatMileSample[]): MileWalk {
+  if (flat.length < 2) {
+    return { splits: [], wholeMilesCrossed: 0, lastCrossingSec: 0, endSec: 0, endDistMi: 0 };
+  }
   flat.sort((a, b) => a.tSec - b.tSec);
 
   const splits: DerivedSplit[] = [];
   let mileNo = 1;
   let prevCrossT = 0;
+  let crossed = 0;
 
   for (let i = 1; i < flat.length; i++) {
     const prev = flat[i - 1];
@@ -109,18 +181,13 @@ export function deriveSplitsFromPaceSamples(
       const frac = (mileNo - prev.distMi) / span;
       const crossT = prev.tSec + frac * (curr.tSec - prev.tSec);
       const elapsedSec = Math.round(crossT - prevCrossT);
+      crossed++;
 
       if (elapsedSec >= 120 && elapsedSec <= 3600) {
-        // Average HR from samples in this mile's window
-        const windowSamples = flat.filter(s => s.tSec >= prevCrossT && s.tSec <= crossT && s.bpm != null);
-        const avgHr = windowSamples.length > 0
-          ? Math.round(windowSamples.reduce((sum, s) => sum + (s.bpm!), 0) / windowSamples.length)
-          : null;
-
         splits.push({
           mile: mileNo,
-          pace: `${Math.floor(elapsedSec / 60)}:${String(elapsedSec % 60).padStart(2, '0')}`,
-          hr: avgHr,
+          pace: fmtMileClock(elapsedSec),
+          hr: averageBpmBetween(flat, prevCrossT, crossT),
           paceSecPerMi: elapsedSec,
         });
       }
@@ -129,5 +196,29 @@ export function deriveSplitsFromPaceSamples(
     }
   }
 
-  return splits.length > 0 ? splits : null;
+  const last = flat[flat.length - 1];
+  return {
+    splits,
+    wholeMilesCrossed: crossed,
+    lastCrossingSec: prevCrossT,
+    endSec: last.tSec,
+    endDistMi: last.distMi,
+  };
+}
+
+/** Average HR over a window of the timeline. Null when no sample in it carried
+ *  one — never a neighbour's reading, which is a borrowed number wearing a
+ *  measured number's clothes. */
+export function averageBpmBetween(
+  flat: FlatMileSample[], fromSec: number, toSec: number,
+): number | null {
+  const w = flat.filter((s) => s.tSec >= fromSec && s.tSec <= toSec && s.bpm != null);
+  if (w.length === 0) return null;
+  return Math.round(w.reduce((sum, s) => sum + (s.bpm as number), 0) / w.length);
+}
+
+/** Seconds → "7:14". The one formatter both the whole-run and the per-phase
+ *  tables print through. */
+export function fmtMileClock(sec: number): string {
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
 }

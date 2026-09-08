@@ -1358,7 +1358,13 @@ struct TodayAfterV5: View {
                                                         statusLabel: p.statusLabel, type: p.type),
                      chosen: false,
                      kind: RepPiece.Kind.of(type: p.type, isWork: p.type.map { $0 == "work" } ?? true),
-                     durationSec: p.sec)
+                     durationSec: p.sec,
+                     // PHASE-GRAIN-1 (2026-09-08) · `RunDetailV5.repPieces`'
+                     // twin, through the same mapper off the same server
+                     // derivation, so a 3.5-mile tempo cuts into the same rows
+                     // here as it does one tap away. Empty on every rep and
+                     // short tempo, which is the normal answer.
+                     mileSplits: MileBreakdownV5.pieces(fromPhaseSplits: p.mileSplits))
         }
     }
 
