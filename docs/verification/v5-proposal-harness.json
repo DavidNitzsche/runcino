@@ -9,12 +9,10 @@
       "why": "No race or field test in the last 6 weeks. Pace anchors are going stale. Convert 2026-09-09's quality session to a 30-minute threshold field test to lock in current fitness.",
       "detail": {
         "evidenceUsed": [
-          "Threshold HR anchor stale: no",
-          "Session type: intervals",
-          "Session distance: 2.5 mi"
+          "Your threshold heart rate reading is still current."
         ],
         "missingEvidence": [
-          "Threshold HR anchor age, days"
+          "How long ago your threshold heart rate was set"
         ],
         "optionsConsidered": null,
         "earningConditions": null,
@@ -29,6 +27,31 @@
       }
     },
     {
+      "id": "12",
+      "dateISO": "2026-09-08",
+      "direction": "push",
+      "standing": "proposal",
+      "headline": "76 sessions ahead move to faster paces",
+      "why": "Your recent training puts your threshold at 7:10 per mile. This block is written at 7:10 per mile.",
+      "detail": {
+        "evidenceUsed": [
+          "The read comes from your own recent training, not from a race, and it is held with high confidence.",
+          "Your fitness reads level with what this block was priced at. This is not a fitness change: the paces the block is written at have drifted from what your evidence now supports."
+        ],
+        "missingEvidence": [],
+        "optionsConsidered": null,
+        "earningConditions": null,
+        "reassessOnISO": null,
+        "affectedWorkouts": [
+          {
+            "dateISO": "2026-09-08",
+            "what": "76 prescribed sessions, from this day to the end of the block"
+          }
+        ],
+        "policyAssumptions": null
+      }
+    },
+    {
       "id": "101",
       "dateISO": "2026-09-10",
       "direction": "push",
@@ -37,10 +60,7 @@
       "why": "You absorbed 47.3 miles against 45.5 prescribed, and the last three long runs held their pace into the final third.",
       "detail": {
         "evidenceUsed": [
-          "Session type: long run",
-          "Session distance: 8 mi",
-          "Week volume, miles: 47.3",
-          "Longest run, miles: 16"
+          "You are running 47.3 mi a week, with a longest run of 16 mi."
         ],
         "missingEvidence": [],
         "optionsConsidered": [
@@ -74,10 +94,7 @@
       "headline": "Take 17% off Friday",
       "why": "Your last two long runs lost 22 and 19 seconds a mile across the final third.",
       "detail": {
-        "evidenceUsed": [
-          "Session type: long run",
-          "Session distance: 18 mi"
-        ],
+        "evidenceUsed": [],
         "missingEvidence": [
           "Heart rate on the second of the two long runs"
         ],
@@ -101,10 +118,7 @@
       "headline": "Saturday becomes a rest day",
       "why": "Three quality sessions land inside five days this week, and the last one sits on the day after your long run.",
       "detail": {
-        "evidenceUsed": [
-          "Session type: intervals",
-          "Session distance: 7 mi"
-        ],
+        "evidenceUsed": [],
         "missingEvidence": [],
         "optionsConsidered": null,
         "earningConditions": null,
@@ -126,10 +140,7 @@
       "headline": "Move Sunday to Tuesday",
       "why": "This session and Monday's threshold sit one day apart, which leaves neither a recovery day.",
       "detail": {
-        "evidenceUsed": [
-          "Session type: tempo",
-          "Session distance: 8 mi"
-        ],
+        "evidenceUsed": [],
         "missingEvidence": [],
         "optionsConsidered": null,
         "earningConditions": null,
@@ -155,10 +166,7 @@
       "headline": "Thursday goes to 20 mi",
       "why": "Week 9 opens at 55 miles, which is 6 more than you have run in a week.",
       "detail": {
-        "evidenceUsed": [
-          "Session type: long run",
-          "Session distance: 18 mi"
-        ],
+        "evidenceUsed": [],
         "missingEvidence": [],
         "optionsConsidered": null,
         "earningConditions": [
@@ -183,10 +191,7 @@
       "headline": "Take 10% off Thursday",
       "why": "Two of the last three weeks ended above your usual resting heart rate, and the third has not finished.",
       "detail": {
-        "evidenceUsed": [
-          "Session type: threshold",
-          "Session distance: 9 mi"
-        ],
+        "evidenceUsed": [],
         "missingEvidence": [],
         "optionsConsidered": null,
         "earningConditions": null,
@@ -256,6 +261,15 @@
       "outcome": "pending",
       "headline": "Thursday goes to 9 mi",
       "why": "You absorbed 47.3 miles against 45.5 prescribed, and the last three long runs held their pace into the final third."
+    },
+    {
+      "id": "w12",
+      "dateISO": "2026-09-08",
+      "decidedISO": "2026-09-08",
+      "direction": "push",
+      "outcome": "pending",
+      "headline": "76 sessions ahead move to faster paces",
+      "why": "Your recent training puts your threshold at 7:10 per mile. This block is written at 7:10 per mile."
     },
     {
       "id": "p9",

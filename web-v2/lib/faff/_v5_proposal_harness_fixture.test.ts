@@ -80,7 +80,21 @@ const PRODUCTION_ROWS: Row[] = [
       newType: 'easy',
     },
     reason: 'Readiness pullback · HRV below 5 days running.',
-    evidence: { band: 'moderate', tier: 'advanced', score: 64 },
+    // EVIDENCEPROSE-1 (2026-09-08) · re-read from production and now VERBATIM.
+    // The three keys this carried were row 1's band/tier/score, not row 5's,
+    // and it dropped the four the readiness rollup actually writes — including
+    // `streaks`, which is an ARRAY and is what proved the old renderer would
+    // put a raw JSON literal on the phone. The header promises verbatim; it now
+    // is.
+    evidence: {
+      band: 'pull-back',
+      tier: 'advanced',
+      score: 44,
+      streaks: [{ days: 5, pillar: 'hrv', direction: 'below' }],
+      headline: "HRV below for 5 days · The trend matters more than today's number.",
+      forcedByHardRule: false,
+      sustainedPullBackDays: 0,
+    },
     createdAt: '2026-08-07T07:15:00.000Z',
     storedStatus: 'expired', resolvedAtISO: '2026-08-07T18:00:00.000Z',
   }),
@@ -125,6 +139,43 @@ const PRODUCTION_ROWS: Row[] = [
       planned_distance_mi: 2.5,
     },
     createdAt: '2026-09-02T07:44:43.655Z',
+  }),
+  /* ── EVIDENCEPROSE-1 (2026-09-08) · THE ROW THE OWNER WAS LOOKING AT ──────
+   *
+   * `reprice` id 12, pending in production, read 2026-09-08. It is here for
+   * Rule 15's reason: the harness could not express a repricing AT ALL, so the
+   * entire reprice branch of `detailFor` and `affectedFrom` was dark across the
+   * fixture — which is exactly the branch whose rendering the owner opened on
+   * his phone and called "not telling me anything". A corpus that cannot reach
+   * a branch is not covering it however many rows it holds.
+   *
+   * The `reprice` payload is trimmed to the fields `affectedFrom` reads
+   * (`workoutsAffected`, `workoutsSealed`) rather than the whole 76-session
+   * anchor-move record; nothing else on this path reads the rest, and pasting
+   * it would put a wall of engine JSON in a file whose job is to be read.
+   * `evidence` is complete and verbatim. */
+  row({
+    id: 12, actionKind: 'reprice', workoutDateISO: '2026-09-08',
+    actionPayload: {
+      why: 'Your recent training puts your threshold at 7:10 per mile. '
+        + 'This block is written at 7:10 per mile.',
+      reprice: {
+        arm: 'race-prep',
+        workoutsAffected: 76,
+        workoutsSealed: 0,
+        meanAnchorDeltaSecPerMi: -3.3333333333333335,
+      } as never,
+    },
+    reason: 'Your recent training puts your threshold at 7:10 per mile. '
+      + 'This block is written at 7:10 per mile.',
+    evidence: {
+      anchor_vdot_now: 47.8,
+      evidence_source: 'run',
+      anchor_confidence: 0.8081792830507429,
+      anchor_vdot_proposed: 47.7,
+      ends_calibration_intro: false,
+    },
+    createdAt: '2026-09-08T07:00:28.475Z',
   }),
 ];
 

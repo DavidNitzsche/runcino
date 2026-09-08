@@ -52,6 +52,7 @@ import { actionFromPending, actionShapeOfEngineKind } from '@/lib/brain/proposal
 import { deserializeAction } from '@/lib/brain/proposal/serialize';
 import { phoneDirectionOf, actionHeadline } from '@/lib/faff/v5-action-render';
 import { executorFor } from '@/lib/brain/proposal/executor-map';
+import { evidenceProse, missingEvidenceLabel } from '@/lib/faff/v5-evidence-prose';
 
 /**
  * Engine kind to the runner's question.
@@ -197,7 +198,17 @@ const EVIDENCE_KEYS_NOT_FOR_THE_RUNNER = new Set([
   'planned_date',
 ]);
 
-/** Engine key to a short English label. Anything unlisted is title-cased. */
+/**
+ * Engine key to a short English label. Anything unlisted is title-cased.
+ *
+ * EVIDENCEPROSE-1 (2026-09-08) · THIS IS NOW THE FALLBACK, NOT THE RENDERER.
+ * `v5-evidence-prose.ts` writes sentences for the shapes it has been taught
+ * and claims the keys it spoke for; this table dresses whatever is left, for a
+ * blob nobody has taught it yet. A `label: value` line is a worse answer than
+ * a sentence and a better one than nothing — but it is not the answer for a
+ * shape that is live in production, so when a new trigger starts writing a
+ * blob, teach the prose module rather than extending this list.
+ */
 const EVIDENCE_LABELS: Record<string, string> = {
   planned_type: 'Session type',
   planned_distance_mi: 'Session distance',
@@ -222,9 +233,14 @@ const EVIDENCE_LABELS: Record<string, string> = {
  * ── WHAT THIS CAN AND CANNOT SAY TODAY, HONESTLY ───────────────────────────
  *
  * `plan_workout_proposals.evidence` is whatever the trigger that produced the
- * action put there. For `field_test_due` that is a genuinely useful record
- * (`planned_date`, `planned_type`, `planned_distance_mi`, `lthr_stale`,
- * `lthr_age_days`). For the options the engine weighed, the earning gate and
+ * action put there, and the SHAPE varies by trigger: `field_test_due` writes
+ * `planned_date` / `planned_type` / `planned_distance_mi` / `lthr_stale` /
+ * `lthr_age_days`, the three repricing arms write anchor readings,
+ * `brain/proposal/write.ts` stamps `evidence_family` on everything it inserts.
+ * `lib/faff/v5-evidence-prose.ts` owns the wording for the shapes it has been
+ * taught (EVIDENCEPROSE-1) and this function dresses the remainder.
+ *
+ * For the options the engine weighed, the earning gate and
  * the policy assumptions there is NOTHING: `DecisionTrace` exists in
  * `lib/plan/adjudication/contract.ts` and nothing persists one onto a proposal
  * row yet.
@@ -242,6 +258,23 @@ export function detailFor(p: PendingProposal): V5ProposalDetailWire {
   const used: string[] = [];
   const missing: string[] = [];
 
+  /* ── EVIDENCEPROSE-1 (2026-09-08) · SENTENCES FIRST, KEYS SECOND ──────────
+   *
+   * `v5-evidence-prose.ts` reads the blob and returns prose plus the set of
+   * keys it has answered for. The loop below is unchanged in EVERY respect
+   * that matters to Rule 11 — a key present with a null value still becomes a
+   * MISSING EVIDENCE row, before any reader is consulted, so the prose module
+   * only ever claims facts the engine actually recorded.
+   *
+   * `sessionNamedElsewhere` is `affectedFrom`'s own branch condition, computed
+   * here so there is exactly one answer to "will SESSIONS AFFECTED draw the
+   * planned session from these keys" (Rule 16). It is false only for a
+   * repricing carrying its own payload, which names a count of sessions
+   * instead and never reads `planned_type` / `planned_distance_mi`. */
+  const sessionNamedElsewhere = !(p.actionKind === 'reprice' && p.actionPayload?.reprice != null);
+  const prose = evidenceProse(ev, { sessionNamedElsewhere });
+  used.push(...prose.sentences);
+
   for (const [key, raw] of Object.entries(ev)) {
     if (EVIDENCE_KEYS_NOT_FOR_THE_RUNNER.has(key)) continue;
     if (key === 'options' || key === 'earningGate' || key === 'policyAssumptions'
@@ -250,7 +283,17 @@ export function detailFor(p: PendingProposal): V5ProposalDetailWire {
     // Rule 11 at the row level: a key present with a null value is the engine
     // saying it looked and found nothing, which is a different line from the
     // key being absent entirely. Absent keys cannot appear here at all.
-    if (raw === null || raw === undefined) { missing.push(label); continue; }
+    //
+    // The missing row gets its OWN wording where there is one: a runner reads
+    // this list as "what nobody could measure", and a column header
+    // ("Threshold HR anchor age, days") is not a thing that can be missing.
+    if (raw === null || raw === undefined) {
+      missing.push(missingEvidenceLabel(key) ?? label);
+      continue;
+    }
+    // Said already, in a sentence. A claimed key is never re-printed, whether
+    // the prose spoke it or deliberately withheld it.
+    if (prose.spokenFor.has(key)) continue;
     // A distance carries its unit, from the one formatter that owns it. Found
     // by rendering: the sheet read "Session distance: 2.5", which is a number
     // the runner has to guess the unit of.
@@ -258,7 +301,21 @@ export function detailFor(p: PendingProposal): V5ProposalDetailWire {
       used.push(`${label}: ${fmtMi(raw)}`);
       continue;
     }
-    used.push(`${label}: ${renderValue(raw)}`);
+    const rendered = renderValue(raw);
+    /* A value with no runner-readable rendering is WITHHELD AND LOGGED, never
+     * stringified. `renderValue` used to answer `JSON.stringify(v)` for an
+     * object or an array, and the readiness blob's `streaks` is an array — so
+     * the fallback path's worst case was a raw JSON literal on the phone,
+     * which is not depth, it is the console. Rule 11: this is a third fact and
+     * it is said out loud, at the level the operator reads, rather than
+     * silently dropped. */
+    if (rendered == null) {
+      console.log(`[v5/proposal] evidence key '${key}' on proposal ${p.id} has no runner-readable `
+        + 'rendering and was withheld from the details sheet · teach lib/faff/v5-evidence-prose.ts '
+        + 'this shape · the runner sees the rest of the section, not an error');
+      continue;
+    }
+    used.push(`${label}: ${rendered}`);
   }
 
   // An explicit list beats an inferred one where the trigger wrote one.
@@ -494,11 +551,18 @@ function firstString(...vals: unknown[]): string | null {
   return null;
 }
 
-function renderValue(v: unknown): string {
+/**
+ * A scalar, in the runner's characters. NULL when there is no such rendering.
+ *
+ * The null branch is the whole point: this used to end `JSON.stringify(v)`,
+ * which meant an object or an array in a blob nobody had taught this file
+ * reached the phone as a JSON literal. The caller withholds and logs instead.
+ */
+function renderValue(v: unknown): string | null {
   if (typeof v === 'boolean') return v ? 'yes' : 'no';
   if (typeof v === 'number') return Number.isInteger(v) ? String(v) : v.toFixed(1);
   if (typeof v === 'string') return v;
-  return JSON.stringify(v);
+  return null;
 }
 
 /** `lthr_age_days` to `Lthr age days`. Only reached by keys nobody labelled. */
