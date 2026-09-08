@@ -4,10 +4,19 @@
  * ── WHAT THIS PROVES ───────────────────────────────────────────────────────
  *
  * Every blob below is COPIED OUT OF PRODUCTION, byte for byte, from
- * `plan_workout_proposals` on 2026-09-08 — rows 12, 7, 11 and 5 of the owner's
- * own account, three of which were PENDING on his phone the evening he said
- * "the reasoning can be way better right now it's not telling me anything and
- * it's def not in normal type wording and phrasing."
+ * `plan_workout_proposals` on 2026-09-08 — rows 12, 7, 11 and 5. **Only 12 and
+ * 5 belong to the owner's own account** (uuid `0645f40c-…`); row 7 belongs to
+ * `bcefea06-…` and row 11 to `606bcc38-…` — real production blobs from other
+ * accounts, kept because they're real production shapes worth having, not
+ * because they're his. Only row 12 was PENDING on his phone the evening he
+ * said "the reasoning can be way better right now it's not telling me
+ * anything and it's def not in normal type wording and phrasing." His OTHER
+ * pending row that evening was id 10, which is not in this corpus — a
+ * materially identical blob belonging to someone else is here instead.
+ * Corrected 2026-09-08 by independent review (Rule 14 — the sibling
+ * `_v5_proposal_harness_fixture.test.ts` already got this right: "Two of
+ * them belong to accounts that are not the owner's, which is itself a
+ * finding worth keeping").
  *
  * Rule 15 is the reason they are copied rather than invented: a corpus of made
  * up blobs reaches whichever branches its author remembered, and the shape

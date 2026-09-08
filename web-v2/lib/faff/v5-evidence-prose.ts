@@ -328,16 +328,36 @@ function fieldTestRead(
     out.push(`Nothing has measured your fitness directly in ${days(daysSinceTest)}.`);
   }
 
-  if (weeklyMi != null && longMi != null) {
+  // `fmtMi` returns null for a literal 0 by design ("zero is not a
+  // distance" — see its own doc comment), which a naive `!= null` check on
+  // the RAW number doesn't catch: `weeklyMi = 0` passes `!= null` and then
+  // interpolates as the literal word "null" into the sentence. Found by
+  // independent review (2026-09-08), unreached by any current production
+  // blob but exactly the leak class this file exists to close. Branch on
+  // the FORMATTED value, not the raw one, so a genuine zero is treated the
+  // same as a genuinely absent reading — spoken for nothing, claimed as
+  // nothing.
+  // `fmtMi` returns null for a literal 0 by design ("zero is not a
+  // distance" — see its own doc comment), which a naive `!= null` check on
+  // the RAW number doesn't catch: `weeklyMi = 0` passes `!= null` and then
+  // interpolates as the literal word "null" into the sentence. Found by
+  // independent review (2026-09-08), unreached by any current production
+  // blob but exactly the leak class this file exists to close. Branch on
+  // the FORMATTED value, not the raw one, so a genuine zero is treated the
+  // same as a genuinely absent reading — spoken for nothing, claimed as
+  // nothing.
+  const weeklyFmt = fmtMi(weeklyMi);
+  const longFmt = fmtMi(longMi);
+  if (weeklyFmt != null && longFmt != null) {
     spokenFor.add('weekly_mi');
     spokenFor.add('long_mi');
-    out.push(`You are running ${fmtMi(weeklyMi)} a week, with a longest run of ${fmtMi(longMi)}.`);
-  } else if (weeklyMi != null) {
+    out.push(`You are running ${weeklyFmt} a week, with a longest run of ${longFmt}.`);
+  } else if (weeklyFmt != null) {
     spokenFor.add('weekly_mi');
-    out.push(`You are running ${fmtMi(weeklyMi)} a week.`);
-  } else if (longMi != null) {
+    out.push(`You are running ${weeklyFmt} a week.`);
+  } else if (longFmt != null) {
     spokenFor.add('long_mi');
-    out.push(`Your longest recent run is ${fmtMi(longMi)}.`);
+    out.push(`Your longest recent run is ${longFmt}.`);
   }
 }
 
