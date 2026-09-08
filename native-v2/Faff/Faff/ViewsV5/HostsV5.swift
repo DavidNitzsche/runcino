@@ -1129,6 +1129,24 @@ struct TodayHostV5: View {
     /// bounded, deduplicating coordinator — see its own doc comment.
     @State private var fetchCoordinator = DayFetchCoordinator()
 
+    /// PLANSNAPSHOT-SINGLEFLIGHT-1 (2026-09-07) · the sync in progress, if
+    /// any. `syncPlanSnapshot()` has FIVE independent callers (launch,
+    /// foreground, explicit Retry, pull-to-refresh, a plan mutation) with no
+    /// coordination between them, and the fetch itself is genuinely slow —
+    /// confirmed live on David's own device via the request-log sheet:
+    /// `/api/v5/plan-snapshot` taking 5.3s and 6.8s on ordinary production
+    /// load, TWO of them in flight at once (generation 6, requests #64 and
+    /// #67). Two overlapping requests for the same block do not answer any
+    /// question the first one wasn't already going to answer — they only
+    /// compete for the same DB connections and CPU, each making the other
+    /// slower, on the one read every launch and foreground depends on. This
+    /// is "timeout caused by request duplication," named as a distinct
+    /// failure mode from a genuine outage or a stuck connection. Every
+    /// caller now awaits the SAME in-flight task instead of starting a
+    /// sibling: the first caller in a window does the real work, everyone
+    /// else gets its answer for free.
+    @State private var planSnapshotSyncTask: Task<Bool, Never>?
+
     /// STATEGATE-1 · the date a real fetch is currently in flight for, or
     /// nil. This is what tells `readiness` (below) apart "still loading the
     /// date the runner asked for" from "already failed to load it" — the two
@@ -1624,8 +1642,42 @@ struct TodayHostV5: View {
     /// itself never touches it on failure, and a genuine cancellation
     /// (e.g. this task superseded by a newer sync request) is read as
     /// routine, not a failure, so it does not even reach `markSyncFailed`.
+    /// PLANSNAPSHOT-SINGLEFLIGHT-1 · the public entry point every caller
+    /// hits. If a sync is already running, this AWAITS that one rather than
+    /// starting a sibling — every caller still gets a real answer for THIS
+    /// call, it just may not be the caller whose request actually went out.
+    /// `@MainActor` (this whole type is) makes the check-then-store below
+    /// atomic against the other four call sites without a lock: nothing
+    /// else can run between reading `planSnapshotSyncTask` and setting it.
     @discardableResult
     func syncPlanSnapshot() async -> Bool {
+        if let existing = planSnapshotSyncTask {
+            return await existing.value
+        }
+        // No `await` between the check above and the store below — this
+        // whole function runs on the main actor, so nothing else can
+        // observe `planSnapshotSyncTask` as nil and race to create a
+        // second task in the gap. That also means nothing else can ever
+        // overwrite it with a DIFFERENT task before this one clears it:
+        // the only writer is this function, and it only writes when it
+        // found nil. Clearing unconditionally after our own await is safe.
+        let task = Task { await performPlanSnapshotSync() }
+        planSnapshotSyncTask = task
+        let result = await task.value
+        planSnapshotSyncTask = nil
+        return result
+    }
+
+    /// PLANSNAPSHOT-1 · the ONLY place that fetches the whole-block
+    /// snapshot. Triggered by launch (`.task` below), foreground
+    /// (`.v5ReloadOnForeground`), explicit Retry, a plan mutation, or a
+    /// completion sync — NEVER by `goTo`/week-strip paging, which is the
+    /// whole point of the snapshot existing. A cancelled or failed fetch
+    /// leaves `PlanSnapshotStore.current` exactly as it was — `commit`
+    /// itself never touches it on failure, and a genuine cancellation
+    /// (e.g. this task superseded by a newer sync request) is read as
+    /// routine, not a failure, so it does not even reach `markSyncFailed`.
+    private func performPlanSnapshotSync() async -> Bool {
         PlanSnapshotStore.shared.markSyncing()
         let raw: Data
         do {
