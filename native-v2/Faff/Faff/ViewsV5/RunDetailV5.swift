@@ -318,7 +318,11 @@ struct RunDetailV5: View {
                         PostRunLearnedV5(model: pr, includes: .strides)
                     }
 
-                    // §7 · SPLITS.
+                    // §7 · SPLITS. The MILE table and nothing else — the piece
+                    // list is §6's above, and `breakdownSection` drawing its
+                    // own copy is DUP-PIECE-1, the reason "PIECE BY PIECE"
+                    // used to print twice on this screen. See that property's
+                    // header for why §6 is the copy that survived.
                     if detail.readings?.splitsMeaningful ?? true {
                         breakdownSection
                     }
@@ -1280,9 +1284,14 @@ struct RunDetailV5: View {
     /// for said nothing anywhere, and the table read as the run.
     ///
     /// Nil is the common answer and draws nothing.
+    ///
+    /// COVERAGE-ROWS-1 (2026-09-08) · counted off `milePieces`, the very rows
+    /// `MileBreakdownV5` is handed below, rather than the server's raw
+    /// `splitCount`. The two disagree on any merged run, and the caption is a
+    /// sentence ABOUT the table — see `mileTableQualifier(rows:)`.
     var mileCoverageLine: String? {
         guard let pr = detail.postRun, pr.capture == nil else { return nil }
-        return pr.coverage?.mileTableQualifier
+        return pr.coverage?.mileTableQualifier(rows: milePieces)
     }
 
     /// The samples the route map normalises its pace ramp across, built the
@@ -1292,38 +1301,45 @@ struct RunDetailV5: View {
         RouteMapView.phaseSamples(from: detail.phase_breakdown)
     }
 
-    /// MILES OR PIECES, decided by what the session was and what it recorded.
+    /// §7 · THE MILES. ON THIS SCREEN THIS SECTION DRAWS ONLY THE MILE TABLE.
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// DUP-PIECE-1 (2026-09-08) · IT USED TO DRAW THE PIECE LIST AS WELL, AND
+    /// THE SCREEN PRINTED "PIECE BY PIECE" TWICE.
+    ///
+    /// `.sections` drew `RepBreakdownV5` and `.milesAndSections` drew it under
+    /// the mile table — while §6 in `body` had ALREADY drawn the same
+    /// component, with the same title and the same `repPieces`, a few
+    /// hundred points up the page. Both guards are the same expression
+    /// (`!repPieces.isEmpty` is literally what `hasSections` is passed), so
+    /// the duplicate was not an edge case: every run that reached either
+    /// branch printed the card twice. On the runner's own 2026-09-08 tempo
+    /// the accessibility tree read the four phase rows AND the four
+    /// `mile_splits` rows PHASE-GRAIN-1 nests inside the tempo TWICE, so
+    /// VoiceOver spoke the whole session twice over. Rule 17, and the design
+    /// contract's "no content is printed twice on one screen".
+    ///
+    /// §6 IS THE ONE THAT SURVIVES, for two reasons that both point the same
+    /// way. It is where DIGEST-1's approved hierarchy puts the piece list —
+    /// 6 Piece by Piece, then 7 Splits — and its guard is a strict SUPERSET
+    /// of this one's: §6 asks only whether there is a list to draw, while
+    /// this section sits behind `readings.splitsMeaningful`. Keeping this
+    /// copy instead would have silently dropped the piece list from every run
+    /// whose splits are not trustworthy — a treadmill session being the
+    /// obvious one — which is exactly the run whose pieces are the only
+    /// honest decomposition it has.
+    ///
+    /// So `.milesAndSections` and `.miles` render identically HERE. That is
+    /// not the enum losing a distinction: `RunShapeV5.Decomposition` still
+    /// carries it, `TodayAfterV5` still switches on it, and §6 above is this
+    /// screen's answer to the "and sections" half. `.sections` draws nothing
+    /// at all, because on this screen the pieces have already been drawn.
     @ViewBuilder
     var breakdownSection: some View {
         let d = shape.decomposition(hasSections: !repPieces.isEmpty,
                                     hasMiles: !milePieces.isEmpty)
         switch d {
-        case .sections:
-            RepBreakdownV5(title: repSectionTitle, pieces: repPieces)
-        /* BOTH, BODY FIRST (2026-09-02).
-         *
-         * An easy run with strides is two things at once and the screen used to
-         * draw only the first. `.milesAndSections` fires when a steady-shaped
-         * session ALSO recorded structure, which on a plain easy or long run it
-         * does not — `repPieces` is empty on a single-phase recording, by
-         * design. See `RunShapeV5.Decomposition.milesAndSections`.
-         *
-         * The mile table keeps the pace caption and the pace ramp; the piece
-         * list carries no caption of its own, so nothing is said twice. */
-        case .milesAndSections:
-            MileBreakdownV5(title: shape.breakdownTitle(.miles),
-                            pieces: milePieces,
-                            paceLine: shape.showsPerMilePace
-                                ? RouteMapView.paceColumnCaption(splits: detail.splits,
-                                                                 phases: routePhaseSamples)
-                                : nil,
-                            coverageLine: mileCoverageLine,
-                            paceColor: MileBreakdownV5.paceRamp(splits: detail.splits,
-                                                                phases: routePhaseSamples),
-                            allowsElevation: shape.showsElevation,
-                            allowsPace: shape.showsPerMilePace)
-            RepBreakdownV5(title: repSectionTitle, pieces: repPieces)
-        case .miles:
+        case .miles, .milesAndSections:
             MileBreakdownV5(title: shape.breakdownTitle(.miles),
                             pieces: milePieces,
                             // The colour rule this table now runs on is the
@@ -1341,6 +1357,10 @@ struct RunDetailV5: View {
                                                                 phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,
                             allowsPace: shape.showsPerMilePace)
+        case .sections:
+            // The pieces are §6's, and §6 has drawn them. Drawing them again
+            // here is the defect this section's header describes.
+            EmptyView()
         case .none:
             // RULE THREE, belt and braces. A run with neither draws nothing.
             EmptyView()

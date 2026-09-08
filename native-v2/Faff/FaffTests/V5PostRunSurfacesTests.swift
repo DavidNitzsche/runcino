@@ -333,4 +333,117 @@ final class V5PostRunSurfacesTests: XCTestCase {
         XCTAssertFalse(view(old).title.contains("_"), "an enum may not reach the display register")
         XCTAssertEqual(view(old).title, "Race week tuneup")
     }
+
+    // MARK: - COVERAGE-ROWS-1 · the caption counts the rows that draw
+
+    /*  THE FIXTURE IS PRODUCTION, and it is the run that found the defect.
+     *
+     *  `runs` row -104787411096713, 2026-07-10, read out of the walk substrate
+     *  built from production on 2026-09-08. Its canonical `data.splits` holds
+     *  FOUR splits; its absorbed `apple_watch` twin (-639306516579527) holds
+     *  six; `pickSplits` + `reconcileSplitsTotal` resolve to the FIVE the wire
+     *  actually sends and the table actually draws. `postRun.coverage` on that
+     *  same payload still says `splitCount: 4, splitDistanceMi: 4`, because
+     *  `lib/postrun/load.ts` reads the raw array by design.
+     *
+     *  So the screen printed "These four rows cover 4.0 of the 5.0 mi you ran"
+     *  immediately above five rows numbered 1 to 5 — a caption arguing with
+     *  the table it captions, which Rule 17 calls a correctness bug and not
+     *  mere redundancy, and Rule 16 calls two answers to one question.
+     *
+     *  WHAT THIS TEST CANNOT FAIL ON (Rule 22): it exercises the sentence, not
+     *  the layout. It cannot see the caption drawn in the wrong place, drawn
+     *  twice, or drawn over a different table. Rendering is what catches that.
+     */
+
+    /// The real 2026-07-10 shape: five rows of one mile against a 4.96 mi run.
+    /// The rows are NOT short, so there is nothing to qualify and the sentence
+    /// falls silent. The old arithmetic only thought otherwise because it was
+    /// counting a different array.
+    func testCoverageCaptionCountsTheRenderedRowsNotTheServersRawSplits() {
+        let coverage = PostRunCoverageV5(totalDistanceMi: 4.96,
+                                         structuredDistanceMi: 4.96,
+                                         overtimeDistanceMi: nil,
+                                         overtimeDurationSec: nil,
+                                         splitCount: 4,
+                                         splitDistanceMi: 4)
+
+        // What `MileBreakdownV5` is handed for this run: five whole-mile rows.
+        let drawn = (1...5).map { m in
+            MilePiece(id: m, mile: m, paceSec: 493, hr: 150,
+                      elevFt: nil, cadence: nil, distanceMi: 1)
+        }
+        XCTAssertNil(coverage.mileTableQualifier(rows: drawn),
+                     "five rows covering 5.0 mi of a 4.96 mi run are not short")
+
+        // FALSIFIER · the server's own numbers, which is what the old code
+        // read. If this ever stops producing the wrong sentence, the test has
+        // stopped describing the bug.
+        let stale = PostRunCoverageV5(totalDistanceMi: 4.96,
+                                      structuredDistanceMi: 4.96,
+                                      overtimeDistanceMi: nil,
+                                      overtimeDurationSec: nil,
+                                      splitCount: 4,
+                                      splitDistanceMi: 4)
+        let asServerCounted = (1...4).map { m in
+            MilePiece(id: m, mile: m, paceSec: 493, hr: 150,
+                      elevFt: nil, cadence: nil, distanceMi: 1)
+        }
+        XCTAssertEqual(stale.mileTableQualifier(rows: asServerCounted),
+                       "These four rows cover 4.0 of the 5.0 mi you ran.",
+                       "the wrong sentence, reproduced from the wrong row count")
+    }
+
+    /// The case the qualifier exists for, and it still fires: the 2026-09-08
+    /// tempo (-75144899844434) stores six splits with no length against a
+    /// 6.46 mi run, so the rows genuinely stop 0.46 mi short and say so. The
+    /// row with no length counts as one mile — the same convention
+    /// `splitsCoverageMi` uses server-side.
+    func testCoverageCaptionStillFiresWhenTheRowsReallyAreShort() {
+        let coverage = PostRunCoverageV5(totalDistanceMi: 6.46,
+                                         structuredDistanceMi: 6.45,
+                                         overtimeDistanceMi: nil,
+                                         overtimeDurationSec: nil,
+                                         splitCount: 6,
+                                         splitDistanceMi: 6)
+        let drawn = (1...6).map { m in
+            MilePiece(id: m, mile: m, paceSec: 460, hr: 150,
+                      elevFt: nil, cadence: nil, distanceMi: nil)
+        }
+        XCTAssertEqual(coverage.mileTableQualifier(rows: drawn),
+                       "These six rows cover 6.0 of the 6.5 mi you ran.")
+    }
+
+    /// A trailing partial is a row, and it is counted as one. This is the
+    /// shape that made the old count wrong in the other direction: a table
+    /// drawing four whole miles and a 0.11 remainder prints FIVE rows.
+    func testATrailingPartialCountsAsARow() {
+        let coverage = PostRunCoverageV5(totalDistanceMi: 8.0,
+                                         structuredDistanceMi: 8.0,
+                                         overtimeDistanceMi: nil,
+                                         overtimeDurationSec: nil,
+                                         splitCount: 99,
+                                         splitDistanceMi: 99)
+        var drawn = (1...4).map { m in
+            MilePiece(id: m, mile: m, paceSec: 500, hr: 150,
+                      elevFt: nil, cadence: nil, distanceMi: 1)
+        }
+        drawn.append(MilePiece(id: 5, mile: 5, paceSec: 500, hr: 150,
+                               elevFt: nil, cadence: nil, distanceMi: 0.11))
+        // The server's 99/99 is deliberately absurd and deliberately ignored.
+        XCTAssertEqual(coverage.mileTableQualifier(rows: drawn),
+                       "These five rows cover 4.1 of the 8.0 mi you ran.")
+    }
+
+    /// No rows, no sentence. Rule 11: a table with nothing in it is not a
+    /// table that covered zero miles of the run.
+    func testNoRowsSaysNothing() {
+        let coverage = PostRunCoverageV5(totalDistanceMi: 6.0,
+                                         structuredDistanceMi: 6.0,
+                                         overtimeDistanceMi: nil,
+                                         overtimeDurationSec: nil,
+                                         splitCount: 6,
+                                         splitDistanceMi: 6)
+        XCTAssertNil(coverage.mileTableQualifier(rows: []))
+    }
 }
