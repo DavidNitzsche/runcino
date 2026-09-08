@@ -764,7 +764,16 @@ enum API {
     static func fetchSettings() async throws -> UserSettings? {
         let url = baseURL.appendingPathComponent("api/settings")
         let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
-        guard (200..<300).contains(http.statusCode) else { return nil }
+        // SETTINGSFAIL-1 (2026-09-07) · a non-2xx status here used to return
+        // nil exactly the same as "the runner has none of this data" —
+        // 401 already throws inside `authedSend` before this line, but a
+        // 500/502/503 landed here as a silent nil, indistinguishable from a
+        // legitimately-empty response. `SettingsCache` reads this call's
+        // thrown error to categorize a real outage (Rule 11: don't know /
+        // measured zero / read failed are three different facts); a decode
+        // failure below still returns nil rather than throwing, since a 2xx
+        // body faff itself sent us is not a connectivity failure.
+        guard (200..<300).contains(http.statusCode) else { throw APIError.badStatus(http.statusCode) }
         guard let decoded = try? JSONDecoder().decode(UserSettings.self, from: data) else { return nil }
         // 2026-07-07 · write-through so Units.swift (and any other synchronous
         // AppCache reader) has the units preference the instant this lands,
@@ -791,7 +800,8 @@ enum API {
     static func fetchProfile() async throws -> ProfileFields? {
         let url = baseURL.appendingPathComponent("api/profile")
         let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
-        guard (200..<300).contains(http.statusCode) else { return nil }
+        // SETTINGSFAIL-1 · see `fetchSettings()`'s identical comment above.
+        guard (200..<300).contains(http.statusCode) else { throw APIError.badStatus(http.statusCode) }
         // 2026-07-08 · re-audit P0 · write-through so HealthKitImporter's
         // RunnerTimezone.current can read the stored timezone synchronously
         // (same pattern fetchSettings uses for Units.swift).

@@ -2675,6 +2675,61 @@ struct ShoesHostV5: View {
     }
 }
 
+/// SETTINGSFAIL-1 (2026-09-07) · what `SettingsHostV5.load()` can tell went
+/// wrong, each with its own sentence. Before this, every one of `load()`'s
+/// four network calls was wrapped in `try?` and fell back to a hardcoded
+/// default (`?? "sun"`, `?? 5`, `?? true`, `?? "mi"`, `?? ""`) — so on a total
+/// backend outage the skeleton simply cleared into FABRICATED settings with
+/// no error and no way to retry, because `model` was never left nil. David's
+/// own requirement: "preserving the actual error category... Do not swallow
+/// the error or replace every failure with 'Can't reach faff.'" — so this is
+/// a category per shape of failure, not one flat string.
+enum SettingsLoadFailure: Equatable, Sendable {
+    case offline
+    case timeout
+    case unauthorized
+    case serverError(Int)
+    /// A 2xx response we could not make sense of (decode failure, or a
+    /// transport error this app has no more specific code for).
+    case unknown
+
+    var message: String {
+        switch self {
+        case .offline:
+            return "Can't reach faff. Check your connection and try again."
+        case .timeout:
+            return "faff is taking too long to respond. Try again."
+        case .unauthorized:
+            return "Your session has expired. Sign in again to see your settings."
+        case .serverError(let code):
+            return "faff hit an error (\(code)) reading your settings. Try again."
+        case .unknown:
+            return "Settings did not load. Try again."
+        }
+    }
+
+    /// Transport-level codes that mean "we never reached faff at all," as
+    /// opposed to a request that connected and then either hung
+    /// (`.timedOut`, its own case below) or was refused with a real status.
+    private static let offlineCodes: Set<URLError.Code> = [
+        .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
+        .cannotFindHost, .dataNotAllowed, .internationalRoamingOff, .dnsLookupFailed,
+    ]
+
+    static func categorize(_ error: Error) -> SettingsLoadFailure {
+        if error is APIAuthError { return .unauthorized }
+        if let urlError = error as? URLError {
+            if urlError.code == .timedOut { return .timeout }
+            if offlineCodes.contains(urlError.code) { return .offline }
+            return .offline
+        }
+        if let apiError = error as? API.APIError, case .badStatus(let code) = apiError {
+            return code == 401 ? .unauthorized : .serverError(code)
+        }
+        return .unknown
+    }
+}
+
 struct SettingsHostV5: View {
     /// V5PROPOSALSURFACE-1 · so Settings can push the decision history. Every
     /// other pushed destination in this app is reached the same way, through
@@ -2684,6 +2739,23 @@ struct SettingsHostV5: View {
     @EnvironmentObject private var runGate: PhoneRunGate
     @State private var stravaConnecting = false
     @State private var model: SettingsV5Model?
+    /// SETTINGSFAIL-1 · non-nil only when `model` is ALSO nil — a load that
+    /// fails after we already have a good model leaves the runner looking at
+    /// what they had (same posture the rest of this app takes: old content
+    /// is not wrong, it is old — see `SurfaceStoreV5.swift`'s header). This is
+    /// the true cold-start-with-no-answer case: we do not know this runner's
+    /// settings at all.
+    @State private var loadFailure: SettingsLoadFailure?
+    /// SETTINGSDEDUP-1 · `patch`/`setPref`/`connectStrava`/`patchProfile` all
+    /// end in `await load()`, and a runner can tap a second control before
+    /// the first write's reload lands. Without this, both reloads ran their
+    /// own independent `fetchNotificationPrefs`/`fetchProfileState` calls in
+    /// parallel with no coalescing (unlike settings/profile, which
+    /// `SettingsCache`'s own `inflightSettings`/`inflightProfile` already
+    /// dedupe). Cancelling the superseded task rather than letting both run
+    /// is strictly better than coalescing here: the superseded read's answer
+    /// would have been stale the instant the newer write landed anyway.
+    @State private var loadTask: Task<Void, Never>?
     /// TRAVEL-1 · the travel-windows sheet, hosted here the way AddRaceHostV5
     /// hosts its own: a V5SheetHost over the screen, never a system sheet.
     @State private var travelOpen = false
@@ -2707,6 +2779,20 @@ struct SettingsHostV5: View {
                                onOpenTravel: { travelOpen = true },
                                onOpenDecisions: { path.append(.decisions) },
                                onBack: { dismiss() })
+                } else if let loadFailure {
+                    // SETTINGSFAIL-1 · the third state. `ErrorNote` + Retry is
+                    // the same treatment `TodayHostV5.pendingCard`'s `.failed`
+                    // case already uses (HostsV5.swift ~338) — reused rather
+                    // than invented, per this fix's own brief.
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                            AppBar(title: "Settings", onBack: { dismiss() })
+                            ErrorNote(text: loadFailure.message, onRetry: { requestLoad() })
+                        }
+                        .padding(.horizontal, V5.S.gutter)
+                        .v5PageWidth()
+                    }
+                    .background(V5.surfacePage)
                 } else {
                     ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
                         .background(V5.surfacePage)
@@ -2769,48 +2855,146 @@ struct SettingsHostV5: View {
         unitNames.first { $0.label == label }?.key ?? label.lowercased()
     }
 
-    private func load() async {
-        await SettingsCache.shared.warm()
-        let (settings, profile) = await SettingsCache.shared.read()
+    /// SETTINGSFAIL-1 · what `performFetch()` came back with. A plain value
+    /// type with no dependency on `self`, so it can run inside a
+    /// `withTaskGroup` child task (`withDeadline` below) without capturing
+    /// this View across the boundary.
+    private enum LoadOutcome: Sendable {
+        case loaded(settings: UserSettings?, profile: ProfileFields?,
+                    prefs: NotificationPrefs?, stravaConnected: Bool?)
+        case failed(SettingsLoadFailure)
+    }
+
+    /// Wraps a throwing async call so its error survives instead of being
+    /// dropped by `try?` — Rule 11: don't-know, measured-zero and read-failed
+    /// are three facts, never collapsed into one. `op` itself already returns
+    /// an optional (every `API.fetch*` here does, for "no data" vs "some
+    /// data"), so this is generic over the UNWRAPPED type — declaring it
+    /// `T` instead would produce a `T??` in `.value` for every caller here.
+    private static func fetchOutcome<T>(_ op: @escaping () async throws -> T?) async -> (value: T?, error: Error?) {
+        do { return (try await op(), nil) } catch { return (nil, error) }
+    }
+
+    /// LOADDEADLINE-1 (2026-09-07) · races `operation` against `seconds` and
+    /// returns nil if the deadline elapses first, cancelling `operation` so
+    /// it does not keep running unobserved. `API.authedSend` already bounds
+    /// EVERY individual request to 12s (`TIMEOUT-1`), but this host used to
+    /// run its calls in strict sequence — `warm()` (up to 12s), then
+    /// `fetchNotificationPrefs` (up to 12s), then `fetchProfileState` (up to
+    /// 12s) — up to ~36s before a single terminal state, on a screen with no
+    /// failure state to reach one at all. `performFetch()` below now runs
+    /// every leg CONCURRENTLY (~12s worst case), which is the actual fix;
+    /// this deadline is the backstop for anything that still manages to hang
+    /// past that, so `load()` can never leave the runner on the skeleton
+    /// indefinitely.
+    private static func withDeadline<T: Sendable>(seconds: Double, _ operation: @escaping @Sendable () async -> T) async -> T? {
+        await withTaskGroup(of: Optional<T>.self) { group in
+            group.addTask { await operation() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first
+        }
+    }
+
+    /// Every network call `load()` needs, run concurrently. Static — takes
+    /// nothing from `self` — so `withDeadline` can run it in a detached child
+    /// task; `load()` applies the result to `@State` afterward.
+    private static func performFetch() async -> LoadOutcome {
+        async let warmed: Void = SettingsCache.shared.warm()
         // THE SCHEDULER READS profile.notification_prefs, NOT settings.
         // These two switches wrote `push_enabled` (which no notification
         // category consults) and `weekly_summary_enabled` (which the
         // settings route's allowlist drops on the floor), and the screen
         // showed the weekly one as ON no matter what. Both now read and
         // write the jsonb the cron actually gates on.
-        let prefs = try? await API.fetchNotificationPrefs()
+        async let prefsOutcome = fetchOutcome { try await API.fetchNotificationPrefs() }
         // Re-mirror the wire's own answer at the moment this screen draws it.
         // `FaffV5Root` writes it at launch; this keeps the row honest for a
         // session in which the connection changed (an OAuth round-trip, or a
         // disconnect made on the web) without waiting for a relaunch. Same
         // authority, same field — never a second source of truth.
-        if let state = try? await API.fetchProfileState() {
-            StravaConnection.set(state.connections.strava.connected)
+        async let profileStateOutcome = fetchOutcome { try await API.fetchProfileState() }
+
+        _ = await warmed
+        let prefs = await prefsOutcome
+        let profileState = await profileStateOutcome
+        let (settings, profile) = await SettingsCache.shared.read()
+
+        // SETTINGSFAIL-1 · the load-bearing failure: we do not know this
+        // runner's actual settings AT ALL. `SettingsCache`'s own
+        // `lastErrors()` is what lets us tell that apart from "the runner
+        // legitimately has neither row yet" — see its doc comment. Every
+        // other field below (notification prefs, the Strava mirror) is
+        // allowed to fall back to an honest default because none of them are
+        // "the runner's settings don't exist"; only settings+profile jointly
+        // missing is.
+        if settings == nil, profile == nil {
+            let (settingsErr, profileErr) = await SettingsCache.shared.lastErrors()
+            let source = settingsErr ?? profileErr ?? prefs.error ?? profileState.error
+            return .failed(source.map(SettingsLoadFailure.categorize) ?? .unknown)
         }
-        model = SettingsV5Model(
-            longRunDay: Self.dayLabel(settings?.long_run_day ?? "sun"),
-            longRunDayOptions: Self.dayNames.map(\.label),
-            daysPerWeek: profile?.weekly_frequency ?? 5,
-            phoneRunEnabled: settings?.phoneRunEnabled ?? true,
-            sessionReminders: prefs?.skip_recovery_enabled ?? true,
-            weeklySummary: prefs?.weekly_checkin_enabled ?? true,
-            units: Self.unitLabel(settings?.units_distance ?? "mi"),
-            unitsOptions: Self.unitNames.map(\.label),
-            stravaConnected: StravaConnection.isConnected,
-            email: profile?.email ?? ""
-        )
+
+        return .loaded(settings: settings, profile: profile, prefs: prefs.value,
+                        stravaConnected: profileState.value?.connections.strava.connected)
+    }
+
+    /// SETTINGSDEDUP-1 · cancel any load already in flight (a superseded
+    /// write's own `await load()`, or a runner's tap on Retry) rather than
+    /// letting two independent fetches of the same endpoints run at once.
+    private func requestLoad() {
+        loadTask?.cancel()
+        loadTask = Task { await load() }
+    }
+
+    private func load() async {
+        guard let outcome = await Self.withDeadline(seconds: 20, { await Self.performFetch() }) else {
+            // LOADDEADLINE-1 · the composite backstop elapsed with nothing
+            // back at all. Still a terminal state, never an indefinite hang.
+            if model == nil { loadFailure = .timeout }
+            return
+        }
+        switch outcome {
+        case .loaded(let settings, let profile, let prefs, let stravaConnected):
+            if let stravaConnected { StravaConnection.set(stravaConnected) }
+            loadFailure = nil
+            model = SettingsV5Model(
+                longRunDay: Self.dayLabel(settings?.long_run_day ?? "sun"),
+                longRunDayOptions: Self.dayNames.map(\.label),
+                daysPerWeek: profile?.weekly_frequency ?? 5,
+                phoneRunEnabled: settings?.phoneRunEnabled ?? true,
+                sessionReminders: prefs?.skip_recovery_enabled ?? true,
+                weeklySummary: prefs?.weekly_checkin_enabled ?? true,
+                units: Self.unitLabel(settings?.units_distance ?? "mi"),
+                unitsOptions: Self.unitNames.map(\.label),
+                stravaConnected: StravaConnection.isConnected,
+                email: profile?.email ?? ""
+            )
+        case .failed(let reason):
+            // SETTINGSFAIL-1 · never blank a screen that already has good
+            // content — see `loadFailure`'s own doc comment.
+            if model == nil { loadFailure = reason }
+        }
     }
 
     private func setPref(_ key: String, _ value: Bool) async {
         _ = await API.patchNotificationPref(key: key, value: value)
-        await load()
+        // SETTINGSDEDUP-1 · `requestLoad()`, not `await load()` — see its own
+        // doc comment. Two of these firing back-to-back (a fast double-tap
+        // across two switches) used to run two independent, uncoordinated
+        // `fetchNotificationPrefs`/`fetchProfileState` reads; this cancels
+        // the superseded one instead.
+        requestLoad()
     }
 
     private func patch(_ fields: [String: Any]) async {
         _ = try? await API.patchSettings(fields)
         await SettingsCache.shared.invalidate()
         await runGate.refresh()
-        await load()
+        requestLoad()
     }
 
     private func connectStrava() async {
@@ -2818,13 +3002,13 @@ struct SettingsHostV5: View {
         stravaConnecting = true
         _ = await StravaOAuthSession.shared.start()
         stravaConnecting = false
-        await load()
+        requestLoad()
     }
 
     private func patchProfile(_ fields: [String: Any]) async {
         _ = try? await API.updateProfile(fields)
         await SettingsCache.shared.invalidate()
-        await load()
+        requestLoad()
     }
 }
 
