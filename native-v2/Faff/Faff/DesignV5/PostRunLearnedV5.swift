@@ -289,16 +289,51 @@ struct PostRunCoverageV5: Decodable, Equatable {
     /// The count is spelled and the distances are numerals, which is the
     /// design contract's own split: numerals are for measurements, and a row
     /// count is not one.
-    var mileTableQualifier: String? {
-        guard let total = totalDistanceMi, total > 0,
-              let covered = splitDistanceMi, covered > 0,
-              let n = splitCount, n > 0,
-              total - covered >= 0.1 else { return nil }
+    ///
+    /// ─────────────────────────────────────────────────────────────────────
+    /// COVERAGE-ROWS-1 (2026-09-08) · IT COUNTS THE ROWS THAT DRAW.
+    ///
+    /// It used to count `splitCount`/`splitDistanceMi`, which the server
+    /// derives in `lib/postrun/load.ts` by reading `data.splits` off the
+    /// canonical row RAW. The table does not draw that array. `run-state.ts`
+    /// runs the same run through `pickSplits` — which instrument decomposed
+    /// it — and then `reconcileSplitsTotal` — does the array it chose sum to
+    /// this run — and hands the phone the winner. On a merged run those are
+    /// routinely different arrays, and `load.ts`'s own comment says so in as
+    /// many words while choosing the raw one anyway.
+    ///
+    /// The runner's 2026-07-10 run is what it cost. The canonical row holds
+    /// four splits; its `apple_watch` twin holds six; the resolved array the
+    /// table drew is FIVE. So the caption read *"These four rows cover 4.0 of
+    /// the 5.0 mi you ran"* directly above five rows numbered 1 to 5 — a
+    /// sentence arguing with the table it is captioning, which per Rule 17 is
+    /// a correctness bug and not mere redundancy. Rule 16, exactly: two
+    /// answers to "how many rows does the mile table hold", one of them from
+    /// a surface that cannot see the table.
+    ///
+    /// So the rows are now the only input. The caller passes what it is about
+    /// to render and the sentence is counted off THAT, which also means it
+    /// falls silent when the rows do cover the run — 5 × 1.0 mi against a
+    /// 4.96 mi total is not short, and the old arithmetic only thought it was
+    /// because it was measuring a different array.
+    ///
+    /// `totalDistanceMi` stays the server's, because the run's own total is
+    /// not a property of the table and the phone has no better answer for it.
+    ///
+    /// A row with no length counts as one mile — the same convention
+    /// `splitsCoverageMi` uses server-side, kept identical on purpose so the
+    /// two cannot drift.
+    func mileTableQualifier(rows: [MilePiece]) -> String? {
+        guard let total = totalDistanceMi, total > 0 else { return nil }
+        let n = rows.count
+        guard n > 0 else { return nil }
+        let covered = rows.reduce(0.0) { $0 + ($1.distanceMi ?? 1) }
+        guard covered > 0, total - covered >= 0.1 else { return nil }
         let words = ["zero", "one", "two", "three", "four", "five", "six",
                      "seven", "eight", "nine", "ten"]
         let count = n < words.count ? words[n] : "\(n)"
-        let rows = n == 1 ? "row" : "rows"
-        return "These \(count) \(rows) cover "
+        let rowWord = n == 1 ? "row" : "rows"
+        return "These \(count) \(rowWord) cover "
             + "\(String(format: "%.1f", covered)) of the "
             + "\(String(format: "%.1f", total)) mi you ran."
     }
