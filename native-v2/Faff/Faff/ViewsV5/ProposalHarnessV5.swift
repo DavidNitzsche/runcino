@@ -74,6 +74,33 @@ struct ProposalHarnessV5: View {
 
     @State private var pane: Pane = .cards
     @State private var openDetail: V5Proposal? = nil
+    @State private var openedFromArgument = false
+
+    /// EVIDENCEPROSE-1 (2026-09-08) · OPEN THE SHEET WITHOUT A TAP.
+    ///
+    /// "The reasoning" is behind a Details tap, and a tap needs a granted
+    /// simulator. Every other part of this harness renders headlessly, so the
+    /// one screen whose whole job is to explain a decision was also the one
+    /// screen Rule 13 could not reach without a human at the trackpad — which
+    /// is a fair part of why it shipped reading as a field dump.
+    ///
+    ///     xcrun simctl launch <udid> run.faff.app \
+    ///       -faffProposals v5-proposal-harness.json -faffProposalDetail 12
+    ///
+    /// It opens the sheet the view already draws, with the proposal the
+    /// fixture already holds. Nothing is composed here and no state the
+    /// runner's app can reach is touched.
+    private static func detailIdIfAsked() -> String? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffProposalDetail"), i + 1 < args.count else {
+            return nil
+        }
+        return args[i + 1]
+        #else
+        return nil
+        #endif
+    }
 
     var body: some View {
         ZStack {
@@ -107,6 +134,23 @@ struct ProposalHarnessV5: View {
                 if let p = openDetail { ProposalDetailV5(proposal: p) }
             }
             .zIndex(7)
+        }
+        .task {
+            // Once. A `.task` re-fires on identity changes, and re-opening a
+            // sheet the reviewer has dismissed would make the screen unusable
+            // by hand.
+            guard !openedFromArgument, let id = Self.detailIdIfAsked() else { return }
+            openedFromArgument = true
+            // LOUD when the id names nothing, for the same reason
+            // `proposalFixtureIfAsked` is: a harness that silently drew the
+            // card list instead would produce a screenshot of the wrong screen
+            // and an agent reporting it had rendered the sheet.
+            guard let p = fixture.proposals.first(where: { $0.id == id }) else {
+                NSLog("[faffProposals] no proposal '\(id)' in this fixture · "
+                      + "ids are \(fixture.proposals.map(\.id).joined(separator: ", "))")
+                return
+            }
+            openDetail = p
         }
     }
 

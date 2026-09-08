@@ -233,12 +233,21 @@ describe('V5PROPOSALSURFACE-1 · detail · null is not empty (Rule 11)', () => {
   });
 
   it('a null-valued evidence key is MISSING evidence, not absent evidence', () => {
+    // EVIDENCEPROSE-1 · the WORDS on both sides moved and the Rule 11 split did
+    // not: a present key with a real value is evidence used, a present key with
+    // a null value is evidence missing, and an absent key is neither. What
+    // changed is that both are now sentences a runner reads rather than the
+    // engine's own field names with a colon after them
+    // (`lib/faff/v5-evidence-prose.ts`).
     const d = detailFor({
       ...base,
       evidence: { lthr_stale: true, lthr_age_days: null },
     } as unknown as PendingProposal);
-    expect(d.evidenceUsed).toContain('Threshold HR anchor stale: yes');
-    expect(d.missingEvidence).toContain('Threshold HR anchor age, days');
+    expect(d.evidenceUsed).toContain(
+      'The same test would reset your threshold heart rate, which is also out of date.');
+    expect(d.evidenceUsed).not.toContain('Threshold HR anchor stale: yes');
+    expect(d.missingEvidence).toContain('How long ago your threshold heart rate was set');
+    expect(d.missingEvidence).not.toContain('Threshold HR anchor age, days');
   });
 
   it('NEVER leaks a Research citation or a row id to the runner', () => {
@@ -255,7 +264,15 @@ describe('V5PROPOSALSURFACE-1 · detail · null is not empty (Rule 11)', () => {
     const joined = (d.evidenceUsed ?? []).join(' ');
     expect(joined).not.toMatch(/Research\//);
     expect(joined).not.toMatch(/8f1c-uuid/);
-    expect(joined).toContain('threshold');
+    /* LIVENESS (Rule 18) · the two assertions above are satisfied by an EMPTY
+     * list, so something has to prove the blob was read at all. It used to be
+     * `joined).toContain('threshold')` — the `planned_type` value showing up in
+     * EVIDENCE USED. It cannot be that any more, because EVIDENCEPROSE-1 stops
+     * that key being printed twice on one sheet: SESSIONS AFFECTED is drawn
+     * from it and sits directly above. So the probe moves to where the value
+     * now lands, which is stronger — it proves the key was READ and that the
+     * one place it is drawn still draws it. */
+    expect(d.affectedWorkouts?.map((w) => w.what)).toContain('threshold');
   });
 
   it('always names at least the session it would change', () => {
