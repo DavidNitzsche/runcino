@@ -510,7 +510,14 @@ describe('after_run · TODAYHERO-1 · no prescribed structure to grade against',
 
   it('a genuine rest day run anyway names the RUN, not "Rest" — and says so was scheduled rest in the kicker, never the 56pt headline', () => {
     const out = composeV5Today(baseCtx({
-      todayPlan: null, // the exact overload David's day carried — no row at all
+      /* A REAL REST ROW. The comment that stood here read "no row at all",
+       * which is what TODAYHERO-2 had to take apart: David's 2026-09-07 was a
+       * prescribed `rest` row (`wko_1f2073df0458fa43`, sub_label REST), and
+       * "the plan said rest" is not "the plan said nothing". `todayPlan` is
+       * null on this day only because the route's SECOND branch drops a rest
+       * type; `todayPrescription` is what carries the fact that survived. */
+      todayPlan: null,
+      todayPrescription: 'rest',
       recentRun: runFor('r1', 5.01),
       postRun: postRunFor(true),
       // The day-resolver's own unclaimed list still carries this run — see
@@ -551,5 +558,136 @@ describe('after_run · TODAYHERO-1 · no prescribed structure to grade against',
     expect(out.state).toBe('after_run');
     expect(out.panel.type).toBe('Threshold');
     expect(out.supplementalRuns.map((r) => r.runId)).toEqual(['r4']);
+  });
+
+  // ────────────────────────────────────────────────────────────────────────
+  // TODAYHERO-2 (2026-09-07) · THE CROSSING CASE THE SUITE ABOVE CANNOT ASK.
+  //
+  // Every case above varies ONE axis at a time: either the day prescribed
+  // something (and the run carries phases), or it prescribed nothing (and the
+  // run does not). Nothing crossed them — a REAL prescription whose matched
+  // run happens to carry no phase structure — which is exactly the shape
+  // TODAYHERO-1 shipped broken, and exactly what Rule 22 means by asking what
+  // a gate cannot fail on. It is not rare: measured on the owner's own rows,
+  // 2 of his 7 plan-matched runs are apple_watch completions with no
+  // `data.phases`, one of them the `EASY · 6×20s strides` session below.
+  //
+  // WHAT THIS BLOCK CANNOT FAIL ON (Rule 22): it locks the COMPOSER's reading
+  // of `todayPrescription`, not the route's derivation of it. A route that
+  // computes the wrong state and ships it here passes every line below —
+  // `viewedDayPrescription`'s own suite in `_viewed_day.test.ts` is what
+  // guards that half, and neither can see the phone's rendering of either.
+  describe('TODAYHERO-2 · a real prescription outlives a phase-less recording', () => {
+    it('a prescribed session whose matched run recorded no phases KEEPS its name — never generic "Run"', () => {
+      const out = composeV5Today(baseCtx({
+        // His real 2026-08-31 row, verbatim: easy, 4.5 mi, `EASY · 6×20s strides`.
+        todayPlan: {
+          type: 'easy', subLabel: 'EASY · 6×20s strides', distanceMi: 4.5,
+          originalType: null, originalSubLabel: null,
+        },
+        todayPrescription: 'session',
+        // His real matched apple_watch run for it: 6.18 mi, no `data.phases`,
+        // so `readExecution` answers NO_PHASE_STRUCTURE_RECORDED.
+        recentRun: runFor('r5', 6.18),
+        postRun: postRunFor(true),
+      }));
+      expect(out.state).toBe('after_run');
+      // FALSIFIED against 7c10f7bc2 first: this read 'Run'.
+      expect(out.panel.type).toBe('Easy');
+      // ...and the day kept its own gradient, not the unprescribed-run one.
+      expect(out.panel.dayState).toBe('easy');
+      // No rest sentence over a day that prescribed a run.
+      expect(out.panel.kicker ?? '').not.toMatch(/rest/i);
+    });
+
+    it('the same crossing on a QUALITY day — the gradient and the session name both survive', () => {
+      const out = composeV5Today(baseCtx({
+        // His real 2026-09-03 row, the other of the two.
+        todayPlan: {
+          type: 'intervals', subLabel: '10×60s hills @ 5K-10K effort · 2 min jog down',
+          distanceMi: 6, originalType: null, originalSubLabel: null,
+        },
+        todayPrescription: 'session',
+        recentRun: runFor('r6', 4.48),
+        postRun: postRunFor(true),
+      }));
+      // FALSIFIED against 7c10f7bc2 first: 'Run' / 'easy'.
+      expect(out.panel.type).toBe('Intervals');
+      expect(out.panel.dayState).toBe('quality');
+    });
+
+    it('a day the live plan prescribes NOTHING for is not called scheduled rest', () => {
+      const out = composeV5Today(baseCtx({
+        // Past the block's last prescribed date, or a date it skipped. The
+        // plan read SUCCEEDED and returned no row — BLOCK-ENDED-1's shape.
+        todayPlan: null,
+        todayPrescription: 'none',
+        todayPlanUnresolved: true,
+        recentRun: runFor('r7', 5.01),
+        postRun: postRunFor(true),
+      }));
+      expect(out.state).toBe('after_run');
+      // The run is still the story — nothing was prescribed to be a story about.
+      expect(out.panel.type).toBe('Run');
+      // FALSIFIED against 7c10f7bc2 first: this read
+      // 'Scheduled rest, logged anyway' over a plan that never said rest.
+      expect(out.panel.kicker).toBe('No session scheduled');
+      expect(out.panel.kicker ?? '').not.toMatch(/scheduled rest/i);
+    });
+
+    it('when no plan was loaded at all the screen says nothing about what was wanted', () => {
+      const out = composeV5Today(baseCtx({
+        todayPlan: null,
+        todayPrescription: 'unknown',
+        recentRun: runFor('r8', 5.01),
+        postRun: postRunFor(true),
+      }));
+      expect(out.panel.type).toBe('Run');
+      // RULE 11 · 'unknown' is the third fact. An absence that was never
+      // established is not a rest day and is not an empty schedule either, so
+      // the only honest kicker is no kicker.
+      expect(out.panel.kicker).toBeNull();
+    });
+
+    it('a context that never said resolves to unknown, never to rest — silence is not a prescription', () => {
+      const out = composeV5Today(baseCtx({
+        // No `todayPrescription` at all: the shape every pre-existing context
+        // builder has. FALSIFIED against 7c10f7bc2 first, where this same
+        // input produced 'Scheduled rest, logged anyway'.
+        todayPlan: null,
+        recentRun: runFor('r9', 5.01),
+        postRun: postRunFor(true),
+      }));
+      expect(out.panel.kicker).toBeNull();
+    });
+
+    it('a REST day reached through glance (todayPlan non-null, type rest) is still the run\'s screen', () => {
+      /* The trap that broke the first cut of this fix, caught by rendering it
+       * against real data and not by any test. `todayPlan` is filled from
+       * GLANCE first, and glance reports a rest day as `plannedType: 'rest'`
+       * — so `todayPlan != null` does NOT mean "a session was prescribed",
+       * and reading it that way put David's original REST hero straight back
+       * over his bonus run. */
+      const out = composeV5Today(baseCtx({
+        todayPlan: { type: 'rest', subLabel: 'REST', distanceMi: 0, originalType: null, originalSubLabel: null },
+        todayPrescription: 'rest',
+        recentRun: runFor('r10', 5.01),
+        postRun: postRunFor(true),
+      }));
+      expect(out.panel.type).toBe('Run');
+      expect(out.panel.kicker).toBe('Scheduled rest, logged anyway');
+    });
+
+    it('a strength or cross day prescribes no RUN, so a run on it is the run\'s own screen', () => {
+      const out = composeV5Today(baseCtx({
+        todayPlan: { type: 'strength', subLabel: 'SESSION A', distanceMi: 0, originalType: null, originalSubLabel: null },
+        todayPrescription: 'rest',
+        recentRun: runFor('r11', 5.01),
+        postRun: postRunFor(true),
+      }));
+      // PRERUN-1 already names these days 'Rest' everywhere else on this
+      // screen; a run logged on one was never prescribed.
+      expect(out.panel.type).toBe('Run');
+    });
   });
 });

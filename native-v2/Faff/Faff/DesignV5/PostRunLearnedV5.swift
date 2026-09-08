@@ -88,6 +88,12 @@ struct PostRunV5: Decodable, Equatable {
     /// .noPrescribedStructure`) to decide the day's own hero — a rest day
     /// David ran anyway names the RUN, not the day's planned word — so the
     /// phone renders `panel` as composed rather than re-deciding it here.
+    /// TODAYHERO-2 (2026-09-07): the server needs a SECOND fact beside this
+    /// one to make that call, because this is about what the RUN recorded and
+    /// not about what the DAY prescribed. A watch-app completion of a real
+    /// prescribed session carries no phases and still sets this true. Any
+    /// future reader here inherits that: this field alone never means "today
+    /// prescribed nothing".
     /// Decoded anyway so a future reader of this exact fact (this screen,
     /// `RunDetailV5`, or a test) has ONE field to read rather than re-parsing
     /// `headline` text, and so this addition is visible to

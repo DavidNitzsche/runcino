@@ -45,6 +45,7 @@
 // itself, so the composer stays pure and unit-testable without a database.
 import { reconcilePaceWithClock } from '../runs/run-shape';
 import type { PostRunWire } from '@/lib/postrun/wire';
+import type { ViewedDayPrescription } from './viewed-day';
 
 // ─────────────────────────────────────────────────────────────────────────
 // Wire types — one-to-one with APIV5.swift
@@ -729,6 +730,45 @@ function assertNever(x: never): never {
   throw new Error(`unhandled session type: ${String(x)}`);
 }
 
+/**
+ * DOES THIS DAY PRESCRIBE A RUN AT ALL.
+ *
+ * `todayPlan != null` reads like that question and is not it. The route fills
+ * `todayPlan` from GLANCE first (for the adaptation provenance a plan row
+ * cannot carry), and glance hands back a rest day as `plannedType: 'rest'`
+ * rather than as nothing — so a REST day arrives with a non-null `todayPlan`
+ * and only the SECOND of the route's two branches ever drops one. Reading the
+ * null as "no prescription" is what put David's original REST hero back over
+ * his 5.01 mi bonus run on the first cut of TODAYHERO-2, caught by rendering
+ * it (Rule 13) and not by any test.
+ *
+ * `dayStateWordFor` already owns this exact predicate — it answers 'rest' for
+ * an empty column, for `rest`/`unplanned`, and for the NON_RUN_TYPES David
+ * removed as surfaces — so this asks it rather than growing a fourth list of
+ * type strings for SHAKEOUT-1 to come back to.
+ */
+export function dayPrescribesARun(plannedType: string | null | undefined): boolean {
+  return dayStateWordFor(plannedType) !== 'rest';
+}
+
+/**
+ * TODAYHERO-2 · the composer's ONE reading of "what did the plan say about
+ * today", so no branch re-derives it from the overloaded nulls.
+ *
+ * The route computes the real answer with `viewedDayPrescription` and ships it
+ * on the context. This exists for the contexts that predate the field — the
+ * hand-built ones in tests — and it deliberately does NOT invent 'rest' for
+ * them: a context that did not say resolves to 'unknown', so a caller's
+ * silence can never be spent as a prescription (Rule 11). A `todayPlan` that
+ * names a real RUNNING session is unambiguous on its own and is read first;
+ * one that names rest is not, per `dayPrescribesARun` above.
+ */
+function prescriptionStateFor(ctx: V5TodayContext): ViewedDayPrescription {
+  if (ctx.todayPlan != null && dayPrescribesARun(ctx.todayPlan.type)) return 'session';
+  if (ctx.todayPrescription != null) return ctx.todayPrescription;
+  return ctx.todayPlanUnresolved === true ? 'none' : 'unknown';
+}
+
 export function dayStateWordFor(plannedType: string | null | undefined): V5DayStateWord {
   const raw = (plannedType ?? '').trim().toLowerCase();
   if (NON_RUN_TYPES.has(raw)) return 'rest';
@@ -1149,6 +1189,21 @@ export interface V5TodayContext {
    * off a Postgres blip is the same lie pointing the other way.
    */
   todayPlanUnresolved?: boolean;
+  /**
+   * TODAYHERO-2 · WHAT THE PLAN ACTUALLY SAYS ABOUT THIS DATE, in four states
+   * rather than two nulls. See `lib/faff/viewed-day.ts`'s
+   * `viewedDayPrescription` for the definition and for why the two fields
+   * above cannot answer it between them: `todayPlan: null` is a rest day AND
+   * a missing day, and `todayPlanUnresolved: false` is a rest day AND no plan
+   * at all.
+   *
+   * Optional only so the pre-existing context builders in tests stay valid.
+   * The route sets it on every state. When it is absent the composer falls
+   * back through `prescriptionStateFor`, which resolves to 'unknown' rather
+   * than to 'rest' — a caller that did not say cannot have its silence read
+   * as a prescription (Rule 11).
+   */
+  todayPrescription?: ViewedDayPrescription;
   weekLine: string | null; // "Week 6 of 16"
   /** The block phase, title-cased for display ("Maintenance", "Base"). */
   phaseLine: string | null;
@@ -2003,24 +2058,75 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
      * reason, the exact fact that already speaks through
      * `postRun.headline`/`summary` ("Run recorded" / "This run carries no
      * session structure, so there is nothing to grade it against.") on this
-     * very screen. In THIS branch specifically it agrees with "today carries
-     * no prescription at all": `ranToday` (route.ts) only reaches
-     * `ctx.recentRun` unmatched-query path when `todayPrimary` (the day's own
-     * prescription) is null, so a run with nothing to grade against and a day
-     * with nothing prescribed are the same fact here, checked once.
+     * very screen.
      *
-     * When it holds, the hero names the RUN — there is no prescription left
-     * to name — and the day's planned word (when there was one) moves to the
-     * kicker, so "it was supposed to be a rest day" is still said, just not
-     * as the 56pt headline sitting over a real run's numbers. A day that DOES
-     * carry a real prescription (a graded quality session, an easy run that
-     * matched) is untouched — this only fires when there was nothing to grade
-     * the run against in the first place. */
+     * ── TODAYHERO-2 (2026-09-07) · IT IS NOT THE SAME FACT, AND THE ORIGINAL
+     *    COMMENT HERE SAID IT WAS. ─────────────────────────────────────────
+     *
+     * The paragraph this replaces claimed `noPrescribedStructure` "agrees
+     * with today carries no prescription at all", on the grounds that
+     * route.ts only re-queries for a run when `todayPrimary` is null. That
+     * reasoning is about which QUERY found the run; it says nothing about the
+     * flag. `noPrescribedStructure` is a fact about what the RUN RECORDED —
+     * `data.phases` — and `ranToday` also reaches this branch with
+     * `todayPrimary.matchedRun` set, i.e. with a real prescription that the
+     * run was matched to. A session started from the Watch's own stock
+     * Workout app rather than through the plan flow records no phases, so the
+     * two facts come apart routinely: measured on the owner's own rows,
+     * 2 of his 7 plan-matched runs (2026-08-31 `EASY · 6×20s strides`,
+     * 2026-09-03 `10×60s hills`) are exactly that shape. Both had their
+     * prescription's name erased from the 56pt hero and replaced with "Run",
+     * with nothing else on the screen naming what he had been asked to do.
+     *
+     * So the branch now needs BOTH: the run has nothing to grade against AND
+     * the day prescribed nothing to grade it against. `ctx.todayPrescription`
+     * is the second half (`lib/faff/viewed-day.ts`), and it is four-state on
+     * purpose — 'rest' and 'none' and 'unknown' are three different facts and
+     * only the first of them licenses the word "scheduled".
+     *
+     * When both hold the hero names the RUN, because there genuinely is no
+     * prescription to name, and a REAL rest row moves its word to the kicker
+     * so "it was supposed to be a rest day" is still said, just not as the
+     * headline over a real run's numbers. When a real session was prescribed,
+     * the hero keeps naming it — the "nothing to grade this against" half is
+     * already said in full by `postRun.headline`/`summary` on this same
+     * screen, and Rule 17 says the runner reads a sentence once. */
     const noPrescribedStructure = ctx.postRun?.noPrescribedStructure === true;
+    const prescriptionState = prescriptionStateFor(ctx);
     const plannedWord = displayTypeFor(ctx.todayPlan?.type, ctx.todayPlan?.subLabel);
-    const restKicker = noPrescribedStructure && plannedWord === 'Rest' ? 'Scheduled rest, logged anyway' : null;
+    /* The run is the screen's own story only when nothing was prescribed for
+     * it to be a story ABOUT. 'rest' / 'none' / 'unknown' all qualify; a real
+     * 'session' never does, however the watch recorded it. */
+    const heroIsTheRun = noPrescribedStructure && prescriptionState !== 'session';
+    /* RULE 11 · THREE STATES, THREE SENTENCES, AND SILENCE IS ONE OF THEM.
+     *
+     * This used to read `plannedWord === 'Rest'`. `displayTypeFor` answers
+     * 'Rest' for an absent type, and glance answers `plannedType: 'rest'` for
+     * any date its plan has no row on, so a day the block simply does not
+     * cover was told it had been PRESCRIBED rest. Reproduced live on the
+     * substrate against the owner's own rows: with every `plan_workouts` row
+     * for the date deleted, the screen still read "Scheduled rest, logged
+     * anyway" — a prescription that had never been made.
+     *
+     * 'rest' is a real REST row and keeps the sentence. 'none' is a live plan
+     * with nothing on this date (the block ended, or it skipped the day), and
+     * gets its own, which is a different and equally useful fact. 'unknown'
+     * gets NOTHING: no plan was loaded, so there is no honest sentence to say
+     * about what it wanted, and inventing one is the defect this rule names. */
+    const restKicker = !heroIsTheRun ? null
+      : prescriptionState === 'rest' ? 'Scheduled rest, logged anyway'
+      : prescriptionState === 'none' ? 'No session scheduled'
+      : null;
     t.panel = {
-      dayState: noPrescribedStructure ? 'easy' : dayStateWordFor(ctx.todayPlan?.type),
+      /* On a day that prescribed nothing, the six-gradient vocabulary has no
+       * word for "a run happened here that no one asked for". 'rest' would
+       * paint the quiet no-run ground under a hero that is a real run with
+       * distance, pace and a route map, contradicting its own screen; 'easy'
+       * paints a running day, which is what the day turned out to be. It is a
+       * VISUAL register, not a claim about a prescription — the claim lives in
+       * `type` ("Run") and in the kicker, both of which now refuse to name a
+       * session that was never prescribed. */
+      dayState: heroIsTheRun ? 'easy' : dayStateWordFor(ctx.todayPlan?.type),
       quiet: false,
       place: 'Today',
       dateLine: ctx.phaseLine ?? dateLineFor(ctx.todayISO),
@@ -2038,7 +2144,7 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
       // a different number to hold.
       weekLine: null,
       kicker: [restKicker, built.panelKicker].filter((s): s is string => !!s).join(' · ') || null,
-      type: noPrescribedStructure ? 'Run' : plannedWord,
+      type: heroIsTheRun ? 'Run' : plannedWord,
       dose: null,
       stats: built.panelStats,
     };

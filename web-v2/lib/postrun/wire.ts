@@ -60,13 +60,19 @@ export interface PostRunWire {
    * structure, so there is nothing to grade it against."). Reused rather than
    * re-derived: a caller that needs this as a BOOLEAN (Today's hero, deciding
    * whether to present the day's planned word or the run itself as the
-   * story) must not re-guess it from `headline` text or from the day's own
-   * `todayPlan` — a plan-shaped guess and a run's own graded verdict can
-   * disagree (see `lib/faff/v5-today.ts`'s `after_run` branch for the one
-   * case that matters: a day with genuinely no prescription at all always
-   * puts the runner's ONLY run through this exact branch, so the two checks
-   * happen to agree there — but nothing else in this file should assume that
-   * and re-derive it a second way).
+   * story) must not re-guess it from `headline` text.
+   *
+   * TODAYHERO-2 (2026-09-07) · WHAT THIS FLAG IS NOT. The paragraph that
+   * stood here claimed a day with no prescription and a run with no phases
+   * "happen to agree" on Today's `after_run` branch, and invited that branch
+   * to check the two as one. They do not agree, and it cost the owner the
+   * name of his own prescribed session on 2 of his 7 plan-matched runs. This
+   * is a fact about what THE RUN RECORDED — `data.phases` — and a session
+   * started from the Watch's stock Workout app records none of it while
+   * still matching a real `plan_workouts` row. "Did the DAY prescribe
+   * anything" is a different question with its own owner:
+   * `viewedDayPrescription` in `lib/faff/viewed-day.ts`. A caller that needs
+   * both facts asks both, and this one never stands in for the other.
    */
   noPrescribedStructure: boolean;
   cost: string | null;
