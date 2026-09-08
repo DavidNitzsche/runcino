@@ -51,6 +51,7 @@
 import { describe, it } from 'vitest';
 import fs from 'node:fs';
 import { pool } from '@/lib/db/pool';
+import { roundTo } from '@/lib/format/run';
 import { ownedDaysSql } from '@/lib/plan/owned-days';
 import { canonicalMileageByDay } from '@/lib/runs/merge';
 import { runDaySql, runDistanceMiSql } from '@/lib/runs/run-shape';
@@ -197,7 +198,13 @@ async function loadDays(): Promise<Day[]> {
       plannedType: p.type ?? 'rest',
       plannedLabel: p.sub_label,
       plannedSpec: (p.workout_spec ?? null) as WorkoutSpec | null,
-      doneMi: Math.round(done * 10) / 10,
+      // The rule production uses to build THIS field from THIS source:
+      // `glance-state.ts` writes `roundTo(actual.mi, 1)` off the same
+      // `canonicalMileageByDay`. A replay whose LIVE column is the control
+      // has to hand the grader production's own input, and `doneMi` feeds
+      // two thresholds below - `< 0.5` and `>= plannedMi * 1.25`. A second
+      // rounding rule here parts from the first at 3.05 and 7.15 (Rule 16).
+      doneMi: roundTo(done, 1),
       activityId: null,
       isToday: false,
       isPast: true,
