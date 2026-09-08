@@ -64,7 +64,7 @@
 import { pool } from '@/lib/db/pool';
 import { planVersionOf } from '@/lib/plan/plan-version';
 import { ownedDaysSql } from '@/lib/plan/owned-days';
-import { dayNoteFor } from '@/lib/plan/week-loader';
+import { dayNoteFor, loadSkippedDates } from '@/lib/plan/week-loader';
 import { resolveDateRangeExecutions, type ExecutionMatch } from '@/lib/execution/day-resolver';
 import { runFacts } from '@/lib/runs/run-facts';
 import { dayStateWordFor } from '@/lib/faff/v5-today';
@@ -161,6 +161,20 @@ export interface PlanSnapshotDay {
   notes: string | null;
   /** Null only for a genuine rest day with no run prescribed. */
   card: PlanSnapshotCard | null;
+  /**
+   * PLANSNAPSHOT-SKIP-1 (2026-09-07) · `day_actions action='skip'` — the
+   * runner explicitly declining a prescribed day (`POST /api/today/skip`),
+   * distinct from `is_rest` (plan-prescribed) or a passive miss. Read via
+   * `loadSkippedDates` (`lib/plan/week-loader.ts`), the SAME resolver
+   * `/api/plan/week` (and therefore `/api/v5/today`'s week strip) already
+   * uses — this file previously had zero reference to `day_actions` at all,
+   * so a skip recorded correctly in the database still rendered as fully
+   * prescribed here. See `PlanSnapshotResult.skip_state_unknown` for what a
+   * FAILED read (as opposed to a genuinely unskipped day) does to this
+   * field — best-effort `false`, with the top-level flag as the honest
+   * signal (Rule 11).
+   */
+  skipped: boolean;
   treadmill: PlanSnapshotTreadmillGuidance | null;
   matched_run: PlanSnapshotMatchedRun | null;
   supplemental_runs: PlanSnapshotSupplementalRun[];
@@ -206,6 +220,16 @@ export interface PlanSnapshotResult {
   synced_at: string;
   days: PlanSnapshotDay[];
   message?: string;
+  /**
+   * PLANSNAPSHOT-SKIP-1 · mirrors `PlanWeekResult.skipStateUnknown` exactly
+   * (same name, same contract) — true when the `day_actions` skip read
+   * FAILED rather than legitimately came back empty. `PlanSnapshotDay.skipped`
+   * stays a plain boolean on the wire (best-effort `false` under a failed
+   * read); this is the flag that lets a caller tell "no day was skipped"
+   * apart from "we could not find out" (Rule 11). Absent means the read
+   * succeeded.
+   */
+  skip_state_unknown?: true;
 }
 
 interface PlanWorkoutRow {
@@ -344,13 +368,23 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
     [plan.id, today],
   ).catch((e) => { console.error('[plan-snapshot] easy band read failed', e); return { rows: [] as any[] }; });
   const executionsQuery = resolveDateRangeExecutions(userUuid, planStartIso, toExclusiveIso);
+  // PLANSNAPSHOT-SKIP-1 (2026-09-07) · same canonical resolver `/api/plan/week`
+  // uses for the week strip (`loadSkippedDates`, `lib/plan/week-loader.ts`),
+  // over the whole authored block rather than one 7-day window — this file
+  // previously had no reference to `day_actions` at all, so a skip the
+  // database recorded correctly still rendered as a fully prescribed day.
+  // Mutually independent of the other three reads above, so it joins the
+  // same `Promise.all` rather than adding a fifth sequential round trip.
+  const skipQuery = loadSkippedDates(userUuid, planStartIso, planEndIso);
 
-  const [lthrRow, rows, easyBandRow, executionsByDate] = await Promise.all([
+  const [lthrRow, rows, easyBandRow, executionsByDate, skipRead] = await Promise.all([
     lthrQuery.then((r) => r.rows[0]),
     rowsQuery.then((r) => r.rows),
     easyBandQuery.then((r) => (r.rows as Array<{ lo: number | null; hi: number | null }>)[0]),
     executionsQuery,
+    skipQuery,
   ]);
+  const { skippedDates, failed: skipReadFailed } = skipRead;
 
   const lthr = lthrRow?.lthr != null ? Number(lthrRow.lthr) : null;
   const hrBands = hrTargets({ lthr });
@@ -398,31 +432,83 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
     // shipped; this budget cannot by itself explain a client-side timeout,
     // but it removes this addition as a plausible contributor rather than
     // arguing it can't be one. 2500ms — comfortably more than this ever
-    // needs when warm, small next to the 12s client timeout, and it fails
-    // to the exact same "no stat" outcome `raceProjectionFromOutlook(null)`
-    // already produces for a genuinely absent outlook, so a slow resolution
-    // and an absent one are indistinguishable to every consumer, same
-    // argument as the COERCION_ARGUED entry below.
-    const withDeadline = async <T>(p: Promise<T>, ms: number): Promise<T | null> => {
+    // needs when warm, small next to the 12s client timeout. THIS DEADLINE
+    // STILL PROTECTS THE REST OF THE PAYLOAD — the ceiling below is unchanged
+    // by FINISHEST-RELIABILITY-1 (next comment): a slow or failed projection
+    // still cannot delay or break any other day's data on this response.
+    //
+    // FINISHEST-RELIABILITY-1 (2026-09-07) · WHAT CHANGED, AND WHY. This used
+    // to be `Promise<T | null>`: a real outlook that genuinely has nothing to
+    // project, a resolution that threw, and a resolution that missed this
+    // deadline all collapsed to the identical literal `null`, one line below
+    // feeding the identical `raceProjectionFromOutlook(null)` branch. Verified
+    // live on David's account, 2026-09-07: Santa Monica 10K showed "Projected
+    // finish"; Dodgers, Run Malibu and CIM — his GOAL race — did not, and
+    // nothing distinguished "nothing to project" from "did not get to find
+    // out" anywhere, including the logs. Those are different facts (Rule 11):
+    //
+    //   1 · AVAILABLE            — a real projection. Render the stat.
+    //   2 · GENUINELY UNAVAILABLE — the outlook resolved; evidence-classification
+    //       (or the race lookup itself) concluded there is nothing honest to
+    //       project. Render nothing, correctly — same as before.
+    //   3 · FAILED OR TIMED OUT   — the resolution threw, or missed the
+    //       deadline. Must NOT read as case 2. The runner-facing OUTCOME is
+    //       still "no stat" (this is a decorative, additive field, and
+    //       BANNER-LATENCY-1's fail-closed posture — never let one race's
+    //       projection error or delay the WHOLE block read — is unchanged),
+    //       but this case is now LOGGED DISTINCTLY from case 2, so an ops
+    //       read can tell "no evidence yet" apart from "this kept timing
+    //       out" instead of the two being indistinguishable forever.
+    //
+    // `withDeadline` returns a TAGGED result rather than collapsing to
+    // `T | null`, so a caller cannot accidentally read a timeout or a throw as
+    // the same value a genuine absence produces — the type itself makes case 3
+    // impossible to mistake for case 2, the same discipline `NormalReading<T>`
+    // uses for Rule 8's refusal-vs-zero distinction.
+    //
+    // NO RETRY, NO EXTENDED DEADLINE FOR THIS CALL. `loadRaceOutlookUserReads`'s
+    // single-flight (READS-DEDUP-1) already makes every race in one block
+    // share ONE evidence computation — these calls are issued together in the
+    // `Promise.all` below, so they hit the same in-flight promise. A genuine
+    // timeout here is therefore a signal that the SHARED bundle itself is
+    // slow; retrying or padding just this call would hide that signal rather
+    // than surface it, and it is exactly the same bundle every race in the
+    // block depends on.
+    type RaceOutlookAttempt<T> =
+      | { status: 'ok'; value: T }
+      | { status: 'timeout' }
+      | { status: 'error'; error: unknown };
+    const withDeadline = async <T>(p: Promise<T>, ms: number): Promise<RaceOutlookAttempt<T>> => {
       let timer: ReturnType<typeof setTimeout>;
-      const deadline = new Promise<null>((resolve) => { timer = setTimeout(() => resolve(null), ms); });
-      const result = await Promise.race([p, deadline]);
-      clearTimeout(timer!);
-      return result;
+      const timeout = new Promise<RaceOutlookAttempt<T>>((resolve) => {
+        timer = setTimeout(() => resolve({ status: 'timeout' }), ms);
+      });
+      try {
+        return await Promise.race([
+          p.then((value): RaceOutlookAttempt<T> => ({ status: 'ok', value })),
+          timeout,
+        ]);
+      } catch (error) {
+        // Observed and tagged, never swallowed — the consumer below logs this
+        // distinctly from case 2 before failing the stat closed.
+        return { status: 'error', error };
+      } finally {
+        clearTimeout(timer!);
+      }
     };
     await Promise.all(slugRows.map(async (r) => {
-      // COERCION_ARGUED: lib/plan/plan-snapshot.ts::loadPlanSnapshot::catch —
-      // a thrown outlook resolution and a genuinely-absent outlook (no goal,
-      // no capacity evidence yet, race too far out) both mean "nothing honest
-      // to project", which is exactly what `raceProjectionFromOutlook(null)`
-      // already returns for the absent case. This stat is additive and
-      // decorative; failing it closed to "omit the stat" rather than letting
-      // one race's projection error the whole block read is the same
-      // fail-closed posture this gate's own option 2 asks for.
-      const outlook = await withDeadline(
-        resolveRaceOutlookBySlug(userUuid, r.slug, today).catch(() => null),
-        2500,
-      );
+      const attempt = await withDeadline(resolveRaceOutlookBySlug(userUuid, r.slug, today), 2500);
+      if (attempt.status !== 'ok') {
+        // Case 3 · failed or timed out. Fails CLOSED to "no stat" — same
+        // decorative, additive posture as case 2 — but visible as its OWN
+        // fact rather than silently indistinguishable from a genuine absence.
+        console.error(
+          `[plan-snapshot] race outlook resolution ${attempt.status} for slug=${r.slug} date=${r.date_iso}`,
+          attempt.status === 'error' ? attempt.error : undefined,
+        );
+        return;
+      }
+      const outlook = attempt.value;
       // WKSTRIP-UTC-1 verification round · this used to show
       // `likelyRangeSec` as a range ("42:05–43:49") when the same outlook's
       // `projectedSec` renders as a single point ("42:57") on both Races
@@ -434,6 +520,10 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       // matches it byte-for-byte rather than presenting a second, wider
       // answer to the same question.
       const projection = raceProjectionFromOutlook(outlook);
+      // Case 2 · genuinely nothing to project (no goal, no capacity evidence
+      // yet, race too far out, or no `races` row for this slug at all) —
+      // correct, silent, and NOT logged: this is the expected steady state
+      // for a race with no evidence behind it yet, not an anomaly.
       if (projection.projectedSec == null) return;
       const text = formatRaceTime(projection.projectedSec);
       if (text) projectedFinishByDate.set(r.date_iso, { text, modelled: true });
@@ -578,6 +668,11 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       kicker,
       dose,
       stats,
+      // PLANSNAPSHOT-SKIP-1 · best-effort per day; `skip_state_unknown` on the
+      // returned result is the honest signal when the read itself failed
+      // (Rule 11) — this field does not collapse that into a false "not
+      // skipped" for a caller that checks the top-level flag first.
+      skipped: skippedDates.has(row.date_iso),
     };
   });
 
@@ -589,5 +684,8 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
     today_iso: today,
     synced_at: nowIso,
     days,
+    // PLANSNAPSHOT-SKIP-1 · mirrors `PlanWeekResult.skipStateUnknown` — see
+    // that field's own doc comment. Absent (not `false`) on a successful read.
+    ...(skipReadFailed ? { skip_state_unknown: true as const } : {}),
   };
 }

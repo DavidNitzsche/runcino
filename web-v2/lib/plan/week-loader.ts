@@ -138,6 +138,58 @@ export function dayNoteFor(raw: string | null | undefined): string | null {
   return scrubbed.length > 0 ? scrubbed : null;
 }
 
+export interface SkippedDatesRead {
+  skippedDates: Set<string>;
+  /** True when the read FAILED rather than legitimately came back empty
+   *  (Rule 11) — see the call site below for why this must not collapse
+   *  into an empty set. */
+  failed: boolean;
+}
+
+/**
+ * PLANSNAPSHOT-SKIP-1 (2026-09-07) · THE canonical "which dates did this
+ * runner deliberately skip" resolver — `day_actions action='skip'`, the
+ * exact table `POST/DELETE /api/today/skip` writes.
+ *
+ * Extracted, byte-identical, from this file's own `loadPlanWeek` (below),
+ * so `/api/v5/today`'s week strip and `/api/v5/plan-snapshot`'s per-date
+ * browsing read ONE definition of "skipped" rather than each carrying its
+ * own query — Rule 16. `lib/plan/plan-snapshot.ts` had ZERO reference to
+ * `day_actions` before this: a runner who skipped a future day via
+ * `POST /api/today/skip` (confirmed correct in isolation) saw the DB record
+ * the skip correctly while the app — which renders from plan-snapshot, not
+ * from a per-date `/api/plan/week` call, once a sync has landed — kept
+ * showing the day as fully prescribed. This is the one resolver both now
+ * call; do not add a second inline query for this question.
+ *
+ * `startIso`/`endIsoInclusive` are both inclusive, matching the `BETWEEN`
+ * below.
+ */
+export async function loadSkippedDates(
+  userId: string,
+  startIso: string,
+  endIsoInclusive: string,
+): Promise<SkippedDatesRead> {
+  // 2026-08-24 · swallowed-failure sweep · `day_actions.date_iso` is a TEXT
+  // day key, exactly like `plan_workouts.date_iso` — cast BOTH sides, per
+  // `lib/runs/_plan_date_join_lint.test.ts`.
+  const skipRows = await rowsOrNull<{ date_iso: string }>(
+    'plan/week-loader · day_actions skip',
+    pool.query<{ date_iso: string }>(
+      `SELECT date_iso::text AS date_iso
+         FROM day_actions
+        WHERE user_uuid = $1 AND action = 'skip'
+          AND date_iso::date BETWEEN $2::date AND $3::date`,
+      [userId, startIso, endIsoInclusive],
+    ),
+  );
+  // null = the read failed. Distinguish it from "nothing was skipped" so a
+  // caller can stay quiet rather than assert an unskipped range it never saw.
+  const skippedDates = new Set<string>();
+  for (const row of skipRows ?? []) skippedDates.add(row.date_iso);
+  return { skippedDates, failed: skipRows === null };
+}
+
 /**
  * Returns the 7-day training-week window of plan_workouts containing
  * `dateParam` (defaults to the runner's today). The week ENDS on the
@@ -264,30 +316,12 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
     actualByDate = new Map();
   }
 
-  const skippedDates = new Set<string>();
-  // 2026-08-24 · swallowed-failure sweep · `day_actions.date_iso` is a TEXT day
-  // key, exactly like `plan_workouts.date_iso`, and this compared it against a
-  // `date` on both ends of a BETWEEN: `operator does not exist: text >= date`.
-  // The bare `catch` turned that into "no days were skipped", so the week strip
-  // has never shown a skip marker for anybody. Prod on 2026-08-24 holds 10 skip
-  // rows for the primary runner — 2026-08-12 and 2026-08-15 land inside a
-  // single seven-day window, and both were invisible.
-  //
-  // Cast BOTH sides, per `lib/runs/_plan_date_join_lint.test.ts`.
-  const skipRows = await rowsOrNull<{ date_iso: string }>(
-    'plan/week-loader · day_actions skip',
-    pool.query<{ date_iso: string }>(
-      `SELECT date_iso::text AS date_iso
-         FROM day_actions
-        WHERE user_uuid = $1 AND action = 'skip'
-          AND date_iso::date BETWEEN $2::date AND $3::date`,
-      [userId, weekStart, weekEnd],
-    ),
-  );
-  // null = the read failed. Distinguish it from "nothing was skipped" so the
-  // strip can stay quiet rather than assert an unskipped week it never saw.
-  const skipReadFailed = skipRows === null;
-  for (const row of skipRows ?? []) skippedDates.add(row.date_iso);
+  // PLANSNAPSHOT-SKIP-1 · the canonical resolver, extracted below —
+  // byte-identical query, now shared with `lib/plan/plan-snapshot.ts`.
+  // Prod on 2026-08-24 held 10 skip rows for the primary runner that a
+  // pre-fix `text >= date` mismatch had made invisible; see that fix's own
+  // history in this function's git blame if the query itself is in question.
+  const { skippedDates, failed: skipReadFailed } = await loadSkippedDates(userId, weekStart, weekEnd);
 
   const days = shapePlanWeekDays(rows as PlanWorkoutRow[], {
     weekStart,

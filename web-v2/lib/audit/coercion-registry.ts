@@ -72,19 +72,6 @@ export interface CoercionExemption {
  */
 export const COERCION_ARGUED: readonly CoercionExemption[] = [
   {
-    id: 'lib/plan/plan-snapshot.ts::loadPlanSnapshot::catch',
-    reason: 'FINISHEST-1 (2026-09-07) · `resolveRaceOutlookBySlug(userUuid, r.slug, today).catch(() => null)`, '
-      + 'feeding an additive "Projected finish" stat on a race day\'s card. The single consumer is '
-      + '`raceProjectionFromOutlook(outlook)`, which already returns its `EMPTY` sentinel — '
-      + '`projectedSec: null` — for a genuinely absent outlook (no goal, no capacity evidence yet, race '
-      + 'too far out), so a thrown resolution and an absent one reach the IDENTICAL branch: `if '
-      + '(projection.projectedSec == null) return;`, which omits the stat. Every other field on the '
-      + 'day\'s card — pace band, dose, steps, treadmill guidance — is computed independently earlier '
-      + 'in this same function and is unaffected either way. Failing this closed to "no stat" rather '
-      + 'than letting one race\'s outlook computation error the WHOLE block read (every day, not just '
-      + 'race days) is this gate\'s own option 2 (fail closed), not an argument for erasure.',
-  },
-  {
     id: 'lib/plan/reanchor-plan.ts::reanchorMaintenance::catch',
     reason: 'FAILS CLOSED, which is this gate\'s own option 2 rather than an argument for erasure. '
       + 'It is `loadEffectiveMaxHr(...).catch(() => null)`, and the single consumer is `hrCapEasy`, '
@@ -659,9 +646,19 @@ export const SCAN_FLOORS = {
  * `trajectoryBasis`. Arguing them differently from goal-outlook.ts's
  * byte-identical calls would be the fork Rule 16 forbids. Everything else on
  * this list may still only shrink.
+ *
+ * 2026-09-07 · CLOSED, one entry: `lib/plan/plan-snapshot.ts::loadPlanSnapshot::catch`
+ * (FINISHEST-RELIABILITY-1). The blind `.catch(() => null)` this id named is
+ * deleted, not re-argued — the caller now carries a tagged
+ * `{status:'ok'|'timeout'|'error', ...}` result instead of collapsing a
+ * thrown resolution, a timed-out one, and a genuinely-absent outlook into one
+ * literal `null`. `findBlindIndirect` no longer matches the site (the failure
+ * is observed via `catch (error)` and returned, never swallowed through a
+ * blind arrow), so this id is deleted rather than left as a stale exemption.
+ * See `lib/plan/plan-snapshot.ts`'s own comment at the call site for the
+ * three states and why case 3 must not read as case 2.
  */
 export const LOAD_BEARING_KNOWN: readonly string[] = [
-  'lib/plan/plan-snapshot.ts::loadPlanSnapshot::catch',
   'lib/adaptation/load.ts::loadAdaptationInput::catch',
   'lib/adaptation/load.ts::loadAdaptationInput::decouplingVerdicts.length',
   'lib/adaptation/load.ts::loadAdaptationInput::executions.length',

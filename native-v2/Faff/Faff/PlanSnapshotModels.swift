@@ -113,6 +113,14 @@ struct PlanSnapshotDay: Decodable, Equatable, Identifiable {
     let kicker: String?
     let dose: V5Number?
     let stats: [V5Stat]
+    /// PLANSNAPSHOT-SKIP-1 (2026-09-07) · `day_actions action='skip'`, the
+    /// runner explicitly declining this prescribed day — same server truth
+    /// `PlanDay.skipped` (`API.swift`) already carries for `/api/plan/week`,
+    /// now also on the object per-date navigation actually renders from.
+    /// Decoded LENIENTLY (see `init(from:)` below), same posture as the
+    /// HEROPANEL-1 fields just above: a `PlanSnapshot` cached on disk from
+    /// BEFORE this field existed must not fail to decode.
+    let skipped: Bool
 
     var state: V5.DayState { V5.DayState(rawValue: day_state) ?? .easy }
     var fill: PanelFill { PanelFill.state(state) }
@@ -121,7 +129,7 @@ struct PlanSnapshotDay: Decodable, Equatable, Identifiable {
          is_race: Bool, is_quality: Bool, is_long: Bool, distance_mi: Double, sub_label: String?,
          notes: String?, card: PlanSnapshotCard?, treadmill: PlanSnapshotTreadmillGuidance?,
          matched_run: PlanSnapshotMatchedRun?, supplemental_runs: [PlanSnapshotSupplementalRun],
-         day_state: String, kicker: String?, dose: V5Number?, stats: [V5Stat]) {
+         day_state: String, kicker: String?, dose: V5Number?, stats: [V5Stat], skipped: Bool = false) {
         self.plan_workout_id = plan_workout_id
         self.date_iso = date_iso
         self.dow = dow
@@ -141,12 +149,13 @@ struct PlanSnapshotDay: Decodable, Equatable, Identifiable {
         self.kicker = kicker
         self.dose = dose
         self.stats = stats
+        self.skipped = skipped
     }
 
     private enum CodingKeys: String, CodingKey {
         case plan_workout_id, date_iso, dow, type, is_rest, is_race, is_quality, is_long,
              distance_mi, sub_label, notes, card, treadmill, matched_run, supplemental_runs,
-             day_state, kicker, dose, stats
+             day_state, kicker, dose, stats, skipped
     }
 
     /// HEROPANEL-1 · the four new fields decode LENIENTLY — absent, not a
@@ -182,6 +191,12 @@ struct PlanSnapshotDay: Decodable, Equatable, Identifiable {
         kicker = try c.decodeIfPresent(String.self, forKey: .kicker)
         dose = try c.decodeIfPresent(V5Number.self, forKey: .dose)
         stats = try c.decodeIfPresent([V5Stat].self, forKey: .stats) ?? []
+        // PLANSNAPSHOT-SKIP-1 · absent decodes as `false`, not a failure — a
+        // cached `PlanSnapshot` from before this field existed must still
+        // decode; an old cache simply cannot know about a skip recorded
+        // after it was written, which is the same "stale cache, not corrupt
+        // cache" posture every other optional field on this struct takes.
+        skipped = try c.decodeIfPresent(Bool.self, forKey: .skipped) ?? false
     }
 }
 

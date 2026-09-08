@@ -40,6 +40,18 @@ struct PlanSnapshotDayView: View {
                     .font(.faffDisplay(24))
                     .foregroundStyle(V5.textPrimary)
             }
+            // PLANSNAPSHOT-SKIP-1 (2026-09-07) · `day_actions action='skip'`
+            // — the runner explicitly declined this day (`POST
+            // /api/today/skip`). Stated plainly, no judgment, matching the
+            // coach-voice rule this file's own `restCard` already follows.
+            // Before this, a skipped FUTURE day rendered here as fully
+            // prescribed even though the database had correctly recorded
+            // the skip — nothing on this screen read `day.skipped` at all.
+            if day.skipped {
+                Text("Skipped.")
+                    .font(.faffText(TypeScaleV5.label14))
+                    .foregroundStyle(V5.textSecondary)
+            }
             if let notes = day.notes, !notes.isEmpty {
                 Text(notes)
                     .font(.faffText(TypeScaleV5.label14))
