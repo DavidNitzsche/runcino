@@ -320,6 +320,36 @@ export interface PlanSnapshot {
   phases: PlanPhaseRow[];
   weeks: PlanWeekRow[];
   workouts: PlanWorkoutRow[];
+  /**
+   * AUTHOREDSTATE-READBACK-1 (2026-09-08) · the persisted
+   * `training_plans.authored_state`, read back verbatim.
+   *
+   * Was absent from this snapshot entirely — `snapshotPlan` queried
+   * `plan_phases`/`plan_weeks`/`plan_workouts` and nothing else, and
+   * `rehydratePlan` handed the validator a hardcoded `{}`, on the header
+   * claim "the validator never reads it." That claim was true once and
+   * stopped being true when `validateComposedPlan` grew per-finding context
+   * filters that DO read it — `embeddedRaces` (COMBINED-STRESS-1) and
+   * `travelShaped` (TRAVEL-1) both read `result.authoredState` directly. A
+   * stale, unenforced claim in a comment is exactly Rule 20's shape: nothing
+   * gated it, so nobody noticed it went false.
+   *
+   * Consequence, measured on the runner's own real, currently-active plan:
+   * `pln_7636bcc0a201bf2d`'s `authored_state.embedded_races` correctly
+   * records "Run Malibu" (2026-11-08, B-effort half). Composing FRESH, the
+   * validator reads that key, `weekFullyInsideRecoveryWindow` correctly
+   * exempts the fully-consumed 2026-11-09 recovery week from §5, and the
+   * plan authors clean. Read back through `violationsOf` (the
+   * authorship-drift check `lib/plan/mutate.ts` runs after every mutation),
+   * `authoredState` arrived as `{}`, `embeddedRaces` was empty,
+   * `weekFullyInsideRecoveryWindow` returned false for every week, and §5
+   * flagged "Week 2026-11-09 (RACE-SPECIFIC): no quality sessions
+   * prescribed" — a real violation on the SAME plan the authoring-time
+   * validator had just accepted as correct, five minutes apart, off the SAME
+   * doctrine-cited exemption, because one caller could see its own inputs
+   * and the other could not. Not a composer defect; a read-back one.
+   */
+  authoredState: Record<string, unknown>;
 }
 
 // ── rehydration (PURE) ────────────────────────────────────────────────────────
@@ -336,7 +366,11 @@ export interface PlanSnapshot {
  * deliberately rather than reinvented.
  *
  * `vols` is set equal to `weeklyMi` — see the §0 note in the file header.
- * `authoredState` is `{}`; the validator never reads it.
+ * `authoredState` is `snap.authoredState`, read back verbatim from
+ * `training_plans.authored_state` (AUTHOREDSTATE-READBACK-1) — see
+ * `PlanSnapshot.authoredState`'s own doc comment for why this stopped being
+ * safe to hardcode to `{}` once the validator grew per-finding context
+ * filters (`embeddedRaces`, `travelShaped`) that read it directly.
  */
 export function rehydratePlan(snap: PlanSnapshot): ComposePlanResult {
   const phaseLabel = new Map<string, string>();
@@ -402,7 +436,7 @@ export function rehydratePlan(snap: PlanSnapshot): ComposePlanResult {
     blocks: { totalWeeks: weeks.length, phases },
     totalWeeks: weeks.length,
     vols: weeks.map((w) => w.weeklyMi),
-    authoredState: {},
+    authoredState: snap.authoredState,
   };
 }
 
@@ -520,11 +554,13 @@ export function diffViolations(before: string[], after: string[]): ViolationDiff
 
 type Queryable = { query: PoolClient['query'] };
 
-const SNAPSHOT_EMPTY: Omit<PlanSnapshot, 'planId'> = { phases: [], weeks: [], workouts: [] };
+const SNAPSHOT_EMPTY: Omit<PlanSnapshot, 'planId'> = {
+  phases: [], weeks: [], workouts: [], authoredState: {},
+};
 
-/** Three SELECTs. Called twice per mutation batch. */
+/** Four SELECTs. Called twice per mutation batch. */
 export async function snapshotPlan(tx: Queryable, planId: string): Promise<PlanSnapshot> {
-  const [phases, weeks, workouts] = await Promise.all([
+  const [phases, weeks, workouts, plan] = await Promise.all([
     tx.query<PlanPhaseRow>(
       `SELECT id::text AS id, label, start_week_idx, end_week_idx, rationale, citation
          FROM plan_phases WHERE plan_id = $1 ORDER BY start_week_idx ASC`,
@@ -544,12 +580,21 @@ export async function snapshotPlan(tx: Queryable, planId: string): Promise<PlanS
          FROM plan_workouts WHERE plan_id = $1`,
       [planId],
     ),
+    // AUTHOREDSTATE-READBACK-1 · see the field's own doc comment on
+    // `PlanSnapshot`. Without this, `weekFullyInsideRecoveryWindow` and
+    // every other per-finding context filter that reads
+    // `result.authoredState` is silently blind on every read-back check.
+    tx.query<{ authored_state: Record<string, unknown> | null }>(
+      `SELECT authored_state FROM training_plans WHERE id = $1`,
+      [planId],
+    ),
   ]);
   return {
     planId,
     phases: phases.rows,
     weeks: weeks.rows,
     workouts: workouts.rows,
+    authoredState: plan.rows[0]?.authored_state ?? {},
   };
 }
 

@@ -159,6 +159,7 @@ function buildSnapshot(): PlanSnapshot {
       is_cutback: false,
     })),
     workouts,
+    authoredState: {},
   };
 }
 
@@ -498,7 +499,7 @@ describe("'derivations' mutations · the fingerprint proves the claim", () => {
 
 describe('degenerate inputs', () => {
   it('an empty plan validates to no violations rather than throwing', () => {
-    const empty: PlanSnapshot = { planId: 'pln_x', phases: [], weeks: [], workouts: [] };
+    const empty: PlanSnapshot = { planId: 'pln_x', phases: [], weeks: [], workouts: [], authoredState: {} };
     expect(violationsOf(empty, CTX)).toEqual([]);
     expect(() => structuralFingerprint(empty)).not.toThrow();
   });
