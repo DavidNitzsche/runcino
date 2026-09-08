@@ -223,12 +223,68 @@ function repriceRead(
    * `SELF_HEAL_REANCHOR_DELTA` — the distance at which this very self-heal
    * considers a fitness read to have moved enough to matter — rather than a
    * number invented here, so the sentence and the mechanism cannot drift.
+   *
+   * ── EVIDENCEPROSE-2 (2026-09-08) · THE PAIR MEANS SOMETHING ELSE WHEN ────
+   * ── THE CALIBRATION IS ENDING, AND SAYING IT THE OLD WAY WAS FALSE ───────
+   *
+   * These two facts used to be emitted as two independent sentences. On a
+   * calibration-ending repricing whose delta sat inside the band, one sheet
+   * carried both, in this order:
+   *
+   *     "Your fitness reads level with what this block was priced at. This is
+   *      not a fitness change: the paces the block is written at have drifted
+   *      from what your evidence now supports."
+   *     "This ends the opening calibration. The block stops running on an
+   *      estimate of your fitness and starts running on what you have actually
+   *      run."
+   *
+   * The first says nothing changed. The second says the whole basis of the
+   * number just changed. Found by independent review, and NOT a rare edge:
+   * six of the seven live plans on 2026-09-08 carry
+   * `season_anchor_provisional: true`, and `shouldReanchorRacePrep` returns
+   * true for a provisional anchor REGARDLESS of the delta — so both
+   * conditions holding at once is the ordinary shape of the most consequential
+   * repricing a new runner ever sees.
+   *
+   * WHAT DECIDES THE FIX IS THAT THE FIRST SENTENCE WAS ALSO UNTRUE THERE.
+   * `ends_calibration_intro` is written as `wasProvisional` (race-prep arm)
+   * and `anchorSource !== 'measured_run'` (maintenance arm). Both mean exactly
+   * one thing: THE `anchor_vdot_now` SIDE IS NOT A MEASUREMENT. It is a
+   * `user_prior` or a mileage guess, and `paceBlendAnchorIsProvisional` exists
+   * precisely so that three readers refuse to believe it as fitness. So there
+   * was no prior fitness read for fitness to be "level with", and "this is not
+   * a fitness change" asserts a comparison with no left-hand side.
+   *
+   * So when the calibration is ending the pair answers a different question,
+   * and the two facts are ordered into one thought: the calibration first,
+   * because it is what makes the comparison legible, then where the first real
+   * measurement landed against THE ESTIMATE IT REPLACES — never against "the
+   * fitness this block was priced at", which that estimate never was. Both
+   * true, complementary rather than competing, and each said once (Rule 17).
    */
+  if (endsCalibration != null) spokenFor.add('ends_calibration_intro');
+  const calibrationEnding = endsCalibration === true;
+
+  if (calibrationEnding) {
+    out.push('This ends the opening calibration. The block stops running on an estimate '
+      + 'of your fitness and starts running on what you have actually run.');
+  }
+
   if (pricedAt != null && readsNow != null) {
     spokenFor.add('anchor_vdot_now');
     spokenFor.add('anchor_vdot_proposed');
     const delta = readsNow - pricedAt;
-    if (Math.abs(delta) < SELF_HEAL_REANCHOR_DELTA) {
+    const level = Math.abs(delta) < SELF_HEAL_REANCHOR_DELTA;
+    if (calibrationEnding) {
+      // The before-side is an estimate, so this states where the FIRST real
+      // measurement landed against it. It never calls that estimate a fitness
+      // read, and it never claims fitness did or did not move.
+      out.push(level
+        ? 'What you have run lands level with the estimate it replaces.'
+        : delta > 0
+          ? 'What you have run reads ahead of the estimate it replaces.'
+          : 'What you have run reads behind the estimate it replaces.');
+    } else if (level) {
       // A repricing row cannot exist unless at least one anchor moved:
       // `writeReanchorProposal` answers `unchanged` when "every anchor lands
       // on the same second per mile". So the second clause is gated on the
@@ -240,14 +296,6 @@ function repriceRead(
       out.push('Your evidence now reads ahead of the fitness this block was priced at.');
     } else {
       out.push('Your evidence now reads behind the fitness this block was priced at.');
-    }
-  }
-
-  if (endsCalibration != null) {
-    spokenFor.add('ends_calibration_intro');
-    if (endsCalibration) {
-      out.push('This ends the opening calibration. The block stops running on an estimate '
-        + 'of your fitness and starts running on what you have actually run.');
     }
   }
 

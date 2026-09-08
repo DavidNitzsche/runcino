@@ -193,6 +193,145 @@ describe("EVIDENCEPROSE-1 · the owner's own repricing reads as English", () => 
   });
 });
 
+/**
+ * EVIDENCEPROSE-2 · the calibration-ending repricing.
+ *
+ * ── WHERE THIS BLOB COMES FROM, HONESTLY ───────────────────────────────────
+ *
+ * It is SYNTHESISED, and that is stated rather than hidden: as of 2026-09-08
+ * exactly one row in `plan_workout_proposals` carries `ends_calibration_intro`
+ * at all (id 12, and it is `false`), so there is no production blob with this
+ * shape to copy. Rule 13 · this is the honest substitute, not a claim of real
+ * data.
+ *
+ * What IS real is every number in it, and the reason the shape matters:
+ *
+ *   · 39.9 is `authored_state.pace_blend.season_anchor_vdot` on the live plan
+ *     `pln_2684dabde181e595` (`user_uuid` bcefea06-…, the same account the
+ *     field-test blob above belongs to), whose anchor is
+ *     `season_anchor_source: 'user_prior'`, `season_anchor_provisional: true`.
+ *   · SIX of the SEVEN non-archived plans on that date carry
+ *     `season_anchor_provisional: true` — every account but the owner's.
+ *     `shouldReanchorRacePrep` returns true for a provisional anchor BEFORE it
+ *     looks at any delta, and `reanchorRacePrep` writes
+ *     `ends_calibration_intro: wasProvisional`. So a repricing on any of those
+ *     six carries `true` here whatever the measurement says.
+ *   · 0.808… is the real `anchor_confidence` from row 12.
+ *
+ * ── WHAT IT CANNOT FAIL ON (Rule 22) ───────────────────────────────────────
+ *
+ *   · IT CANNOT FAIL ON THE REPLACEMENT SENTENCES BEING GOOD. It proves the
+ *     two claims no longer contradict and that the surviving ones are true of
+ *     the blob; a reviewer's ear still owns whether they read well.
+ *   · IT CANNOT SEE THE CARD's `why`, which is a different screen.
+ *   · IT CANNOT PROVE THE ENGINE SET `ends_calibration_intro` HONESTLY. It
+ *     tests what the sheet says given the flag, not whether the flag is right.
+ */
+const REAL_PROVISIONAL_ANCHOR_VDOT = 39.9;
+
+/** What `reanchorRacePrep` writes for `pln_2684dabde181e595` when the first
+ *  real measurement lands inside `SELF_HEAL_REANCHOR_DELTA` of the guess. */
+const CALIBRATION_ENDING_EVIDENCE = {
+  anchor_vdot_now: REAL_PROVISIONAL_ANCHOR_VDOT,
+  evidence_source: 'run',
+  anchor_confidence: 0.8081792830507429,
+  anchor_vdot_proposed: 39.0,          // |Δ| = 0.9, inside the 2.0 band
+  ends_calibration_intro: true,
+} as const;
+
+/** The two sentences that used to land together, verbatim. */
+const THE_CONTRADICTION = {
+  notAFitnessChange:
+    'Your fitness reads level with what this block was priced at. This is not a fitness '
+    + 'change: the paces the block is written at have drifted from what your evidence now '
+    + 'supports.',
+  endsCalibration:
+    'This ends the opening calibration. The block stops running on an estimate of your '
+    + 'fitness and starts running on what you have actually run.',
+};
+
+describe('EVIDENCEPROSE-2 · a calibration-ending repricing does not argue with itself', () => {
+  const p = proposal({
+    actionKind: 'reprice',
+    actionPayload: { reprice: { workoutsAffected: 76, workoutsSealed: 0 } as never },
+    evidence: { ...CALIBRATION_ENDING_EVIDENCE },
+  });
+
+  it('THE FALSIFIER · never says "not a fitness change" beside "ends the calibration"', () => {
+    // Before the fix these two were both pushed, in this order. Restore the
+    // old `repriceRead` and this single assertion goes red on the first line.
+    const used = detailFor(p).evidenceUsed ?? [];
+    expect(used).toContain(THE_CONTRADICTION.endsCalibration);
+    expect(used).not.toContain(THE_CONTRADICTION.notAFitnessChange);
+    // And not in any looser form either: the false claim is the COMPARISON,
+    // so nothing on this sheet may call the estimate a fitness reading.
+    const joined = used.join(' ');
+    expect(joined).not.toMatch(/not a fitness change/i);
+    expect(joined).not.toMatch(/fitness this block was priced at/i);
+    expect(joined).not.toMatch(/fitness reads level with/i);
+  });
+
+  it('states where the first real measurement landed, against THE ESTIMATE', () => {
+    // The honest reading of `ends_calibration_intro: true`: the before-side is
+    // a `user_prior`, which `paceBlendAnchorIsProvisional` exists to stop
+    // three readers believing as fitness. So the pair is spent on the
+    // estimate, never on a fitness that was never measured.
+    expect(detailFor(p).evidenceUsed).toContain(
+      'What you have run lands level with the estimate it replaces.',
+    );
+  });
+
+  it('orders the calibration fact FIRST, so the comparison has a frame', () => {
+    const used = detailFor(p).evidenceUsed ?? [];
+    const calibration = used.indexOf(THE_CONTRADICTION.endsCalibration);
+    const landed = used.indexOf('What you have run lands level with the estimate it replaces.');
+    expect(calibration).toBeGreaterThan(-1);
+    expect(landed).toBeGreaterThan(calibration);
+  });
+
+  it('is three sentences and still spends both anchors on no second pace', () => {
+    const used = detailFor(p).evidenceUsed ?? [];
+    expect(used).toHaveLength(3);
+    expect(used.join(' ')).not.toMatch(/39\.\d/);
+    expect(used.join(' ')).not.toMatch(/\b\d:\d\d\b/);
+    for (const line of used) expect(line).toMatch(/\.$/);
+  });
+
+  it('claims both anchor keys and the flag, so none is dumped again below', () => {
+    const s = evidenceProse({ ...CALIBRATION_ENDING_EVIDENCE }, ctx);
+    for (const k of ['anchor_vdot_now', 'anchor_vdot_proposed', 'ends_calibration_intro']) {
+      expect(s.spokenFor.has(k)).toBe(true);
+    }
+  });
+
+  it('reads a real move against the estimate when the delta is OUTSIDE the band', () => {
+    const ahead = evidenceProse(
+      { ...CALIBRATION_ENDING_EVIDENCE, anchor_vdot_proposed: 42.6 }, ctx).sentences;
+    expect(ahead).toContain('What you have run reads ahead of the estimate it replaces.');
+    const behind = evidenceProse(
+      { ...CALIBRATION_ENDING_EVIDENCE, anchor_vdot_proposed: 37.0 }, ctx).sentences;
+    expect(behind).toContain('What you have run reads behind the estimate it replaces.');
+    // Same rule as inside the band: an estimate is never named as fitness.
+    for (const set of [ahead, behind]) {
+      expect(set.join(' ')).not.toMatch(/fitness this block was priced at/i);
+    }
+  });
+
+  it('CONDITION ALONE · calibration ending with no anchor pair still says so', () => {
+    const s = evidenceProse({ ends_calibration_intro: true }, ctx);
+    expect(s.sentences).toEqual([THE_CONTRADICTION.endsCalibration]);
+  });
+
+  it('CONDITION ALONE · a delta inside the band with NO calibration is unchanged', () => {
+    // The regression guard. `REAL_REPRICE_EVIDENCE` is the owner's own row 12
+    // (`ends_calibration_intro: false`), where the before-side IS a measured
+    // anchor and "this is not a fitness change" is the true statement.
+    const s = evidenceProse({ ...REAL_REPRICE_EVIDENCE }, ctx);
+    expect(s.sentences).toContain(THE_CONTRADICTION.notAFitnessChange);
+    expect(s.sentences.join(' ')).not.toMatch(/calibration/i);
+  });
+});
+
 describe('EVIDENCEPROSE-1 · the field-test blob', () => {
   const p = proposal({
     id: 7, actionKind: 'field_test', workoutDateISO: '2026-09-09',
