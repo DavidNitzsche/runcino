@@ -76,10 +76,38 @@ struct SickFlareV5: View {
     /// A check-in row was tapped — the caller posts the trend
     /// (`POST /api/sick/recovery`) and reloads. This view does not persist
     /// anything itself.
-    var onLogTrend: (V5Row) -> Void = { _ in }
+    ///
+    /// TODAYWRITE-1 · it does, however, have to SAY when that failed.
+    /// "Recovered" clears the episode server-side, so a swallowed failure
+    /// here leaves a runner who believes they are back on the plan looking
+    /// at a screen that has simply not changed, with no reason given.
+    var onLogTrend: (V5Row) async -> V5WriteSettlement = { _ in .landed }
     /// SHAREDSHELL-1 (2026-09-04) · see `InjuryFlareV5`'s own doc comment
     /// in StateScreensV5.swift.
     var suppressOwnHeader: Bool = false
+
+    /// TODAYWRITE-1 · which check-in row this screen has a write out for,
+    /// and how it settled. The token is the row id, so a reload that
+    /// replaces `model` cannot leave a stale row object behind.
+    @State private var trendState: V5RowWriteState = .idle
+
+    private var failedRow: V5Row? {
+        guard case .failed(let id) = trendState else { return nil }
+        return model.checkIn.first { $0.id == id }
+    }
+
+    /// The one place a trend is attempted, so the row and the Retry cannot
+    /// drift apart (Rule 16). No success copy to guard: a landed write flips
+    /// Today's own state on the reload, which is what actually changes this
+    /// screen. What was missing was the FAILURE being said at all.
+    private func logTrend(_ row: V5Row) {
+        guard !trendState.isSending else { return }
+        trendState = .sending(row.id)
+        Task {
+            let settlement = await onLogTrend(row)
+            trendState = .settled(settlement, token: row.id)
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -111,8 +139,14 @@ struct SickFlareV5: View {
                     V5SectionLabel(text: "How's it going today")
                     ListGroup {
                         ForEach(model.checkIn) { row in
-                            ListRow(label: row.label, sub: row.sub, onTap: { onLogTrend(row) })
+                            ListRow(label: row.label,
+                                    sub: trendState == .sending(row.id) ? "Sending" : row.sub,
+                                    onTap: { logTrend(row) })
                         }
+                    }
+                    if let failed = failedRow {
+                        ErrorNote(text: "That did not send. The coach still has yesterday's answer, so it is safe to try again.",
+                                  onRetry: { logTrend(failed) })
                     }
                 }
             }
@@ -149,12 +183,23 @@ struct SickFlareV5: View {
 /// (`symptoms` codes, `started` enum) so the host can `POST /api/sick`
 /// verbatim.
 struct SickReportRowV5: View {
-    var onReport: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
+    /// TODAYWRITE-1 (2026-09-08 review) · `async -> V5WriteSettlement`, not
+    /// `-> Void`. This row used to flip to "Reported · Logged. Today rests."
+    /// the instant the button was pressed, while the host's own
+    /// `_ = try? await API.postSick(...)` threw the answer away — a Product
+    /// Experience review measured the row saying exactly that over a
+    /// database that had recorded no episode at all. "Today rests" is a
+    /// claim about the PLAN, and the plan only rests once the server has the
+    /// report.
+    var onReport: (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .landed }
 
     @State private var expanded = false
     @State private var selectedSymptoms: Set<String> = []
     @State private var selectedStarted: String = "today"
-    @State private var submitted = false
+    /// Four facts, not a Bool. See `V5RowWriteState`. There is only ever one
+    /// report in flight from this row, so the token is a constant.
+    @State private var reportState: V5RowWriteState = .idle
+    private static let reportToken = "sick_report"
 
     /// The backend's own eight-code vocabulary (`app/api/sick/route.ts`'s
     /// header comment). Order matches the legacy sheet's rough grouping —
@@ -179,15 +224,61 @@ struct SickReportRowV5: View {
     ]
 
     var body: some View {
-        ListGroup {
-            ExpandingRow(
-                label: submitted ? "Reported" : "Not feeling right",
-                sub: submitted ? "Logged. Today rests." : "Report symptoms and pause today",
-                question: "What's going on",
-                isExpanded: $expanded
-            ) {
-                if !submitted { form }
+        let copy = Self.copy(for: reportState)
+        VStack(alignment: .leading, spacing: V5.S.s8) {
+            ListGroup {
+                ExpandingRow(
+                    label: copy.label,
+                    sub: copy.sub,
+                    question: "What's going on",
+                    isExpanded: $expanded
+                ) {
+                    if !Self.isReported(reportState) { form }
+                }
             }
+            // The failure sits outside the row, so collapsing the picker
+            // does not take the only explanation with it.
+            if case .failed = reportState {
+                ErrorNote(text: "That did not send, so the plan has not changed. Nothing was written, so it is safe to try again.",
+                          onRetry: { submit() })
+            }
+        }
+    }
+
+    /// TODAYWRITE-1 · WHAT THE ROW SAYS IN EACH STATE, as a pure function,
+    /// so a test can read the runner's own words rather than assert the
+    /// absence of a bad one (Rule 13 §3).
+    ///
+    /// The invariant: "Logged. Today rests." — a claim about the PLAN —
+    /// belongs to `.done` and to nothing else.
+    static func copy(for state: V5RowWriteState) -> (label: String, sub: String) {
+        switch state {
+        case .done:    return ("Reported", "Logged. Today rests.")
+        case .sending: return ("Sending", "Sending your report")
+        case .failed:  return ("Not sent", "The coach has not seen this yet")
+        case .idle:    return ("Not feeling right", "Report symptoms and pause today")
+        }
+    }
+
+    static func isReported(_ state: V5RowWriteState) -> Bool {
+        if case .done = state { return true }
+        return false
+    }
+
+    /// The one place the report is attempted, so the button and the Retry
+    /// cannot drift apart (Rule 16).
+    private func submit() {
+        guard !selectedSymptoms.isEmpty, !reportState.isSending else { return }
+        let symptoms = Array(selectedSymptoms)
+        let started = selectedStarted
+        let fever = selectedSymptoms.contains("fever")
+        reportState = .sending(Self.reportToken)
+        withAnimation(V5.Motion.expand) { expanded = false }
+        Task {
+            let settlement = await onReport(symptoms, started, fever)
+            // `.cancelled` lands on `.idle` and leaves the form as the runner
+            // filled it, so one tap re-sends it. See `V5RowWriteState.settled`.
+            reportState = .settled(settlement, token: Self.reportToken)
         }
     }
 
@@ -212,12 +303,12 @@ struct SickReportRowV5: View {
                 }
             }
 
-            FaffButton("Report it", variant: .primary, size: .md,
-                       enabled: !selectedSymptoms.isEmpty,
-                       disabledReason: "Pick at least one symptom \u{b7} it decides how long the plan waits.") {
-                onReport(Array(selectedSymptoms), selectedStarted, selectedSymptoms.contains("fever"))
-                submitted = true
-                withAnimation(V5.Motion.expand) { expanded = false }
+            FaffButton(reportState.isSending ? "Sending\u{2026}" : "Report it",
+                       variant: .primary, size: .md,
+                       enabled: !selectedSymptoms.isEmpty && !reportState.isSending,
+                       disabledReason: reportState.isSending ? nil
+                           : "Pick at least one symptom \u{b7} it decides how long the plan waits.") {
+                submit()
             }
         }
     }

@@ -501,6 +501,12 @@ struct Alert: View {
 // has, and the line between them is rule three's line: the engine declining
 // is an answer (`Alert`), a write we could not complete is not (`ErrorNote`).
 
+/// NOT the same question as `V5WriteSettlement` (ViewsV5/SurfaceStoreV5.swift),
+/// despite the neighbouring name. This one is "what NOTE should be drawn",
+/// and it deliberately has no success case — a note exists only when
+/// something needs saying. `V5WriteSettlement` is "did the server take it",
+/// which is what a row consults before it may claim success. See that type's
+/// header for the three-way split.
 enum V5WriteOutcome: Equatable {
     /// The engine declined, and said why. Its words, never ours.
     case refused(String)

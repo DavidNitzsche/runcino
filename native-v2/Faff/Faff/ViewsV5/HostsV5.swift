@@ -986,7 +986,7 @@ struct TodayHostV5: View {
                 inSharedShell(model) {
                     InjuryFlareV5(model: injury,
                                   onOpenAccount: { accountOpen = true },
-                                  onCheckIn: { row in Task { await checkInNiggle(row.id) } },
+                                  onCheckIn: { row in await checkInNiggle(row.id) },
                                   onReturnToRunning: { path.append(.returnToRunning) },
                                   suppressOwnHeader: true)
                 }
@@ -1001,7 +1001,7 @@ struct TodayHostV5: View {
                 inSharedShell(model) {
                     SickFlareV5(model: sick,
                                 onOpenAccount: { accountOpen = true },
-                                onLogTrend: { row in Task { await logSickTrend(row.action) } },
+                                onLogTrend: { row in await logSickTrend(row.action) },
                                 suppressOwnHeader: true)
                 }
             } else {
@@ -1035,10 +1035,10 @@ struct TodayHostV5: View {
         case .afterRun:
             TodayAfterV5(model: model,
                          onOpenAccount: { accountOpen = true },
-                         onFlagNiggle: { part in Task { await flagNiggle(part) } },
+                         onFlagNiggle: { part in await flagNiggle(part) },
                          onOpenInjuryFlare: { path.append(.injuryFlare) },
                          onChangeShoe: { path.append(.shoes) },
-                         onPickShoe: { id in Task { await pickShoe(model, id) } },
+                         onPickShoe: { id in await pickShoe(model, id) },
                          onRowAction: { _ in },
                          onPushStrava: { Task { await pushStrava(model) } },
                          onPickDay: { id in pickDay(id, in: model) },
@@ -1050,7 +1050,7 @@ struct TodayHostV5: View {
                          canPageForward: canPageWeek(1, weekStart: model.weekStrip.first?.dateISO, weekEnd: model.weekStrip.last?.dateISO),
                          initials: initials,
                          onReportSick: { sym, started, fever in
-                             Task { await reportSick(sym, started, fever) }
+                             await reportSick(sym, started, fever)
                          })
 
         case .beforeRun, .raceDay:
@@ -1070,7 +1070,7 @@ struct TodayHostV5: View {
                           onOpenPacesMoved: { path.append(.pacesMoved) },
                           onOpenRace: { slug in path.append(.raceDetail(slug: slug)) },
                           onReportSick: { sym, started, fever in
-                              Task { await reportSick(sym, started, fever) }
+                              await reportSick(sym, started, fever)
                           },
                           reload: { await surface.load() })
         }
@@ -2157,65 +2157,105 @@ struct TodayHostV5: View {
     // `TodayAfterV5.askedVsRanSection` used to draw; removed with that
     // picker rather than left as a second, unused path to the same write.
 
+    // ─────────────────────────────────────────────────────────────────────
+    // TODAYWRITE-1 (2026-09-08 review) · EVERY WRITE BELOW RETURNS WHAT IT
+    // SETTLED AS, AND ITS SCREEN IS OBLIGED TO SPEND THAT.
+    //
+    // All five used to end `_ = try? await API.authedSend(req)` followed by
+    // an unconditional `await surface.load()`. Two consequences, both
+    // measured on the real app by a Product Experience review:
+    //
+    //  1 · The outcome was DESTROYED at the call site, so the screen above
+    //      had nothing to gate on and drew the confirmed-success copy from
+    //      its own optimistic `@State` — "Left calf flagged · The coach has
+    //      it, it shapes tomorrow" over a database that recorded no rows.
+    //
+    //  2 · The reload ran even when nothing had changed. A write that did
+    //      not land changed nothing, so it invalidates nothing — the same
+    //      reasoning `SettingsHostV5.applyWrite` already carries, and in an
+    //      outage the extra GET is what turns a failed write into a blanked
+    //      screen.
+    //
+    // See `V5WriteSettlement` in SurfaceStoreV5.swift for the full incident and
+    // for why `.cancelled` is a third case rather than a failure.
+
     /// Persist the pair the runner picked from the shoe menu.
     ///
     /// `POST /api/today/shoe { date_iso, shoe_id }` is the same endpoint the
     /// Shoes screen already writes through, so a choice made here and a
     /// choice made there land in exactly one place.
-    private func pickShoe(_ model: V5Today, _ shoeId: String) async {
+    private func pickShoe(_ model: V5Today, _ shoeId: String) async -> V5WriteSettlement {
         var req = URLRequest(url: API.baseURL.appendingPathComponent("api/today/shoe"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(
             withJSONObject: ["date_iso": model.dateISO, "shoe_id": shoeId])
-        _ = try? await API.authedSend(req)
         // Reload rather than mutate locally: the row's mileage line changes
         // with the assignment, and a locally-patched label beside a stale
         // mileage is two numbers disagreeing about one shoe.
-        await surface.load()
+        return await settleAndReload { try await Self.ok(req) }
     }
 
-    private func flagNiggle(_ bodyPart: String) async {
+    private func flagNiggle(_ bodyPart: String) async -> V5WriteSettlement {
         var req = URLRequest(url: API.baseURL.appendingPathComponent("api/niggle"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: [
             "body_part": bodyPart, "severity": 1, "status": "active",
         ])
-        _ = try? await API.authedSend(req)
-        await surface.load()
+        return await settleAndReload { try await Self.ok(req) }
     }
 
     /// The ladder's sibling: the daily flare check-in. The row ids are
     /// literally the values the endpoint expects, so there is no mapping to
     /// get wrong.
-    private func checkInNiggle(_ today: String) async {
+    private func checkInNiggle(_ today: String) async -> V5WriteSettlement {
         var req = URLRequest(url: API.baseURL.appendingPathComponent("api/niggle/recovery"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try? JSONSerialization.data(withJSONObject: ["today": today])
-        _ = try? await API.authedSend(req)
-        await surface.load()
+        return await settleAndReload { try await Self.ok(req) }
     }
 
-    private func reportSick(_ symptoms: [String], _ started: String, _ hasFever: Bool) async {
-        _ = try? await API.postSick(symptoms: symptoms, started: started, fever: hasFever)
-        await surface.load()
+    private func reportSick(_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement {
+        await settleAndReload {
+            try await API.postSick(symptoms: symptoms, started: started, fever: hasFever)
+        }
     }
 
     /// The sick check-in is a TREND, not a one-shot note: "recovered" clears
     /// the episode server-side, which the injury flow has no equivalent of.
-    private func logSickTrend(_ action: String?) async {
+    private func logSickTrend(_ action: String?) async -> V5WriteSettlement {
         let trend: String
         switch action {
         case "trend_better":    trend = "better"
         case "trend_same":      trend = "same"
         case "trend_worse":     trend = "worse"
         case "trend_recovered": trend = "recovered"
-        default: return
+        // An action this host does not recognise never reached the network,
+        // so there is nothing to retry and nothing to confirm. Rule 11: this
+        // is "we did not ask", which is closest to a torn-down request — NOT
+        // `.landed`, which would be the fabrication this whole change exists
+        // to stop, and not `.didNotLand`, which would offer a Retry that
+        // could only ever do the same nothing again.
+        default: return .cancelled
         }
-        _ = try? await API.postSickRecovery(trend: trend)
-        await surface.load()
+        return await settleAndReload { try await API.postSickRecovery(trend: trend) }
+    }
+
+    /// `API.authedSend` returns a 500 rather than throwing, so "the call came
+    /// back" is not "the server took it". One place says what 2xx means, so
+    /// no call site can forget to ask.
+    private static func ok(_ req: URLRequest) async throws -> Bool {
+        let (_, http) = try await API.authedSend(req)
+        return (200..<300).contains(http.statusCode)
+    }
+
+    /// Settle the write, and refetch ONLY if the server actually changed.
+    private func settleAndReload(_ write: () async throws -> Bool) async -> V5WriteSettlement {
+        let outcome = await v5SettleWrite(write)
+        if outcome == .landed { await surface.load() }
+        return outcome
     }
 
     private func pushStrava(_ model: V5Today) async {

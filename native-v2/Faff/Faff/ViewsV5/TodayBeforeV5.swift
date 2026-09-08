@@ -267,7 +267,8 @@ struct TodayBeforeV5: View {
     /// collects the backend's own vocabulary (symptom codes, the `started`
     /// enum); the caller POSTs `/api/sick` and reloads, which is what turns
     /// this into `SickFlareV5` on the next render.
-    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
+    /// TODAYWRITE-1 · see `SickReportRowV5`.
+    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .landed }
 
     @State private var calendarOpen = false
     @State private var accountOpen = false
