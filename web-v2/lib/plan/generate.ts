@@ -9250,9 +9250,34 @@ export function embedMidBlockRaces(
        */
       {
         const window = noQualityDaysAfterRace(race.distanceMi, 'C');
+        // MIDRACE-RESUME-2 (2026-09-07) · a C race's own recovery window can
+        // reach past the race's own week and into the next one exactly as a
+        // B race's can — `window` is days, not bounded to the current week —
+        // and until now only the B-priority branch (~line 9080 above) tracked
+        // what it displaced. A C race's window carried no such memory, so a
+        // week whose only quality session sat inside this window lost it with
+        // nothing to restore it: PROOF 12 of `_organic_push_proofs.script.ts`
+        // reproduced this exactly — the "dodgers" C race (2026-09-26, 6.17
+        // mi) resolves `noQualityDaysAfterRace(6.17, 'C')` to 5 * 0.5 = 2.5,
+        // so `j` reaches 2 · Monday 2026-09-28 · the first day of the NEXT
+        // week — and that week's one quality session sat there and was
+        // downgraded with no compensating restoration, composing a
+        // quality-phase week with zero quality sessions.
+        // `validateComposedPlan` §5 correctly refused it.
+        //
+        // The fix mirrors the B-priority branch's own `firstDisplacedQuality`
+        // pattern exactly, scoped to the SAME condition that pattern uses:
+        // only when the day this window touches lands in a DIFFERENT week
+        // than the race's own, and only when that end week is left with no
+        // quality session of its own.
+        let firstDisplacedQuality: Pick<DayPlan, 'type' | 'distanceMi' | 'subLabel' | 'notes'> | null = null;
         for (let j = 1; j <= window; j++) {
           const d = dayAt(o + j);
           if (!d || d.type === 'race' || !d.isQuality || d.isLong) continue;
+          const wiJ = Math.floor((o + j) / 7);
+          if (wiJ !== wi && !firstDisplacedQuality) {
+            firstDisplacedQuality = { type: d.type, distanceMi: d.distanceMi, subLabel: d.subLabel, notes: d.notes };
+          }
           d.type = 'easy';
           d.isQuality = false;
           d.subLabel = 'EASY';
@@ -9262,6 +9287,30 @@ export function embedMidBlockRaces(
           delete d.raceGoalPaceSec;
           clearWorkShape(d);
           touchedWeeks.add(Math.floor((o + j) / 7));
+        }
+        if (firstDisplacedQuality) {
+          const endWi = Math.floor((o + window) / 7);
+          const wkEnd = weeks[endWi];
+          if (endWi !== wi && wkEnd && !wkEnd.isRaceWeek && !wkEnd.days.some((d) => d.isQuality)) {
+            for (let oo = o + Math.floor(window) + 1; oo < (endWi + 1) * 7; oo++) {
+              const d = dayAt(oo);
+              if (d && d.type === 'easy' && d.distanceMi > 0 && !d.isLong) {
+                // Same light re-entry as MIDRACE-RESUME-1 (line ~9160 above) —
+                // bound by the same MIDRACE.resume-quality-light doctrine
+                // claim, not a second one.
+                d.type = 'threshold';
+                d.distanceMi = firstDisplacedQuality.distanceMi;
+                d.isQuality = true;
+                d.subLabel = MIDRACE_RESUME_RX;
+                d.notes =
+                  `Cruise-interval re-entry · Research/04 §5.3, light end. First quality back after ` +
+                  `${race.name} · short T reps with a generous jog before full sessions return ` +
+                  `(Research/00b reverse taper). Quality resumes after ${race.name} recovery.`;
+                touchedWeeks.add(endWi);
+                break;
+              }
+            }
+          }
         }
       }
     }
@@ -9417,9 +9466,31 @@ export function embedMidBlockRaces(
         // a caller that cannot author the days still gets the refusal, which
         // `_designed_race_weekend.test.ts` exercises directly.
         if (!verdict.permitted && verdict.refusal.code === 'NO_EXTENDED_RECOVERY_AFTER') {
+          // MIDRACE-RESUME-3 (2026-09-07) · this loop can reach into the WEEK
+          // AFTER the long run's own week exactly as the two MIDRACE-RESUME
+          // mechanisms above can, and until now it was the one of the three
+          // with no memory of what it displaced. PROOF 12 of
+          // `_organic_push_proofs.script.ts` reproduced it precisely: the
+          // "dodgers" C race (2026-09-26, Sat) pairs with its Sunday long run
+          // (`nl.j`=1), and `EXTENDED_RECOVERY_DAYS_AFTER_PAIR`=3 reaches
+          // k=3 → day offset (o+1+3) = the Tuesday of the FOLLOWING week
+          // (2026-09-28) — the tune-up week's only tempo session — and downs
+          // it with nothing to replace it, composing a quality-phase week
+          // with zero quality. `validateComposedPlan` §5 correctly refused
+          // the block. Same fix as MIDRACE-RESUME-1/2: track the first
+          // quality day this loop displaces INTO A LATER WEEK, and if that
+          // week is left with none of its own, restore a light re-entry onto
+          // the first eligible easy day after this loop's own reach — same
+          // MIDRACE.resume-quality-light doctrine claim, still only the one.
+          let firstDisplacedQuality: Pick<DayPlan, 'type' | 'distanceMi' | 'subLabel' | 'notes'> | null = null;
+          const pairWi = Math.floor((o + nl.j) / 7);
           for (let k = 1; k <= EXTENDED_RECOVERY_DAYS_AFTER_PAIR; k++) {
             const d = dayAt(o + nl.j + k);
             if (!d || d.type === 'race' || !d.isQuality || d.type === 'shakeout') continue;
+            const wiK = Math.floor((o + nl.j + k) / 7);
+            if (wiK !== pairWi && !firstDisplacedQuality) {
+              firstDisplacedQuality = { type: d.type, distanceMi: d.distanceMi, subLabel: d.subLabel, notes: d.notes };
+            }
             d.type = 'easy';
             d.isQuality = false;
             d.subLabel = 'EASY';
@@ -9429,6 +9500,27 @@ export function embedMidBlockRaces(
             clearWorkShape(d);
             delete d.raceGoalPaceSec;
             touchedWeeks.add(Math.floor((o + nl.j + k) / 7));
+          }
+          if (firstDisplacedQuality) {
+            const endWi = Math.floor((o + nl.j + EXTENDED_RECOVERY_DAYS_AFTER_PAIR) / 7);
+            const wkEnd = weeks[endWi];
+            if (endWi !== pairWi && wkEnd && !wkEnd.isRaceWeek && !wkEnd.days.some((d) => d.isQuality)) {
+              for (let oo = o + nl.j + EXTENDED_RECOVERY_DAYS_AFTER_PAIR + 1; oo < (endWi + 1) * 7; oo++) {
+                const d = dayAt(oo);
+                if (d && d.type === 'easy' && d.distanceMi > 0 && !d.isLong) {
+                  d.type = 'threshold';
+                  d.distanceMi = firstDisplacedQuality.distanceMi;
+                  d.isQuality = true;
+                  d.subLabel = MIDRACE_RESUME_RX;
+                  d.notes =
+                    `Cruise-interval re-entry · Research/04 §5.3, light end. First quality back after ` +
+                    `${race.name} and the long run that followed it · short T reps with a generous jog ` +
+                    'before full sessions return (Research/00b reverse taper).';
+                  touchedWeeks.add(endWi);
+                  break;
+                }
+              }
+            }
           }
           verdict = ask(countRecovery());
         }
