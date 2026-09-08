@@ -308,9 +308,33 @@ final class V5Surface<Model: Decodable>: ObservableObject {
             case .failed:
                 markStaleAfterDebounce()
             }
-        } catch is CancellationError {
-            // A screen going away is not an outage.
         } catch {
+            // CANCELBANNER-2 (2026-09-08 review) · A SCREEN GOING AWAY IS NOT
+            // AN OUTAGE, AND IT WEARS TWO DIFFERENT ERROR TYPES.
+            //
+            // This used to be `catch is CancellationError`, which is only HALF
+            // the cancellation vocabulary. `URLSession.shared.data(for:)` is
+            // Task-cancellation-aware and throws EITHER Swift concurrency's
+            // `CancellationError` OR Foundation's `URLError(.cancelled)` —
+            // which one is not guaranteed across OS/SDK versions, which is
+            // exactly why `API.isCancellation` exists and checks both. This
+            // call site was the one place that did not use it, so every
+            // cancellation that arrived as `URLError(.cancelled)` fell through
+            // to the generic catch, took `markStaleAfterDebounce()`, and one
+            // second later the runner was reading the full "cannot reach the
+            // server" screen about a request the app itself had superseded.
+            //
+            // Measured by a reviewer on the real app: the outage screen stood
+            // for 25-41 seconds with NO `/api/v5/today` request ever having
+            // been ISSUED, and once for 69 seconds AFTER the real request had
+            // already returned 200 — because the load that superseded this one
+            // had long since painted, and nothing about that success could
+            // reach a `stale` flag this cancelled sibling had already set.
+            //
+            // Rule 11: cancelled, failed and absent are three facts. The load
+            // that superseded this one is what decides the screen; this one
+            // says nothing, because it never got an answer to report.
+            if API.isCancellation(error) { return }
             markStaleAfterDebounce()
         }
     }
@@ -331,6 +355,148 @@ final class V5Surface<Model: Decodable>: ObservableObject {
             stale = true
         }
     }
+}
+
+// MARK: - What a write settled as
+//
+// ─────────────────────────────────────────────────────────────────────────
+// TODAYWRITE-1 (2026-09-08 review) · THE WRITE-SIDE TWIN OF THIS FILE'S
+// OWN RULE THREE.
+//
+// The store above is careful about what a failed READ is allowed to claim.
+// Nothing was careful about a failed WRITE, and a Product Experience review
+// of the real app measured the consequence four ways — rendering, a direct
+// database query, the network log, and the code:
+//
+//   · Flagging a niggle drew "Left calf flagged · The coach has it, it
+//     shapes tomorrow" while `POST /api/niggle` recorded ZERO rows.
+//   · Reporting illness drew "Reported · Logged. Today rests." with the
+//     same nothing behind it.
+//
+// Both were `_ = try? await API.authedSend(req)` in `HostsV5.swift` — the
+// success/failure of the write thrown away at the call site — combined with
+// a view that moved its own `@State` to the CONFIRMED row's exact copy the
+// instant the button was pressed. The runner read a sentence the app had no
+// evidence for, about the one topic (pain, illness) where being wrong costs
+// the most.
+//
+// This is Rule 11 at a write: LANDED, DID-NOT-LAND and CANCELLED are three
+// facts and a `try?` collapses all three into silence. It is also the rule
+// `TodayAfterV5`'s own Strava push already follows in the same file — "only
+// flips to `.done`/`.dup` on the server's own confirmed status, never
+// optimistically, per the bug this replaced" — and the rule `AddRaceV5` and
+// `RPECaptureRow` follow: on failure they say so, in the runner's words,
+// with a way to try again.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// THREE NEARBY NAMES, THREE DIFFERENT QUESTIONS. Rule 16 forbids two names
+// for one quantity; it does not license one name for three. Read this before
+// adding a fourth:
+//
+//   · `V5WriteSettlement` (here) — DID THE SERVER TAKE IT. A fact about the
+//     write, with no copy attached, so the screen decides what to say.
+//   · `V5WriteOutcome` (DesignV5/ComponentsV5.swift) — WHAT NOTE TO DRAW.
+//     Carries the engine's own sentence and picks `Alert` vs `ErrorNote`;
+//     it has no "it worked" case at all, because a note is only drawn when
+//     something needs saying. `RaceDetailV5`/`RacesV5` use it.
+//   · `SettingsHostV5.WriteSettlement` — MUST I DROP MY CACHE. A question
+//     about `SettingsCache`, not about a screen. Collapsing it into this
+//     one would put cache-invalidation semantics in a view's hands.
+//
+// A route that grows a real refusal body should carry BOTH: this type for
+// whether the row may claim success, `V5WriteOutcome` for the sentence.
+enum V5WriteSettlement: Equatable {
+    /// The server took it. The screen may now say so.
+    case landed
+    /// It did not land, or we could not tell. Either way the screen has NO
+    /// evidence the thing it was asked to state is true, so it must not
+    /// state it — it says what happened and offers the write again.
+    ///
+    /// Deliberately one case and not two. A non-2xx and a dropped
+    /// connection are different facts, but the phone cannot tell them apart
+    /// here (`API.authedSend` returns non-2xx rather than throwing, and the
+    /// niggle/sick/shoe routes carry no refusal sentence a 4xx could be
+    /// rendered from), and inventing a distinction the wire does not carry
+    /// would be a second fabrication. When those routes grow a refusal
+    /// body, this splits — `AddRaceV5.saveRefusal` is the shape to copy.
+    case didNotLand
+    /// The runner's own navigation tore this down before it settled. Not a
+    /// failure and not a success: nothing to report, nothing to retry.
+    /// Same distinction, same helper, as `load()`'s catch block above.
+    case cancelled
+}
+
+/// The whole decision, as a pure function over the two things a write can
+/// hand back, so a test can walk every branch without a live outage — the
+/// same reason `API.isCancellation` and `SettingsHostV5.settlement(landed:)`
+/// are extracted.
+///
+/// `succeeded` is "the server answered 2xx", NOT "the call returned". Every
+/// caller must compute it from the real status code, because
+/// `API.authedSend` hands back a 500 without throwing.
+func v5WriteSettlement(_ result: Result<Bool, Error>) -> V5WriteSettlement {
+    switch result {
+    case .success(let succeeded):
+        return succeeded ? .landed : .didNotLand
+    case .failure(let error):
+        return API.isCancellation(error) ? .cancelled : .didNotLand
+    }
+}
+
+/// Run a write and settle it. The one place the `do/catch` lives, so no
+/// caller re-types it and none of them can go back to `try?`.
+func v5SettleWrite(_ write: () async throws -> Bool) async -> V5WriteSettlement {
+    do { return v5WriteSettlement(.success(try await write())) }
+    catch { return v5WriteSettlement(.failure(error)) }
+}
+
+/// TODAYWRITE-1 · WHAT A ROW THAT SUBMITTED SOMETHING IS CURRENTLY ALLOWED
+/// TO SAY.
+///
+/// Four screens ran the same tiny state machine badly, each in its own way,
+/// and all four got it wrong in the same direction: they moved to the DONE
+/// copy in the button's action handler. One shape here instead, so the
+/// transition is written once and can be walked by a test rather than by
+/// taking down a server (Rule 16, and the reason `API.isCancellation` and
+/// `SettingsHostV5.settlement(landed:)` are extracted the same way).
+///
+/// The `token` is whatever the row needs to name the thing it submitted —
+/// a body part, a check-in row id, a shoe id — so `.failed`'s Retry can
+/// resend THAT, not whatever the row happens to show by then.
+enum V5RowWriteState: Equatable {
+    /// Nothing submitted. The row offers its picker.
+    case idle
+    /// In flight. The row may say it is sending; it may NOT say it is done.
+    case sending(String)
+    /// The server confirmed it. The ONLY state that may carry done copy.
+    case done(String)
+    /// It did not land. The row says so and offers the write again.
+    case failed(String)
+
+    /// The whole transition, as a pure function. This is the line the four
+    /// defects crossed: `.done` is reachable from `.landed` and from nothing
+    /// else.
+    static func settled(_ settlement: V5WriteSettlement, token: String) -> V5RowWriteState {
+        switch settlement {
+        case .landed:     return .done(token)
+        case .didNotLand: return .failed(token)
+        // Torn down mid-write — see `V5WriteSettlement.cancelled`. Back to
+        // the picker, claiming nothing in either direction.
+        case .cancelled:  return .idle
+        }
+    }
+
+    /// The token this state is about, when it has one.
+    var token: String? {
+        switch self {
+        case .idle: return nil
+        case .sending(let t), .done(let t), .failed(let t): return t
+        }
+    }
+
+    /// True while a write this row started has not settled. Guards a second
+    /// submit, and is what the "Sending" copy is gated on.
+    var isSending: Bool { if case .sending = self { return true }; return false }
 }
 
 // MARK: - The three surfaces

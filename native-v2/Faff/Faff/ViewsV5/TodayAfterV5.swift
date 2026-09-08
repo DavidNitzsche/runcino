@@ -47,15 +47,21 @@ struct TodayAfterV5: View {
 
     var onOpenAccount: () -> Void
     /// A body part was picked in the niggle picker. Leaves the screen: the
-    /// caller persists it.
-    var onFlagNiggle: (String) -> Void
+    /// caller persists it and says whether the server took it.
+    ///
+    /// TODAYWRITE-1 · `async -> V5WriteSettlement`, not `-> Void`. This row used
+    /// to move to "<part> flagged · The coach has it, it shapes tomorrow" the
+    /// instant the button was pressed, and that sentence is the CONFIRMED
+    /// row's own copy — so a write that recorded nothing was indistinguishable
+    /// from one that worked. See `V5WriteSettlement` in SurfaceStoreV5.swift.
+    var onFlagNiggle: (String) async -> V5WriteSettlement
     /// "See it in Injury" — this view does not navigate.
     var onOpenInjuryFlare: () -> Void
     /// "Manage shoes", and the fallback when the garage did not arrive.
     var onChangeShoe: () -> Void
     /// A pair was chosen from the menu. Leaves the screen: the caller
-    /// persists it and refreshes.
-    var onPickShoe: (String) -> Void
+    /// persists it, refreshes, and says whether the server took it.
+    var onPickShoe: (String) async -> V5WriteSettlement
     /// Any `whatThisDidToTheWeek` row the server marked actionable, other
     /// than the niggle row this view composes itself.
     var onRowAction: (V5Row) -> Void
@@ -79,10 +85,20 @@ struct TodayAfterV5: View {
     /// Job 1 · "report sick" — a runner who just finished and feels off
     /// should not have to wait for tomorrow's Today to say so. Same
     /// expand-in-place row as the before-run screen; see `SickV5.swift`.
-    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }
+    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .landed }
 
     @State private var niggleOpen = false
-    @State private var niggleFlagged: String?
+    /// TODAYWRITE-1 · WHAT THIS ROW ACTUALLY KNOWS ABOUT THE FLAG.
+    ///
+    /// Was `niggleFlagged: String?`, set optimistically in the button's own
+    /// action — so "<part> flagged · The coach has it, it shapes tomorrow"
+    /// appeared whether or not `POST /api/niggle` wrote anything. Four
+    /// states now, because the runner is owed a different sentence for each
+    /// and the old two could not tell three of them apart. Same shape and
+    /// same reason as `StravaPushUIState` below; see `V5RowWriteState`.
+    @State private var niggleState: V5RowWriteState = .idle
+    /// The same machine for the shoe pick.
+    @State private var shoeState: V5RowWriteState = .idle
 
     /// Ported from `Components/TodayPostRunBody.swift`'s Strava section —
     /// same states, same sheet, same poll. The old naive version here just
@@ -107,10 +123,10 @@ struct TodayAfterV5: View {
 
     init(model: V5Today,
          onOpenAccount: @escaping () -> Void = {},
-         onFlagNiggle: @escaping (String) -> Void = { _ in },
+         onFlagNiggle: @escaping (String) async -> V5WriteSettlement = { _ in .landed },
          onOpenInjuryFlare: @escaping () -> Void = {},
          onChangeShoe: @escaping () -> Void = {},
-         onPickShoe: @escaping (String) -> Void = { _ in },
+         onPickShoe: @escaping (String) async -> V5WriteSettlement = { _ in .landed },
          onRowAction: @escaping (V5Row) -> Void = { _ in },
          onPushStrava: @escaping () -> Void = {},
          onPickDay: @escaping (String) -> Void = { _ in },
@@ -121,7 +137,7 @@ struct TodayAfterV5: View {
          canPageBackward: Bool = true,
          canPageForward: Bool = true,
          initials: String? = nil,
-         onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) -> Void = { _, _, _ in }) {
+         onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .landed }) {
         self.viewingDayLabel = viewingDayLabel
         self.selectedDateISO = selectedDateISO
         self.onBackToToday = onBackToToday
@@ -308,7 +324,11 @@ struct TodayAfterV5: View {
                     }
                 }
                 whatThisDidSection
-                if niggleFlagged != nil {
+                // TODAYWRITE-1 · "If it's still there tomorrow, see Injury"
+                // is advice ABOUT a flag the coach is holding. It is only
+                // true once one actually is, so it follows `.flagged` and
+                // not the attempt.
+                if case .done = niggleState {
                     niggleLink
                 }
                 SickReportRowV5(onReport: onReportSick)
@@ -902,51 +922,61 @@ struct TodayAfterV5: View {
             ListRow(label: shoe.label, sub: shoe.sub, value: Self.fv(shoe.value), onTap: nil)
                 .task { await loadShoesIfNeeded() }
         } else {
-            ExpandingRow(label: shoe.label,
-                         sub: shoe.sub,
-                         value: .measured("Change"),
-                         question: "Which pair did you wear",
-                         isExpanded: $shoePickerOpen) {
-                VStack(spacing: V5.S.s6) {
-                    ForEach(options, id: \.id) { opt in
-                        Button {
-                            if opt.id != shoe.id { onPickShoe(opt.id) }
-                            withAnimation(V5.Motion.expand) { shoePickerOpen = false }
-                        } label: {
-                            HStack(spacing: V5.S.s6) {
-                                VStack(alignment: .leading, spacing: V5.S.s2) {
-                                    Text(opt.label)
-                                        .font(.faffText(TypeScaleV5.body15))
-                                        .foregroundStyle(V5.textPrimary)
-                                    // The mileage rides along, so the list says
-                                    // the same thing about a pair that the row
-                                    // above says about the worn one.
-                                    if let sub = opt.sub, !sub.isEmpty {
-                                        Text(sub)
-                                            .font(.faffText(TypeScaleV5.label13))
-                                            .foregroundStyle(V5.textQuiet)
+            // TODAYWRITE-1 · the failure sits UNDER the row, in the group,
+            // where the pair it is about is still named. `ExpandingRow`
+            // collapses on pick, so a note inside the expansion would
+            // vanish with it.
+            VStack(alignment: .leading, spacing: V5.S.s8) {
+                ExpandingRow(label: shoe.label,
+                             sub: shoeState.isSending ? "Saving" : shoe.sub,
+                             value: .measured("Change"),
+                             question: "Which pair did you wear",
+                             isExpanded: $shoePickerOpen) {
+                    VStack(spacing: V5.S.s6) {
+                        ForEach(options, id: \.id) { opt in
+                            Button {
+                                if opt.id != shoe.id { pickShoe(opt.id) }
+                                withAnimation(V5.Motion.expand) { shoePickerOpen = false }
+                            } label: {
+                                HStack(spacing: V5.S.s6) {
+                                    VStack(alignment: .leading, spacing: V5.S.s2) {
+                                        Text(opt.label)
+                                            .font(.faffText(TypeScaleV5.body15))
+                                            .foregroundStyle(V5.textPrimary)
+                                        // The mileage rides along, so the list says
+                                        // the same thing about a pair that the row
+                                        // above says about the worn one.
+                                        if let sub = opt.sub, !sub.isEmpty {
+                                            Text(sub)
+                                                .font(.faffText(TypeScaleV5.label13))
+                                                .foregroundStyle(V5.textQuiet)
+                                        }
+                                    }
+                                    Spacer(minLength: 0)
+                                    if opt.id == shoe.id {
+                                        Image(systemName: "checkmark")
+                                            .font(.faffText(TypeScaleV5.label13, weight: .semibold))
+                                            .foregroundStyle(V5.textSecondary)
                                     }
                                 }
-                                Spacer(minLength: 0)
-                                if opt.id == shoe.id {
-                                    Image(systemName: "checkmark")
-                                        .font(.faffText(TypeScaleV5.label13, weight: .semibold))
-                                        .foregroundStyle(V5.textSecondary)
-                                }
+                                .padding(.horizontal, V5.S.s14)
+                                .frame(minHeight: 52)
+                                .frame(maxWidth: .infinity)
+                                .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
                             }
-                            .padding(.horizontal, V5.S.s14)
-                            .frame(minHeight: 52)
-                            .frame(maxWidth: .infinity)
-                            .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
+                            .buttonStyle(V5PressStyle())
+                            .accessibilityLabel(opt.id == shoe.id
+                                                ? "\(opt.label), currently worn"
+                                                : opt.label)
                         }
-                        .buttonStyle(V5PressStyle())
-                        .accessibilityLabel(opt.id == shoe.id
-                                            ? "\(opt.label), currently worn"
-                                            : opt.label)
                     }
                 }
+                .task { await loadShoesIfNeeded() }
+                if let failedId = shoePickFailed {
+                    ErrorNote(text: "That pair did not save. The run is still logged against \(shoe.label).",
+                              onRetry: { pickShoe(failedId) })
+                }
             }
-            .task { await loadShoesIfNeeded() }
         }
     }
 
@@ -955,18 +985,11 @@ struct TodayAfterV5: View {
         model.shoeOptions.isEmpty ? fetchedShoes : model.shoeOptions
     }
 
-    /// A `Picker` binding whose setter is the write. Reading it gives the pair
-    /// currently worn, so the tick sits in the right place without this view
-    /// keeping a second copy of that fact.
-    private var shoeSelection: Binding<String> {
-        Binding(
-            get: { model.shoesWorn?.id ?? "" },
-            set: { newId in
-                guard !newId.isEmpty, newId != model.shoesWorn?.id else { return }
-                onPickShoe(newId)
-            }
-        )
-    }
+    // `shoeSelection` removed with TODAYWRITE-1 (2026-09-08). It was a
+    // `Binding<String>` left over from the `Picker` this row used two
+    // redesigns ago; nothing referenced it, and a second, unreachable path
+    // to the same write is exactly what the deployment-discipline doc
+    // forbids leaving behind. `shoeRow`'s buttons call `pickShoe(_:)`.
 
     /// Fetch the garage once, only when the payload did not carry it.
     ///
@@ -1642,14 +1665,53 @@ struct TodayAfterV5: View {
         model.whatThisDidToTheWeek.first { $0.action == "undo_niggle" }?.label
     }
 
+    /// TODAYWRITE-1 · WHAT THE NIGGLE ROW SAYS IN EACH STATE, as a pure
+    /// function of the state, so a test can read the runner's own words
+    /// rather than assert the absence of a bad one (Rule 13 §3, Rule 18).
+    ///
+    /// The invariant this exists to hold: the confirmed sentence — "The
+    /// coach has it" — appears for `.done` and for nothing else.
+    static func niggleCopy(_ state: V5RowWriteState) -> (label: String, sub: String)? {
+        switch state {
+        case .idle:
+            return nil
+        case .sending(let part):
+            // Nothing in the past tense. Nothing has happened yet.
+            return (part, "Sending")
+        case .done(let part):
+            return ("\(part) flagged", "The coach has it \u{00B7} it shapes tomorrow")
+        case .failed(let part):
+            return (part, "Not saved")
+        }
+    }
+
+    /// FOUR ROWS, BECAUSE THERE ARE FOUR FACTS.
+    ///
+    /// `.done` is the ONLY one that says the coach has it, and it is now
+    /// reachable only from a write that came back `.landed`. `.sending`
+    /// states the attempt without asserting its outcome; `.failed` states
+    /// the failure in the runner's own terms and offers the same write
+    /// again, which is what `AddRaceV5` and `RPECaptureRow` already do.
     @ViewBuilder
     private var niggleRow: some View {
-        if let flagged = niggleFlagged {
-            ListRow(label: "\(flagged) flagged",
-                    sub: "The coach has it \u{00B7} it shapes tomorrow",
+        switch niggleState {
+        case .done:
+            let copy = Self.niggleCopy(niggleState)
+            ListRow(label: copy?.label ?? "",
+                    sub: copy?.sub,
                     value: .measured("Undo"),
-                    onTap: { niggleFlagged = nil })
-        } else {
+                    onTap: { niggleState = .idle })
+        case .sending:
+            let copy = Self.niggleCopy(niggleState)
+            ListRow(label: copy?.label ?? "", sub: copy?.sub, value: nil, onTap: nil)
+        case .failed(let part):
+            let copy = Self.niggleCopy(niggleState)
+            VStack(alignment: .leading, spacing: V5.S.s8) {
+                ListRow(label: copy?.label ?? "", sub: copy?.sub, value: nil, onTap: nil)
+                ErrorNote(text: "That did not save, so the coach has not seen it. Nothing was written, so it is safe to try again.",
+                          onRetry: { flagNiggle(part) })
+            }
+        case .idle:
             ExpandingRow(label: "Flag a niggle",
                          sub: "Anything that felt wrong",
                          value: .measured("Add"),
@@ -1658,8 +1720,7 @@ struct TodayAfterV5: View {
                 VStack(spacing: V5.S.s6) {
                     ForEach(Self.bodyParts, id: \.self) { part in
                         Button {
-                            niggleFlagged = part
-                            onFlagNiggle(part)
+                            flagNiggle(part)
                             withAnimation(V5.Motion.expand) { niggleOpen = false }
                         } label: {
                             HStack {
@@ -1681,6 +1742,39 @@ struct TodayAfterV5: View {
                 }
             }
         }
+    }
+
+    /// TODAYWRITE-1 · the one place the flag is attempted, so the button and
+    /// the Retry cannot drift apart (Rule 16). Sets `.flagged` on the
+    /// server's own confirmation and nothing else — the same discipline
+    /// `performStravaPush` above already follows.
+    private func flagNiggle(_ part: String) {
+        guard !niggleState.isSending else { return }
+        niggleState = .sending(part)
+        Task {
+            let settlement = await onFlagNiggle(part)
+            niggleState = .settled(settlement, token: part)
+        }
+    }
+
+    /// TODAYWRITE-1 · the shoe twin. The row itself is drawn from the
+    /// server's model, so there is no optimistic label to suppress here —
+    /// what was missing was the failure being SAID at all: the pick silently
+    /// did nothing and the row went on naming the old pair.
+    private func pickShoe(_ id: String) {
+        guard !shoeState.isSending else { return }
+        shoeState = .sending(id)
+        Task {
+            let settlement = await onPickShoe(id)
+            shoeState = .settled(settlement, token: id)
+        }
+    }
+
+    /// The pair whose write did not land, so Retry resends THAT pair rather
+    /// than whatever the row happens to name by then.
+    private var shoePickFailed: String? {
+        if case .failed(let id) = shoeState { return id }
+        return nil
     }
 
     /// The design's "see 13a" is the deck's own screen id — never shipped
