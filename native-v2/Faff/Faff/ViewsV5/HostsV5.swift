@@ -2206,15 +2206,13 @@ struct TodayHostV5: View {
         return await settleAndReload { try await Self.ok(req) }
     }
 
-    /// The ladder's sibling: the daily flare check-in. The row ids are
-    /// literally the values the endpoint expects, so there is no mapping to
-    /// get wrong.
+    /// The ladder's sibling: the daily flare check-in.
+    ///
+    /// TODAYWRITE-2 · the request itself moved to `V5NiggleCheckIn`, because
+    /// `InjuryPreviewHostV5` draws the SAME view and had no handler at all.
+    /// One builder, so the second caller cannot drift from this one.
     private func checkInNiggle(_ today: String) async -> V5WriteSettlement {
-        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/niggle/recovery"))
-        req.httpMethod = "POST"
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["today": today])
-        return await settleAndReload { try await Self.ok(req) }
+        await reloadIfLanded(await V5NiggleCheckIn.send(today))
     }
 
     private func reportSick(_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement {
@@ -2253,9 +2251,15 @@ struct TodayHostV5: View {
 
     /// Settle the write, and refetch ONLY if the server actually changed.
     private func settleAndReload(_ write: () async throws -> Bool) async -> V5WriteSettlement {
-        let outcome = await v5SettleWrite(write)
-        if outcome == .landed { await surface.load() }
-        return outcome
+        await reloadIfLanded(await v5SettleWrite(write))
+    }
+
+    /// The same rule, for a write that already settled through a shared
+    /// builder. A write that did not land changed nothing, so it
+    /// invalidates nothing.
+    private func reloadIfLanded(_ settled: V5WriteSettlement) async -> V5WriteSettlement {
+        if settled == .landed { await surface.load() }
+        return settled
     }
 
     private func pushStrava(_ model: V5Today) async {
@@ -3580,6 +3584,40 @@ struct FaffV5Root<LiveContent: View>: View {
 // If it does not, the honest answer is that nothing changes, and the screen
 // says so rather than showing a flare that the engine did not call.
 
+/// TODAYWRITE-2 · THE FLARE CHECK-IN WRITE, IN ONE PLACE.
+///
+/// `InjuryFlareV5` is drawn by TWO hosts. `TodayHostV5` passed it a real
+/// `onCheckIn`; `InjuryPreviewHostV5` passed none, so the tap fell through to
+/// the parameter's `= { _ in .landed }` default and settled `.done` — the
+/// "Logged." note — with ZERO network traffic. Not a regression (the code
+/// before TODAYWRITE-1 had the same shape) but it is the one call site where
+/// that fix's claim, "confirmed copy is reachable only from a genuine server
+/// success", did not hold.
+///
+/// The endpoint carries no date: it records a trend against whatever niggle is
+/// currently active. So the answer is the runner's answer on either screen, and
+/// the honest fix is to send it rather than to pretend it was sent.
+enum V5NiggleCheckIn {
+    /// `POST /api/niggle/recovery { today }`. The row ids ARE the values the
+    /// endpoint expects, so there is no mapping to get wrong.
+    static func request(_ today: String) -> URLRequest {
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/niggle/recovery"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["today": today])
+        return req
+    }
+
+    /// `API.authedSend` returns a 500 rather than throwing, so "the call came
+    /// back" is not "the server took it".
+    static func send(_ today: String) async -> V5WriteSettlement {
+        await v5SettleWrite {
+            let (_, http) = try await API.authedSend(request(today))
+            return (200..<300).contains(http.statusCode)
+        }
+    }
+}
+
 struct InjuryPreviewHostV5: View {
     @StateObject private var surface: V5Surface<V5Today>
 
@@ -3603,7 +3641,14 @@ struct InjuryPreviewHostV5: View {
         Group {
             if let model = surface.model {
                 if let injury = model.injury {
-                    InjuryFlareV5(model: injury)
+                    // TODAYWRITE-2 · a REAL handler, not the `.landed`
+                    // default. See `V5NiggleCheckIn` above.
+                    InjuryFlareV5(model: injury,
+                                  onCheckIn: { row in
+                                      let outcome = await V5NiggleCheckIn.send(row.id)
+                                      if outcome == .landed { await surface.load() }
+                                      return outcome
+                                  })
                 } else {
                     // A refusal, not an empty state: we read tomorrow and the
                     // answer is that it still stands.

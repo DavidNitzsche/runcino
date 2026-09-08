@@ -67,12 +67,20 @@ export async function POST(req: NextRequest) {
     );
 
     // 'gone' clears the parent niggle.
+    //
+    // TODAYWRITE-2 (2026-09-08) · EVERY active niggle, not the one row the
+    // select above happened to pick. Same incident and same reasoning as
+    // `app/api/sick/recovery/route.ts` — read that one for the full account.
+    // The trend row above stays against the niggle the runner was looking at.
     if (body.today === 'gone') {
-      await pool.query(
-        `UPDATE niggles SET cleared_at = now() WHERE id = $1`,
-        [active.id],
+      const cleared = await pool.query(
+        `UPDATE niggles
+            SET cleared_at = now()
+          WHERE COALESCE(user_uuid, user_id) = $1
+            AND cleared_at IS NULL`,
+        [userId],
       );
-      return NextResponse.json({ active: false, trend: 'gone' });
+      return NextResponse.json({ active: false, trend: 'gone', cleared: cleared.rowCount ?? 0 });
     }
 
     return NextResponse.json({ active: true, trend: body.today });

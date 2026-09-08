@@ -1,9 +1,11 @@
 /**
  * GET    /api/niggle  — { active: NiggleRow | null }
  * POST   /api/niggle  — body { body_part, side?, severity, status, note? }
- *                       Returns { niggle_id, active: true }
- * DELETE /api/niggle  — clears the most recent active niggle (sets cleared_at).
- *                       Returns { active: false }
+ *                       Returns { niggle_id, active: true }, plus
+ *                       `deduplicated: true` when an IDENTICAL active niggle
+ *                       already existed (TODAYWRITE-2, see POST below).
+ * DELETE /api/niggle  — clears EVERY active niggle for this runner.
+ *                       Returns { active: false, cleared: <count> }
  *
  * "Niggle" = mild musculoskeletal flag the runner reports. The runner can
  * still train; the plan does NOT pause. resolveDayState routes /today
@@ -13,6 +15,13 @@
  * is treated as "the niggle"; older un-cleared rows are tolerated in the
  * schema but ignored by GET. (Multi-niggle is a v1.1 design problem per
  * the deck's footer Q3.)
+ *
+ * TODAYWRITE-2 · that "tolerated" used to mean STRANDED. An older active row
+ * is invisible to GET, so the runner can never see it, and the clear paths
+ * only ever cleared the newest — so it became "the niggle" the moment the
+ * visible one was resolved, with no affordance anywhere to get rid of it.
+ * POST now refuses to create an identical duplicate, and both clear paths
+ * resolve every active row.
  *
  * Auth: requireUserId session auth · same posture as app/api/today/skip.
  *
@@ -81,10 +90,34 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // TODAYWRITE-2 (2026-09-08) · A RETRY MUST NOT OPEN A SECOND NIGGLE.
+    // Identical guard, identical incident, as `app/api/sick/route.ts` POST —
+    // read that route's comment for the 12-second-timeout mechanism, why the
+    // key is natural rather than client-minted, why there is no time window,
+    // and what this guard cannot do. The one difference is the comparison
+    // columns: a niggle is identified by where it hurts and how bad, so a
+    // re-report at a DIFFERENT severity is a real new report and still lands.
     const ins = await pool.query(
-      `INSERT INTO niggles (user_id, user_uuid, body_part, side, severity, status, note)
-       VALUES ($1, $1, $2, $3, $4, $5, $6)
-       RETURNING id`,
+      `WITH existing AS (
+         SELECT id FROM niggles
+          WHERE COALESCE(user_uuid, user_id) = $1::uuid
+            AND cleared_at IS NULL
+            AND body_part = $2
+            AND side IS NOT DISTINCT FROM $3
+            AND severity = $4::int
+            AND status = $5
+            AND note IS NOT DISTINCT FROM $6
+          ORDER BY logged_at ASC
+          LIMIT 1
+       ), inserted AS (
+         INSERT INTO niggles (user_id, user_uuid, body_part, side, severity, status, note)
+         SELECT $1::uuid, $1::uuid, $2, $3, $4::int, $5, $6
+          WHERE NOT EXISTS (SELECT 1 FROM existing)
+         RETURNING id
+       )
+       SELECT id, true  AS is_new FROM inserted
+       UNION ALL
+       SELECT id, false AS is_new FROM existing`,
       [
         userId,
         body.body_part,
@@ -95,6 +128,11 @@ export async function POST(req: NextRequest) {
       ],
     );
     const niggleId = Number(ins.rows[0].id);
+    // Already on file. Nothing written, and the daily check was enqueued when
+    // the first one landed.
+    if (ins.rows[0].is_new === false) {
+      return NextResponse.json({ niggle_id: niggleId, active: true, deduplicated: true });
+    }
     // Notifications v1 §E — enqueue the first daily check for tomorrow 07:15.
     try {
       // 2026-08-17 · resolve the runner's zone up front, so BOTH the fire
@@ -131,18 +169,17 @@ export async function DELETE(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   try {
-    await pool.query(
+    // TODAYWRITE-2 · EVERY active niggle, not just the newest. See the same
+    // change in `app/api/sick/route.ts` DELETE for why an older active row
+    // was both invisible to the runner and unreachable by this endpoint.
+    const cleared = await pool.query(
       `UPDATE niggles
           SET cleared_at = now()
-        WHERE id = (
-          SELECT id FROM niggles
-           WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
-           ORDER BY logged_at DESC
-           LIMIT 1
-        )`,
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND cleared_at IS NULL`,
       [userId],
     );
-    return NextResponse.json({ active: false });
+    return NextResponse.json({ active: false, cleared: cleared.rowCount ?? 0 });
   } catch (err: any) {
     return NextResponse.json({
       error: 'niggle delete failed',

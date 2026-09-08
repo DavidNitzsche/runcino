@@ -412,6 +412,27 @@ enum V5WriteSettlement: Equatable {
     /// evidence the thing it was asked to state is true, so it must not
     /// state it — it says what happened and offers the write again.
     ///
+    /// TODAYWRITE-2 (2026-09-08 review) · AND IT MUST NOT STATE THE OPPOSITE
+    /// EITHER. The first cut of this enum was right and its COPY was not:
+    /// five rows read "Nothing was written", "Not saved", "The coach has not
+    /// seen this yet", "the plan has not changed". Every one of those is a
+    /// confident claim about the SERVER, and this case cannot support one.
+    ///
+    /// `API.authedSend` bounds a request at 12 seconds (TIMEOUT-1). A write
+    /// that reaches the server, is saved, and whose answer is slower than
+    /// that — a cold container is enough — arrives here identical to a write
+    /// that never left. The row then told the runner nothing was written
+    /// about a row that exists, and offered a Retry that inserted a SECOND
+    /// one. `/api/sick` and `/api/niggle` were bare INSERTs, and their
+    /// recovery endpoints cleared only the most recent episode, so the first
+    /// one stayed active forever and the runner stayed in forced rest.
+    ///
+    /// So the copy for this case says what the PHONE knows ("that was not
+    /// confirmed"), never what the server did, and the two routes now refuse
+    /// to duplicate an identical active report. Both halves are required:
+    /// honest copy over a duplicating write is still a trap, and a
+    /// de-duplicating write under lying copy still misinforms the runner.
+    ///
     /// Deliberately one case and not two. A non-2xx and a dropped
     /// connection are different facts, but the phone cannot tell them apart
     /// here (`API.authedSend` returns non-2xx rather than throwing, and the
@@ -424,6 +445,53 @@ enum V5WriteSettlement: Equatable {
     /// failure and not a success: nothing to report, nothing to retry.
     /// Same distinction, same helper, as `load()`'s catch block above.
     case cancelled
+}
+
+/// TODAYWRITE-2 · EVERY SENTENCE A `.didNotLand` ROW IS ALLOWED TO SAY.
+///
+/// These were five string literals buried in five view bodies, and four of
+/// them asserted a fact about the SERVER that the phone had no way to know
+/// ("Nothing was written", "the plan has not changed", "The coach still has
+/// yesterday's answer", "The run is still logged against …"). A literal
+/// inside a `body` cannot be read by a test, which is why nothing caught it
+/// — Rule 20: a product rule with no gate is a hypothesis.
+///
+/// Collected here so `WriteHonestyTests` can walk all of them at once, and
+/// so the next screen that needs one reaches for an existing sentence rather
+/// than inventing a confident new one.
+///
+/// THE SHAPE, and why every one of them holds in BOTH worlds:
+///   · what the PHONE knows — "That was not confirmed" — never what the
+///     server did, because `.didNotLand` covers a refusal AND a write that
+///     landed and lost its answer.
+///   · what MIGHT follow, hedged, so a runner whose write actually landed is
+///     not told a falsehood about their own plan.
+///   · that retrying is safe, which is TRUE because `/api/sick` and
+///     `/api/niggle` now refuse to duplicate an identical active report.
+///     Do not keep this clause if that guard is ever removed.
+enum V5UnconfirmedCopy {
+    /// The niggle flag (`TodayAfterV5`) and the flare check-in
+    /// (`StateScreensV5`). ONE sentence for one situation, not two copies:
+    /// both are "the coach may not have this pain report".
+    static let coachMayNotHaveIt =
+        "That was not confirmed. The coach may not have it yet. Trying again is safe."
+    /// The daily sick trend (`SickV5.SickFlareV5`).
+    static let sickTrend =
+        "That was not confirmed. The coach may not have today's answer. Trying again is safe."
+    /// The sick report itself (`SickV5.SickReportRowV5`).
+    static let sickReport =
+        "That was not confirmed. The coach may not have your report yet. Trying again is safe."
+    /// The shoe pick (`TodayAfterV5`). "Still shows" is a fact about THIS
+    /// SCREEN, true either way — the reload only runs on `.landed`.
+    static func shoePick(current: String) -> String {
+        "That was not confirmed. The run still shows \(current). Trying again is safe."
+    }
+
+    /// Every sentence, for the gate to walk. A new one that is not in here
+    /// is invisible to the test, so add it here rather than inline.
+    static var all: [String] {
+        [coachMayNotHaveIt, sickTrend, sickReport, shoePick(current: "Endorphin Speed 4")]
+    }
 }
 
 /// The whole decision, as a pure function over the two things a write can

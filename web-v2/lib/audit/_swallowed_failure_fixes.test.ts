@@ -211,8 +211,19 @@ describe('a reader may not name a column or a table that is not there', () => {
       // Wrapped, so the failure cannot reach the state change below it.
       expect(s, f).toMatch(/attempt\(\s*\n?\s*'[^']*',\s*\n?\s*pool\.query\(\s*\n?\s*`INSERT INTO sick_recovery/);
       // And the UPDATE comes after it, never inside the same throw path.
-      expect(s.indexOf('INSERT INTO sick_recovery'), f)
-        .toBeLessThan(s.indexOf('UPDATE sick_episodes SET cleared_at'));
+      //
+      // TODAYWRITE-2 (2026-09-08) · matched on a WHITESPACE-NORMALISED copy.
+      // This read `s.indexOf('UPDATE sick_episodes SET cleared_at')`, which
+      // silently became -1 the moment that statement was reformatted across
+      // lines — and `indexOf(...) < -1` is false, so the gate failed for a
+      // reason that had nothing to do with the ordering it guards. The
+      // ordering is the claim; the line breaks are not.
+      const flat = s.replace(/\s+/g, ' ');
+      const insertAt = flat.indexOf('INSERT INTO sick_recovery');
+      const clearAt = flat.indexOf('UPDATE sick_episodes SET cleared_at');
+      expect(insertAt, `${f}: the trend INSERT is gone`).toBeGreaterThan(-1);
+      expect(clearAt, `${f}: the clearing UPDATE is gone`).toBeGreaterThan(-1);
+      expect(insertAt, f).toBeLessThan(clearAt);
     }
   });
 });

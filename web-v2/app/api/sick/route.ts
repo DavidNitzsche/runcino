@@ -1,9 +1,12 @@
 /**
  * GET    /api/sick  — { active: SickRow | null }
  * POST   /api/sick  — body { symptoms[], started, has_fever, note? }
- *                     Returns { episode_id, active: true }
- * DELETE /api/sick  — clears the most recent active episode.
- *                     Returns { active: false }
+ *                     Returns { episode_id, active: true }, plus
+ *                     `deduplicated: true` when an IDENTICAL active episode
+ *                     already existed — a retried report is the same report,
+ *                     not a second illness (TODAYWRITE-2, see POST below).
+ * DELETE /api/sick  — clears EVERY active episode for this runner.
+ *                     Returns { active: false, cleared: <count> }
  *
  * "Sick" = systemic illness. UNLIKE niggle, this PAUSES the plan —
  * resolveDayState routes /today through the `sick` state which renders
@@ -83,10 +86,70 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // ─────────────────────────────────────────────────────────────────────
+    // TODAYWRITE-2 (2026-09-08) · A RETRY MUST NOT OPEN A SECOND EPISODE.
+    //
+    // This was a bare INSERT. `API.authedSend` on the phone bounds a request
+    // at 12 seconds (TIMEOUT-1), so a write that REACHES this route and is
+    // saved, but whose answer is slower than that, settles on the phone as
+    // `.didNotLand` — indistinguishable from a write that never arrived. The
+    // row then offered Retry, the runner took it, and a SECOND active episode
+    // was inserted.
+    //
+    // What that cost: GET and `/api/sick/recovery` both read
+    // `ORDER BY logged_at DESC LIMIT 1`, and recovery cleared only that one
+    // row. So the FIRST episode stayed active forever, the resolver kept
+    // routing /today through the `sick` state, and a runner who had told the
+    // app they were better stayed in forced rest with no way to say otherwise.
+    //
+    // The guard is a NATURAL key, not a client-minted one: an identical
+    // report that is ALREADY ACTIVE is not a second illness, it is the same
+    // one. That matches this table's own documented v1 contract (one active
+    // episode per runner) and needs no schema change, so it is live on the
+    // database as it stands today — the `idempotency_key` + partial-unique
+    // pattern used by `plan_decision_ledger` rides on migrations 165-169,
+    // which are NOT applied to production.
+    //
+    // No time window on purpose. A window would be a Rule 9 cliff: two taps a
+    // hair either side of it would differ in KIND (deduped vs duplicated).
+    // `cleared_at IS NULL` is the honest discrete fact, and it already lets a
+    // genuinely new episode with the same symptoms open once the old one is
+    // resolved.
+    //
+    // Symptoms are compared ORDER-INSENSITIVELY. The phone builds this array
+    // from a `Set`, so two sends of one report can legitimately differ in
+    // element order, and a plain jsonb `=` would call them different reports.
+    //
+    // WHAT THIS GUARD CANNOT DO (Rule 22): it is not atomic. Without a unique
+    // index, two GENUINELY concurrent identical inserts can both see no row
+    // and both write. It is a single statement, and the phone blocks a second
+    // submit while one is in flight (`V5RowWriteState.isSending`), so the
+    // sequential-retry case this exists for is closed; the concurrent case
+    // degrades to today's behaviour, never worse.
+    const CANONICAL_SYMPTOMS = `
+      (SELECT COALESCE(jsonb_agg(x ORDER BY x), '[]'::jsonb)
+         FROM jsonb_array_elements_text(%s) x)`;
     const ins = await pool.query(
-      `INSERT INTO sick_episodes (user_id, user_uuid, symptoms, started, has_fever, note)
-       VALUES ($1, $1, $2::jsonb, $3, $4, $5)
-       RETURNING id`,
+      `WITH existing AS (
+         SELECT id FROM sick_episodes
+          WHERE COALESCE(user_uuid, user_id) = $1::uuid
+            AND cleared_at IS NULL
+            AND started = $3
+            AND has_fever = $4::boolean
+            AND note IS NOT DISTINCT FROM $5
+            AND ${CANONICAL_SYMPTOMS.replace('%s', 'symptoms')}
+              = ${CANONICAL_SYMPTOMS.replace('%s', '$2::jsonb')}
+          ORDER BY logged_at ASC
+          LIMIT 1
+       ), inserted AS (
+         INSERT INTO sick_episodes (user_id, user_uuid, symptoms, started, has_fever, note)
+         SELECT $1::uuid, $1::uuid, $2::jsonb, $3, $4::boolean, $5
+          WHERE NOT EXISTS (SELECT 1 FROM existing)
+         RETURNING id
+       )
+       SELECT id, true  AS is_new FROM inserted
+       UNION ALL
+       SELECT id, false AS is_new FROM existing`,
       [
         userId,
         JSON.stringify(body.symptoms),
@@ -96,6 +159,12 @@ export async function POST(req: NextRequest) {
       ],
     );
     const episodeId = Number(ins.rows[0].id);
+    // The report was already on file. Nothing was written, and the daily
+    // check was enqueued when the first one landed, so enqueueing again
+    // would notify the runner twice for one illness.
+    if (ins.rows[0].is_new === false) {
+      return NextResponse.json({ episode_id: episodeId, active: true, deduplicated: true });
+    }
     // Notifications v1 §E — enqueue the first daily sick check for tomorrow 07:15.
     try {
       // 2026-08-17 · resolve the runner's zone up front, so BOTH the fire
@@ -131,18 +200,23 @@ export async function DELETE(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   try {
-    await pool.query(
+    // TODAYWRITE-2 · EVERY active episode, not just the newest.
+    //
+    // This cleared `id = (… ORDER BY logged_at DESC LIMIT 1)`. GET reads the
+    // newest active row too, so any older active row was invisible to the
+    // runner AND unreachable by this endpoint: it could never be cleared, and
+    // it became "the episode" the moment the newest one was resolved. The
+    // runner said they were better and the app put them straight back into
+    // forced rest. Clearing is the runner's statement about THEMSELVES, so it
+    // resolves everything that statement covers.
+    const cleared = await pool.query(
       `UPDATE sick_episodes
           SET cleared_at = now()
-        WHERE id = (
-          SELECT id FROM sick_episodes
-           WHERE COALESCE(user_uuid, user_id) = $1 AND cleared_at IS NULL
-           ORDER BY logged_at DESC
-           LIMIT 1
-        )`,
+        WHERE COALESCE(user_uuid, user_id) = $1
+          AND cleared_at IS NULL`,
       [userId],
     );
-    return NextResponse.json({ active: false });
+    return NextResponse.json({ active: false, cleared: cleared.rowCount ?? 0 });
   } catch (err: any) {
     return NextResponse.json({
       error: 'sick delete failed',
