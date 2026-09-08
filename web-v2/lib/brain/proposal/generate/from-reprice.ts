@@ -118,11 +118,24 @@ function directionOfDelta(delta: number): 'MORE' | 'LESS' | 'NEUTRAL' {
   return delta <= -1 ? 'MORE' : delta >= 1 ? 'LESS' : 'NEUTRAL';
 }
 
-/** `threshold_s_per_mi` and friends, as the lever the runner reads. */
+/**
+ * `threshold_s_per_mi` and friends, as the lever the runner reads.
+ *
+ * REPRICESUBJECT-1 (2026-09-08) · `shakeout_ceiling_s_per_mi` used to fall
+ * through to THRESHOLD, which is visible in proposal 12's stored payload:
+ * two parts both labelled THRESHOLD, one NEUTRAL (the real threshold, 430 ->
+ * 430) and one MORE (the shakeout ceiling, 532 -> 522). One label, two
+ * numbers, opposite directions — Rule 16 exactly. A shakeout ceiling is the
+ * slow end of the easy family, so it reads as EASY.
+ *
+ * The unmatched fall-through is still THRESHOLD, because `RepricePayload`'s
+ * six anchors are all matched above and a seventh anchor arriving here is a
+ * change that should be made deliberately rather than absorbed silently.
+ */
 function leverOfAnchorKey(key: string): 'THRESHOLD' | 'MARATHON' | 'INTERVAL' | 'EASY' {
   const k = key.toLowerCase();
   if (k.includes('marathon')) return 'MARATHON';
   if (k.includes('interval') || k.includes('vo2') || k.includes('rep')) return 'INTERVAL';
-  if (k.includes('easy')) return 'EASY';
+  if (k.includes('easy') || k.includes('shakeout')) return 'EASY';
   return 'THRESHOLD';
 }

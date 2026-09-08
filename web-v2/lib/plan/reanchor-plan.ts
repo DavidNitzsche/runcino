@@ -88,10 +88,10 @@ import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-a
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import { mutatePlan } from './mutate';
 import {
-  writeReanchorProposal, pricedAnchorsOf,
+  writeReanchorProposal, pricedAnchorsOf, anchorMovesBetween,
   type RepriceProposalOutcome,
 } from './reanchor-proposal';
-import type { RepriceArm } from './reprice-payload';
+import { repriceSubject, type RepriceArm, type RepriceAnchorMove } from './reprice-payload';
 import { fmtPace } from '@/lib/format/run';
 import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 import { recordPaceZoneEvent, type PaceZoneEvidenceSource } from './pace-drop-event';
@@ -384,26 +384,49 @@ export type ReanchorMode = 'propose' | 'apply';
  * and it names what was measured rather than how the engine feels about it —
  * `describesEvidence` is applied at the write site and refuses anything that
  * does not.
+ *
+ * ── REPRICESUBJECT-1 (2026-09-08) · IT NAMES WHAT MOVED ────────────────────
+ *
+ * Until today the SUBJECT of the sentence was hardcoded to threshold, on both
+ * branches, whatever the repricing had actually done. Proposal 12 in the
+ * owner's account is what that cost: headline "76 sessions ahead move to
+ * faster paces" over a body reading "puts your threshold at 7:10 per mile.
+ * This block is written at 7:10 per mile" — because his threshold had gone
+ * 430 -> 430 and the move was entirely in the easy (502 -> 492) and shakeout
+ * (532 -> 522) ceilings, neither of which the card named anywhere.
+ *
+ * `moves` is the same `anchorMoves` array the payload carries and the card
+ * renders, so the prose and the structured parts cannot disagree about which
+ * anchor this repricing is about. `repriceSubject` prefers threshold WHEN IT
+ * MOVED, which keeps the common sentence byte-identical to what shipped, and
+ * otherwise names the largest anchor that did. When it refuses — no anchor
+ * moved visibly, or `moves` was not supplied — the threshold numbers are used
+ * exactly as before, and the existing null-side fallback still applies.
  */
 export function repriceReason(opts: {
   arm: RepriceArm;
   fromThresholdSecPerMi: number | null;
   toThresholdSecPerMi: number | null;
+  /** Every anchor's before and after. Optional only so a caller that genuinely
+   *  has no move set still compiles; every live call site passes it. */
+  moves?: readonly RepriceAnchorMove[] | null;
   evidence?: ReanchorEvidence | null;
 }): string {
-  const to = fmtPace(opts.toThresholdSecPerMi);
-  const from = fmtPace(opts.fromThresholdSecPerMi);
+  const subject = repriceSubject(opts.moves);
+  const label = subject?.label ?? 'threshold';
+  const to = fmtPace(subject != null ? subject.toSecPerMi : opts.toThresholdSecPerMi);
+  const from = fmtPace(subject != null ? subject.fromSecPerMi : opts.fromThresholdSecPerMi);
   if (opts.arm === 'canonical-prior') {
     return 'This block was priced before the canonical pace layer read your history. '
       + (to != null
-        ? `Your evidence puts threshold at ${to} per mile, and the block is written at ${from ?? 'another number'}.`
+        ? `Your evidence puts ${label} at ${to} per mile, and the block is written at ${from ?? 'another number'}.`
         : 'Repricing it puts every session on the anchors the rest of the app reads.');
   }
   const source = opts.evidence?.source === 'race' ? 'A race result' : 'Your recent training';
   if (to == null || from == null) {
     return `${source} moved the fitness anchor this block is priced from.`;
   }
-  return `${source} puts your threshold at ${to} per mile. This block is written at ${from} per mile.`;
+  return `${source} puts your ${label} at ${to} per mile. This block is written at ${from} per mile.`;
 }
 
 /**
@@ -532,6 +555,10 @@ async function reanchorOffCanonicalPrior(
         arm: 'canonical-prior',
         fromThresholdSecPerMi: priced?.threshold_s_per_mi != null ? Number(priced.threshold_s_per_mi) : null,
         toThresholdSecPerMi: anchors.thresholdSecPerMi,
+        // The SAME array `writeReanchorProposal` puts in the payload and the
+        // card renders, so the sentence cannot name an anchor the parts list
+        // disagrees about (REPRICESUBJECT-1).
+        moves: anchorMovesBetween(priced, anchors),
       }),
       evidence: {
         anchor_source: sourceMode,
@@ -935,6 +962,7 @@ async function reanchorRacePrep(
         arm: 'race-prep',
         fromThresholdSecPerMi: priced?.threshold_s_per_mi != null ? Number(priced.threshold_s_per_mi) : null,
         toThresholdSecPerMi: live.anchors.thresholdSecPerMi,
+        moves: anchorMovesBetween(priced, live.anchors),
         evidence,
       }),
       evidence: {
@@ -1096,6 +1124,7 @@ async function reanchorMaintenance(
         arm: 'maintenance',
         fromThresholdSecPerMi: priced?.threshold_s_per_mi != null ? Number(priced.threshold_s_per_mi) : null,
         toThresholdSecPerMi: anchors.thresholdSecPerMi,
+        moves: anchorMovesBetween(priced, anchors),
         evidence,
       }),
       evidence: {

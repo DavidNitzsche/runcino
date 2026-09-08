@@ -83,7 +83,7 @@
  */
 import { rowOrNull } from '@/lib/db/read';
 import { pool } from '@/lib/db/pool';
-import { fmtPace } from '@/lib/format/run';
+import { fmtPace, paceDisplayChanges } from '@/lib/format/run';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import { anchorVdotFromState } from '@/lib/training/pace-anchor';
 import {
@@ -91,13 +91,19 @@ import {
   pricedAnchorsOf,
   type RepriceProposalOutcome,
 } from '@/lib/plan/reanchor-proposal';
-import type { RepriceArm } from '@/lib/plan/reprice-payload';
+import { repriceSubject, type RepriceArm, type RepriceAnchorMove } from '@/lib/plan/reprice-payload';
 import type { PaceDriftFinding } from './pace-drift-monitor';
 
 /** Pure — no formatting decision lives twice (Rule 16). Same function every
- *  pace-displaying surface calls. */
+ *  pace-displaying surface calls, and since 2026-09-08 that is literally one
+ *  function: `paceDisplayChanges` in `lib/format/run.ts`, beside the `fmtPace`
+ *  whose rounding decides the answer. `repriceReason` needed the identical
+ *  question ("did this anchor actually move, as far as the runner can see")
+ *  and a second copy of `fmtPace(a) !== fmtPace(b)` is exactly the drift Rule
+ *  16 is about. The name stays here because it says what the DRIFT MONITOR is
+ *  asking; the arithmetic lives once. */
 export function isRunnerVisibleDrift(persistedSecPerMi: number, liveSecPerMi: number): boolean {
-  return fmtPace(persistedSecPerMi) !== fmtPace(liveSecPerMi);
+  return paceDisplayChanges(persistedSecPerMi, liveSecPerMi);
 }
 
 export type AutoProposeOutcome =
@@ -127,14 +133,29 @@ export type AutoProposeOutcome =
  * stale. `describesEvidence` (`lib/brain/objective.ts`) only requires a
  * concrete, non-dispositional sentence of length >= 12; naming both numbers
  * satisfies that on its own terms.
+ *
+ * REPRICESUBJECT-1 (2026-09-08) · it names the anchor that actually drifted.
+ * This function carried the same defect `repriceReason` did — threshold was
+ * hardcoded as the subject, so a pass whose only visible findings were on the
+ * easy or shakeout ceiling would print two identical threshold numbers and
+ * explain nothing. The subject now comes from the VISIBLE findings themselves,
+ * through the same `repriceSubject` the card's own sentence uses.
  */
-function driftReason(toSecPerMi: number | null, fromSecPerMi: number | null): string {
-  const to = fmtPace(toSecPerMi);
-  const from = fmtPace(fromSecPerMi);
+function driftReason(
+  moves: readonly RepriceAnchorMove[],
+  toSecPerMi: number | null,
+  fromSecPerMi: number | null,
+): string {
+  const subject = repriceSubject(moves);
+  const label = subject?.label ?? 'threshold';
+  const to = fmtPace(subject != null ? subject.toSecPerMi : toSecPerMi);
+  const from = fmtPace(subject != null ? subject.fromSecPerMi : fromSecPerMi);
   if (to == null || from == null) {
-    return 'The pace resolvers calculate a different threshold pace than this block is currently written at.';
+    // No " pace" suffix: three of the six labels already end in the word, and
+    // "a different interval pace pace" is how a template betrays itself.
+    return `The pace resolvers calculate a different ${label} than this block is currently written at.`;
   }
-  return `The canonical pace resolvers put threshold at ${to} per mile today. This block is still written at ${from} per mile.`;
+  return `The canonical pace resolvers put ${label} at ${to} per mile today. This block is still written at ${from} per mile.`;
 }
 
 /**
@@ -205,7 +226,19 @@ export async function autoProposeForUnexplainedDrift(
     measured: sourceMode === 'direct',
     pricedAnchors: priced,
     liveAnchors: anchors,
-    reason: driftReason(anchors.thresholdSecPerMi, pricedThreshold),
+    /* The VISIBLE findings are what triggered this pass, so they are what the
+     * sentence is entitled to talk about — persisted row on the left, live
+     * resolver on the right, exactly as `RepriceAnchorMove` reads. Threshold
+     * stays as the fallback pair for the case where no finding is nameable. */
+    reason: driftReason(
+      visible.map((f): RepriceAnchorMove => ({
+        key: f.anchorKey,
+        fromSecPerMi: f.persistedSecPerMi,
+        toSecPerMi: f.liveSecPerMi,
+      })),
+      anchors.thresholdSecPerMi,
+      pricedThreshold,
+    ),
     evidence: {
       detector: 'pace-drift-monitor',
       visible_findings: visible.map((f) => ({
