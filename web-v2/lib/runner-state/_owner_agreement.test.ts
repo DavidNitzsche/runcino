@@ -996,6 +996,14 @@ describe('OWNER-AGREEMENT-1 · registry hygiene', () => {
 
 describe('OWNER-AGREEMENT-1 · the owners actually agree', () => {
   it('7 · LIVENESS · every registered PURE site resolved for at least one runner', async () => {
+    // Cold-cache: readAll() below walks every PURE site against production and
+    // populates CACHE for the rest of this file's tests. Under a busy Railway
+    // build container this real network+DB walk has now failed the build
+    // twice by exceeding vitest's 5000ms default (2026-09-08, two separate
+    // deploys), with no evidence the query itself was slow versus the build
+    // container being loaded. 20000ms gives real headroom without hiding a
+    // genuine regression — a query that takes 20s here is still worth
+    // failing on.
     const readings = await readAll();
     expect(readings.length, 'nothing resolved at all').toBeGreaterThan(50);
     const resolvedFor = new Map<string, number>();
@@ -1007,7 +1015,7 @@ describe('OWNER-AGREEMENT-1 · the owners actually agree', () => {
       dark,
       'these sites refused for every runner in the matrix · a producer that never answers is compared against nothing and this gate would report clean about it forever (Rule 18 point 2)',
     ).toEqual([]);
-  });
+  }, 20000);
 
   it('8 · no two production-reachable owners disagree beyond what is argued', async () => {
     const readings = await readAll();
