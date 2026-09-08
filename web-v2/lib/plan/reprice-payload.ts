@@ -257,7 +257,13 @@ export function repriceSubject(
     if (!paceDisplayChanges(from, to)) continue;
     candidates.push({
       key: m.key,
-      label: REPRICE_ANCHOR_LABEL[m.key] ?? 'training paces',
+      /* Singular, because the label becomes the SUBJECT of two sentences that
+       * both take a singular verb — "Training paceS MOVES to 7:20 across the
+       * block" was the reading, and verb agreement only shows up once you look
+       * at the rendered string (Rule 13 clause 3). Unreachable today: all six
+       * keys `reanchor-proposal.ts` writes are in the table above. It is a
+       * seventh anchor's landing pad, and it should land grammatical. */
+      label: REPRICE_ANCHOR_LABEL[m.key] ?? 'training pace',
       fromSecPerMi: from,
       toSecPerMi: to,
     });
@@ -351,6 +357,41 @@ export function repriceSubject(
  *   direction word, so it does not contradict the chip in prose; closing the
  *   sign divergence properly means deciding which anchor represents a
  *   repricing, which is a separate decision and not this one.
+ * · THE CHIP CAN ALSO READ `hold` WHILE THIS HEADLINE NAMES A REAL MOVE, which
+ *   is the SECOND divergence and is not the sign one. Found by independent
+ *   review of REPRICEHEADLINE-1 and then MEASURED rather than reasoned about,
+ *   by walking one anchor across the boundary with the other five held still
+ *   (`directionOf` and `headlineFor`, the two functions the card actually
+ *   calls):
+ *
+ *     easy ceiling 502 -> 497   mean -0.83   chip hold   "Easy ceiling moves to 8:17 across the block"
+ *     easy ceiling 502 -> 496   mean -1.00   chip push   "Easy ceiling moves to 8:16 across the block"
+ *     easy ceiling 502 -> 492   mean -1.67   chip push   "Easy ceiling moves to 8:12 across the block"
+ *
+ *   `directionOfDelta`'s dead band is +/-1 s/mi and the mean divides by all
+ *   SIX anchors, so any single anchor moving 1 to 5 s/mi alone lands inside
+ *   it. That is not a corner: it is every small one-anchor repricing, and
+ *   `writeReanchorProposal` raises those (it refuses only when EVERY anchor
+ *   moves < 1 s/mi).
+ *
+ *   THIS DIFF INTRODUCED IT, and saying so is the point of this block. The old
+ *   headline read the same mean the chip does, so at -0.83 it said "76
+ *   sessions ahead get updated paces" and the two agreed by construction —
+ *   they agreed because both were vague, which is the defect, not the fix.
+ *   Naming the mover is right; it just stops the headline and the chip being
+ *   the same sentence twice.
+ *
+ *   NOT FIXED HERE, deliberately, and the reason is the one directly above:
+ *   sourcing the chip from `repriceSubject` is the Rule 9 cliff already
+ *   rejected. Widening or narrowing the dead band only RELOCATES it (Rule 9
+ *   again: "widening a tolerance around the same threshold relocates the
+ *   cliff, it does not remove it"). The honest fix is a fourth state — the
+ *   card saying "this moves, a little" rather than choosing between "push" and
+ *   "hold" — and that is a new `V5ProposalDirection`, a phone-side drawing
+ *   rule and a colour, which is a design decision and a native change, not a
+ *   backend patch. Until someone makes it, the runner reads a `hold` chip over
+ *   a headline that names a specific new pace, and the headline is the half
+ *   that is telling him the truth.
  * · WHETHER THE REPRICING IS RIGHT. `reanchor-plan.ts` owns that.
  * · ALREADY-STORED ROWS. `toWire` reads the persisted `describe`, so this
  *   applies to the next repricing and does not rewrite proposal 12.

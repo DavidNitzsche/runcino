@@ -32,7 +32,7 @@
       "direction": "push",
       "standing": "proposal",
       "headline": "Easy ceiling moves to 8:12 across the block",
-      "why": "Your recent training puts your easy ceiling at 8:12 per mile. This block is written at 8:22 per mile.",
+      "why": "Your recent training puts your threshold at 7:10 per mile. This block is written at 7:10 per mile.",
       "detail": {
         "evidenceUsed": [
           "The read comes from your own recent training, not from a race, and it is held with high confidence.",
@@ -204,6 +204,31 @@
         ],
         "policyAssumptions": null
       }
+    },
+    {
+      "id": "108",
+      "dateISO": "2026-09-14",
+      "direction": "push",
+      "standing": "proposal",
+      "headline": "Easy ceiling moves to 8:12 across the block",
+      "why": "Your recent training puts your easy ceiling at 8:12 per mile. This block is written at 8:22 per mile.",
+      "detail": {
+        "evidenceUsed": [
+          "The read comes from your own recent training, not from a race, and it is held with high confidence.",
+          "Your fitness reads level with what this block was priced at. This is not a fitness change: the paces the block is written at have drifted from what your evidence now supports."
+        ],
+        "missingEvidence": [],
+        "optionsConsidered": null,
+        "earningConditions": null,
+        "reassessOnISO": null,
+        "affectedWorkouts": [
+          {
+            "dateISO": "2026-09-14",
+            "what": "76 prescribed sessions, from this day to the end of the block"
+          }
+        ],
+        "policyAssumptions": null
+      }
     }
   ],
   "proposalsRead": "ok",
@@ -268,8 +293,17 @@
       "decidedISO": "2026-09-08",
       "direction": "push",
       "outcome": "pending",
-      "headline": "76 sessions ahead move to faster paces",
+      "headline": "Easy ceiling moves to 8:12 across the block",
       "why": "Your recent training puts your threshold at 7:10 per mile. This block is written at 7:10 per mile."
+    },
+    {
+      "id": "w108",
+      "dateISO": "2026-09-14",
+      "decidedISO": "2026-09-08",
+      "direction": "push",
+      "outcome": "pending",
+      "headline": "Easy ceiling moves to 8:12 across the block",
+      "why": "Your recent training puts your easy ceiling at 8:12 per mile. This block is written at 8:22 per mile."
     },
     {
       "id": "p9",

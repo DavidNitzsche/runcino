@@ -49,11 +49,20 @@
  *   · WHETHER THE REPRICING IS CORRECT. Whether 492 is the right easy ceiling
  *     is `_recompute_paces.test.ts`'s question. This file only asks whether
  *     the card describes the payload it is attached to.
- *   · THE DIRECTION CHIP. It still comes from `meanAnchorDeltaSecPerMi` and
- *     can still disagree in SIGN with the anchor the headline names. That is
- *     documented and deliberate (`repriceHeadline`'s header says why sourcing
- *     it from the subject would be a Rule 9 cliff), and nothing here would go
- *     red if it changed.
+ *   · THE DIRECTION CHIP, IN SIGN. It still comes from
+ *     `meanAnchorDeltaSecPerMi` and can still disagree in SIGN with the anchor
+ *     the headline names. That is documented and deliberate
+ *     (`repriceHeadline`'s header says why sourcing it from the subject would
+ *     be a Rule 9 cliff), and nothing here would go red if it changed.
+ *   · THE DIRECTION CHIP, IN MAGNITUDE — a SECOND divergence, found by
+ *     independent review of this change and NOT the sign one. The chip's dead
+ *     band is +/-1 s/mi over a mean divided by all six anchors, so any single
+ *     anchor moving 1 to 5 s/mi alone draws `hold` while this headline names
+ *     a specific new pace. This file DOES now pin that (`RULE 22 · the chip
+ *     can read hold ...` below), which is the only bullet in this list that
+ *     is checked rather than merely admitted: the divergence is deliberate
+ *     for now, so the pin exists to make anyone who closes it come back and
+ *     delete this paragraph (Rule 20) rather than to defend it.
  *   · THE PHONE. `describe` is a string; whether `ProposalCardV5` draws it is
  *     Rule 13's question and was answered by rendering, not here.
  *   · ALREADY-STORED ROWS. Row 12 keeps its old headline, because `toWire`
@@ -225,6 +234,62 @@ suite('REPRICEHEADLINE-1 · the headline names what moved', () => {
     expect(seen[0]).toBe('Easy ceiling moves to 8:21 across the block');
     expect(seen[seen.length - 1]).toBe('Easy ceiling moves to 8:10 across the block');
     expect(new Set(seen).size).toBe(seen.length);
+  });
+
+  it('RULE 22 · the chip can read hold while the headline names a real move', async () => {
+    /* REPRICEHEADLINE-2 (2026-09-08) · the divergence this diff INTRODUCED,
+     * pinned so it cannot be forgotten and cannot be closed silently.
+     *
+     * Before REPRICEHEADLINE-1 the headline read the same mean the chip does,
+     * so at a mean inside the dead band it said "get updated paces" and the
+     * two agreed by construction. They agreed because both were vague. Naming
+     * the mover is right; it just stops the headline restating the chip.
+     *
+     * MEASURED, not reasoned about, and through the two functions the card
+     * actually calls rather than through the composer alone — a divergence
+     * between two surfaces is invisible to a test that only asks one of them.
+     *
+     * If this ever goes red because the chip learnt a fourth state, that is
+     * the fix landing: delete this case and the paragraph in
+     * `repriceHeadline`'s header that promises it. */
+    const { directionOf, headlineFor } = await import('@/lib/faff/v5-proposals');
+
+    const cardFor = (easyTo: number) => {
+      const moves: RepriceAnchorMove[] = ROW12.map((m) => (
+        m.key === 'easy_ceiling_s_per_mi' ? { ...m, toSecPerMi: easyTo } : { ...m, toSecPerMi: m.fromSecPerMi! }
+      ));
+      const mean = moves.reduce((s, m) => s + (m.toSecPerMi - m.fromSecPerMi!), 0) / moves.length;
+      const payload = payloadOf(moves, mean, 76);
+      const actionPayload = { reprice: payload };
+      return {
+        mean,
+        chip: directionOf('reprice', actionPayload),
+        headline: headlineFor({
+          id: 999, userUuid: 'u', planWorkoutId: 'w', workoutDateISO: '2026-09-14',
+          actionKind: 'reprice', actionPayload, evidence: {}, status: 'pending',
+          reason: 'x', createdAt: '2026-09-08T07:00:00.000Z',
+        } as unknown as Parameters<typeof headlineFor>[0]),
+      };
+    };
+
+    // 5 s/mi on one anchor: a real, runner-visible move, and a `hold` chip.
+    const small = cardFor(497);
+    expect(small.mean).toBeCloseTo(-5 / 6, 6);
+    expect(small.headline).toBe('Easy ceiling moves to 8:17 across the block');
+    expect(small.chip).toBe('hold');
+
+    // One second more and the mean clears the band. Same KIND of headline,
+    // one second of pace apart — so the headline is continuous across the
+    // boundary (Rule 9) and it is the CHIP that steps.
+    const justOver = cardFor(496);
+    expect(justOver.mean).toBeCloseTo(-1, 6);
+    expect(justOver.headline).toBe('Easy ceiling moves to 8:16 across the block');
+    expect(justOver.chip).toBe('push');
+
+    // And row 12's own numbers, where two anchors moved 10 s/mi each, are
+    // comfortably clear of it. The divergence is a SMALL-move phenomenon.
+    const rowTwelve = { chip: directionOf('reprice', { reprice: payloadOf(ROW12, ROW12_MEAN, 76) }) };
+    expect(rowTwelve.chip).toBe('push');
   });
 
   it('RATCHET · only reprice-payload.ts composes this sentence', () => {
