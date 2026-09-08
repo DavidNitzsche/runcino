@@ -403,10 +403,18 @@ describe('GUARD 5 · the phone can draw a repricing', () => {
     expect(wire?.detail.affectedWorkouts?.[0].what).toContain('12');
   });
 
-  it('the headline names the block, in the coach voice', () => {
+  /* REPRICEHEADLINE-1 (2026-09-08) · the headline names the ANCHOR that moved
+   * and the pace it moves to, not the number of sessions. David, on the card
+   * this suite pinned: "I don't care about '76 sessions' I just care about
+   * what you told me tbh." The count is still drawn, once, by `affectedFrom`
+   * as its own SESSIONS AFFECTED row — asserted two tests above this one.
+   * `payloadFor` moves threshold from 430, so -10 is 7:00 and +9 is 7:19. */
+  it('the headline names what moved, in the coach voice', () => {
     const faster = headlineFor(cardRow(payloadFor(-10, 31)));
-    expect(faster).toBe('31 sessions ahead move to faster paces');
-    expect(headlineFor(cardRow(payloadFor(9, 4)))).toBe('4 sessions ahead move to easier paces');
+    expect(faster).toBe('Threshold moves to 7:00 across the block');
+    expect(headlineFor(cardRow(payloadFor(9, 4)))).toBe('Threshold moves to 7:19 across the block');
+    // A move under a rounded second is not one the runner can see, so no
+    // anchor is nameable and the scope sentence is what stays true (Rule 11).
     expect(headlineFor(cardRow(payloadFor(0, 1)))).toBe('1 session ahead gets updated paces');
     for (const s of [faster, headlineFor(cardRow(payloadFor(9, 4)))]) {
       expect(s, 'coach voice · no em dash').not.toMatch(/—/);

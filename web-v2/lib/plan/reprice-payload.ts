@@ -278,6 +278,128 @@ export function repriceSubject(
   });
 }
 
+/* ══════════════════════════════════════════════════════════════════════════
+ * THE HEADLINE (REPRICEHEADLINE-1, 2026-09-08)
+ *
+ * ── THE DEFECT, AS THE RUNNER MET IT ───────────────────────────────────────
+ *
+ * Proposal 12 again, the same card REPRICESUBJECT-1 was found on. Its stored
+ * headline, still on the pending row:
+ *
+ *     "76 sessions ahead move to faster paces"
+ *
+ * David: "This is nice and I agree this shouldn't be buried and on today is a
+ * good spot. But it's confusing. Are paces already at 7:10?" And then, when
+ * the count was offered as the explanation: "I don't care about '76 sessions'
+ * I just care about what you told me tbh."
+ *
+ * Three things were wrong with that sentence, and the count was only one:
+ *
+ *   1 · IT LED WITH SCOPE, NOT WITH WHAT CHANGED. `ProposalCardV5`'s own
+ *       header states the contract the card is built on — "direction is which
+ *       way, standing is what kind of thing, headline is what changes, `why`
+ *       is the evidence, the date is when. None of them restates another."
+ *       Every other headline in `actionHeadline` keeps it: "Threshold pace
+ *       moves to 7:10", "Thursday goes to 9 mi". The repricing headline was
+ *       the one that answered a different question — how MANY — and so it was
+ *       the one the runner could not act on.
+ *
+ *   2 · IT PRINTED THE COUNT TWICE. `affectedFrom` in `lib/faff/v5-proposals.ts`
+ *       already draws SESSIONS AFFECTED as "76 prescribed sessions, from this
+ *       day to the end of the block", which says it better and with the scope
+ *       spelled out. Rule 17: the runner reads a sentence once, in the place
+ *       it is most useful, and that place is the row built for it.
+ *
+ *   3 · IT ASSERTED A DIRECTION THE BODY COULD NOT CORROBORATE. "faster paces"
+ *       came from `meanAnchorDeltaSecPerMi`, a mean over ALL SIX anchors
+ *       INCLUDING THE FOUR THAT DID NOT MOVE: on row 12 the easy and shakeout
+ *       ceilings each moved 10 s/mi faster and the mean reported -3.33. The
+ *       runner is told "faster", looks at the pace he reasons in, finds it
+ *       exactly where it was, and asks the question David asked. The mean is
+ *       an engine-internal aggregate; it is not a fact about any pace he runs.
+ *
+ * ── THE RULE THIS ENCODES ──────────────────────────────────────────────────
+ *
+ * The headline names the SAME anchor the body names, with the pace it moves
+ * to. One repricing, one subject, one number, across the card (Rule 16) — the
+ * headline and `repriceReason` both resolve through `repriceSubject`, so they
+ * cannot pick different anchors and cannot describe different moves. The card
+ * then reads as one sentence continued rather than as two disconnected facts:
+ *
+ *     Easy ceiling moves to 8:12 across the block
+ *     Your recent training puts your easy ceiling at 8:12 per mile. This
+ *     block is written at 8:22 per mile.
+ *
+ * "across the block" carries the scope QUALITATIVELY, which is the part the
+ * runner needs in order to read this as more than a single day, and leaves
+ * the number to SESSIONS AFFECTED. No unit on the headline: the body says
+ * "per mile" one line down and `actionHeadline`'s own PACE_CHANGE sentence
+ * omits it for the same reason.
+ *
+ * ── WHAT THIS DELIBERATELY DOES NOT CHANGE (Rule 22) ───────────────────────
+ *
+ * · THE DIRECTION CHIP still comes from `meanAnchorDeltaSecPerMi`, and it can
+ *   still disagree in sign with the anchor this headline names — the `from`
+ *   side is a PERSISTED stamp and the `to` side is a LIVE resolver, so the
+ *   anchors genuinely move independently (row 12 is the proof: four identical,
+ *   two moved 10 s/mi). Sourcing the chip from the subject instead was
+ *   considered and REJECTED as a Rule 9 cliff: `repriceSubject` gives
+ *   threshold first refusal the moment it moves VISIBLY, so a 0.6 s/mi
+ *   threshold move — one rounded second — would flip the whole card's
+ *   direction against a 25 s/mi improvement elsewhere. A hair of input, a
+ *   categorically different card. The headline states a NUMBER rather than a
+ *   direction word, so it does not contradict the chip in prose; closing the
+ *   sign divergence properly means deciding which anchor represents a
+ *   repricing, which is a separate decision and not this one.
+ * · WHETHER THE REPRICING IS RIGHT. `reanchor-plan.ts` owns that.
+ * · ALREADY-STORED ROWS. `toWire` reads the persisted `describe`, so this
+ *   applies to the next repricing and does not rewrite proposal 12.
+ * ═════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * The card's headline for a repricing, in ONE place.
+ *
+ * Both the writer (`actionFromReprice`, which stamps `describe` onto the row)
+ * and the legacy reader (`actionFromPending`, which reconstructs it for the
+ * rows written before there was an action to store) call this, so a card
+ * cannot be headlined one way when it is written and another when it is read.
+ *
+ * Falls back to the scope sentence when no anchor is nameable — `moves`
+ * absent and no anchor visibly moved are two different facts (Rule 11), and
+ * neither entitles the sentence to invent a subject, so both get the honest
+ * thing that is still true: how much of the plan this touches. Both live
+ * writers refuse before they can reach it (`writeReanchorProposal` returns
+ * `unchanged` when every anchor moves < 1 s/mi, and a move of >= 1 s/mi
+ * always crosses a rounded second), so no shipped card takes this path today.
+ */
+export function repriceHeadline(opts: {
+  moves?: readonly RepriceAnchorMove[] | null;
+  meanAnchorDeltaSecPerMi?: number | null;
+  workoutsAffected?: number | null;
+}): string {
+  const subject = repriceSubject(opts.moves);
+  const to = subject == null ? null : fmtPace(subject.toSecPerMi);
+  if (subject != null && to != null) {
+    const label = subject.label.charAt(0).toUpperCase() + subject.label.slice(1);
+    return `${label} moves to ${to} across the block`;
+  }
+
+  const n = typeof opts.workoutsAffected === 'number' ? opts.workoutsAffected : null;
+  const d = typeof opts.meanAnchorDeltaSecPerMi === 'number'
+    && Number.isFinite(opts.meanAnchorDeltaSecPerMi)
+    ? opts.meanAnchorDeltaSecPerMi
+    : null;
+  const sessions = n == null || n < 1 ? 'Every session ahead'
+    : n === 1 ? '1 session ahead'
+      : `${n} sessions ahead`;
+  /* Verb agreement only shows up when you read the rendered string, which is
+   * why it is decided here and not left to a template. */
+  if (d == null || (d > -1 && d < 1)) {
+    return `${sessions} ${n === 1 ? 'gets' : 'get'} updated paces`;
+  }
+  return d < 0 ? `${sessions} move to faster paces` : `${sessions} move to easier paces`;
+}
+
 /** Narrow an untyped `action_payload.reprice` without trusting it. */
 export function asRepricePayload(v: unknown): RepricePayload | null {
   if (v == null || typeof v !== 'object') return null;

@@ -1041,7 +1041,11 @@ describe('GUARD 2 · GENERATOR · every kind is emitted by something live', () =
     if (a.kind === 'COORDINATED') {
       expect(a.parts.map((p) => p.kind)).toEqual(['PACE_CHANGE', 'PACE_CHANGE']);
       expect(a.parts.every((p) => p.direction === 'MORE')).toBe(true);
-      expect(a.describe).toContain('77 sessions ahead');
+      /* REPRICEHEADLINE-1 (2026-09-08) · the sentence names the anchor that
+       * moved, not the session count. Threshold moved here (430 -> 424) and
+       * keeps first refusal, so it is the subject; 424 s/mi is 7:04. The
+       * count is drawn once, by `affectedFrom`, on its own row. */
+      expect(a.describe).toBe('Threshold moves to 7:04 across the block');
     }
   });
 
