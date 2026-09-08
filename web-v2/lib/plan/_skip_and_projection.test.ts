@@ -71,6 +71,8 @@ import { pool } from '@/lib/db/pool';
 import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
 import { raceProjectionFromOutlook } from '@/lib/training/race-projection';
 import {
+  RACE_PROJECTION_DEADLINE_MS,
+  RACE_PROJECTION_MEASURED_WORST_MS,
   loadPlanSnapshot,
   withDeadline,
   __resetLastKnownGoodProjectionsForTest,
@@ -78,6 +80,7 @@ import {
 } from './plan-snapshot';
 import { isDaySkipped, loadSkippedDates } from './week-loader';
 import { loadTrainingState } from '@/lib/coach/training-state';
+import { buildWeeks } from '@/lib/plan/v5-block';
 
 const UUID = '00000000-0000-0000-0000-000000000042';
 const TODAY = '2026-09-07';
@@ -397,6 +400,120 @@ describe('projected finish · available / genuinely-absent / could-not-find-out'
     // fail-closed posture is unchanged by any of this.
     expect(snap.days).toHaveLength(PLAN_DAYS.length);
   });
+
+  it('3.7 · THE BUDGET GATE · the deadline sits ABOVE the measured cost, not inside it', async () => {
+    // WHY THIS EXISTS, AND WHAT 3.6 ABOVE CANNOT DO. 3.6 asserts a CEILING —
+    // a resolution past 8.5s is a timeout — and a reverted 2500ms satisfies
+    // that just as well as 8000ms does. An independent review planted 2500
+    // back, the exact regressed value FINISHEST-DETERMINISM-1 corrects, and
+    // all twenty tests here stayed green. A ceiling cannot tell the two apart;
+    // only a floor can, so this is the floor.
+    //
+    // Rule 9 is the reason the floor is where it is. 2500ms sat INSIDE the
+    // measured distribution (1974-5413ms), which is precisely what made half a
+    // second of ordinary cold-start variance decide whether the runner's
+    // goal-race day showed a finish time or nothing at all.
+
+    // Half one · the number. Read against the measured worst case rather than
+    // hardcoded on both sides (Rule 18) — move the measurement and this moves
+    // with it, instead of only proving the test agrees with itself.
+    expect(RACE_PROJECTION_MEASURED_WORST_MS).toBeGreaterThan(0);
+    expect(
+      RACE_PROJECTION_DEADLINE_MS,
+      `the budget (${RACE_PROJECTION_DEADLINE_MS}ms) must clear the measured worst case ` +
+      `(${RACE_PROJECTION_MEASURED_WORST_MS}ms), not sit inside the distribution`,
+    ).toBeGreaterThan(RACE_PROJECTION_MEASURED_WORST_MS);
+
+    // Half two · the BEHAVIOUR at that number, which is what the runner
+    // actually experiences. A resolution costing exactly the measured worst
+    // case must still RENDER A FIGURE. Under a 2500ms budget this same load is
+    // a fault-red dash, so this half dies on the reversion on its own — the
+    // constant could be deleted entirely and this would still hold the line.
+    vi.useFakeTimers();
+    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      () => new Promise((resolve) => setTimeout(() => resolve(OUTLOOK), RACE_PROJECTION_MEASURED_WORST_MS)),
+    );
+    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
+
+    const pending = loadPlanSnapshot(UUID, TODAY);
+    await vi.advanceTimersByTimeAsync(RACE_PROJECTION_MEASURED_WORST_MS + 1);
+    const stat = finishStat(await pending);
+
+    expect(stat).not.toBeNull();
+    expect(stat!.value.text, 'the slowest load ever measured must still show the figure').toBe('42:57');
+    expect(stat!.tone).toBeNull();
+  });
+
+  it('3.8 · A WITHDRAWN PROJECTION IS NOT RESURRECTED · case 2 clears the last known good', async () => {
+    // THE DEFECT THIS REPRODUCES (FINISHEST-RESURRECT-1). The last-known-good
+    // exists so a resolution that FAILED does not blank a figure this process
+    // already stood behind. It must never outlive the engine's own decision to
+    // stop making the claim.
+    //
+    // The sequence, which is the reviewer's, step for step:
+    //   (a) the projection resolves.                        → "42:57" cached
+    //   (b) a LATER load re-resolves to CASE 2 — the race moved out of the
+    //       projection horizon, the evidence changed, the goal went away — and
+    //       the stat correctly disappears. But case 2's early `return` left the
+    //       cache entry standing.
+    //   (c) a THIRD load times out, reads that entry, and puts "42:57" back on
+    //       the screen as a live value.
+    //
+    // Step (c) is the app serving a number the engine has already decided it
+    // can no longer honestly make — the exact "silently serving a stale wrong
+    // number" class this whole fix exists to prevent, and strictly worse than
+    // the flicker it was built to cure, because a flicker is visible and this
+    // is not. Rule 11: withdrawn and unknown are different facts, and the cache
+    // was collapsing them into the last good one.
+
+    // (a) · resolves. The runner sees 42:57 and the process remembers it.
+    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(OUTLOOK);
+    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
+    expect(finishStat(await loadPlanSnapshot(UUID, TODAY))!.value.text).toBe('42:57');
+
+    // (b) · CASE 2. Honestly withdrawn: no stat, and nothing claims staleness.
+    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: null });
+    const withdrawn = await loadPlanSnapshot(UUID, TODAY);
+    expect(finishStat(withdrawn)).toBeNull();
+    expect(withdrawn.projection_served_stale).toBeUndefined();
+
+    // (c) · the resolution now fails. There is nothing left to fall back on,
+    // so the runner gets the honest third state — NOT the withdrawn figure.
+    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>)
+      .mockRejectedValue(new Error('slow backend'));
+    const afterFailure = await loadPlanSnapshot(UUID, TODAY);
+    const stat = finishStat(afterFailure);
+
+    expect(stat, 'a failed resolve still renders the unreadable stat').not.toBeNull();
+    expect(stat!.value.text, 'a withdrawn projection must not come back as a live value').toBeNull();
+    expect(stat!.tone).toBe('fault');
+    expect(
+      afterFailure.projection_served_stale,
+      'nothing stale was served, so nothing may claim it was',
+    ).toBeUndefined();
+  });
+
+  it('3.9 · the SECOND case-2 exit clears it too · an unformattable projection', async () => {
+    // `projectedSec == null` is not the only way case 2 is reached. A value
+    // that survives that check and then fails to FORMAT — non-finite, zero or
+    // negative, all of which `formatRaceTime` answers with null — takes the
+    // `if (!text) return` exit one line below. Two exits, one contract: a
+    // separate test because clearing one and not the other would leave the
+    // resurrection live on a path the first test cannot see.
+    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(OUTLOOK);
+    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
+    expect(finishStat(await loadPlanSnapshot(UUID, TODAY))!.value.text).toBe('42:57');
+
+    // Past the null check, refused by the formatter.
+    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 0 });
+    expect(finishStat(await loadPlanSnapshot(UUID, TODAY))).toBeNull();
+
+    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>)
+      .mockRejectedValue(new Error('slow backend'));
+    const afterFailure = await loadPlanSnapshot(UUID, TODAY);
+    expect(finishStat(afterFailure)!.value.text).toBeNull();
+    expect(afterFailure.projection_served_stale).toBeUndefined();
+  });
 });
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -440,6 +557,61 @@ describe('three surfaces, one skip resolver', () => {
     expect(new Set(answers).size).toBe(1);
   });
 
+  it('4.4 · SKIPWIRE-1 · the fact reaches the BLOCK SCREEN\'S PAYLOAD, not just TrainingState', async () => {
+    // WHY 4.1 ABOVE IS NOT ENOUGH, and why this is a separate test rather than
+    // two more lines on it. 4.1 proves the three surfaces AGREE, and it reads
+    // Block's answer off `TrainingState` — the data layer. `buildWeeks` is the
+    // mapping in between: it picks a named subset of each day
+    // (`{id, miles, quality, race, isToday, isFuture, dateISO, type, isDone}`)
+    // and that subset IS the Block screen's wire payload. It did not carry
+    // `skipped`.
+    //
+    // So the agreement was true, tested, and invisible: a day the runner had
+    // explicitly declined still rendered as an ordinary prescribed day on the
+    // one screen that shows him his block. That is the original defect's
+    // actual runner-facing manifestation, and a three-way test that stops at
+    // the data layer cannot see it — Rule 15, the mechanism the corpus cannot
+    // reach. This test reaches it.
+    fx.skips = [SKIPPED_DAY];
+
+    const state = await loadTrainingState(UUID);
+    const wireDays = buildWeeks(state).flatMap((w) => w.days);
+
+    const skipped = wireDays.find((d) => d.dateISO === SKIPPED_DAY);
+    const notSkipped = wireDays.find((d) => d.dateISO === NOT_SKIPPED_DAY);
+    expect(skipped, `no wire day for ${SKIPPED_DAY}`).toBeDefined();
+    expect(notSkipped, `no wire day for ${NOT_SKIPPED_DAY}`).toBeDefined();
+
+    // The key must be PRESENT, not merely falsy-by-absence. `undefined` and
+    // `false` render identically on a lenient Swift decoder, so asserting the
+    // truthy day alone would pass against a payload that dropped the field.
+    expect(Object.prototype.hasOwnProperty.call(skipped!, 'skipped')).toBe(true);
+    expect(skipped!.skipped).toBe(true);
+    expect(notSkipped!.skipped).toBe(false);
+
+    // And it is the SAME answer the other two give for that date — the wire
+    // is now the third party to the agreement, not a fourth opinion.
+    const snapshot = await loadPlanSnapshot(UUID, TODAY);
+    const today = await isDaySkipped(UUID, SKIPPED_DAY);
+    expect(new Set([today.skipped, skipped!.skipped, dayOf(snapshot, SKIPPED_DAY).skipped]).size).toBe(1);
+  });
+
+  it('4.5 · SKIPWIRE-1 · a failed read reaches the Block payload as unknown, not as "nothing skipped"', async () => {
+    // Rule 11 on the wire. Under a failed read every `skipped` is a
+    // best-effort `false`, which is indistinguishable from a runner who
+    // declined nothing — unless the payload says so. 4.2 checks this on
+    // `TrainingState`; this checks it on what the phone is actually handed.
+    fx.skipReadFails = true;
+
+    const state = await loadTrainingState(UUID);
+    expect(state.skipStateUnknown).toBe(true);
+
+    const wireDays = buildWeeks(state).flatMap((w) => w.days);
+    expect(wireDays.length).toBeGreaterThan(0);
+    // Every day reads not-skipped — which is exactly why the flag has to exist.
+    expect(wireDays.every((d) => d.skipped === false)).toBe(true);
+  });
+
   it('4.2 · a failed read is reported as unknown by all three, never as "not skipped"', async () => {
     fx.skipReadFails = true;
 
@@ -477,16 +649,31 @@ describe('three surfaces, one skip resolver', () => {
 const REPO = join(__dirname, '..', '..');
 
 /**
- * Files allowed to carry a `day_actions … action = 'skip'` SQL literal, each
- * with the reason it is not a second answer to the READ.
+ * Statements allowed to carry a `day_actions … action = 'skip'` SQL literal.
+ *
+ * `allows` is the KIND of statement each file is excused for, and it is the
+ * load-bearing half. An earlier version of this allowlist was keyed on the FILE
+ * alone — it computed `isRead` and then threw it away, exempting every literal
+ * in an excused file rather than the one statement the excuse was written for.
+ * An independent review planted a sixth inline READ inside
+ * `app/api/today/skip/route.ts`, whose entry exists only for its DELETE, and
+ * all twenty tests here stayed green. That was a real hole and this is what
+ * closes it: a WRITE-excused file that starts READING is an offender, which is
+ * exactly the shape SKIPOWNER-1 exists to catch.
  */
-const SKIP_SQL_ALLOWED: Record<string, string> = {
-  'lib/plan/week-loader.ts':
-    'THE resolver. The one owner of "which dates did this runner skip".',
-  'app/api/today/skip/route.ts':
-    'DELETE — the unskip WRITE. A writer is not a second answer to the read.',
-  'app/api/notifications/ack/route.ts':
-    'DELETE + INSERT — the notification-action WRITES, same reason.',
+const SKIP_SQL_ALLOWED: Record<string, { allows: 'READ' | 'WRITE'; why: string }> = {
+  'lib/plan/week-loader.ts': {
+    allows: 'READ',
+    why: 'THE resolver. The one owner of "which dates did this runner skip".',
+  },
+  'app/api/today/skip/route.ts': {
+    allows: 'WRITE',
+    why: 'DELETE — the unskip WRITE. A writer is not a second answer to the read.',
+  },
+  'app/api/notifications/ack/route.ts': {
+    allows: 'WRITE',
+    why: 'DELETE + INSERT — the notification-action WRITES, same reason.',
+  },
 };
 
 /** A template literal that actually queries `day_actions`, as opposed to a
@@ -512,12 +699,25 @@ function walkTs(dir: string, out: string[] = []): string[] {
  * documentation, not enforcement. This is the enforcement.
  *
  * RATCHET · `SKIP_SQL_ALLOWED` may shrink, never grow. An entry whose file no
- * longer matches fails until it is deleted.
+ * longer carries a literal of the KIND it was excused for fails until deleted.
  *
- * WHAT IT CANNOT FAIL ON (Rule 22): a copy written without the literal
+ * A HOLE THIS ONCE HAD, NOW CLOSED (Rule 22 · say what a gate cannot fail on,
+ * and when the answer changes, say that too). The exemption used to be
+ * FILE-level: the scan computed `isRead` and then discarded it, so any literal
+ * at all in an excused file was waved through. An independent review planted a
+ * sixth inline READ inside `app/api/today/skip/route.ts` — a file on the list
+ * only for its unskip DELETE — and all twenty tests here stayed green. The
+ * exemption is now STATEMENT-level: each entry names the kind it excuses, a
+ * READ in a WRITE-excused file is an offender, and F9 below is the falsifier
+ * that holds it. This is the one hole in this gate that was demonstrated
+ * rather than theorised, which is why it is recorded here and not just fixed.
+ *
+ * WHAT IT STILL CANNOT FAIL ON (Rule 22): a copy written without the literal
  * `action = 'skip'` — a parameterised `action = $3`, a database view, a helper
  * that assembles the string from fragments. Those are invisible to it, and it
- * says so here rather than implying coverage it does not have.
+ * says so here rather than implying coverage it does not have. Nor can it see
+ * a second READ added to `lib/plan/week-loader.ts` itself, which is READ-
+ * excused as the resolver — 5.2 covers that by counting its literals.
  * ═══════════════════════════════════════════════════════════════════════ */
 
 describe('SKIPOWNER-1 · one owner for the skip predicate', () => {
@@ -529,6 +729,9 @@ describe('SKIPOWNER-1 · one owner for the skip predicate', () => {
 
     const offenders: string[] = [];
     const seen = new Set<string>();
+    /** `<rel>::READ` / `<rel>::WRITE` — what each file was actually observed
+     *  doing, so the ratchet below can check the EXCUSE and not just the file. */
+    const seenKinds = new Set<string>();
     let literalsFound = 0;
 
     for (const file of files) {
@@ -545,8 +748,13 @@ describe('SKIPOWNER-1 · one owner for the skip predicate', () => {
         literalsFound++;
         seen.add(rel);
         const isRead = /\bSELECT\b/i.test(literal) && !/\b(INSERT|DELETE|UPDATE)\b/i.test(literal);
-        if (rel in SKIP_SQL_ALLOWED) continue;
-        offenders.push(`${rel} · ${isRead ? 'READ' : 'WRITE'} · ${literal.slice(0, 90).replace(/\s+/g, ' ')}`);
+        const kind: 'READ' | 'WRITE' = isRead ? 'READ' : 'WRITE';
+        seenKinds.add(`${rel}::${kind}`);
+        // STATEMENT-level, not file-level. The excuse names a kind, and only
+        // that kind is excused — a file allowed to WRITE that starts READING
+        // is a second answer to the read, which is the whole finding.
+        if (SKIP_SQL_ALLOWED[rel]?.allows === kind) continue;
+        offenders.push(`${rel} · ${kind} · ${literal.slice(0, 90).replace(/\s+/g, ' ')}`);
       }
     }
 
@@ -556,10 +764,17 @@ describe('SKIPOWNER-1 · one owner for the skip predicate', () => {
 
     expect(offenders).toEqual([]);
 
-    // Ratchet · an allowlist entry whose file no longer carries the literal is
-    // stale and fails until deleted.
-    for (const allowed of Object.keys(SKIP_SQL_ALLOWED)) {
-      expect(seen.has(allowed), `stale SKIP_SQL_ALLOWED entry: ${allowed}`).toBe(true);
+    // Ratchet · an entry whose file no longer carries a literal OF THE KIND it
+    // was excused for is stale and fails until deleted. Checking the kind and
+    // not merely the file matters for the same reason the exemption does: an
+    // entry excused for a DELETE that now only ever SELECTs has stopped
+    // describing the code, and a stale excuse is how a gate quietly stops
+    // meaning anything (Rule 18).
+    for (const [allowed, { allows }] of Object.entries(SKIP_SQL_ALLOWED)) {
+      expect(
+        seenKinds.has(`${allowed}::${allows}`),
+        `stale SKIP_SQL_ALLOWED entry: ${allowed} is excused for a ${allows} it no longer carries`,
+      ).toBe(true);
     }
   });
 

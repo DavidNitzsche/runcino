@@ -149,13 +149,38 @@ const TREADMILL_BASELINE_INCLINE_PCT = 1;   // TERRAIN.treadmill-air-resistance-
  * INSIDE the distribution it was supposed to sit above, which is what made
  * ordinary variance a screen-state change.
  *
- * 8000ms clears the measured worst case (3.5s) with better than 2x margin and
- * still leaves ~4s of headroom under the phone's 12s client timeout. It is a
- * ceiling on a pathology, not a budget anything normally spends — and because
- * of the last-known-good below, exceeding it no longer changes what the runner
- * reads once this race has resolved successfully even once.
+ * 8000ms clears the measured worst case with better than 2x margin and still
+ * leaves ~4s of headroom under the phone's 12s client timeout. It is a ceiling
+ * on a pathology, not a budget anything normally spends — and because of the
+ * last-known-good below, exceeding it no longer changes what the runner reads
+ * once this race has resolved successfully even once.
+ *
+ * THE MEASURED DISTRIBUTION THIS MUST SIT ABOVE, and why it is a named
+ * constant rather than a comment. Rule 20: a number argued for only in prose
+ * is a hypothesis. An independent review planted `2_500` back — the exact
+ * regressed value this exists to correct — and every test in
+ * `_skip_and_projection.test.ts` stayed green, because the only test touching
+ * this constant asserted an UPPER bound (a resolution past 8.5s must time out)
+ * and 2500 satisfies that too. A ceiling alone cannot tell 8000 from 2500.
+ * `RACE_PROJECTION_MEASURED_WORST_MS` is the floor, and test 3.7 is what holds
+ * it: both the number and the behaviour at that number.
  */
-const RACE_PROJECTION_DEADLINE_MS = 8_000;
+
+/**
+ * The slowest `loadPlanSnapshot` observed against the owner's real block —
+ * 40 consecutive loads across 4 fresh processes measured 1974-5413ms
+ * (`scripts/probe-snapshot-flicker.sh`).
+ *
+ * This is the whole-load figure, and the deadline bounds only the per-race
+ * outlook resolution inside it, so it OVERSTATES what that resolution can
+ * cost. That is the safe direction for a floor: a budget that clears the
+ * whole load necessarily clears its dominant term, and reading it the other
+ * way is how 2500ms came to sit inside the distribution it was meant to sit
+ * above.
+ */
+export const RACE_PROJECTION_MEASURED_WORST_MS = 5_413;
+
+export const RACE_PROJECTION_DEADLINE_MS = 8_000;
 
 /**
  * How stale a last-known-good projection may be before it stops being served.
@@ -214,6 +239,25 @@ function readLastKnownGoodProjection(key: string): { text: string; at: number } 
     return null;
   }
   return hit;
+}
+
+/**
+ * FINISHEST-RESURRECT-1 · forget a projection the engine has WITHDRAWN.
+ *
+ * The cache above exists so a resolution that FAILED does not blank a figure
+ * this process already stood behind. It must never survive the engine's own
+ * decision to stop making the claim. Without this, the sequence is: the
+ * projection resolves and is remembered; a later load legitimately reaches
+ * case 2 and the stat correctly disappears; a third load times out and puts
+ * the withdrawn figure back on the screen as a live value.
+ *
+ * That is strictly worse than the flicker this whole file exists to cure — a
+ * flicker is visible and this is not — and it is Rule 11 exactly: "withdrawn"
+ * and "we could not find out" are different facts, and a cache that outlives
+ * the withdrawal collapses them into the last good one.
+ */
+function clearLastKnownGoodProjection(key: string): void {
+  lastKnownGoodProjection.delete(key);
 }
 
 function writeLastKnownGoodProjection(key: string, text: string): void {
@@ -703,9 +747,21 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       // row for this slug at all. Correct, silent, and NOT logged: the
       // expected steady state for a race with no evidence behind it, not an
       // anomaly. The date stays OUT of the map entirely, so no stat renders.
-      if (projection.projectedSec == null) return;
+      //
+      // FINISHEST-RESURRECT-1 · and it FORGETS. A projection this process
+      // remembered and the engine has since withdrawn may not be served back
+      // by a later failure — see `clearLastKnownGoodProjection`. Both exits
+      // clear, because the second (a value that survives the null check and
+      // then fails to format) reaches the identical outcome for the runner.
+      if (projection.projectedSec == null) {
+        clearLastKnownGoodProjection(lkgKey);
+        return;
+      }
       const text = formatRaceTime(projection.projectedSec);
-      if (!text) return;
+      if (!text) {
+        clearLastKnownGoodProjection(lkgKey);
+        return;
+      }
       // ── CASE 1 · a real projection. Render it, and remember it. ──────────
       writeLastKnownGoodProjection(lkgKey, text);
       projectedFinishByDate.set(r.date_iso, { text, modelled: true });

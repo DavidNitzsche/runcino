@@ -525,6 +525,24 @@ export function buildWeeks(state: TrainingState) {
         // carries neither, so it reads as not-done (no status chip), which
         // is the honest answer: nothing was asked of it to complete.
         isDone: d.activityId != null || d.doneMi >= 0.5,
+        // SKIPAGREE-1 (2026-09-07) · THE FACT REACHES THE WIRE, not just the
+        // data layer. `TrainingState.days[].skipped` landed with a three-way
+        // agreement test behind it — and this mapping, which is the payload
+        // the Block screen actually renders, did not carry the field. So the
+        // agreement was provable in a test and invisible to the runner, which
+        // is the original defect's whole point: a day he explicitly declined
+        // still drew as an ordinary prescribed day on the one screen that
+        // shows him the block.
+        //
+        // Off `loadSkippedDates` via `loadTrainingState` — the same resolver
+        // Today and Plan Snapshot read, not a fourth query (Rule 16).
+        //
+        // Additive, like `dateISO`/`type`/`isDone` above: existing readers
+        // destructure what they know and ignore unknown keys, so no phone
+        // build has to change for this to be safe. Rendering it is a separate,
+        // deliberately-out-of-scope Swift change; what this closes is the wire
+        // having nothing to render.
+        skipped: d.skipped,
       })),
       detail: [
         { id: `${w.id}-long`, label: 'Long run', sub: null, value: num(`${fmtMi(longMi)} mi`, false), action: null, tone: 'neutral' },
@@ -892,6 +910,14 @@ export async function loadV5Block(userId: string) {
     ),
     soFar: buildSoFar(state),
     weeks: buildWeeks(state),
+    // SKIPAGREE-1 · Rule 11, and the same name-for-name contract the other two
+    // surfaces carry (`PlanSnapshotResult.skip_state_unknown`,
+    // `PlanWeekResult.skipStateUnknown`). `days[].skipped` is a best-effort
+    // boolean, so a FAILED read renders every day as not-skipped; without this
+    // flag beside it that is indistinguishable from a runner who skipped
+    // nothing. Absent means the read succeeded — a key the phone does not yet
+    // decode is nil, never a false "we know".
+    ...(state.skipStateUnknown ? { skipStateUnknown: true as const } : {}),
     // WEEKANSWERS-1 · the block's five answers. Null when the block predates
     // them, so the phone shows the block without them rather than five blanks.
     blockAnswers: buildBlockAnswers(state),
