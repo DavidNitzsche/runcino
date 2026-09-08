@@ -209,7 +209,18 @@ describe('a reader may not name a column or a table that is not there', () => {
       const s = read(f);
       expect(s, f).toContain('INSERT INTO sick_recovery');
       // Wrapped, so the failure cannot reach the state change below it.
-      expect(s, f).toMatch(/attempt\(\s*\n?\s*'[^']*',\s*\n?\s*pool\.query\(\s*\n?\s*`INSERT INTO sick_recovery/);
+      //
+      // INJURYCHECKIN-1 (2026-09-08) · MATCHED ON THE WRAPPING, NOT ON THE
+      // FIRST WORD OF THE SQL. This required the query text to BEGIN with
+      // `INSERT INTO sick_recovery`, and the retry-idempotency guard put a
+      // `WITH existing AS (…)` CTE in front of it — so the gate went red for
+      // a reason that had nothing to do with the ordering it exists to
+      // protect, exactly as the whitespace note below records happening once
+      // already. What is being claimed is that the trend write is INSIDE
+      // `attempt(...)`; the shape of the SQL is not part of that claim.
+      expect(s.replace(/\s+/g, ' '), f).toMatch(
+        /attempt\( '[^']*', pool\.query\( `[^`]*INSERT INTO sick_recovery/,
+      );
       // And the UPDATE comes after it, never inside the same throw path.
       //
       // TODAYWRITE-2 (2026-09-08) · matched on a WHITESPACE-NORMALISED copy.

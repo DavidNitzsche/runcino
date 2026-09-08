@@ -857,8 +857,13 @@ struct TodayHostV5: View {
         _ model: V5Today,
         fill: PanelFill = .quiet,
         @ViewBuilder hero: @escaping () -> Hero = { EmptyView() },
-        @ViewBuilder content: () -> Content
+        @ViewBuilder content: @escaping () -> Content
     ) -> some View {
+        // INJURYCHECKIN-1 · this is the scroll view that actually MOVES on
+        // the injury/sick/week-off branches — `StateScreenScaffold` nests its
+        // own inside it — so a note that lands below the fold has to be
+        // brought up from here. See `V5RevealingScroll`.
+        V5RevealingScroll {
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                 DayPanel(fill: fill) {
@@ -900,6 +905,7 @@ struct TodayHostV5: View {
             .v5PageWidth()
         }
         .background(V5.surfacePage)
+        }
     }
 
     /// The pill's position, remapped exactly like `TodayBeforeV5.stripDays()`
@@ -1039,7 +1045,7 @@ struct TodayHostV5: View {
                          onOpenInjuryFlare: { path.append(.injuryFlare) },
                          onChangeShoe: { path.append(.shoes) },
                          onPickShoe: { id in await pickShoe(model, id) },
-                         onRowAction: { _ in },
+                         onRowAction: { row in await runRowAction(row) },
                          onPushStrava: { Task { await pushStrava(model) } },
                          onPickDay: { id in pickDay(id, in: model) },
                          viewingDayLabel: viewingDayLabel,
@@ -2196,6 +2202,26 @@ struct TodayHostV5: View {
         return await settleAndReload { try await Self.ok(req) }
     }
 
+    /// INJURYCHECKIN-1 · THE UNDO THAT DID NOT EXIST.
+    ///
+    /// This host passed `onRowAction: { _ in }` — a literal no-op — and the
+    /// only row that ever reaches it is the server's flagged-niggle row,
+    /// whose verb is `undo_niggle`. So after a flag landed and the surface
+    /// reloaded, the phone drew a control (a bare chevron, at that) that
+    /// fired nothing, and there was no way anywhere on Today to clear a
+    /// niggle. `DELETE /api/niggle` has existed the whole time and had no
+    /// caller on this screen.
+    ///
+    /// An unrecognised verb returns `.cancelled`, not `.didNotLand`: nothing
+    /// was asked, so there is nothing to retry and nothing to confirm. Same
+    /// reading, and the same reason, as `logSickTrend`'s default branch.
+    private func runRowAction(_ row: V5Row) async -> V5WriteSettlement {
+        guard row.action == TodayAfterV5.undoNiggleAction else { return .cancelled }
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/niggle"))
+        req.httpMethod = "DELETE"
+        return await settleAndReload { try await Self.ok(req) }
+    }
+
     private func flagNiggle(_ bodyPart: String) async -> V5WriteSettlement {
         var req = URLRequest(url: API.baseURL.appendingPathComponent("api/niggle"))
         req.httpMethod = "POST"
@@ -2238,7 +2264,15 @@ struct TodayHostV5: View {
         // could only ever do the same nothing again.
         default: return .cancelled
         }
-        return await settleAndReload { try await API.postSickRecovery(trend: trend) }
+        // INJURYCHECKIN-1 · the sick twin of the niggle check-in. `recovered`
+        // clears the episode, so a landed-but-lost answer means the Retry
+        // arrives at a 404 that can never succeed again. Same refusal-aware
+        // send, same reason.
+        var req = URLRequest(url: API.baseURL.appendingPathComponent("api/sick/recovery"))
+        req.httpMethod = "POST"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONSerialization.data(withJSONObject: ["today": trend])
+        return await reloadIfLanded(await v5SettleAuthedWrite(req))
     }
 
     /// `API.authedSend` returns a 500 rather than throwing, so "the call came
@@ -3610,11 +3644,16 @@ enum V5NiggleCheckIn {
 
     /// `API.authedSend` returns a 500 rather than throwing, so "the call came
     /// back" is not "the server took it".
+    ///
+    /// INJURYCHECKIN-1 · and a 404 here is not "we could not tell" either. The
+    /// flare screen is drawn off `runner_injuries`; this endpoint reads
+    /// `niggles`. A runner whose flare came from the first and who has nothing
+    /// active in the second gets `404 no active niggle` EVERY time, forever.
+    /// `v5SettleAuthedWrite` reads the route's own refusal sentence and
+    /// settles `.refused`, so the screen stops promising that trying again is
+    /// safe when it structurally is not.
     static func send(_ today: String) async -> V5WriteSettlement {
-        await v5SettleWrite {
-            let (_, http) = try await API.authedSend(request(today))
-            return (200..<300).contains(http.statusCode)
-        }
+        await v5SettleAuthedWrite(request(today))
     }
 }
 

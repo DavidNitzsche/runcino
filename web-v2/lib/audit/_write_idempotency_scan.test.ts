@@ -41,6 +41,24 @@
  *   index, so two GENUINELY concurrent identical inserts can still both land.
  *   That case degrades to the old behaviour, never worse, and the phone
  *   blocks a second submit while one is in flight.
+ *
+ * ─────────────────────────────────────────────────────────────────────────
+ * INJURYCHECKIN-1 (2026-09-08) · WHAT THIS GATE MISSED THE FIRST TIME.
+ *
+ * The paragraph above says this watches four routes, and it did — but only
+ * the two REPORT routes were checked for write-dedup. The two RECOVERY
+ * routes were checked for "clear-all" behaviour and nothing else, and they
+ * were still bare INSERTs. A Product Experience review proved it on device:
+ * one answer plus one retry after a lost response wrote two identical trend
+ * rows. Exactly the same mechanism, one endpoint over, invisible because the
+ * gate's own header read as if it covered all four.
+ *
+ * So the dedup block below now walks all four, and the refusal block is new:
+ * a route that cannot succeed must SAY SO IN WORDS, because the phone keys
+ * `V5WriteSettlement.refused` on the sentence rather than on the status code
+ * (a bare 404 could come from a proxy). Drop the sentence and the phone
+ * silently reverts to "Trying again is safe" over a request that can never
+ * work — which is the defect this closes.
  */
 import { describe, it, expect } from 'vitest';
 import { readFileSync, existsSync } from 'fs';
@@ -75,6 +93,95 @@ describe('WRITEIDEM-1 · a retried report cannot open a second episode', () => {
     const sizes = Object.values(WATCHED).map((f) => code(read(f)).length);
     expect(sizes).toHaveLength(4);
     for (const n of sizes) expect(n).toBeGreaterThan(500);
+    // INJURYCHECKIN-1 · and the module the refusal sentences live in. A
+    // deleted file would otherwise make the refusal block below silently
+    // scan nothing.
+    expect(read('lib/health/checkin-refusal.ts').length).toBeGreaterThan(500);
+  });
+
+  // INJURYCHECKIN-1 · the two RECOVERY routes, which this gate watched for
+  // clear-all behaviour and NOT for duplicate-insert protection. Same
+  // 12-second-timeout mechanism, same retry, same duplicate row.
+  describe('the recovery trend guard', () => {
+    for (const [name, file, table] of [
+      ['sick recovery', WATCHED.sickRecovery, 'sick_recovery'],
+      ['niggle recovery', WATCHED.niggleRecovery, 'niggle_recovery'],
+    ] as const) {
+      it(`${name} does not INSERT a trend row unconditionally`, () => {
+        const src = code(read(file));
+        expect(src, `${file}: the dedup CTE is gone`).toMatch(/WITH existing AS/);
+        expect(src, `${file}: the INSERT is no longer conditional`).toMatch(
+          /WHERE NOT EXISTS \(SELECT 1 FROM existing\)/,
+        );
+        // The bare form this incident was.
+        expect(
+          new RegExp(`INSERT INTO ${table} \\([^)]*\\) VALUES \\(\\$1, \\$2\\)`).test(
+            src.replace(/\s+/g, ' '),
+          ),
+          `${file}: the unguarded "VALUES ($1, $2)" INSERT is back — one answer\n` +
+            `plus one retry writes two identical trend rows again.`,
+        ).toBe(false);
+        // Rule 21 · observable, exactly as the report routes are.
+        expect(src, `${file}: a dedup is silent again`).toMatch(/deduplicated/);
+      });
+
+      it(`${name} keys the dedup on the RUNNER'S day, not the server's`, () => {
+        // Rule 22 · the other direction. A guard keyed on the niggle and the
+        // answer ALONE would silently swallow tomorrow's identical answer and
+        // flatten the trend history this table exists for. And a UTC date
+        // rolls at 17:00 Pacific, splitting one evening across two days.
+        const src = code(read(file)).replace(/\s+/g, ' ');
+        expect(src, `${file}: the dedup no longer scopes to a single day`).toMatch(
+          /\(logged_at AT TIME ZONE \$3\)::date = \(now\(\) AT TIME ZONE \$3\)::date/,
+        );
+        expect(code(read(file)), `${file}: the day is no longer the runner's own`).toMatch(
+          /runnerTimezone/,
+        );
+        expect(src, `${file}: the answer itself dropped out of the key`).toMatch(/AND response = \$2/);
+      });
+    }
+  });
+
+  // INJURYCHECKIN-1 · "there is nothing here to act on" is an ANSWER.
+  describe('the permanent refusal', () => {
+    for (const [name, file] of [
+      ['sick recovery', WATCHED.sickRecovery],
+      ['niggle recovery', WATCHED.niggleRecovery],
+    ] as const) {
+      it(`${name} answers a 404 with words the phone can print`, () => {
+        const src = code(read(file));
+        expect(
+          src,
+          `${file}: the 404 no longer carries a refusal sentence. The phone keys\n` +
+            `V5WriteSettlement.refused on the SENTENCE, not the status code, so\n` +
+            `without it the row silently goes back to "Trying again is safe" over a\n` +
+            `request that structurally cannot succeed.`,
+        ).toMatch(/nothingOpenBody\(/);
+        // The bare form this incident was.
+        expect(
+          /\{ error: 'no active (niggle|sick episode)' \}, \{ status: 404 \}/.test(
+            src.replace(/\s+/g, ' '),
+          ),
+          `${file}: the wordless 404 is back`,
+        ).toBe(false);
+      });
+    }
+
+    it('every refusal sentence holds in BOTH worlds the 404 covers', () => {
+      // A 404 here means "nothing is open" — which happens when nothing was
+      // ever flagged AND when this very runner just cleared it and the
+      // answer was lost. A sentence that asserts the first would be a fresh
+      // fabrication in the second, which is the class this whole change
+      // closes. Read out of the module rather than restated, so the check
+      // cannot agree with itself (Rule 18).
+      const src = read('lib/health/checkin-refusal.ts');
+      const sentences = [...src.matchAll(/'(Nothing is open[^']*)'/g)].map((m) => m[1]);
+      expect(sentences.length, 'no refusal sentences found — the scan is dead').toBeGreaterThan(0);
+      for (const s of sentences) {
+        expect(s, `"${s}" asserts the runner never flagged one`).toMatch(/already cleared/);
+        expect(s, `"${s}" invites a retry that cannot work`).not.toMatch(/try again|Trying again/i);
+      }
+    });
   });
 
   describe('the POST guard', () => {

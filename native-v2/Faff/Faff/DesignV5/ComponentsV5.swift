@@ -563,6 +563,136 @@ struct ErrorNote: View {
     }
 }
 
+// MARK: - A slot that never gets shorter
+//
+// INJURYCHECKIN-1 (2026-09-08) · A REAL MIS-TAP, NOT A COSMETIC ONE.
+//
+// The injury-flare check-in drew its `ErrorNote` at the bottom of a scroll
+// whose content was already taller than the screen. Tapping Retry moved the
+// row to `.sending`, which REMOVED the note; the content shortened by ~141pt;
+// iOS clamped the scroll offset to the new maximum; and everything above slid
+// DOWN by that amount. A reviewer tapping the same screen coordinate twice
+// landed the second tap on "Worse" — a real escalation of a pain report —
+// instead of on "Retry". Nothing about the taps was wrong. The page moved.
+//
+// The general shape: A STATE TRANSITION TRIGGERED BY A TAP MUST NOT SHORTEN
+// THE PAGE. Growth is harmless (new content extends below the fold and
+// nothing already on screen moves); it is the SHRINK that forces the clamp.
+//
+// So this slot ratchets: it measures whatever it is given and never lets its
+// own height fall below the tallest thing it has held. `.sending` therefore
+// occupies exactly the space `.failed` did, `.done` occupies it too, and no
+// transition after the first attempt can move a single row under a finger.
+//
+// WHY NOT `.hidden()` A COPY OF THE NOTE. Because the tallest variant is not
+// known here: the sentence comes off the wire (a server refusal is longer
+// than the unconfirmed copy), and Dynamic Type moves it again. A measured
+// ratchet is right for every string and every text size; a hardcoded
+// reservation is right for one and silently wrong for the rest.
+//
+// RULE 22 · WHAT THIS CANNOT DO. It cannot stop a shrink ABOVE itself — if a
+// caller removes a whole section higher up the page, everything below still
+// moves. It reserves its own height and nothing else's.
+
+// MARK: - Asking to be seen
+//
+// INJURYCHECKIN-1 · A NOTE THAT RENDERS BELOW THE FOLD HAS NOT BEEN SAID.
+//
+// The injury-flare check-in sits under a 44pt display panel, a coach line and
+// a "What changed" group. Its confirmation, and its failure note's Retry
+// button, rendered entirely off-screen on an SE and on a 17 Pro — verified by
+// rendering, both devices. The runner tapped a row, nothing visibly happened,
+// and the only thing that would have told them otherwise was a scroll they
+// had no reason to know was needed.
+//
+// WHY A PREFERENCE AND NOT A PARAMETER. The first cut of this put a
+// `ScrollViewReader` in `StateScreenScaffold` and it did nothing, because on
+// the Today path that screen is drawn INSIDE `TodayHostV5.inSharedShell`,
+// which has a ScrollView of its own. The scaffold's reader was addressing a
+// scroll view that does not move. A parameter can only reach the container
+// the caller happens to know about; a preference travels up through every
+// one of them, so whichever container is actually scrolling receives it.
+//
+// (The nesting itself — two vertical ScrollViews on one screen — is real and
+// predates this change. It is not fixed here.)
+//
+// RULE 22 · WHAT THIS CANNOT DO. It cannot make a note visible that is inside
+// a container with nothing to scroll; and it deliberately does nothing when
+// the value goes back to nil, so a page never scrolls itself away from where
+// the runner left it.
+
+struct V5RevealKey: PreferenceKey {
+    static var defaultValue: String? = nil
+    static func reduce(value: inout String?, nextValue: () -> String?) {
+        value = nextValue() ?? value
+    }
+}
+
+extension View {
+    /// Ask the nearest `V5RevealingScroll` ancestor to bring this view into
+    /// view. Pass nil for "nothing to show" — that is not a request to scroll
+    /// anywhere, it is the absence of one.
+    func v5Reveal(_ id: String?) -> some View {
+        preference(key: V5RevealKey.self, value: id)
+    }
+}
+
+/// Wrap a `ScrollView` in this and any descendant's `v5Reveal(_:)` scrolls it.
+struct V5RevealingScroll<Content: View>: View {
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        ScrollViewReader { proxy in
+            content()
+                .onPreferenceChange(V5RevealKey.self) { id in
+                    guard let id else { return }
+                    withAnimation(V5.Motion.expand) { proxy.scrollTo(id, anchor: .bottom) }
+                }
+        }
+    }
+}
+
+private struct V5SlotHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+struct NonShrinkingSlot<Content: View>: View {
+    /// The ratchet, as a pure function, so a test can walk it without a view
+    /// host — the same reason `v5WriteSettlement` is extracted. The property
+    /// this asserts is the whole fix: the returned height is never less than
+    /// the one it was given.
+    static func ratchet(reserved: CGFloat, measured: CGFloat) -> CGFloat {
+        max(reserved, measured)
+    }
+
+    /// The tallest content this slot has been asked to draw. Monotonic on
+    /// purpose: it is the whole mechanism.
+    @State private var reserved: CGFloat = 0
+    var alignment: Alignment = .topLeading
+    @ViewBuilder var content: () -> Content
+
+    var body: some View {
+        content()
+            // Measures `content()`'s OWN height — the background attaches
+            // inside the `.frame` below, so the reservation cannot feed back
+            // into its own measurement.
+            .background(
+                GeometryReader { g in
+                    Color.clear.preference(key: V5SlotHeightKey.self, value: g.size.height)
+                }
+            )
+            .frame(maxWidth: .infinity, alignment: alignment)
+            .frame(minHeight: reserved, alignment: alignment)
+            .onPreferenceChange(V5SlotHeightKey.self) { h in
+                let next = Self.ratchet(reserved: reserved, measured: h)
+                if next != reserved { reserved = next }
+            }
+    }
+}
+
 // MARK: - Skeleton
 //
 // "Reserves the exact layout height, does not shimmer/pulse." Nothing in this

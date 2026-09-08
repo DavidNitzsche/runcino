@@ -81,6 +81,7 @@
 //
 
 import XCTest
+import SwiftUI
 @testable import Faff
 
 final class WriteHonestyTests: XCTestCase {
@@ -438,5 +439,244 @@ final class WriteHonestyTests: XCTestCase {
         XCTAssertEqual(TodayAfterV5.niggleCopy(.done("Left calf"))?.sub,
                        "The coach has it \u{00B7} it shapes tomorrow")
         XCTAssertEqual(SickReportRowV5.copy(for: .done("sick_report")).sub, "Logged. Today rests.")
+    }
+}
+
+// ═════════════════════════════════════════════════════════════════════════
+// INJURYCHECKIN-1 · the injury-flare check-in path, and the two adjacent
+// honesty defects a Product Experience review found beside it.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// WHAT WENT WRONG
+//
+// The review drove the real flare screen on a device, against a clone of the
+// owner's production rows, and found the whole path broken:
+//
+//  1 · `POST /api/niggle/recovery` answered 404 "no active niggle" every
+//      single time — three for three, on a healthy network — because the
+//      screen is drawn off `runner_injuries` and the endpoint reads
+//      `niggles`, two tables with independent lifecycles (there is no caller
+//      anywhere in the app for `POST /api/injuries`). `v5SettleWrite`
+//      collapsed that into `.didNotLand`, whose copy is "The coach may not
+//      have it yet. Trying again is safe." Trying again could never work.
+//
+//  2 · The recovery routes were bare INSERTs. One answer plus one retry
+//      after a lost response wrote TWO identical trend rows. WRITEIDEM-1
+//      covered the REPORT routes; nothing covered these.
+//
+//  3 · A landed check-in drew `checked.sub` — a verbatim repeat of the
+//      tapped row's own sub-line, about 40pt below the first copy. The
+//      intended `?? "Logged."` fallback never fired, because `sub` is never
+//      nil on a real payload. So success and failure looked the same.
+//
+//  4 · That note, and the failure note's Retry, rendered below the fold on
+//      both a 17 Pro and an SE.
+//
+//  5 · Removing the note on `.sending` shortened the page about 141pt, iOS
+//      clamped the scroll offset, and "Worse" — an escalation of a pain
+//      report — slid into where "Retry" had been. The reviewer landed a
+//      second tap on it.
+//
+//  6 · The server's flagged-niggle row drew a CHEVRON and called
+//      `onRowAction: { _ in }`. There was no way anywhere on Today to clear
+//      a niggle.
+//
+//  7 · "If it's still there tomorrow, see Injury" was gated on THIS
+//      SESSION'S write state, so it showed while tomorrow was still today
+//      and was gone by the morning the sentence is about.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// RULE 22 · WHAT THIS SUITE CANNOT FAIL ON
+//
+// · It cannot fail on LAYOUT. Nothing here measures a rendered frame, so 4
+//   and 5 are covered only structurally (the slot ratchets; the reveal id is
+//   non-nil for the states that draw a note). The real proof for those two
+//   is the device render in the accompanying report, per Rule 13.
+// · It cannot fail on the SERVER half. Whether the routes still refuse to
+//   duplicate, and still send a refusal sentence, is
+//   `_write_idempotency_scan.test.ts` plus the live repro.
+// · It cannot fail on a route that stops SENDING a refusal. The phone's
+//   fallback is deliberately keyed on the sentence, so a route that drops it
+//   silently reverts to `.didNotLand` — honest, but weaker. Only the
+//   TypeScript gate can see that.
+final class InjuryCheckInHonestyTests: XCTestCase {
+
+    private func body(_ o: [String: Any]) -> Data {
+        try! JSONSerialization.data(withJSONObject: o)
+    }
+
+    private static let refusal =
+        "Nothing is open to check in on. Either this was already cleared, or there was no niggle flagged."
+
+    // MARK: - 1 · a permanent no is not an unknown
+
+    func testARefusalSentenceMakesTheAnswerPermanent() {
+        let s = v5RefusalSettlement(status: 404, body: body(["error": "no active niggle",
+                                                            "refusal": Self.refusal,
+                                                            "retryable": false]))
+        XCTAssertEqual(s, .refused(Self.refusal))
+    }
+
+    /// THE DEFECT ITSELF, stated as the thing the runner reads. `.refused`
+    /// must never reach the copy that promises a retry is safe.
+    func testARefusedRowNeverPromisesThatRetryingIsSafe() {
+        let state = V5RowWriteState.settled(.refused(Self.refusal), token: "better")
+        XCTAssertEqual(state, .refused("better", Self.refusal))
+        XCTAssertEqual(state.refusal, Self.refusal)
+        for line in V5UnconfirmedCopy.all {
+            XCTAssertNotEqual(state.refusal, line,
+                              "a permanent refusal is rendering the unconfirmed copy")
+        }
+        XCTAssertFalse(V5RefusedCopy.cannotSucceed.lowercased().contains("trying again is safe"),
+                       "the refused fallback inherited the unconfirmed promise")
+        // And every unconfirmed line still DOES make that promise, which is
+        // what makes them the wrong sentence here. If this stops holding, the
+        // assertion above has quietly stopped meaning anything (Rule 18).
+        for line in V5UnconfirmedCopy.all {
+            XCTAssertTrue(line.contains("Trying again is safe"), "unconfirmed copy changed shape")
+        }
+    }
+
+    /// Rule 22, the other direction. A phone that treated every 4xx as
+    /// permanent would suppress the Retry on a transient answer, which is the
+    /// opposite defect and just as expensive.
+    func testWhatMustSTILLSettleAsUnknown() {
+        // A 404 with no refusal: a proxy, a typo'd path, an older route.
+        XCTAssertEqual(v5RefusalSettlement(status: 404, body: body(["error": "no active niggle"])),
+                       .didNotLand)
+        // No body at all.
+        XCTAssertEqual(v5RefusalSettlement(status: 404, body: nil), .didNotLand)
+        // A server that fell over, however it words itself. A 5xx is the
+        // textbook "we could not tell".
+        XCTAssertEqual(v5RefusalSettlement(status: 500, body: body(["refusal": "nope"])),
+                       .didNotLand)
+        // Not JSON.
+        XCTAssertEqual(v5RefusalSettlement(status: 409, body: Data("<html>".utf8)), .didNotLand)
+    }
+
+    func testASuccessIsStillASuccess() {
+        XCTAssertEqual(v5RefusalSettlement(status: 200, body: body(["active": true])), .landed)
+        XCTAssertEqual(v5RefusalSettlement(status: 204, body: nil), .landed)
+    }
+
+    /// A refusal marker with an empty sentence must still be permanent, and
+    /// must fall back to words the phone can defend rather than to silence.
+    func testAnEmptyRefusalStillRefuses() {
+        XCTAssertEqual(v5RefusalSettlement(status: 404, body: body(["refusal": ""])),
+                       .refused(V5RefusedCopy.cannotSucceed))
+    }
+
+    // MARK: - 3 · a landed check-in says something new
+
+    /// THE DEFECT: the note was the tapped row's OWN sub-line, printed again.
+    /// Asserted against the real payload's rows (`app/api/v5/today/route.ts`
+    /// composes exactly these three), not a synthetic one.
+    func testTheConfirmationDoesNotRepeatTheRowItConfirms() {
+        let rows = [
+            V5Row(id: "better", label: "Better today", sub: "Loosen back in gradually tomorrow"),
+            V5Row(id: "same", label: "About the same", sub: "One more day off, then reassess"),
+            V5Row(id: "worse", label: "Worse", sub: "Worth a call with someone who can look at it"),
+        ]
+        for row in rows {
+            let note = InjuryFlareV5.checkedNote(row)
+            XCTAssertNotEqual(note, row.sub,
+                              "the confirmation is the row's own sub-line printed twice")
+            XCTAssertFalse(note.contains(row.sub ?? "\u{0}"),
+                           "the confirmation still contains the row's sub-line verbatim")
+            // And it must actually CONFIRM — Rule 13 §3, assert the shape of
+            // the result rather than the absence of the old one.
+            XCTAssertTrue(note.contains(row.label), "the note does not say which answer landed")
+            XCTAssertTrue(note.lowercased().contains("coach"),
+                          "the note does not say the coach has it")
+        }
+    }
+
+    // MARK: - 4 and 5 · the note's slot
+
+    /// The reveal is non-nil exactly for the states that draw something under
+    /// the tile, and nil while a write is in flight — moving the page under a
+    /// finger mid-write is the defect next door.
+    func testTheNoteIsRevealedOnlyOnceThereIsSomethingToRead() {
+        XCTAssertNil(InjuryFlareV5.revealTarget(for: .idle))
+        XCTAssertNil(InjuryFlareV5.revealTarget(for: .sending("better")))
+        XCTAssertEqual(InjuryFlareV5.revealTarget(for: .done("better")), InjuryFlareV5.noteAnchor)
+        XCTAssertEqual(InjuryFlareV5.revealTarget(for: .failed("better")), InjuryFlareV5.noteAnchor)
+        XCTAssertEqual(InjuryFlareV5.revealTarget(for: .refused("better", "nothing open")),
+                       InjuryFlareV5.noteAnchor)
+    }
+
+    /// THE MIS-TAP, structurally. The slot's height is monotonic, so no
+    /// transition after the first attempt can shorten the page — which is the
+    /// clamp that moved "Worse" under the finger aiming at "Retry".
+    func testTheNoteSlotNeverGetsShorter() {
+        typealias Slot = NonShrinkingSlot<EmptyView>
+        // The exact sequence the reviewer walked: failed (tall), Retry
+        // (sending, empty), failed again, then landed (one short line).
+        var reserved: CGFloat = 0
+        for measured in [0, 141, 0, 141, 18, 0] as [CGFloat] {
+            let next = Slot.ratchet(reserved: reserved, measured: measured)
+            XCTAssertGreaterThanOrEqual(next, reserved,
+                                        "the slot shrank, which is the whole defect")
+            reserved = next
+        }
+        XCTAssertEqual(reserved, 141, "the slot did not hold the tallest thing it drew")
+        // Rule 18 · the assertion has to be able to fail. The UNFIXED
+        // behaviour was to take each measurement as-is, and that sequence
+        // ends at 0 rather than 141.
+        var naive: CGFloat = 0
+        for measured in [0, 141, 0, 141, 18, 0] as [CGFloat] { naive = measured }
+        XCTAssertEqual(naive, 0, "the unfixed behaviour must still be expressible")
+        XCTAssertNotEqual(naive, reserved)
+    }
+
+    // MARK: - 6 · the Undo
+
+    /// It rendered as a chevron and fired nothing. Both halves: the row that
+    /// clears a niggle carries the word, and one word, drawn from one place.
+    func testTheUndoRowCarriesTheWordAndNotAChevronAlone() {
+        XCTAssertEqual(TodayAfterV5.undoLabel, "Undo")
+        XCTAssertEqual(TodayAfterV5.undoNiggleAction, "undo_niggle")
+        let local = TodayAfterV5.localUndoRow("Left calf")
+        XCTAssertEqual(local.action, TodayAfterV5.undoNiggleAction,
+                       "the local Undo must resolve through the same verb as the server's row, "
+                       + "or the host's guard drops it on the floor")
+        XCTAssertEqual(local.label, "Left calf")
+    }
+
+    /// An unwired row action claims nothing in either direction (Rule 11 ·
+    /// "we did not ask"), the same fail-safe default TODAYWRITE-2 gave
+    /// `onCheckIn`. The old default here was `-> Void`, which could not
+    /// report anything at all.
+    @MainActor
+    func testAnUnwiredRowActionClaimsNothing() async {
+        let view = TodayAfterV5(model: TodayAfterV5Samples.outdoor)
+        let settlement = await view.onRowAction(TodayAfterV5.localUndoRow("Left calf"))
+        XCTAssertEqual(settlement, .cancelled,
+                       "the default must not fabricate a cleared niggle")
+    }
+
+    // MARK: - 7 · the advice link outlives the session that caused it
+
+    /// THE DEFECT, and it is only visible in the RELAUNCH case: the server
+    /// still carries the flag, this session has written nothing.
+    func testTheInjuryLinkSurvivesARelaunch() {
+        XCTAssertTrue(TodayAfterV5.showsInjuryLink(serverFlagged: "Left calf flagged",
+                                                   niggleState: .idle),
+                      "the link vanishes on the morning the sentence is actually about")
+        // Same session, just written and confirmed: the server row has not
+        // arrived yet, and the link is still true.
+        XCTAssertTrue(TodayAfterV5.showsInjuryLink(serverFlagged: nil,
+                                                   niggleState: .done("Left calf")))
+        // Nothing on file, nothing said.
+        XCTAssertFalse(TodayAfterV5.showsInjuryLink(serverFlagged: nil, niggleState: .idle))
+        // And a write that only MIGHT have landed still says nothing about a
+        // flag — the clause TODAYWRITE-1 established, which this must not
+        // loosen while widening the true cases.
+        XCTAssertFalse(TodayAfterV5.showsInjuryLink(serverFlagged: nil,
+                                                    niggleState: .failed("Left calf")))
+        XCTAssertFalse(TodayAfterV5.showsInjuryLink(serverFlagged: nil,
+                                                    niggleState: .sending("Left calf")))
+        XCTAssertFalse(TodayAfterV5.showsInjuryLink(serverFlagged: nil,
+                                                    niggleState: .refused("Left calf", "nothing open")))
     }
 }

@@ -138,22 +138,59 @@ private struct PlaceHeaderRow: View {
 /// content band's own gutter. Matches `NotOnPhoneYetV5`'s shape in
 /// `ShellV5.swift`, the other screen in this app with nothing to prescribe.
 private struct StateScreenScaffold<Panel: View, Body: View>: View {
+    /// INJURYCHECKIN-1 · WHEN A NOTE APPEARS BELOW THE FOLD, BRING IT UP.
+    ///
+    /// The check-in tile sits under a 44pt display panel, a coach line and a
+    /// "What changed" group, so on an iPhone SE — and on a 17 Pro — the
+    /// failure note and its Retry button rendered entirely off-screen, behind
+    /// the tab bar. The runner tapped a check-in row, nothing visible
+    /// happened, and the only thing that would have told them otherwise was a
+    /// scroll they had no reason to know was needed.
+    ///
+    /// A descendant asks with `v5Reveal(_:)`; the enclosing
+    /// `V5RevealingScroll` answers.
+    ///
+    /// INJURYCHECKIN-1 · AND THIS SCREEN MUST NOT ADD A SECOND SCROLL VIEW.
+    ///
+    /// On the Today path these screens are drawn inside
+    /// `TodayHostV5.inSharedShell`, which is itself a `ScrollView`. So the
+    /// page had TWO nested vertical scroll views, and the inner one never
+    /// scrolled — it sized to its content and the outer one moved. Measured
+    /// on device: the first cut of this fix put a `ScrollViewReader` here and
+    /// it was a no-op, because `scrollTo` cannot reach a target that sits
+    /// inside a nested scroll container. `nested` removes the inner one, which
+    /// is both what makes the reveal work and one fewer competing gesture.
+    ///
+    /// It is set from the same flag as `suppressOwnHeader` because it is the
+    /// same fact — "a host already draws the shell around this content" — and
+    /// that host's shell is a ScrollView. One flag would be Rule 16; two names
+    /// for one fact would be the same violation, so the callers pass one value
+    /// to both and the coupling is stated here.
+    var nested: Bool = false
     @ViewBuilder var panel: () -> Panel
     @ViewBuilder var content: () -> Body
 
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-                panel()
-                content()
-            }
-            .padding(.horizontal, V5.S.gutter)
-            .padding(.bottom, V5.S.s24)
-            // A vertical page must never pan sideways — see `v5PageWidth`.
-            .v5PageWidth()
+    private var band: some View {
+        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+            panel()
+            content()
         }
-        .background(V5.surfacePage)
-        .scrollIndicators(.hidden)
+        .padding(.horizontal, V5.S.gutter)
+        .padding(.bottom, V5.S.s24)
+        // A vertical page must never pan sideways — see `v5PageWidth`.
+        .v5PageWidth()
+    }
+
+    var body: some View {
+        if nested {
+            band
+        } else {
+            V5RevealingScroll {
+                ScrollView { band }
+                    .background(V5.surfacePage)
+                    .scrollIndicators(.hidden)
+            }
+        }
     }
 }
 
@@ -219,6 +256,48 @@ struct InjuryFlareV5: View {
         return model.checkIn.first { $0.id == id }
     }
 
+    /// INJURYCHECKIN-1 · the server's own refusal sentence, when it sent one.
+    private var refusal: String? { checkInState.refusal }
+
+    /// INJURYCHECKIN-1 · WHAT A LANDED CHECK-IN SAYS.
+    ///
+    /// It used to be `Text(checked.sub ?? "Logged.")` — and `sub` is never
+    /// nil on a real payload, so the `"Logged."` fallback had never once
+    /// rendered. What the runner actually got was the tapped row's OWN
+    /// sub-line printed a second time, about 40pt below the first: "Loosen
+    /// back in gradually tomorrow", then "Loosen back in gradually tomorrow".
+    /// Rule 17 in its purest form, and worse than bloat here — it meant a
+    /// successful check-in and a failed one were indistinguishable by
+    /// looking at the screen, which is exactly what TODAYWRITE-1 and -2 spent
+    /// two rounds making impossible everywhere else.
+    ///
+    /// So the confirmation now confirms. It names WHICH answer landed (the
+    /// tile shows no selection of its own, so the note is the only place that
+    /// can) and then says the thing only a confirmed write may say, in the
+    /// same words the niggle row uses for the same fact.
+    static func checkedNote(_ row: V5Row) -> String {
+        "\(row.label) \u{00B7} the coach has today's answer"
+    }
+
+    /// The id the scaffold scrolls to when a note appears below the fold.
+    /// One constant, so the anchor and the request cannot drift (Rule 16).
+    static let noteAnchor = "injury-checkin-note"
+
+    /// Non-nil exactly while there is something under the tile worth seeing.
+    /// `.sending` and `.idle` deliberately do not scroll: nothing has been
+    /// said yet, and moving the page under a finger is the defect next door.
+    ///
+    /// Pure and static so a test can walk all five states without a view host
+    /// — the same reason `v5WriteSettlement` is extracted.
+    static func revealTarget(for state: V5RowWriteState) -> String? {
+        switch state {
+        case .failed, .refused, .done: return noteAnchor
+        case .idle, .sending: return nil
+        }
+    }
+
+    private var revealNote: String? { Self.revealTarget(for: checkInState) }
+
     /// The one place a check-in is attempted, so the row and the Retry
     /// cannot drift apart (Rule 16).
     private func checkIn(_ row: V5Row) {
@@ -231,7 +310,7 @@ struct InjuryFlareV5: View {
     }
 
     var body: some View {
-        StateScreenScaffold {
+        StateScreenScaffold(nested: suppressOwnHeader) {
             DayPanel(fill: .quiet) {
                 if !suppressOwnHeader {
                     PlaceHeaderRow(onOpenAccount: onOpenAccount)
@@ -279,19 +358,50 @@ struct InjuryFlareV5: View {
                 .background(V5.materialTile,
                             in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
 
-                // TODAYWRITE-1 · the note under the tile is the app saying
-                // "we have this". Only a confirmed write earns it.
-                if let checked = model.checkIn.first(where: { $0.id == checkedRowID }) {
-                    Text(checked.sub ?? "Logged.")
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.textSecondary)
-                        .padding(.horizontal, V5.S.s4)
-                }
+                // INJURYCHECKIN-1 · ONE SLOT, AND IT NEVER GETS SHORTER.
+                //
+                // These three notes used to be three independent `if`s
+                // directly in the stack, so every transition between them
+                // changed the page's height. Retry (`.failed` -> `.sending`)
+                // removed ~141pt from a page that was already taller than the
+                // screen, iOS clamped the scroll offset, and every row above
+                // slid down into the space — putting "Worse" exactly where
+                // "Retry" had been. See `NonShrinkingSlot`.
+                //
+                // The `.id` is what the scaffold scrolls to, so a note that
+                // lands below the fold is brought up rather than left for a
+                // runner who has no reason to scroll.
+                NonShrinkingSlot {
+                    VStack(alignment: .leading, spacing: V5.S.s10) {
+                        // TODAYWRITE-1 · the note under the tile is the app
+                        // saying "we have this". Only a confirmed write earns
+                        // it. INJURYCHECKIN-1 · and it says something the
+                        // screen does not already say.
+                        if let checked = model.checkIn.first(where: { $0.id == checkedRowID }) {
+                            Text(Self.checkedNote(checked))
+                                .font(.faffText(TypeScaleV5.label13))
+                                .foregroundStyle(V5.textSecondary)
+                                .padding(.horizontal, V5.S.s4)
+                        }
 
-                if let failed = failedRow {
-                    ErrorNote(text: V5UnconfirmedCopy.coachMayNotHaveIt,
-                              onRetry: { checkIn(failed) })
+                        // INJURYCHECKIN-1 · a refusal is an ANSWER. The
+                        // server's own sentence, `Alert` rather than
+                        // `ErrorNote`, and NO Retry — the request cannot
+                        // succeed however many times it is sent, and offering
+                        // one would be the false reassurance this closes.
+                        if let refusal {
+                            Alert(text: refusal, tone: .attention)
+                        }
+
+                        if let failed = failedRow {
+                            ErrorNote(text: V5UnconfirmedCopy.coachMayNotHaveIt,
+                                      onRetry: { checkIn(failed) })
+                        }
+                    }
                 }
+                .padding(.bottom, V5.S.s12)
+                .id(Self.noteAnchor)
+                .v5Reveal(revealNote)
             }
 
             if model.returnAvailable {
@@ -326,7 +436,7 @@ struct WeekOffV5: View {
     private var range: String { Self.formatRange(fromISO: model.fromISO, toISO: model.toISO) }
 
     var body: some View {
-        StateScreenScaffold {
+        StateScreenScaffold(nested: suppressOwnHeader) {
             DayPanel(fill: .state(.rest)) {
                 if !suppressOwnHeader {
                     PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
@@ -410,7 +520,7 @@ struct OffSeasonV5: View {
     var suppressOwnHeader: Bool = false
 
     var body: some View {
-        StateScreenScaffold {
+        StateScreenScaffold(nested: suppressOwnHeader) {
             DayPanel(fill: .quiet) {
                 if !suppressOwnHeader {
                     PlaceHeaderRow(onOpenAccount: onOpenAccount)
@@ -487,7 +597,7 @@ struct DataOutageV5: View {
     var onOpenAccount: () -> Void = {}
 
     var body: some View {
-        StateScreenScaffold {
+        StateScreenScaffold() {
             DayPanel(fill: today.panel.fill) {
                 PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
                 VStack(alignment: .leading, spacing: V5.S.s20) {
@@ -671,7 +781,7 @@ struct RaceJustFinishedV5: View {
     var onOpenAccount: () -> Void = {}
 
     var body: some View {
-        StateScreenScaffold {
+        StateScreenScaffold() {
             DayPanel(fill: .state(.race)) {
                 PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
 
