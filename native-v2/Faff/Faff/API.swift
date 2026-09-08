@@ -1122,13 +1122,13 @@ enum API {
     /// Fetch today's WatchWorkout shape as raw Data so we can forward it
     /// unchanged to the watch via applicationContext (preserves field shape
     /// exactly — the watch decodes from Data into its own WatchWorkout).
+    ///
+    /// Routes through `WatchTodayGate` (below `TodayWorkoutWrapper`) so this
+    /// and `fetchWatchWorkout(date: nil)` share ONE in-flight network
+    /// request instead of each firing its own — see
+    /// WATCH-TODAY-SINGLEFLIGHT-1 on that actor.
     static func fetchWatchTodayRaw() async throws -> Data {
-        let url = baseURL.appendingPathComponent("api/watch/today")
-        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
-        guard (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus(http.statusCode)
-        }
-        return data
+        try await WatchTodayGate.shared.raw()
     }
 
     /// Same as fetchWatchTodayRaw but decoded into WatchWorkout so the
@@ -1136,15 +1136,7 @@ enum API {
     /// override lets the WorkoutDetailModal preview any day's tile.
     /// Returns nil on the rest/no-workout branch.
     static func fetchWatchWorkout(date: String? = nil) async throws -> WatchWorkout? {
-        var comps = URLComponents(
-            url: baseURL.appendingPathComponent("api/watch/today"),
-            resolvingAgainstBaseURL: false
-        )!
-        if let date { comps.queryItems = [URLQueryItem(name: "date", value: date)] }
-        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
-        guard (200..<300).contains(http.statusCode) else {
-            throw APIError.badStatus(http.statusCode)
-        }
+        let data = try await WatchTodayGate.shared.raw(date: date)
         let w = try JSONDecoder().decode(TodayWorkoutWrapper.self, from: data)
         // Cache the *raw* wrapper (not just the workout) so the next
         // launch decodes back through the same shape. Today's workout
@@ -1873,6 +1865,72 @@ enum API {
 
 struct TodayWorkoutWrapper: Decodable {
     let workout: WatchWorkout?
+}
+
+// MARK: - WatchTodayGate — single-flight for /api/watch/today
+//
+// WATCH-TODAY-SINGLEFLIGHT-1 (2026-09-07) · a cold launch fired
+// `/api/watch/today` three times, confirmed via Request Diagnostics:
+//   1. `WatchSync.shared.start()` → `pushTodayToWatch()` →
+//      `fetchWatchTodayRaw()`, called synchronously from
+//      `NotificationsAppDelegate.application(_:didFinishLaunchingWithOptions:)`
+//      — fires before the SwiftUI scene even builds.
+//   2. `API.prefetchAllOnLaunch()` → `fetchWatchWorkout()`, from a
+//      `Task.detached` in `RootContainer()`'s `.task` (FaffApp.swift).
+//   3. `RunLobbyV5.loadWorkout()` → `fetchWatchWorkout()`, from that
+//      view's own `.task` — RunLobbyV5 is mounted (not lazily) on cold
+//      launch because ShellV5 keeps every tab destination alive.
+//
+// Three independent call sites, none aware of the others, and `API` is a
+// plain enum (no actor isolation) so a bare `static var` guard would race
+// across a UIKit delegate hook, a detached Task, and a SwiftUI View's
+// `.task`. This actor is modelled on `SettingsCache.inflightSettings`
+// (Util/SettingsCache.swift) — the same "multiple callers, different
+// execution contexts, need real concurrency-safe single-flight" shape —
+// rather than `TodayHostV5`'s simpler same-actor `Task<Bool, Never>?`
+// pattern, which only works because that caller is itself a View.
+//
+// Both wrapper functions above route through `raw()` so there is exactly
+// ONE underlying network request no matter which of the two is called
+// first or how many callers pile on behind it. The slot clears itself the
+// instant the in-flight fetch settles (success or failure), so a later,
+// genuinely separate refresh — pull-to-refresh, or WatchSync.refresh()
+// once its own 60s throttle window has passed — still issues a real new
+// request rather than being coalesced away forever.
+private actor WatchTodayGate {
+    static let shared = WatchTodayGate()
+
+    private var inflight: Task<Data, Error>?
+
+    /// `date == nil` (every one of the three cold-launch callers above)
+    /// shares the one in-flight slot. `date != nil` (WorkoutDetailModal's
+    /// preview of a different day) bypasses the slot entirely — it is not
+    /// "today" and must never be coalesced with it.
+    func raw(date: String? = nil) async throws -> Data {
+        guard date == nil else {
+            return try await Self.fetchUncached(date: date)
+        }
+        if let inflight {
+            return try await inflight.value
+        }
+        let task = Task<Data, Error> { try await Self.fetchUncached(date: nil) }
+        inflight = task
+        defer { inflight = nil }
+        return try await task.value
+    }
+
+    private static func fetchUncached(date: String?) async throws -> Data {
+        var comps = URLComponents(
+            url: API.baseURL.appendingPathComponent("api/watch/today"),
+            resolvingAgainstBaseURL: false
+        )!
+        if let date { comps.queryItems = [URLQueryItem(name: "date", value: date)] }
+        let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(comps.url!)
+        guard (200..<300).contains(http.statusCode) else {
+            throw API.APIError.badStatus(http.statusCode)
+        }
+        return data
+    }
 }
 
 // MARK: - PlanWeek wire model
