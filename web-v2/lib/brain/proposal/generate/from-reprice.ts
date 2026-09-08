@@ -48,7 +48,7 @@
  *   with no parts, which is exactly what the previous behaviour always was.
  */
 
-import type { RepriceAnchorMove, RepricePayload } from '@/lib/plan/reprice-payload';
+import { repriceHeadline, type RepriceAnchorMove, type RepricePayload } from '@/lib/plan/reprice-payload';
 import type { BrainAction } from '../action';
 import { ACTION_SCHEMA_VERSION } from '../action';
 
@@ -66,16 +66,19 @@ export function actionFromReprice(payload: RepricePayload): BrainAction {
     .filter((p): p is BrainAction => p !== null);
 
   const d = payload.meanAnchorDeltaSecPerMi;
-  const n = payload.workoutsAffected;
-  const sessions = n === 1 ? '1 session ahead'
-    : n > 1 ? `${n} sessions ahead`
-      : 'Every session ahead';
-  /* Verb agreement only shows up when you read the rendered string, which is
-   * why it is decided here and not left to a template. */
-  const describe = !Number.isFinite(d) || (d > -1 && d < 1)
-    ? `${sessions} ${n === 1 ? 'gets' : 'get'} updated paces`
-    : d < 0 ? `${sessions} move to faster paces`
-      : `${sessions} move to easier paces`;
+  /* REPRICEHEADLINE-1 (2026-09-08) · the sentence is composed in
+   * `reprice-payload.ts`, beside `repriceSubject`, because the LEGACY reader
+   * in `staleness.ts` has to produce the identical string for a row that
+   * stored no action and a second copy of the wording is the Rule 16
+   * collision this card has now supplied twice. It names the anchor that
+   * moved rather than the number of sessions it touches — see that function's
+   * header for what David actually read and why the count moved off the
+   * headline. */
+  const describe = repriceHeadline({
+    moves: payload.anchorMoves,
+    meanAnchorDeltaSecPerMi: d,
+    workoutsAffected: payload.workoutsAffected,
+  });
 
   return {
     schemaVersion: ACTION_SCHEMA_VERSION,

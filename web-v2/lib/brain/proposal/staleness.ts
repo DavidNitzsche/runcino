@@ -12,6 +12,7 @@
 
 import { pool } from '@/lib/db/pool';
 import { planVersionOf } from '@/lib/plan/plan-version';
+import { repriceHeadline, type RepriceAnchorMove } from '@/lib/plan/reprice-payload';
 import type { ActionShape, LiveRow, BrainAction, RowBefore } from './action';
 import { ACTION_SCHEMA_VERSION } from './action';
 import { deserializeAction } from './serialize';
@@ -122,8 +123,19 @@ export interface LegacyPayload {
   newDate?: string | null;
   shaveFraction?: number | null;
   newDistanceMi?: number | null;
-  /** REANCHORPROPOSES-1 · a whole-block repricing, carried as one decision. */
-  reprice?: { meanAnchorDeltaSecPerMi?: number; workoutsAffected?: number } | null;
+  /** REANCHORPROPOSES-1 · a whole-block repricing, carried as one decision.
+   *
+   *  `anchorMoves` is declared here as of REPRICEHEADLINE-1 because the
+   *  headline names the anchor that MOVED rather than the count of sessions,
+   *  so the legacy reconstruction needs the same list the writer read. Every
+   *  reprice row carries it — `asRepricePayload` refuses a payload without a
+   *  non-empty one — but it stays optional because this type describes a
+   *  STORED blob rather than a promise about it. */
+  reprice?: {
+    meanAnchorDeltaSecPerMi?: number;
+    workoutsAffected?: number;
+    anchorMoves?: RepriceAnchorMove[] | null;
+  } | null;
   /**
    * ACTIONCOMPLETE-1 (2026-09-05) · the decision as the writer stated it.
    *
@@ -235,20 +247,22 @@ export function actionFromPending(p: {
       const shape = actionShapeOfEngineKind('reprice', p.actionPayload);
       if (shape == null) return null;
       const r = p.actionPayload.reprice;
-      const n = typeof r?.workoutsAffected === 'number' ? r.workoutsAffected : null;
-      const d = typeof r?.meanAnchorDeltaSecPerMi === 'number' ? r.meanAnchorDeltaSecPerMi : null;
       /* A repricing is about the BLOCK, so this is the one headline that does
        * not name a weekday. The card's date already says where the change
-       * starts, and saying it twice would be Rule 17. */
-      const sessions = n == null ? 'Every session ahead'
-        : n === 1 ? '1 session ahead'
-          : `${n} sessions ahead`;
-      const describe = d == null || (d > -1 && d < 1)
-        // "1 session ahead GETS", "4 sessions ahead GET". Verb agreement only
-        // shows up when you read the rendered string.
-        ? `${sessions} ${n === 1 ? 'gets' : 'get'} updated paces`
-        : d < 0 ? `${sessions} move to faster paces`
-          : `${sessions} move to easier paces`;
+       * starts, and saying it twice would be Rule 17.
+       *
+       * REPRICEHEADLINE-1 (2026-09-08) · this used to carry its own copy of
+       * the sentence `actionFromReprice` writes onto the row, which is one
+       * quantity with two authors (Rule 16) and would have let the legacy
+       * reconstruction drift from the stored string silently. Both now call
+       * `repriceHeadline`. This branch is the fallback for the rows written
+       * before there was an action to store, so it must agree with the writer
+       * exactly or a card changes wording depending on when it was raised. */
+      const describe = repriceHeadline({
+        moves: r?.anchorMoves,
+        meanAnchorDeltaSecPerMi: r?.meanAnchorDeltaSecPerMi,
+        workoutsAffected: r?.workoutsAffected,
+      });
       return {
         ...base,
         kind: 'COORDINATED',
