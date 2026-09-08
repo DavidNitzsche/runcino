@@ -225,6 +225,36 @@ targets:
     dependencies:
       - target: Faff
 
+  # SETTINGSCANCEL-1 (2026-09-07) · the UI-driving half of the Settings
+  # failure-state proof.
+  #
+  # The cancellation race this target exists to reproduce is a race between
+  # two TAPS, and no unit test can press a button. `SettingsFailureStateTests`
+  # proves the DECISION (`application(for:isCancelled:)` applies nothing when
+  # cancelled); only a real double-tap against a real slow backend proves the
+  # screen never narrates a wrong state while it is happening.
+  #
+  # SKIPPED BY DEFAULT. Every test here calls `XCTSkipUnless` on the
+  # FAFF_UI_HOST environment variable, so a plain `xcodebuild test` builds it
+  # and reports skips rather than failing on a server nobody is running. That
+  # is deliberate and it is also the honest weakness: this target cannot fail
+  # in CI, and does not pretend to. See the file header for the invocation.
+  FaffUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: Faff/FaffUITests
+        excludes:
+          - "**/.DS_Store"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: run.faff.app.uitests
+        TEST_TARGET_NAME: Faff
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - target: Faff
+
   # Apple Watch companion app — sources live in legacy/ for now, symlinked in
   # by scripts/ship-testflight-v2.sh. Bundle id MUST be <iOSbundle>.watchkitapp
   # per Apple's WatchKit single-target convention (post-2020).

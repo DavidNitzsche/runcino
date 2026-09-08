@@ -43,45 +43,85 @@ actor SettingsCache {
     /// Fire both fetches in parallel if missing or stale. Idempotent —
     /// concurrent callers reuse the in-flight Task. Returns once both
     /// have either succeeded or failed (failures cache nil; next call retries).
+    ///
+    /// SETTINGSCANCEL-1 · the two `Task {}`s below are UNSTRUCTURED on
+    /// purpose, and therefore do not inherit their caller's cancellation.
+    /// That is the point of the in-flight slot: the shared fetch belongs to
+    /// every caller piggybacking on it, so one caller walking away (a
+    /// superseded `SettingsHostV5` load, a dismissed sheet) must not cancel
+    /// the read the others are still waiting on. The consequence, stated
+    /// plainly rather than left for the next reader to discover: `warm()` is
+    /// NOT promptly cancellable, and a caller that cancels mid-`warm()` still
+    /// waits for the transport. `API.authedSend` bounds every request at 12s
+    /// (TIMEOUT-1), which is what actually bounds that wait.
     func warm() async {
         async let s: () = warmSettings()
         async let p: () = warmProfile()
         _ = await (s, p)
     }
 
-    private func warmSettings() async {
-        if settings != nil { return }
-        if let inflight = inflightSettings { _ = await inflight.value; return }
-        let task = Task<Result<UserSettings?, Error>, Never> {
-            do { return .success(try await API.fetchSettings()) }
-            catch { return .failure(error) }
-        }
-        inflightSettings = task
-        switch await task.value {
+    /// SETTINGSCANCEL-1 (2026-09-07 review) · THE PIGGYBACKER APPLIES THE
+    /// RESULT ITSELF.
+    ///
+    /// The piggyback branch below used to be `_ = await inflight.value;
+    /// return` — it waited for the shared fetch and then returned WITHOUT
+    /// applying its outcome, trusting the caller that OWNS the task to have
+    /// written `settings`/`lastSettingsError` first. Both callers resume from
+    /// the same `await`, and the actor makes no promise about which resumes
+    /// first, so a piggybacking caller could return, read `lastErrors()`, and
+    /// see the state from BEFORE this fetch — a stale error surviving a good
+    /// read, or a fresh failure invisible to the caller that is about to
+    /// decide whether the screen failed. Unobserved on device so far, and
+    /// real. Applying the result in both branches removes the ordering
+    /// question entirely: whoever resumes first writes, the second write is
+    /// identical, and no caller can observe the gap.
+    private func applySettings(_ result: Result<UserSettings?, Error>) {
+        switch result {
         case .success(let value):
             lastSettingsError = nil
             if let value { settings = value }
         case .failure(let error):
             lastSettingsError = error
         }
-        inflightSettings = nil
     }
 
-    private func warmProfile() async {
-        if profile != nil { return }
-        if let inflight = inflightProfile { _ = await inflight.value; return }
-        let task = Task<Result<ProfileFields?, Error>, Never> {
-            do { return .success(try await API.fetchProfile()) }
-            catch { return .failure(error) }
-        }
-        inflightProfile = task
-        switch await task.value {
+    private func applyProfile(_ result: Result<ProfileFields?, Error>) {
+        switch result {
         case .success(let value):
             lastProfileError = nil
             if let value { profile = value }
         case .failure(let error):
             lastProfileError = error
         }
+    }
+
+    private func warmSettings() async {
+        if settings != nil { return }
+        if let inflight = inflightSettings {
+            applySettings(await inflight.value)
+            return
+        }
+        let task = Task<Result<UserSettings?, Error>, Never> {
+            do { return .success(try await API.fetchSettings()) }
+            catch { return .failure(error) }
+        }
+        inflightSettings = task
+        applySettings(await task.value)
+        inflightSettings = nil
+    }
+
+    private func warmProfile() async {
+        if profile != nil { return }
+        if let inflight = inflightProfile {
+            applyProfile(await inflight.value)
+            return
+        }
+        let task = Task<Result<ProfileFields?, Error>, Never> {
+            do { return .success(try await API.fetchProfile()) }
+            catch { return .failure(error) }
+        }
+        inflightProfile = task
+        applyProfile(await task.value)
         inflightProfile = nil
     }
 
