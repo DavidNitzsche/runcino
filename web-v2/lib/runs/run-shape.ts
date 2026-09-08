@@ -1683,7 +1683,36 @@ export function runPhases(d: RunData): NormalizedPhase[] {
       targetSpeedMph: pos(p.targetSpeedMph),
       actualSpeedMph: pos(p.actualSpeedMph),
       targetInclinePct: pos(p.targetInclinePct),
-      actualInclinePct: pos(p.actualInclinePct),
+      /* ZERO IS A READING HERE (INCLINE-ZERO-1, 2026-09-08) · `num`, not
+       * `pos`. A belt at 0.0% is FLAT, which is a measurement; a belt at
+       * 0.0 mph is not moving, which is not one. `pos`'s own doc says it is
+       * "for quantities where zero is not a measurement (distance, duration,
+       * pace)" and incline is not one of those, which is why this app's two
+       * other incline readers both use a zero-preserving parse and say so:
+       * `lib/runs/belt-averages.ts` passes `positiveOnly: false` for incline
+       * and `true` for speed in the same call, and
+       * `lib/terrain/run-terrain.ts#treadmillMeanInclinePct` uses its own
+       * finite-number `num`.
+       *
+       * Found downstream of SIMROW-1 · RECAP, which routed the recap's phase
+       * ladder through this normalizer. The route's own ladder had been
+       * `typeof p.actualInclinePct === 'number' ? p.actualInclinePct : null`
+       * — zero-preserving — so a flat treadmill session's real 0 became null
+       * on the way through, and `lib/coach/run-win.ts#winTreadmill`'s
+       * "steady incline" phrase moves in BOTH directions on that: a session
+       * run entirely at 0% loses the phrase (nothing survives the null
+       * filter), and a session that actually varied 0% → 2% GAINS it (only
+       * the 2s survive, so the spread reads as flat). Three of this
+       * account's real treadmill sessions carry a 0 in a work phase.
+       *
+       * `targetInclinePct` above deliberately keeps `pos`: the one thing
+       * `verdict.ts` reads it for is "was ANY incline target prescribed",
+       * and this app never prescribes 0 — `plan-snapshot.ts`'s
+       * `TREADMILL_BASELINE_INCLINE_PCT` is 1, doctrine-bound to
+       * TERRAIN.treadmill-air-resistance-grade. Changing it would be a
+       * change with no case behind it, and this comment is the record that
+       * the asymmetry is a decision rather than an oversight. */
+      actualInclinePct: num(p.actualInclinePct),
       hrRole: p.hrRole === 'target' || p.hrRole === 'observational' ? p.hrRole : null,
     });
   });

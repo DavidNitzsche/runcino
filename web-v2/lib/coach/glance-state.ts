@@ -27,7 +27,7 @@ import { weekWindowFor } from '@/lib/coach/week-window';
 import type { WorkoutSpec } from '@/lib/faff/types';
 import { fellShortShare, resolveWorkoutVerdict } from '@/lib/execution/verdict';
 import { resolveDayExecutions, primaryPrescription } from '@/lib/execution/day-resolver';
-import { resolveStoredPhases } from '@/lib/postrun/load';
+import { resolveStoredPhases, dayBiggestCanonicalRun } from '@/lib/postrun/load';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PaceAnchorRead } from '@/lib/training/prescription-resolver';
 import { roundTo } from '@/lib/format/run';
@@ -133,10 +133,12 @@ export interface GlanceState {
    * Drives the done-state copy in glance-adapter (resolveDayState +
    * poster/sibling) so a missed or abandoned session no longer reads
    * "ON TARGET". Derived from the frozen watch-completion phases OF THE RUN
-   * THAT SATISFIED TODAY'S PRESCRIPTION (`resolveDayExecutions` naming the
-   * run, `resolveStoredPhases` naming its phases — SIMROW-1 · GLANCE), not
-   * doneMi alone: Jun 2 ran the planned mileage but missed 2 of 4 reps,
-   * invisible to a distance check.
+   * THAT SATISFIED TODAY'S PRESCRIPTION — and, when nothing satisfied it, of
+   * the day's biggest canonical run of the runner's OWN (`resolveDayExecutions`
+   * then `dayBiggestCanonicalRun` naming the run, `resolveStoredPhases` naming
+   * its phases — SIMROW-1 · GLANCE, GLANCE-FALLBACK-1). Not doneMi alone:
+   * Jun 2 ran the planned mileage but missed 2 of 4 reps, invisible to a
+   * distance check.
    *   · 'nailed' — ran today, hit the work (or no negative signal / non-watch)
    *   · 'short'  — the WORK (quality) block was cut short (a work phase didn't
    *               complete) or missed pace vs its target. Cutting only a
@@ -232,10 +234,11 @@ export interface GlanceState {
 /**
  * E5 · classify how TODAY's completed run went vs the prescription.
  * Reads the frozen watch-completion phases OF THE RUN THAT SATISFIED TODAY'S
- * PRESCRIPTION, so a missed-rep session is caught even when total mileage
- * matched the plan. Cold-start / non-watch / no-phase runs default to 'nailed'
- * (a logged run with no negative signal). Returns null when there's no run
- * today, so the done-state simply isn't active.
+ * PRESCRIPTION — falling back, when nothing satisfied it, to the day's biggest
+ * canonical run of the runner's own — so a missed-rep session is caught even
+ * when total mileage matched the plan. Cold-start / non-watch / no-phase runs
+ * default to 'nailed' (a logged run with no negative signal). Returns null when
+ * there's no run today, so the done-state simply isn't active.
  *
  * Only WORK phases count — cutting a warmup/cooldown short (status='abandoned'
  * during the CD) is not "coming up short" on the session. Threshold (tunable
@@ -260,18 +263,16 @@ export async function computeTodayExecution(
    *
    * This used to run its own `coach_intents` query — the runner, the reason,
    * and the DAY, `ORDER BY ts DESC LIMIT 1`, over a swallowing catch that
-   * turned any failure into an empty result set — and grade whatever came back. It named no run at all, so on a day
-   * carrying more than one completion payload the done-state on Today was
-   * decided by whichever payload was written LAST.
-   *
-   * Measured against the owner's production rows, not theorised. On
-   * 2026-09-02 he ran 6.41 mi easy with six strides and the day also carries
-   * two `sim-recovery-live` payloads posted 47 minutes later; the query took
-   * one of those, whose single work phase carries the stored verdict
-   * `missed`, and Today told him he had come up SHORT on a session he
-   * nailed. On 2026-09-03 the day carries a 12:25 watch run and a 17:25
-   * treadmill interval session, and the grade came off whichever landed
-   * second regardless of which run the strip was describing.
+   * turned any failure into an empty result set — and grade whatever came
+   * back. It named no run at all, so on a day carrying more than one
+   * completion payload the done-state on Today was decided by whichever
+   * payload was written LAST. Verified against the owner's own rows: on
+   * 2026-09-02 he ran 6.41 mi easy with six strides (his payload, 13 phases,
+   * 10:38) and the day also carries two `sim-recovery-live` payloads written
+   * at 11:25, so that query answered from a SIMULATOR row whose single work
+   * phase is 31 s / 0.09 mi. Both arrays happen to grade the same that day,
+   * so no word on the runner's screen was wrong — the defect was that the
+   * answer did not depend on the run.
    *
    * TWO questions, two owners, and neither of them is a date:
    *   · WHICH RUN executed today's prescription — `lib/execution/day-resolver.ts`
@@ -283,12 +284,57 @@ export async function computeTodayExecution(
    *     ref this run NAMES, the run row's own `data.phases`, and only then a
    *     `sim-`-bounded legacy date match.
    *
-   * Rule 11 · NOTHING MATCHING IS AN ANSWER. When no run satisfied today's
-   * prescription, or the matched run carries no phases, this grades nothing
-   * and falls through to the volume read below — the same 'nailed'/'over' a
-   * genuine non-watch run has always produced. It does NOT reach for another
-   * payload. A done-state graded off a stranger's reps is worse than one
-   * graded off no reps at all, because it is confidently wrong.
+   * ── GLANCE-FALLBACK-1 (2026-09-08) · AND WHEN NOTHING SATISFIED IT ───────
+   *
+   * The first cut of the fix above stopped at `matchedRun`: null meant no
+   * phases, and no phases falls through to `overreach ? 'over' : 'nailed'`
+   * below. So a FAILED run-identity match rendered as the most flattering
+   * grade the function can produce. That is the shape Rule 11 exists to
+   * forbid, and it is not hypothetical — replayed over this account's whole
+   * history (`_replay_glance_done_state.script.ts`), `matchedRun` is null on
+   * 31 of the 77 days that carry both a prescription and a real run, and on
+   * FOUR of them the runner's own completion payload was being discarded:
+   *
+   *     2026-05-31   short  ->  nailed      12.36 mi   long
+   *     2026-06-02   short  ->  nailed        7.41 mi   intervals
+   *     2026-06-04   short  ->  nailed        7.76 mi   tempo
+   *     2026-07-14   short  ->  nailed        8.02 mi   tempo
+   *
+   * Every one of those runs NAMES its own completion through
+   * `watchCompletionRef`, so its phases are reachable by identity — rung 1 of
+   * `resolveStoredPhases`, no date match anywhere. And every one of them is
+   * correctly declined by the execution resolver: all four are `apple_watch`
+   * passive syncs carrying no `planWorkoutId`, and the two that do carry
+   * `workoutTypeSource = 'plan'` are refused by PASSIVE-SYNC-TYPE-CONFIRM-1
+   * because their own self-reported `type` is the generic 'Run'. The resolver
+   * is right — none of them PROVES it executed the prescription. But "I cannot
+   * prove which prescription this run completed" is not "the runner has no
+   * session to describe", and collapsing the two is what let four sessions he
+   * cut short be reported back to him as clean.
+   *
+   * So this asks the SAME second question `lib/postrun/load.ts#loadRun` has
+   * always asked, through the same function: when no prescription is
+   * satisfied, which run of the DAY'S OWN is the day's run.
+   * `dayBiggestCanonicalRun` is that owner. It is a tie-break among this
+   * runner's canonical rows on this date — never a widening of the match, and
+   * never a route back to a `coach_intents` payload no run of his names.
+   * Its exposure is named honestly rather than hidden: on a day carrying two
+   * canonical runs and no matched prescription it can read the phases of the
+   * larger one when the strip is describing the other. That is one of HIS
+   * runs graded against his own prescription, not a stranger's reps, and it
+   * is the same exposure the post-run surfaces have carried since
+   * WORKOUT-EXECUTION-ID-1.
+   *
+   * Rule 11 · THE THREE FACTS THIS KEEPS APART.
+   *   · a prescription was satisfied           → grade the matched run;
+   *   · nothing satisfied it but the runner
+   *     ran today                              → grade HIS run for that day;
+   *   · no canonical run on the day at all     → nothing to grade, and the
+   *                                              volume read stands.
+   * The last one is where `phases` is legitimately empty, and it is the same
+   * 'nailed'/'over' a genuine non-watch run has always produced. What is
+   * gone is the fourth, false, case: a run that exists, carries its own
+   * phases, and was reported as clean because the identity lookup missed.
    *
    * NO `.catch`, deliberately, for the reason `resolveStoredPhases` gives in
    * its own header: an empty array and a FAILED read are different facts, and
@@ -301,8 +347,11 @@ export async function computeTodayExecution(
    * this fix; only the phases changed. */
   const resolvedToday = await resolveDayExecutions(userId, today);
   const matchedRun = primaryPrescription(resolvedToday)?.matchedRun ?? null;
-  const phases = matchedRun
-    ? await resolveStoredPhases(userId, today, matchedRun.data as Record<string, unknown>)
+  const runOfTheDay = matchedRun
+    ? (matchedRun.data as Record<string, unknown>)
+    : (await dayBiggestCanonicalRun(userId, today))?.data ?? null;
+  const phases = runOfTheDay
+    ? await resolveStoredPhases(userId, today, runOfTheDay)
     : [];
 
   const overreach = todayRow.plannedMi > 0 && todayRow.doneMi >= todayRow.plannedMi * 1.25;
