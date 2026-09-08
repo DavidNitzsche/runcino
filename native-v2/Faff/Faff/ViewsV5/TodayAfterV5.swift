@@ -575,7 +575,8 @@ struct TodayAfterV5: View {
             ForEach(Array(posterStats.enumerated()), id: \.offset) { _, item in
                 HStack(alignment: .firstTextBaseline, spacing: V5.S.s6) {
                     FaffValueText(item.value, font: .faffText(size, weight: .semibold),
-                                  color: panelInk.primary, mark: panelInk.mark)
+                                  color: panelInk.primary, mark: panelInk.mark,
+                                  fault: panelInk.fault)
                     if let unit = item.unit {
                         Text(unit)
                             .font(.faffText(14))

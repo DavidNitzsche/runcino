@@ -1394,6 +1394,27 @@ struct WeekShape: View {
              + "\(quality) quality session\(quality == 1 ? "" : "s").\(race)"
     }
 
+    /// SKIPCAL-1 (2026-09-08) · A SKIPPED DAY IS NOT DRAWN DIFFERENTLY HERE,
+    /// AND THAT IS A DECISION RATHER THAN AN OVERSIGHT.
+    ///
+    /// `V5BlockDay.skipped` now reaches the phone, and the training-calendar
+    /// sheet says "Skipped." on the row. This sparkline still draws a skipped
+    /// day as an ordinary bar of its prescribed height.
+    ///
+    /// It was considered and deliberately left. Every fill below clears 3:1
+    /// against the tile it is drawn on (`testSplitBarsOutOfBandFillIsVisible
+    /// OnItsTile` and `testZoneBarRestFillsAreVisibleOnTheirTile` hold the
+    /// sibling charts to exactly that), and the obvious candidate —
+    /// `V5.plotQuiet`, the zero-mile fill — measures about 1.3:1 as a
+    /// meaningful bar and would ALSO collapse a skipped 10-miler into a rest
+    /// day, which is the Rule 11 mistake the wire fix exists to undo. Picking
+    /// a fill that is both visible and not one of the four meanings already
+    /// spoken here (rest, today, race, quality) is a call for the design, not
+    /// for the change that carried the field over.
+    ///
+    /// The calendar sheet is where a runner asks "what did I miss"; the
+    /// sparkline is a shape, and it is still the honest shape of what was
+    /// PRESCRIBED that week.
     private func ink(_ d: WeekDayLoad) -> Color {
         if d.miles <= 0 { return V5.plotQuiet }
         if d.today { return V5.signal }

@@ -47,8 +47,12 @@ struct PlanSnapshotDayView: View {
             // Before this, a skipped FUTURE day rendered here as fully
             // prescribed even though the database had correctly recorded
             // the skip — nothing on this screen read `day.skipped` at all.
+            // SKIPCAL-1 (2026-09-08) · the wording moved to `FaffValue.skipped`
+            // when the training-calendar sheet started saying the same thing in
+            // its own status column. One fact, one wording — see that
+            // constant's header.
             if day.skipped {
-                Text("Skipped.")
+                Text(FaffValue.skipped.text)
                     .font(.faffText(TypeScaleV5.label14))
                     .foregroundStyle(V5.textSecondary)
             }

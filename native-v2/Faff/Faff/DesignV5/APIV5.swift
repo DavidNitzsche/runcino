@@ -1104,6 +1104,28 @@ struct V5BlockDay: Decodable, Equatable, Hashable, Identifiable {
     /// word `/api/v5/today`'s week strip shows, via `displayTypeFor`.
     let type: String?
     let isDone: Bool?
+    /// SKIPCAL-1 (2026-09-08) · `day_actions action='skip'` — the runner
+    /// explicitly declined this prescribed day.
+    ///
+    /// `lib/plan/v5-block.ts:buildWeeks` has sent this since SKIPAGREE-1 and
+    /// its own comment says why rendering it was left out: "Rendering it is a
+    /// separate, deliberately-out-of-scope Swift change; what this closes is
+    /// the wire having nothing to render." This is that change. Until it
+    /// landed, the decoder dropped the key on the floor and the training
+    /// calendar drew a skipped day identically to an untouched one of the same
+    /// type — the sheet a runner reads to answer "what did I miss this week"
+    /// could not answer it.
+    ///
+    /// OPTIONAL, same posture as `dateISO`/`type`/`isDone` above and as
+    /// `PlanSnapshotDay.skipped`'s `decodeIfPresent(...) ?? false`: a payload
+    /// cached before the server carried this field must still decode. Read it
+    /// through `isSkipped` rather than unwrapping at a call site, so absent
+    /// and false answer the one question the UI can act on in one place.
+    let skipped: Bool?
+
+    /// True only for an explicit `skipped: true`. A missing key is an older
+    /// payload, not a claim that the day was kept.
+    var isSkipped: Bool { skipped == true }
 
     var load: WeekDayLoad {
         WeekDayLoad(miles: miles, quality: quality, race: race,

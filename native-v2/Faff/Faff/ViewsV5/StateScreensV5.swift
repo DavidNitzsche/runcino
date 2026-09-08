@@ -448,7 +448,8 @@ struct DataOutageV5: View {
                     }
                     if let dose = today.panel.dose {
                         FaffValueText(dose.value, font: .faffText(28, weight: .semibold),
-                                      color: panelInk.primary, mark: panelInk.mark)
+                                      color: panelInk.primary, mark: panelInk.mark,
+                                      fault: panelInk.fault)
                     }
                 }
                 if !today.panel.stats.isEmpty {
@@ -638,7 +639,8 @@ struct RaceJustFinishedV5: View {
                                   // the tilde is the only thing saying it is
                                   // not. In amber it sat on the race ramp's
                                   // own hue and could not be seen.
-                                  mark: panelInk.mark)
+                                  mark: panelInk.mark,
+                                  fault: panelInk.fault)
                     Text("on the watch")
                         .font(.faffText(TypeScaleV5.body15))
                         .foregroundStyle(panelInk.secondary)

@@ -266,7 +266,8 @@ struct RacesV5: View {
 
             FaffValueText(model.panel.dose.unreadableIfAbsent,
                           font: .faffText(28, weight: .semibold),
-                          color: panelInk.primary, mark: panelInk.mark)
+                          color: panelInk.primary, mark: panelInk.mark,
+                          fault: panelInk.fault)
 
             // The DECODED tone, not the raw string. `s.tone == "attention"`
             // matched one of four cases: `fault` and `signal` both fell

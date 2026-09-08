@@ -375,6 +375,102 @@ final class V5ContrastTests: XCTestCase {
         }
     }
 
+    // MARK: - The unreadable dash · SKIPPROJ-CONTRAST-1
+
+    /// FAILS AGAINST THE PREVIOUS CODE — 1.02:1 on the race ramp's own stats
+    /// plate, which is where the defect was found and measured.
+    ///
+    /// A FAULT MARK HAS TO BE VISIBLE TO BE A FAULT MARK.
+    ///
+    /// `FaffValueText` hard-coded the `.unreadable` dash to `V5.fault`
+    /// `#FF4438` on the same reasoning that once hard-coded the tilde to
+    /// `V5.attention`: red measures 6.6:1 on a tile, and a tile is the only
+    /// surface it was ever checked against. On a day-state ramp it is a
+    /// mid-luminance saturated colour on a mid-luminance saturated ground and
+    /// it failed on ALL SIX, worst on the two warm ones:
+    ///
+    ///     race 1.02   quality 1.02   easy 1.62   long 1.95   phase 2.05   rest 2.80
+    ///
+    /// `race` is the row that shipped a visible defect. The "Projected finish"
+    /// stat appears only on a race day and a race day is always this ramp, so
+    /// the one slot whose ENTIRE content is that dash was systematically the
+    /// least legible thing on the panel — a genuine engine failure, rendered
+    /// as an absence.
+    ///
+    /// The dash now takes `PanelInk.fault`, which keeps the glyph and gives up
+    /// the hue. Asserted at `largeText`, the same bar
+    /// `testStatPlateTypeClearsOnLightRamps` holds the plate's own 17pt
+    /// semibold value to — this dash is drawn at exactly that size, in that
+    /// slot, by `PanelStatPlate`.
+    ///
+    /// WHAT THIS TEST CANNOT FAIL ON (Rule 22): it checks the TOKEN against
+    /// the ramp. It cannot tell whether `FaffValueText` actually paints from
+    /// the token, or whether a call site inside a panel forgot to pass it —
+    /// those are guards 2 and 3 of `scripts/check-panel-ink.sh`. Nor does it
+    /// speak to the dash's meaning: on a panel it is now inked identically to
+    /// a readable value, so what separates them is the glyph and the VoiceOver
+    /// label, which `testUnreadableDashStillAnnouncesItselfAsAFailedRead`
+    /// covers.
+    func testUnreadableDashIsVisibleOnEveryPanelRamp() {
+        for state in V5.DayState.allCases {
+            let ink = state.ink
+            // ON THE PLATE · `PanelStatPlate`, where "Projected finish" lives.
+            // The same measured 0.57–0.85 band the two plate-clearance tests
+            // above use, so all three speak about the same rows.
+            for depth in stride(from: 0.57, through: 0.85, by: 0.07) {
+                let onPlate = contrast(ink.fault, on: over(ink.plate, ramp(state, at: depth)))
+                XCTAssertGreaterThanOrEqual(onPlate, largeText,
+                    "\(state) unreadable dash on its stats plate at depth "
+                    + "\(String(format: "%.2f", depth)) measures "
+                    + "\(String(format: "%.2f", onPlate)):1 · the runner cannot see that the "
+                    + "engine failed to produce this number")
+            }
+            // ON BARE RAMP · the 28pt dose line, which `HeroDayPanelContentV5`
+            // draws through the same `FaffValueText` and which is unreadable
+            // whenever the day has no distance to state.
+            //
+            // BAND 0.30–0.55 ON PURPOSE, and this is a limit rather than a
+            // convenience: `fault` equals `primary` on a panel, and white ink
+            // on the top quarter of `easy` and `long` measures 2.42–2.45:1.
+            // That gap predates this dash by a long way, belongs to the ramp
+            // rather than to the fault treatment, and is already pinned by
+            // `darkRampWeekStripFloor`. Asserting it here would report the
+            // same known ramp gap a third time under a name that does not
+            // describe it. The dose sits below the 56pt type in the hero
+            // block, so 0.30 is where its own band starts.
+            for depth in stride(from: 0.30, through: 0.55, by: 0.05) {
+                let onBare = contrast(ink.fault, on: ramp(state, at: depth))
+                XCTAssertGreaterThanOrEqual(onBare, largeText,
+                    "\(state) unreadable dash on bare ramp at depth "
+                    + "\(String(format: "%.2f", depth)) measures "
+                    + "\(String(format: "%.2f", onBare)):1")
+            }
+        }
+        // OFF a panel the dash stays fault red, which is what it means
+        // everywhere else and where the token measures fine.
+        XCTAssertGreaterThanOrEqual(contrast(V5.fault, on: rgb(V5.materialTile)), largeText,
+            "fault red no longer clears on a tile, which is the surface it is FOR")
+    }
+
+    /// THE HUE WAS THE ONLY THING THE DASH GAVE UP.
+    ///
+    /// On a panel `fault` equals `primary`, so a runner cannot tell an
+    /// unreadable value from a readable one by colour. That is deliberate —
+    /// no colour in the locked palette reads as "fault" against a saturated
+    /// warm ground, and the same trade was already made for the modelled mark
+    /// — but it means the glyph and the spoken label are now carrying the
+    /// whole distinction, and both must therefore be real.
+    ///
+    /// This is the assertion that stops "make it visible" from being satisfied
+    /// by silently turning the dash into an ordinary-looking value.
+    func testUnreadableDashStillAnnouncesItselfAsAFailedRead() {
+        XCTAssertEqual(FaffValue.unreadable.text, "—",
+            "the dash is the whole visual distinction now · it may not become a blank")
+        XCTAssertEqual(FaffValue.unreadable.voiceOverLabel, "could not be read")
+        XCTAssertNotEqual(FaffValue.unreadable.voiceOverLabel, FaffValue.unreadable.text,
+            "a screen reader must not simply read the dash out")
+    }
+
     /// A header disc's glyph is drawn in `primary` on `control`. It is a
     /// control, so its glyph is read as text. Light ramps only — see the note
     /// on `testPlateAndControlLiftAwayFromTheirInk`.

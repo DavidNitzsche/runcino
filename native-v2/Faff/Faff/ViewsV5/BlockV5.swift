@@ -310,7 +310,8 @@ struct BlockV5: View {
 
                 FaffValueText(model.panel.dose.unreadableIfAbsent,
                               font: .faffText(TypeScaleV5.valueMin, weight: .semibold),
-                              color: panelInk.primary, mark: panelInk.mark)
+                              color: panelInk.primary, mark: panelInk.mark,
+                              fault: panelInk.fault)
 
                 PanelStatPlate(stats: model.panel.stats.map {
                     PanelStat($0.label, $0.value.value, ink: $0.toneValue.inkOverride)

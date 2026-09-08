@@ -559,7 +559,8 @@ struct HeroDayPanelContentV5: View {
             if let dose {
                 FaffValueText(dose,
                               font: .faffText(28, weight: .semibold),
-                              color: panelInk.primary, mark: panelInk.mark)
+                              color: panelInk.primary, mark: panelInk.mark,
+                              fault: panelInk.fault)
             }
             PanelStatPlate(stats: stats)
         }
@@ -629,7 +630,8 @@ struct PanelStatPlate: View {
                     FaffValueText(s.value,
                                   font: .faffText(17, weight: .semibold),
                                   color: s.ink ?? panelInk.primary,
-                                  mark: panelInk.mark)
+                                  mark: panelInk.mark,
+                                  fault: panelInk.fault)
                         // A NUMBER MUST NOT SHATTER.
                         //
                         // The plate is three fixed columns across a 390pt
