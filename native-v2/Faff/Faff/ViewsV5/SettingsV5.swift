@@ -235,8 +235,16 @@ struct SettingsV5: View {
                 onSetPhoneRun(newValue)
             } else {
                 Task {
-                    try? await API.patchSettings(["phone_run_enabled": newValue])
-                    await SettingsCache.shared.invalidate()
+                    // SETTINGSWRITE-1 · the same gate the host's `applyWrite`
+                    // applies, for the same reason: a PATCH that threw
+                    // changed nothing on the server, so wiping the cached
+                    // copy would replace a value we still hold with an
+                    // "Unavailable" on the next read. This is the preview
+                    // fallback and never runs inside the app, but it is the
+                    // same footgun and a reader finding this line first
+                    // should not learn the wrong pattern from it.
+                    let landed = (try? await API.patchSettings(["phone_run_enabled": newValue])) != nil
+                    if landed { await SettingsCache.shared.invalidate() }
                 }
             }
         }

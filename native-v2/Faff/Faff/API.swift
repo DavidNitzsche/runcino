@@ -153,7 +153,7 @@ extension Notification.Name {
 ///
 /// Use anywhere a column might come through as either. Read the value via
 /// `.value` (Double?).
-struct FlexibleDouble: Decodable {
+struct FlexibleDouble: Decodable, Equatable {
     let value: Double?
     init(from decoder: Decoder) throws {
         let c = try decoder.singleValueContainer()
@@ -2191,7 +2191,7 @@ struct ReadinessInput: Decodable, Identifiable, Hashable {
 
 // MARK: - P29 Settings + Profile
 
-struct UserSettings: Decodable {
+struct UserSettings: Decodable, Equatable {
     let units_distance: String?
     let units_temp: String?
     let units_pace: String?
@@ -2221,7 +2221,7 @@ struct UserSettings: Decodable {
 
 /// Subset of profile fields the iPhone settings sheet edits. The server
 /// /api/profile returns more — we only decode what we use.
-struct ProfileFields: Decodable {
+struct ProfileFields: Decodable, Equatable {
     let lthr: Int?
     let maxhr: Int?
     let hrmax_observed: Int?

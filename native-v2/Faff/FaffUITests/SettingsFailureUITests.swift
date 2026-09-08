@@ -15,16 +15,56 @@
 //    1 · a scratch database built from the owner's real production rows
 //        FAFF_HARNESS_DB=faff_followup_settings \
 //          bash web-v2/scripts/adapt-harness-substrate.sh
+//
+//        then SET `user_settings` NON-DEFAULT BY HAND — the script does not
+//        do this and will not:
+//          UPDATE profile SET user_settings = user_settings
+//            || '{"long_run_day":"sat","units_distance":"km"}'::jsonb;
+//        Production's own `profile.user_settings` is `{}`,
+//        which means the owner's EFFECTIVE values are the server defaults —
+//        Sunday and Miles — and those are exactly the values the fabrication
+//        bug printed. A fallback that happens to match the runner's default
+//        is invisible: the screen looks identical whether it read the value
+//        or invented it, and the test would pass against the unfixed code.
+//        Choosing values the defaults cannot produce is what makes
+//        "Unavailable" legible as the absence of a real value. So the
+//        Saturday/Kilometres below are a chosen test fixture, never a claim
+//        about what the owner's account holds.
 //    2 · `next dev` on 3129 with DATABASE_URL pointed at it
 //    3 · a fault-injecting proxy on 3130 in front of it, controlled by
 //        GET /__fault?rules=[{"match":"/api/settings","mode":"status","status":503}]
 //        modes: pass | status | delay(ms) | hang | drop
 //
-//  Then:
-//    FAFF_UI_HOST=http://127.0.0.1:3130 FAFF_UI_TOKEN=<bearer> \
+//  Then — NOTE THE `TEST_RUNNER_` PREFIX, it is load-bearing:
+//    TEST_RUNNER_FAFF_UI_HOST=http://127.0.0.1:3130 \
+//    TEST_RUNNER_FAFF_UI_TOKEN=<bearer> \
 //    xcodebuild test -project native-v2/Faff.xcodeproj -scheme Faff \
 //      -destination 'platform=iOS Simulator,name=<your own sim>' \
 //      -only-testing:FaffUITests
+//
+//  WHY THE PREFIX, AND WHAT IT COST (2026-09-07 review). This header used to
+//  document the bare `FAFF_UI_HOST=... xcodebuild test`. `xcodebuild` does
+//  not forward its own environment into the test process running inside the
+//  simulator; only variables named `TEST_RUNNER_<NAME>` are passed through,
+//  with the prefix stripped. So `ProcessInfo` below read "" either way, the
+//  `XCTSkipUnless` in `setUpWithError` fired, and the documented command
+//  reported "Executed 1 test, with 1 test skipped", exit 0, TEST EXECUTE
+//  SUCCEEDED. A green line that had run nothing at all — Rule 18's worst
+//  outcome, because it also reports confidence. If a run of this file
+//  reports a SKIP, the credentials did not arrive; that is a failure to run
+//  it, not a pass.
+//
+//  BOTH DIRECTIONS MEASURED, 2026-09-07, before the correction was trusted:
+//    · unprefixed `FAFF_UI_HOST=... FAFF_UI_TOKEN=...`
+//        → "Test skipped - Set FAFF_UI_HOST and FAFF_UI_TOKEN", exit 0,
+//          "Executed 1 test, with 1 test skipped", ** TEST SUCCEEDED **
+//    · `TEST_RUNNER_FAFF_UI_HOST=http://example.invalid:3130`
+//        → no skip; the loopback guard failed with the value echoed back:
+//          "REFUSING: http://example.invalid:3130 is not loopback", which is
+//          the variable's own contents arriving inside the simulator
+//    · `TEST_RUNNER_FAFF_UI_HOST=http://127.0.0.1:3130`, no backend standing
+//        → no skip; ran 38.8s into the test BODY and failed on the seeded
+//          value, which is the correct answer with nothing serving it
 //
 //  ─────────────────────────────────────────────────────────────────────────
 //  RULE 22 · WHAT THIS GATE CANNOT FAIL ON
@@ -252,23 +292,30 @@ final class SettingsFailureUITests: XCTestCase {
         XCTAssertFalse(samples.last?.contains("(503)") ?? true,
                        "the reload never settled into the loaded screen")
         XCTAssertTrue(app.buttons["Long run day, Saturday"].waitForExistence(timeout: 10),
-                      "the settled screen does not carry the runner's real value")
+                      "the settled screen does not carry the substrate's seeded value")
         clearFaults()
     }
 
     // MARK: - 2 · the baseline the partial cases are measured against
 
-    /// Nothing faulted. This is the control: it records what the runner's REAL
-    /// settings look like on this substrate, so "Unavailable" in the two cases
-    /// below can be read as the absence of a value that genuinely exists,
-    /// rather than as the absence of one that was never there.
-    func testHealthyLoadShowsTheRunnersRealValuesAndNoBanner() throws {
+    /// Nothing faulted. This is the control: it records what the substrate's
+    /// SEEDED settings look like when every source answers, so "Unavailable"
+    /// in the two cases below reads as the absence of a value that genuinely
+    /// exists, rather than as the absence of one that was never there.
+    ///
+    /// The values are Saturday and Kilometres, and they are deliberately NOT
+    /// the server's defaults — see this file's header. Production's real
+    /// `profile.user_settings` is `{}`, so the owner's effective values are
+    /// Sunday and Miles, which are the same strings the fabrication bug
+    /// printed; against those the defect is invisible and this whole file
+    /// would pass on the unfixed code.
+    func testHealthyLoadShowsTheSeededNonDefaultValuesAndNoBanner() throws {
         clearFaults()
         let app = launchIntoSettings()
         XCTAssertTrue(app.buttons["Long run day, Saturday"].waitForExistence(timeout: 25),
-                      "the runner's real long run day is not on screen")
+                      "the seeded long run day is not on screen")
         XCTAssertTrue(app.buttons["Distance, Kilometres"].exists,
-                      "the runner's real units are not on screen")
+                      "the seeded units are not on screen")
         shot(app, "00-healthy-baseline")
         print("[healthy] \(visibleText(app))")
         let banner = app.staticTexts.containing(
@@ -298,15 +345,21 @@ final class SettingsFailureUITests: XCTestCase {
                           "\(label) did not render as unavailable")
         }
         // And nothing WRONG. These are the exact strings the healthy
-        // baseline above proves are the runner's real values, plus the
-        // fallback defaults the old code would have printed in their place.
+        // baseline above proves this substrate holds, plus the server
+        // defaults the old code would have printed in their place — which
+        // are ALSO the owner's real effective values in production, since
+        // his `user_settings` is `{}`. That coincidence is the reason the
+        // substrate is seeded off-default: on his own row the fabricated
+        // "Sunday"/"Miles" and the truth are the same two words.
         for fabricated in ["Long run day, Saturday", "Long run day, Sunday",
                            "Distance, Kilometres", "Distance, Miles"] {
             XCTAssertFalse(app.buttons[fabricated].exists,
                            "\(fabricated) was stated while its source was down")
         }
 
-        // The half that answered is still here, with its REAL value.
+        // The half that answered is still here, with its value. Email comes
+        // from `/api/profile` and IS the owner's real address, carried over
+        // by the substrate script rather than chosen.
         XCTAssertTrue(app.staticTexts["dnitch85@me.com"].exists,
                       "the data that DID load must still be shown")
         clearFaults()

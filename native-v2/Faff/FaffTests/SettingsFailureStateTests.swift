@@ -29,6 +29,19 @@
 //   3 · DIAGNOSTICS DOOR. The hidden seven-tap footer existed only in the
 //       loaded view, so the failure state could not reach it.
 //
+//  A THIRD review of that fix (2026-09-07) confirmed all three closed and
+//  returned one more real defect, covered here as SETTINGSWRITE-1:
+//
+//   4 · A WRITE THAT STRADDLES AN OUTAGE THREW THE LAST KNOWN GOOD AWAY.
+//       Healthy load, real values on screen ("Distance · Kilometres").
+//       `/api/settings` goes down. The runner toggles a switch; the PATCH
+//       503s and the throw is swallowed by `try?`; `SettingsCache
+//       .invalidate()` wipes the good copy anyway; the reload's GET 503s
+//       too — and the row the runner was reading ONE SECOND EARLIER flips to
+//       "Unavailable", as does the switch they just touched. The host's own
+//       full-failure path refuses to blank a screen that already has content
+//       ("old content is not wrong, it is old"); the partial path did not.
+//
 //  ─────────────────────────────────────────────────────────────────────────
 //  RULE 22 · WHAT THIS GATE CANNOT FAIL ON
 //
@@ -55,6 +68,17 @@
 //
 //  · It says NOTHING about whether a partial outage is likely. It asserts
 //    only that when one arrives, no field states a default as a reading.
+//
+//  · SETTINGSWRITE-1's cases cannot fail on the WIRING. They drive
+//    `applyWrite` — the real sequence both `patch` and `patchProfile` call —
+//    with a stand-in cache, so they prove the ordering and prove that
+//    `classify` still shows the kept value. They do NOT prove that those two
+//    writers hand it the right `write` closure, which is a one-line reading
+//    at each call site.
+//
+//  · Nothing here can fail on an `UnavailableRow` actually being drawn, for
+//    the same reason as the partial cases above: that is a view hierarchy,
+//    and `SettingsFailureUITests` is where it is measured.
 //
 
 import XCTest
@@ -265,5 +289,99 @@ final class SettingsFailureStateTests: XCTestCase {
     func testPartialMessageIsNilWhenNothingFailed() {
         XCTAssertNil(SettingsSourceHealth.healthy.partialMessage)
         XCTAssertTrue(SettingsSourceHealth.healthy.isWhole)
+    }
+
+    // MARK: - 4 · SETTINGSWRITE-1 · a failed write keeps the last known good
+
+    /// Stands in for `SettingsCache` so the sequence can be walked without a
+    /// live outage. Only the two operations `applyWrite` performs.
+    private actor CacheStandIn {
+        private(set) var settings: UserSettings?
+        private(set) var invalidateCalls = 0
+        init(settings: UserSettings?) { self.settings = settings }
+        func invalidate() { settings = nil; invalidateCalls += 1 }
+    }
+
+    /// THE REVIEWER'S EXACT SEQUENCE, as the runner lived it.
+    ///
+    /// 1 · a healthy load has the real value on screen ("Kilometres")
+    /// 2 · `/api/settings` starts answering 503
+    /// 3 · the runner toggles a switch; the PATCH 503s too, silently
+    /// 4 · the reload's GET 503s as well
+    ///
+    /// Before the fix step 3 wiped the cache, so step 4 had nothing left and
+    /// the row flipped to "Unavailable". The value was never wrong. It was
+    /// thrown away by a write that changed nothing.
+    func testAFailedWriteDuringAnOutageKeepsTheValueTheRunnerWasJustReading() async throws {
+        let good = try settings(longRunDay: "sat", units: "km")
+        let cache = CacheStandIn(settings: good)
+
+        // Step 3. The PATCH did not land.
+        await SettingsHostV5.applyWrite(write: { false },
+                                        invalidate: { await cache.invalidate() })
+        let kept = await cache.settings
+        let calls = await cache.invalidateCalls
+        XCTAssertEqual(calls, 0,
+                       "a write that changed nothing on the server invalidated the copy of it")
+        XCTAssertNotNil(kept, "the last known good was discarded by a failed write")
+
+        // Step 4. The reload's GET fails too, and this is the whole point:
+        // with the copy kept, the reload is not left with nothing.
+        let outcome = SettingsHostV5.classify(
+            settings: kept, settingsError: API.APIError.badStatus(503),
+            profile: try profile(email: "d@faff.run", weekly: 6), profileError: nil,
+            prefs: prefs, prefsError: nil, stravaConnected: true)
+        guard case .loaded(let shown, _, _, _, let health) = outcome else {
+            return XCTFail("an outage over a value we still hold is not a blank screen")
+        }
+        XCTAssertNil(health.settings,
+                     "the row the runner was reading one second earlier now says Unavailable")
+        XCTAssertTrue(health.isWhole)
+        XCTAssertEqual(shown?.units_distance, "km",
+                       "the runner's real units were replaced by nothing at all")
+        XCTAssertEqual(shown?.long_run_day, "sat")
+    }
+
+    /// The other direction, so the fix cannot be "never invalidate". A write
+    /// that DID land makes the copy stale by definition, and keeping it would
+    /// show the runner the value they just changed away from.
+    func testAWriteThatLandedStillInvalidates() async throws {
+        let cache = CacheStandIn(settings: try settings(longRunDay: "sat", units: "km"))
+        await SettingsHostV5.applyWrite(write: { true },
+                                        invalidate: { await cache.invalidate() })
+        let calls = await cache.invalidateCalls
+        XCTAssertEqual(calls, 1, "a landed write left a stale copy in place")
+        let after = await cache.settings
+        XCTAssertNil(after)
+    }
+
+    // MARK: - 4 · SETTINGSEQ-1 · the equality compares the payload
+
+    /// The conformance used to return true for ANY two `.apply` values, so an
+    /// `XCTAssertEqual(application(...), .apply(expected))` passed with the
+    /// wrong model inside. Rule 18: an assertion that cannot tell its subject
+    /// apart is not an assertion.
+    func testTwoApplicationsCarryingDifferentModelsAreNotEqual() throws {
+        let km = SettingsHostV5.LoadOutcome.loaded(
+            settings: try settings(longRunDay: "sat", units: "km"),
+            profile: try profile(email: "d@faff.run", weekly: 6),
+            prefs: prefs, stravaConnected: true, health: .healthy)
+        let mi = SettingsHostV5.LoadOutcome.loaded(
+            settings: try settings(longRunDay: "sun", units: "mi"),
+            profile: try profile(email: "d@faff.run", weekly: 6),
+            prefs: prefs, stravaConnected: true, health: .healthy)
+        XCTAssertNotEqual(SettingsHostV5.LoadApplication.apply(km),
+                          SettingsHostV5.LoadApplication.apply(mi))
+        XCTAssertEqual(SettingsHostV5.LoadApplication.apply(km),
+                       SettingsHostV5.LoadApplication.apply(km))
+        // And the health travelling with an otherwise-identical model is part
+        // of the comparison too. That is the field a partial outage moves.
+        let kmPartial = SettingsHostV5.LoadOutcome.loaded(
+            settings: try settings(longRunDay: "sat", units: "km"),
+            profile: try profile(email: "d@faff.run", weekly: 6),
+            prefs: prefs, stravaConnected: true,
+            health: SettingsSourceHealth(settings: nil, profile: .serverError(503), prefs: nil))
+        XCTAssertNotEqual(SettingsHostV5.LoadApplication.apply(km),
+                          SettingsHostV5.LoadApplication.apply(kmPartial))
     }
 }
