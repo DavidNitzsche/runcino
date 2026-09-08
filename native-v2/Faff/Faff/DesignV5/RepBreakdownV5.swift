@@ -76,8 +76,13 @@ import SwiftUI
 /// A single phase, already turned into words by the caller.
 struct RepPiece: Identifiable, Equatable {
     /// What kind of phase this is, for LAYOUT only — never a grade. A row's
-    /// kind decides how tall it draws and where the timeline strip lights
-    /// up; it says nothing about how the phase went.
+    /// kind decides how tall it draws and how much of the piece it prints;
+    /// it says nothing about how the phase went.
+    ///
+    /// 2026-09-08 · this sentence used to end "and where the timeline strip
+    /// lights up". The strip is deleted (see `body`), so that clause named a
+    /// consumer that no longer exists — Rule 20's corollary, a comment
+    /// nothing verifies is worse than silence.
     ///
     /// 2026-09-03 · added to fix the "wall of similarly styled rows"
     /// finding: every phase drew at the same row height regardless of
@@ -86,18 +91,26 @@ struct RepPiece: Identifiable, Equatable {
     /// "warm-up and cool-down are real distance and deserve more than one
     /// line, but still less than a rep" — this can.
     enum Kind: Equatable {
-        case warmup, work, recovery, cooldown, other
+        case warmup, work, recovery, cooldown, overtime, other
 
         /// Classified from the phase's own wire type. One switch, called at
         /// both construction sites (`RunDetailV5.repPieces`,
         /// `TodayAfterV5.repPieces`), so the two screens cannot classify a
         /// phase differently.
+        ///
+        /// OVERTIME-PHASE-1 (2026-09-08) · `overtime` — running after the
+        /// last prescribed piece — reaches the wire under its own name now
+        /// (see `run-shape.ts`'s `PhaseType`). Before that it arrived as a
+        /// null type and fell to `isWork`, which the Today screen defaulted
+        /// TRUE: a 118-second jog home drew at full work weight beside a
+        /// 25-minute tempo. It is a bookend, not work.
         static func of(type: String?, isWork: Bool) -> Kind {
             switch type {
             case "warmup":   return .warmup
             case "cooldown": return .cooldown
             case "recovery": return .recovery
             case "work":     return .work
+            case "overtime": return .overtime
             default:         return isWork ? .work : .other
             }
         }
@@ -143,11 +156,15 @@ struct RepPiece: Identifiable, Equatable {
     var kind: Kind = .other
 
     /// The phase's own recorded duration, in seconds — the raw number
-    /// `detail` already renders as a formatted clock string. Carried
-    /// separately, not parsed back out of that string, so the timeline
-    /// strip's proportions are real seconds rather than prose read
-    /// backwards. Nil draws a nominal sliver rather than vanishing the
-    /// segment from the shape.
+    /// `detail` already renders as a formatted clock string.
+    ///
+    /// 2026-09-08 · NOTHING IN THIS COMPONENT READS IT ANY MORE. It existed
+    /// to weight the timeline strip's segments in real seconds, and the strip
+    /// is deleted (see `body`). It is kept as a carried FACT rather than
+    /// removed, because both call sites already populate it from their own
+    /// wire and a future reader of this list — a chart, an export, a spoken
+    /// summary — needs the number rather than the prose. Said out loud so
+    /// the next reader does not go looking for the consumer.
     var durationSec: Int? = nil
 
     /// PHASE-GRAIN-1 (2026-09-08) · THIS PIECE, MILE BY MILE, when it was long
@@ -351,15 +368,39 @@ struct RepBreakdownV5: View {
             VStack(alignment: .leading, spacing: V5.S.s10) {
                 V5SectionLabel(text: title).padding(.horizontal, V5.S.s4)
 
-                // THE SHAPE, BEFORE THE LIST. A runner scanning ten hill
-                // reps for the first time gets the proportions in one
-                // glance — work lit, everything around it quiet, the same
-                // "which segment is which kind" read `RunAnalysisV5`'s phase
-                // bands give the chart, at list scale rather than axis
-                // scale. Non-interactive: touching it does nothing yet (see
-                // this component's own header for why the chart-row sync
-                // the brief asks for is not built).
-                if pieces.count > 2 { timelineStrip.padding(.horizontal, V5.S.s14) }
+                /* THE TIMELINE STRIP IS GONE (2026-09-08).
+                 *
+                 * A 6pt proportional bar, one segment per piece, drawn above
+                 * this list since 2026-09-03. David, on his real 2026-09-08
+                 * tempo, seeing it for the first time on a screen he was
+                 * actually reading: an orange bar chart he could not explain.
+                 * He was right, and the component's own code says why on
+                 * three separate lines:
+                 *
+                 *   · `.accessibilityHidden(true)` — it admits it carries no
+                 *     information a screen reader would need. A graphic that
+                 *     is safe to hide from one runner entirely is a graphic
+                 *     the other one does not need either.
+                 *   · its own header forbade it labels or numbers, because
+                 *     the table directly below already carries every figure
+                 *     it could print and a second copy would be Rule 17. So
+                 *     it was required to be unreadable to be legal.
+                 *   · MEASURED, not eyeballed (Rule 13 §4): its quiet
+                 *     segments are `V5.plotQuiet` at 0.6 alpha over the pure
+                 *     black page ground — a contrast ratio of 1.18:1,
+                 *     against the WCAG 3:1 minimum for a graphical object.
+                 *     Three of this session's four segments were therefore
+                 *     invisible in practice, so what he actually saw was not
+                 *     a proportional four-part timeline at all. It was two
+                 *     orange marks floating in nothing.
+                 *
+                 * Deleted, not fixed. The question it was reaching for — what
+                 * shape was this session — already has a correct answer in
+                 * `RunDetailV5.workoutAnalysisSection`: labelled bars, real
+                 * contrast, a legend. Porting that to this screen is a
+                 * separate decision and is NOT taken here; a screen with no
+                 * chart is strictly better than one with a chart that cannot
+                 * be read. */
 
                 VStack(alignment: .leading, spacing: 0) {
                     ForEach(pieces) { piece in
@@ -387,7 +428,13 @@ struct RepBreakdownV5: View {
         switch p.kind {
         case .recovery:
             compactRow(p)
-        case .warmup, .cooldown:
+        // OVERTIME-PHASE-1 (2026-09-08) · running after the last prescribed
+        // piece is a BOOKEND, not work. It has real distance and a real
+        // duration, so it keeps the detail line; it has no target, so there
+        // is no note for it to drop. The row it used to draw — full ink,
+        // full height, orange in the strip — was a null wire type read as
+        // work, and it made a 118-second jog home look like a rep.
+        case .warmup, .cooldown, .overtime:
             // A BOOKEND KEEPS ITS DETAIL LINE — it carries real distance and
             // a real duration, which a runner reading "warm-up" alone
             // cannot judge — but drops the trailing note line a work rep
@@ -634,46 +681,6 @@ struct RepBreakdownV5: View {
         if let s = m.paceSec { out.append("\(Units.formatPaceBare(secPerMile: s)) per mile") }
         if let hr = m.hr { out.append("heart rate \(hr)") }
         return out.joined(separator: ", ") + "."
-    }
-
-    // MARK: - The timeline strip
-    //
-    // A proportional bar, one segment per piece, sized by its share of the
-    // session's TOTAL DURATION (not distance — a 20-second stride and a
-    // 90-second jog are both short in miles and this is a TIME shape, the
-    // same axis the coach's own "how did the reps go" question runs on).
-    // Work segments draw in the one accent; everything else quiet. No
-    // labels, no numbers — the rows below already carry every figure this
-    // strip could print, and a second copy of them here would be Rule 17.
-    private var timelineStrip: some View {
-        let total = pieces.reduce(0.0) { $0 + Self.weight($1) }
-        return GeometryReader { geo in
-            // v5-spacing-exempt: a hairline gap between segments of a 6pt-tall
-            // proportional bar, sized to match the strip's own minimum
-            // segment width below (also 1.5) — not a spacing rhythm, an
-            // optical value tied to this one micro-visualization's own scale.
-            HStack(spacing: 1.5) {
-                ForEach(pieces) { p in
-                    let w = total > 0 ? Self.weight(p) / total : 0
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
-                        .fill(p.isWork ? V5.signal : V5.plotQuiet.opacity(0.6))
-                        .frame(width: max(geo.size.width * w, p.isWork ? 3 : 1.5))
-                }
-            }
-            .frame(width: geo.size.width)
-        }
-        .frame(height: 6)
-        .accessibilityHidden(true)
-    }
-
-    /// Real seconds, when the phase carries them — a genuine time-weighted
-    /// strip, not a decorative approximation. A phase with no recorded
-    /// duration (an older payload, a chosen skip) still draws a nominal
-    /// sliver so it stays visible as a segment in the shape, rather than
-    /// vanishing and silently shrinking every segment beside it.
-    private static func weight(_ p: RepPiece) -> Double {
-        guard let sec = p.durationSec, sec > 0 else { return 8 }
-        return Double(sec)
     }
 
     /// The one line under a row, or none.

@@ -1762,9 +1762,24 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // is the SAME field `workAveragesFromPhases` above and the `phases`
         // block feeding `deriveWin` already read off `completionPhases` —
         // this is the one place that dropped it before handing the phase to
-        // the phone. Passed through raw (not narrowed to the four known
-        // values) because the narrowing already happens client-side, the same
-        // posture `run-shape.ts`'s `runPhases()` takes for its own callers.
+        // the phone.
+        //
+        // OVERTIME-PHASE-1 (2026-09-08) · THE SENTENCE THAT USED TO STAND
+        // HERE WAS FALSE, and it is why a cool-down jog rendered as work.
+        // It read "passed through raw (not narrowed to the four known
+        // values) because the narrowing already happens client-side" —
+        // but nothing here is raw: `gp.type` is `run-shape.ts`'s own
+        // already-narrowed union, and its list was missing `overtime`. So a
+        // stored `{"type": "overtime"}` phase became `unknown`, this line
+        // sent `null`, and the phone read a null type as work (Rule 11: an
+        // absent value silently became the most confident claim). `overtime`
+        // is now a named member of that union and travels under its own
+        // name; `null` here still means "this era did not record a type",
+        // and the phone must NOT read that as work.
+        //
+        // Rule 20's corollary: the sentence was documentation nothing
+        // verified. `lib/runs/_overtime_phase.test.ts` verifies it now.
+        //
         // PHASE-GRAIN-1, 2026-09-08 · `mile_splits`, from the ONE derivation
         // (`lib/runs/derive-phase-splits.ts`) run detail's `phase_breakdown`
         // also carries, over the SAME raw payload `grade` was computed from and

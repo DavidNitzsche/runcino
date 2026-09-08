@@ -86,7 +86,7 @@ export interface RunSplit {
    * imports). When set, the UI can color-code MP-finish miles
    * distinctly from the warmup build.
    */
-  phase: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown' | null;
+  phase: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'overtime' | 'unknown' | null;
 }
 
 /**
@@ -96,7 +96,11 @@ export interface RunSplit {
 export interface PhaseBreakdown {
   index: number;
   label: string;            // "Warmup" | "Rep 1/4" | "Recovery" | "Cooldown"
-  type: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'unknown';
+  /** OVERTIME-PHASE-1 (2026-09-08) · `overtime` — running after the last
+   *  prescribed piece — is a stored phase type and now reaches this wire
+   *  under its own name instead of arriving as `unknown`. See
+   *  `run-shape.ts`'s `PhaseType`. It is never pace-graded. */
+  type: 'warmup' | 'work' | 'recovery' | 'cooldown' | 'overtime' | 'unknown';
   // Plan
   target_pace: string | null;       // "6:48" formatted
   target_pace_sec: number | null;   // raw seconds/mi for bar math
@@ -1796,6 +1800,9 @@ function defaultLabel(type: PhaseBreakdown['type'], i: number): string {
     case 'cooldown': return 'Cooldown';
     case 'recovery': return 'Recovery';
     case 'work': return `Rep ${i + 1}`;
+    // OVERTIME-PHASE-1 · the watch's own word for it, and the same string
+    // the stored payload already carries as its `label`.
+    case 'overtime': return 'After the session';
     default: return `Phase ${i + 1}`;
   }
 }

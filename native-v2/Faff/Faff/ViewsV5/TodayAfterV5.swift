@@ -281,9 +281,13 @@ struct TodayAfterV5: View {
                     // rendered text itself (Rule 16/17: yield on what the
                     // runner actually sees, not on a row id) and only show
                     // work pace when it is a genuinely different number.
-                    WorkoutResultFactsV5(
-                        workPaceText: model.paceWork == headerPaceCoreText ? nil : model.paceWork
-                    )
+                    //
+                    // REDUNDANT-READING-1 (2026-09-08) · that comparison was
+                    // against the WHOLE-RUN pace only, so on a tempo (poster
+                    // 7:43, work 7:11) it was correctly false while 7:11 went
+                    // on to print three times. `workPaceShownElsewhere` asks
+                    // about the work pace itself.
+                    WorkoutResultFactsV5(workPaceText: factsWorkPaceText)
                 }
 
                 if let pr = model.postRun {
@@ -303,17 +307,26 @@ struct TodayAfterV5: View {
                     readingSection
                 }
 
+                /* ONE-SECTION-1 (2026-09-08) · `workoutPhasesTile` IS GONE.
+                 *
+                 * It drew its own "Piece by piece" header over the SAME four
+                 * phases `breakdownSection` draws directly below, so every
+                 * structured post-run day rendered that header twice, back
+                 * to back, for every runner — the `after_run` branch of
+                 * `lib/faff/v5-today.ts` leaves `groups` empty, so this
+                 * `else` arm was not an alternative to `groupsTile`, it was
+                 * unconditional. David, on his real 2026-09-08 tempo: the
+                 * duplicate header was the first thing he named.
+                 *
+                 * Neither half was complete on its own: the tile had the
+                 * duration and the heart rate, the list below had the
+                 * distance, the pace, the target and the verdict. They are
+                 * one table now — `RepBreakdownV5`'s `detail` line carries
+                 * the tile's two facts (see `pieceDetail`), and
+                 * `workoutPhasePieces` carries its indoor lane, which was
+                 * the tile's other real job. */
                 if !model.groups.isEmpty {
                     groupsTile
-                } else if !model.workoutPhases.isEmpty {
-                    // WORKOUTPHASES-1 · `groups` is the PRESCRIBED structure
-                    // and is never populated for an after-run response — see
-                    // `V5Today.workoutPhases`'s own header for why this is a
-                    // separate field rather than a second use of `groups`.
-                    // Same slot in the hierarchy (DIGEST-1 §6, "Piece by
-                    // Piece"), same visual language, the runner's OWN
-                    // executed structure instead of the plan's.
-                    workoutPhasesTile
                 }
                 if let pr = model.postRun {
                     PostRunLearnedV5(model: pr, includes: .strides)
@@ -697,6 +710,92 @@ struct TodayAfterV5: View {
         }
     }
 
+    /* ═══ REDUNDANT-READING-1 (2026-09-08) · THE GUARDS NOW COVER THE
+     * WORK-SCOPED NUMBERS, WHICH ARE THE ONES THAT ACTUALLY REPEAT.
+     *
+     * Counted on the owner's real 2026-09-08 tempo, rendered:
+     *
+     *   7:11  ×3 — "7:11 average work pace" (the facts block under the
+     *              poster), "Pace, across the work · 7:11" (the reading
+     *              rows), and the tempo piece's own "7:11/mi".
+     *   159   ×3 — "Heart rate, across the work · 159 bpm", the tempo
+     *              piece's detail line, and the Why panel's "Work heart
+     *              rate averaged 159 against a 164 ceiling."
+     *
+     * Two guards already existed for exactly this shape and neither could
+     * see it, for the same reason: both compare against the WHOLE-RUN
+     * average. `hrAvgShownInAskedVsRan` reads `model.hrAvg` (149 that day),
+     * and REDUNDANT-PACE-1 compares `paceWork` against the poster's
+     * whole-run pace (7:43). Both were correctly false, and both were
+     * answering about a number that was not the one repeating.
+     *
+     * These ask about the value ITSELF, wherever it lands, which is Rule
+     * 17's own instruction: yield on the rendered text, not on a row id.
+     * The sources are FIXED — the asked-vs-ran table, the piece list, and
+     * the coach's read — so no two consumers can yield to each other and
+     * leave the number off the screen entirely. */
+
+    /// Every sentence of the coach's read this screen actually draws.
+    /// `PostRunVerdictV5` renders `summary` and `cost`; `PostRunLearnedV5`
+    /// renders `learned`. Prose, so matched on a digit-bounded substring
+    /// rather than on equality.
+    private var coachReadText: String {
+        guard let pr = model.postRun else { return "" }
+        return [pr.summary, pr.cost, pr.learned].compactMap { $0 }.joined(separator: " ")
+    }
+
+    /// Does `needle` already appear as a whole number in the coach's read —
+    /// "159" in "averaged 159 against a 164 ceiling", but never inside 1159.
+    private func shownInCoachRead(_ needle: String) -> Bool {
+        let text = coachReadText
+        guard !needle.isEmpty, !text.isEmpty else { return false }
+        var searchStart = text.startIndex
+        while let r = text.range(of: needle, range: searchStart..<text.endIndex) {
+            let beforeOK = r.lowerBound == text.startIndex
+                || !"0123456789:".contains(text[text.index(before: r.lowerBound)])
+            let afterOK = r.upperBound == text.endIndex
+                || !"0123456789:".contains(text[r.upperBound])
+            if beforeOK && afterOK { return true }
+            searchStart = r.upperBound
+        }
+        return false
+    }
+
+    /// TRUE WHEN THIS HEART RATE IS ALREADY ON THE SCREEN, in the
+    /// asked-vs-ran table, in the piece list, or in the coach's read.
+    ///
+    /// All three are better places for it than a bare reading row: the
+    /// asked-vs-ran row carries the ceiling and the breach tone, the piece
+    /// row carries the phase it belongs to, and the coach's read carries the
+    /// judgement. A fourth copy with no context is the one that yields.
+    private func hrShownElsewhere(_ bpm: Int) -> Bool {
+        if model.askedVsRan.contains(where: { $0.value?.text == "\(bpm)" }) { return true }
+        if breakdownPieces.contains(where: { ($0.detail ?? "").contains("\(bpm) bpm") }) { return true }
+        return shownInCoachRead("\(bpm)")
+    }
+
+    /// TRUE WHEN THE WORK PACE IS ALREADY ON THE SCREEN — the poster's own
+    /// pace (the case REDUNDANT-PACE-1 already covered), a piece row's
+    /// actual pace, or the coach's read.
+    ///
+    /// A session with several work phases has a work-scoped average that is
+    /// a genuinely different number from any single row, so this is false
+    /// there and the reading stands. It is true exactly when there is one
+    /// work block and the average IS that block.
+    private var workPaceShownElsewhere: Bool {
+        guard let pace = model.paceWork else { return false }
+        if pace == headerPaceCoreText { return true }
+        if breakdownPieces.contains(where: { $0.actualPace == "\(pace)/mi" }) { return true }
+        return shownInCoachRead(pace)
+    }
+
+    /// The facts block's work-pace line, or nil when the number is already
+    /// somewhere better. This is the one the reading rows yield TO, so the
+    /// dependency runs one way and the pace can never vanish entirely.
+    private var factsWorkPaceText: String? {
+        workPaceShownElsewhere ? nil : model.paceWork
+    }
+
     /// MULTI-RUN-DAY-1 (2026-09-03) · a run that happened today but did NOT
     /// satisfy the prescription above — `lib/execution/day-resolver.ts`'s
     /// `supplementalRuns`, wire-shaped. Real training, real mileage, and a
@@ -747,61 +846,28 @@ struct TodayAfterV5: View {
     /// two pickers for one number is worse than the accessibility defect
     /// either one has alone. The actionable row is filtered out here; its
     /// job belongs to the one accessible picker now.
+    ///
+    /// EFFORT-ROW-1 (2026-09-08) · THE FILTER KEYS ON THE ROW, NOT ON
+    /// WHETHER THE SERVER MARKED IT ACTIONABLE.
+    ///
+    /// `$0.action != nil` was a proxy for "this is the effort row", and it
+    /// was the server's own field, so the moment a payload sent the effort
+    /// row with `action: null` the row came straight back — which is
+    /// exactly what the owner's 2026-09-08 tempo sent. Rendered, the screen
+    /// carried "Effort · 6 of 10" here AND "Effort · 6 · comfortably hard"
+    /// in the Log group below: one fact, twice, under the same word (Rule
+    /// 17), and the reason the row was filtered in the first place ("a
+    /// SECOND effort-logging control on the same screen") was true either
+    /// way. `RPECaptureRow` draws unconditionally whenever there is a run
+    /// id, which an after-run screen always has, so the picker below is
+    /// always the one that owns this number.
     private var askedVsRanSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(model.askedVsRan.filter { $0.action == nil }) { row in
+            ForEach(model.askedVsRan.filter { $0.id != "effort" && $0.action == nil }) { row in
                 ListRow(label: row.label, sub: row.sub, value: Self.fv(row.value))
             }
         }
         .padding(.horizontal, V5.S.s4)
-    }
-
-    // MARK: - WORKOUTPHASES-1 · the session's own executed structure
-
-    /// `groups`' sibling for an after-run day: the SAME "Piece by Piece"
-    /// slot, drawing what was actually held per phase instead of what was
-    /// prescribed. David, live, on a treadmill interval session: "its not
-    /// showing my treadmill breakdown though. the warm up, hills, etc." —
-    /// `routePhases` (the other candidate for this) is keyed by GPS mile
-    /// and is always empty indoors; `workoutPhases` reads the watch's own
-    /// completion payload directly and carries every phase regardless.
-    private var workoutPhasesTile: some View {
-        Tile {
-            VStack(alignment: .leading, spacing: V5.S.s12) {
-                V5SectionLabel(text: "Piece by piece", size: TypeScaleV5.body15)
-                ForEach(Array(model.workoutPhases.enumerated()), id: \.offset) { _, phase in
-                    HStack(alignment: .firstTextBaseline, spacing: V5.S.s12) {
-                        Text(phase.label ?? phase.type?.capitalized ?? "Phase")
-                            .font(.faffText(15))
-                            .foregroundStyle(V5.textPrimary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Text(phaseTrailingText(phase))
-                            .font(.faffText(TypeScaleV5.label13))
-                            .foregroundStyle(V5.textSecondary)
-                            .multilineTextAlignment(.trailing)
-                    }
-                }
-            }
-        }
-    }
-
-    /// "13:03 · 145 bpm", "1:00" alone when HR never sampled, "1:00 ·
-    /// not completed" when the wire's own tri-state (Rule 11 — nil means
-    /// the payload never said, never coerced) says an explicit false.
-    private func phaseTrailingText(_ phase: V5WorkoutPhase) -> String {
-        var parts: [String] = []
-        if let clock = FaffFmt.clock(sec: phase.durationSec.map(Double.init)) { parts.append(clock) }
-        if let hr = phase.avgHr { parts.append("\(hr) bpm") }
-        // WORKOUTPHASES-2 · the belt setting for THIS phase — David asked
-        // directly whether it reached the wire. Compact ("9.2mph·3.6%"), no
-        // spaces around the middle dot, so a five-part line (clock, HR,
-        // speed, incline) still fits a trailing-aligned column.
-        if let speed = phase.speedMph {
-            let incline = phase.inclinePct.map { String(format: "%.1f%%", $0) } ?? ""
-            parts.append(String(format: "%.1fmph", speed) + (incline.isEmpty ? "" : "·\(incline)"))
-        }
-        if phase.completed == false { parts.append("not completed") }
-        return parts.joined(separator: " · ")
     }
 
     // MARK: - Per-mile instruction groups, with actual numbers
@@ -1087,11 +1153,11 @@ struct TodayAfterV5: View {
         // The shape states a preference; what the run actually recorded
         // decides. A rep session whose phases never reached the phone is still
         // better served by its miles than by nothing at all.
-        let d = shape.decomposition(hasSections: !sectionPieces.isEmpty,
+        let d = shape.decomposition(hasSections: !breakdownPieces.isEmpty,
                                     hasMiles: !milePieces.isEmpty)
         switch d {
         case .sections:
-            RepBreakdownV5(title: shape.breakdownTitle(.sections), pieces: sectionPieces)
+            RepBreakdownV5(title: shape.breakdownTitle(.sections), pieces: breakdownPieces)
         /* MILES ONLY ON *THIS* SCREEN, and the strides come from `postRun`.
          *
          * `.milesAndSections` says the session is a steady body with pieces
@@ -1184,7 +1250,11 @@ struct TodayAfterV5: View {
         // when, the row above is already showing this number. On every session
         // with no hard cap (the majority) nothing changes and the reading
         // stands, which is what David asked for when he added this card.
-        if shape.showsWholeRunHrAvg, let hr = model.hrAvg, !hrAvgShownInAskedVsRan {
+        // REDUNDANT-READING-1 · `hrAvgShownInAskedVsRan` stays as the named
+        // case the comment above argues; `hrShownElsewhere` is the same
+        // question asked of every place this screen can print a heart rate.
+        if shape.showsWholeRunHrAvg, let hr = model.hrAvg,
+           !hrAvgShownInAskedVsRan, !hrShownElsewhere(hr) {
             out.append(("Heart rate, avg", .measured("\(hr) bpm")))
         }
         if shape.showsMaxHr, let hrMax = model.hrMax {
@@ -1193,7 +1263,11 @@ struct TodayAfterV5: View {
         // NAMED FOR ITS SCOPE. "Heart rate, avg" on a rep session would be
         // the same words over a different population, so the label carries
         // the scope and the two can never be read as the same number.
-        if shape.showsWorkHrAvg, let hrWork = model.hrAvgWork {
+        // REDUNDANT-READING-1 · the scoped label is what stops this being
+        // read as the whole-run figure; it does not stop it being the SAME
+        // INTEGER printed a third time. On a one-block tempo the piece row
+        // and the coach's cost sentence both carry it already.
+        if shape.showsWorkHrAvg, let hrWork = model.hrAvgWork, !hrShownElsewhere(hrWork) {
             out.append(("Heart rate, across the work", .measured("\(hrWork) bpm")))
         }
         if shape.showsWholeRunCadence, let cad = model.cadenceAvg {
@@ -1202,7 +1276,12 @@ struct TodayAfterV5: View {
         if shape.showsWorkCadence, let cadWork = model.cadenceAvgWork {
             out.append(("Cadence, across the work", .measured("\(cadWork) spm")))
         }
-        if shape.showsWorkHrAvg, let paceWork = model.paceWork {
+        // REDUNDANT-READING-1 · yields to the facts block above (which draws
+        // the same string when it draws anything) and to the piece list and
+        // coach's read. One-way: `factsWorkPaceText` never consults this, so
+        // the pace cannot disappear from the screen altogether.
+        if shape.showsWorkHrAvg, let paceWork = model.paceWork,
+           factsWorkPaceText == nil, !workPaceShownElsewhere {
             out.append(("Pace, across the work", .measured(paceWork)))
         }
         // RULE ONE. Nothing on the phone or the watch has a thermometer in it,
@@ -1303,19 +1382,39 @@ struct TodayAfterV5: View {
             workOrdinal[idx] = workOrdinal.count + 1
         }
         return usable.enumerated().map { i, p in
-            // A DURATION IS NOT A PACE. Found 2026-09-01, the day `p.mi`/
-            // `p.sec` first carried real data (a server field-name bug had
-            // made `model.routePhases` empty on every run before that — see
-            // `web-v2/app/api/v5/today/route.ts`'s `routePhases` comment).
-            // This passed `p.sec` — the phase's raw duration in seconds —
-            // straight into `formatPace(secPerMile:)`, which prints it as a
-            // pace unchanged. It read as a plausible pace on a ~1-mile
-            // interval by coincidence (seconds-per-mile happens to be close
-            // to seconds-elapsed when the distance is close to 1), and was
-            // wrong everywhere else: a 2.10 mi, 1084 s warm-up (a real
-            // 8:36/mi) rendered as "18:04/mi" — 1084 seconds read back as a
-            // pace. Divide by the phase's own distance first.
-            let paceSecPerMi = p.mi > 0 ? Double(p.sec) / p.mi : Double(p.sec)
+            /* THE SERVER'S PACE, NOT A PACE RE-DERIVED FROM A ROUNDED
+             * DISTANCE (PACE-PARITY-1, 2026-09-08).
+             *
+             * This computed `Double(p.sec) / p.mi`, and `p.mi` is a DISPLAY
+             * distance — two decimal places, rounded before it left the
+             * server. On the owner's real 2026-09-08 tempo that produced
+             * paces this screen and Run Detail disagreed about, on the same
+             * phases of the same run:
+             *
+             *     phase        wire actual_pace   this screen   error
+             *     Warm-up          8:30             8:29        -1 s/mi
+             *     Cool-down        8:17             8:18        +1 s/mi
+             *     After session    8:02             8:12       +10 s/mi
+             *
+             * The cool-down's true distance is 1.2028 mi and the overtime's
+             * is 0.2448; rounded to 1.20 and 0.24 they lose enough to move
+             * the quotient by up to ten seconds a mile. Rule 16: two
+             * surfaces showing the same label must show the same number, and
+             * the wire has carried `actual_pace` — the number the server
+             * already computed off the unrounded distance — since PARITY-1
+             * on 2026-09-04. `RunDetailV5.repPieces` has always read it.
+             * This is the one call site that was still doing the arithmetic
+             * itself, which is why the two screens could differ at all.
+             *
+             * The predecessor defect is worth keeping in view: before
+             * 2026-09-01 this passed `p.sec` STRAIGHT into
+             * `formatPace(secPerMile:)`, so a 2.10 mi / 1084 s warm-up
+             * printed "18:04/mi". Dividing was the fix then; not dividing at
+             * all is the fix now.
+             *
+             * Formatted exactly as run detail formats it — `"\(pace)/mi"`
+             * over the server's bare `"8:30"` — so the two strings are
+             * byte-identical rather than merely close. */
             // PARITY-1, 2026-09-04 · `p.label` is the server's own phase
             // name ("10.0 mi easy", "Interval · 1 km") now that `routePhases`
             // carries it — the SAME string run detail's `phase_breakdown`
@@ -1330,13 +1429,32 @@ struct TodayAfterV5: View {
                 case "cooldown": label = "Cool Down"
                 case "recovery": label = "Recovery"
                 case "work":     label = "Interval \(workOrdinal[i] ?? 1)"
+                // OVERTIME-PHASE-1 · the watch's own word, and the same
+                // string the stored row already carries as its `label`.
+                case "overtime": label = "After the session"
                 default:         label = "Section \(i + 1)"
                 }
             }
             return RepPiece(id: i,
                      label: label,
-                     isWork: p.type.map { $0 == "work" } ?? true,
-                     actualPace: Units.formatPace(secPerMile: paceSecPerMi),
+                     /* AN UNKNOWN TYPE IS NOT WORK (OVERTIME-PHASE-1,
+                      * 2026-09-08). This defaulted a nil type to TRUE, which
+                      * is Rule 11 in its most expensive form: the wire's
+                      * "this era did not record a type" became the screen's
+                      * loudest claim about the phase. The overtime tail of
+                      * the owner's 2026-09-08 tempo — 0.24 mi, 118 seconds,
+                      * a jog home — arrived with `type: null` and drew in
+                      * signal orange at full work weight beside a
+                      * 25-minute tempo block. The wire now names `overtime`
+                      * (see `run-shape.ts`'s `PhaseType`), so nothing real
+                      * relies on the default any more; and the default that
+                      * remains errs the only safe way, since claiming a
+                      * phase WAS work is a much larger claim than declining
+                      * to. `RunDetailV5.repPieces` has always written
+                      * `p.type == "work"` with no fallback at all — this is
+                      * now the same answer. */
+                     isWork: p.type.map { $0 == "work" } ?? false,
+                     actualPace: p.actualPace.map { "\($0)/mi" },
                      // Same rule `RunDetailV5.repPieces` applies: a recovery
                      // jog's target is a band the watch needed to draw
                      // something, not a real prescription, and a stride is
@@ -1347,7 +1465,12 @@ struct TodayAfterV5: View {
                         ? paceContractText(shape: p.paceShape, targetPaceSec: p.targetPaceSec,
                                             tolerancePaceSec: p.tolerancePaceSec)
                         : nil,
-                     detail: "\(Units.formatDistance(miles: p.mi, decimals: 2)) \(Units.distanceLabel())",
+                     // ONE-SECTION-1 (2026-09-08) · distance, duration and
+                     // heart rate on one line — the two facts the deleted
+                     // `workoutPhasesTile` used to draw in a SECOND "Piece
+                     // by piece" header directly above this list, folded
+                     // into the row they describe. See `breakdownSection`.
+                     detail: Self.pieceDetail(distanceMi: p.mi, durationSec: p.sec, avgHr: p.avgHr),
                      // VERDICT-1 · the canonical word, from the same resolver
                      // run detail's phase panel reads — now the full
                      // pace-shape-aware phrase (`phaseVerdictPhrase`), not
@@ -1357,7 +1480,7 @@ struct TodayAfterV5: View {
                      verdictPhrase: phaseVerdictPhrase(paceShape: p.paceShape, verdict: p.verdict,
                                                         statusLabel: p.statusLabel, type: p.type),
                      chosen: false,
-                     kind: RepPiece.Kind.of(type: p.type, isWork: p.type.map { $0 == "work" } ?? true),
+                     kind: RepPiece.Kind.of(type: p.type, isWork: p.type.map { $0 == "work" } ?? false),
                      durationSec: p.sec,
                      // PHASE-GRAIN-1 (2026-09-08) · `RunDetailV5.repPieces`'
                      // twin, through the same mapper off the same server
@@ -1366,6 +1489,93 @@ struct TodayAfterV5: View {
                      // short tempo, which is the normal answer.
                      mileSplits: MileBreakdownV5.pieces(fromPhaseSplits: p.mileSplits))
         }
+    }
+
+    /// ONE-SECTION-1 (2026-09-08) · distance, duration and heart rate, in
+    /// that order, joined by the middle dot — the line under a piece's name.
+    ///
+    /// Every one of the three is a reading, so every one is measured; a
+    /// phase that carried none of them produces no line rather than an empty
+    /// one. This carries what the deleted `workoutPhasesTile` used to say in
+    /// its own duplicate section: it printed "12:49 · 128 bpm" per phase
+    /// under a second "Piece by piece" header, immediately above this list's
+    /// "1.51 mi" for the same four phases. Two headers, two half-tables,
+    /// one set of phases (Rule 17). One row, all of it.
+    ///
+    /// `RunDetailV5.pieceDetail` is the same three facts in the same order
+    /// for the same component; it spells the heart rate "HR 128" where this
+    /// says "128 bpm", which is the wording this screen already used and the
+    /// one that carries its own unit.
+    private static func pieceDetail(distanceMi: Double, durationSec: Int?, avgHr: Int?) -> String? {
+        var parts: [String] = []
+        if distanceMi > 0 {
+            parts.append("\(Units.formatDistance(miles: distanceMi, decimals: 2)) \(Units.distanceLabel())")
+        }
+        if let clock = FaffFmt.clock(sec: durationSec.map(Double.init)) { parts.append(clock) }
+        if let avgHr { parts.append("\(avgHr) bpm") }
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+    }
+
+    /* ═══ ONE-SECTION-1 · THE TREADMILL LANE THE DELETED TILE OWNED ═══════
+     *
+     * `workoutPhasesTile` was not only a duplicate. On an INDOOR run it was
+     * the only structure this screen had: `routePhases` is keyed by GPS mile
+     * and `lib/faff/v5-today.ts` forces it to `[]` for every indoor run, and
+     * `routeSplits` with it — so on a treadmill session `sectionPieces` and
+     * `milePieces` are both empty and `breakdownSection` draws nothing at
+     * all. Deleting the tile outright would have taken the treadmill
+     * breakdown back off the screen, which is the exact regression David
+     * reported live when it was missing: "its not showing my treadmill
+     * breakdown though. the warm up, hills, etc."
+     *
+     * So the tile's SOURCE moves into the one section rather than being
+     * dropped with it. `workoutPhases` reads `runs.data.phases` directly and
+     * is never indoor-gated, and it carries the belt's own per-phase speed
+     * and incline, which nothing else on this screen does.
+     *
+     * What it cannot carry: distance and pace. A treadmill phase has no GPS
+     * distance, so these pieces state duration, heart rate and belt setting
+     * and say nothing about pace — Rule 11, an honest absence rather than a
+     * number derived from a belt speed nobody measured against the ground.
+     *
+     * Used ONLY as the fallback: whenever `routePhases` has real pieces they
+     * win, because they carry the pace, the target and the verdict too. */
+    private var workoutPhasePieces: [RepPiece] {
+        let usable = model.workoutPhases.filter { ($0.durationSec ?? 0) > 0 }
+        // A LIST OF ONE IS THE RUN, and the poster already states it — the
+        // same refusal `sectionPieces` makes directly above.
+        guard usable.count > 1 else { return [] }
+        return usable.enumerated().map { i, p in
+            var parts: [String] = []
+            if let clock = FaffFmt.clock(sec: p.durationSec.map(Double.init)) { parts.append(clock) }
+            if let hr = p.avgHr { parts.append("\(hr) bpm") }
+            if let speed = p.speedMph {
+                let incline = p.inclinePct.map { String(format: "%.1f%%", $0) } ?? ""
+                parts.append(String(format: "%.1fmph", speed) + (incline.isEmpty ? "" : "\u{00B7}\(incline)"))
+            }
+            if p.completed == false { parts.append("not completed") }
+            return RepPiece(
+                id: i,
+                label: p.label ?? p.type?.capitalized ?? "Phase \(i + 1)",
+                isWork: p.type == "work",
+                // NOTHING, NOT A DASH. There is no pace to read off a belt
+                // phase, and `FaffValue.measured(nil)` would draw a fault-red
+                // "—" that means "we tried to read this and could not".
+                actualPace: nil,
+                askedPace: nil,
+                detail: parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} "),
+                verdictPhrase: nil,
+                chosen: false,
+                kind: RepPiece.Kind.of(type: p.type, isWork: p.type == "work"),
+                durationSec: p.durationSec)
+        }
+    }
+
+    /// The pieces this screen actually draws: the GPS-keyed phases when the
+    /// run has them, the authored phase list when it does not (indoors).
+    /// ONE list, so there is exactly one "Piece by piece" on this screen.
+    private var breakdownPieces: [RepPiece] {
+        sectionPieces.isEmpty ? workoutPhasePieces : sectionPieces
     }
 
     /// PARITY-1, 2026-09-04 · `RunDetailV5.marathonPacePhase`'s twin, off

@@ -1581,7 +1581,33 @@ export function splitsWithHrAndPace(
  *  `drifted` stopped being a verdict. */
 export type PhaseVerdict = WirePhaseVerdict;
 
-export type PhaseType = 'warmup' | 'work' | 'recovery' | 'cooldown';
+/**
+ * OVERTIME-PHASE-1 (2026-09-08) · `overtime` is the FIFTH stored phase type
+ * and it was missing here, so every row carrying one was read as a phase of
+ * no known type — which is not the same fact and does not degrade the same
+ * way.
+ *
+ * The owner's 2026-09-08 tempo stores it verbatim: `{"type": "overtime",
+ * "label": "After the session", "actualDistanceMi": 0.24,
+ * "actualDurationSec": 118}` — real running after the last prescribed piece,
+ * with no target and nothing to grade. It is written by the watch, it is
+ * already named by `lib/training/lthr.ts` (which skips an overtime segment
+ * for exactly this reason) and by `experience.ts`'s own coverage arithmetic
+ * (`overtimeDistanceMi`).
+ *
+ * Excluding it from this union sent it down the unknown path, and every
+ * consumer of "unknown" defaults it toward WORK: `verdict.ts` grades an
+ * unknown phase as `gradable = 'work'`, and the phone's own
+ * `TodayAfterV5.sectionPieces` read a null wire type as `isWork = true`. A
+ * 118-second jog home therefore drew in signal orange at full work weight
+ * beside a 25-minute tempo. Naming the type is what stops the guess.
+ *
+ * It is NOT a work phase and is NEVER pace-graded — `paceShapeFor` returns
+ * `none` for it, so it stays out of `workPhases`, out of the session ladder
+ * and out of every work-scoped average, exactly as it did when it was
+ * unknown. What changes is that the surfaces now KNOW what it is.
+ */
+export type PhaseType = 'warmup' | 'work' | 'recovery' | 'cooldown' | 'overtime';
 
 /** One watch phase, normalised. Null means "this era did not record it". */
 export interface NormalizedPhase {
@@ -1625,7 +1651,7 @@ export interface NormalizedPhase {
   hrRole: 'target' | 'observational' | null;
 }
 
-const PHASE_TYPES: readonly string[] = ['warmup', 'work', 'recovery', 'cooldown'];
+const PHASE_TYPES: readonly string[] = ['warmup', 'work', 'recovery', 'cooldown', 'overtime'];
 const PHASE_VERDICTS: readonly string[] = WIRE_PHASE_VERDICTS;
 
 /**

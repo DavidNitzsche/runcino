@@ -302,8 +302,13 @@ export function sessionToleranceSecFor(
  */
 export type PaceShape = PrescriptionShape;
 
-/** The phase vocabulary the wire and `expand-spec.ts` already speak. */
-export type PhaseType = 'warmup' | 'work' | 'recovery' | 'cooldown';
+/** The phase vocabulary the wire and `expand-spec.ts` already speak.
+ *
+ *  `overtime` is the one entry NOTHING authors — see OVERTIME-PHASE-1 on
+ *  `run-shape.ts`'s own `PhaseType`. The watch writes it after the last
+ *  prescribed piece, so it appears in a STORED phase list and never in an
+ *  expanded prescription; `paceShapeFor` answers `none` for it. */
+export type PhaseType = 'warmup' | 'work' | 'recovery' | 'cooldown' | 'overtime';
 
 /**
  * The shape of one phase's pace target.
@@ -334,6 +339,12 @@ export function paceShapeFor(
   switch (phaseType) {
     case 'recovery':
       // A recovery has no prescribed pace even when a legacy row carries one.
+      return 'none';
+    // OVERTIME-PHASE-1 · running the plan never asked for cannot be graded
+    // against the plan. `none`, unconditionally, for the same reason a
+    // recovery is: there is no prescription here to be inside or outside of,
+    // and inventing one would grade a jog home against a tempo's window.
+    case 'overtime':
       return 'none';
     case 'warmup':
     case 'cooldown':
