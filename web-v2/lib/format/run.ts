@@ -201,6 +201,30 @@ export function fmtPace(sPerMi: number | null | undefined): string | null {
   return usable(sPerMi) ? minSec(sPerMi) : null;
 }
 
+/**
+ * Would the runner SEE this pace change?
+ *
+ * Two seconds-per-mile values differ on the screen only when they format
+ * differently, and `fmtPace` rounds to the second — so 430.0 and 430.4 are the
+ * same "7:10" and a sentence claiming one moved to the other is claiming
+ * something the runner cannot observe. Every surface that asks "did this pace
+ * move" asks it here, so no two of them can disagree about where a move starts
+ * (Rule 16).
+ *
+ * An UNPRINTABLE side compares as different, not as "no change" — an unknown
+ * pace and a pace that held still are different facts and this function must
+ * not collapse them into the reassuring one (Rule 11). It is the caller's job
+ * to tell them apart: code that needs "both sides are real numbers AND they
+ * differ" asks `fmtPace` for each side first, which is what `repriceSubject`
+ * (`lib/plan/reprice-payload.ts`) does before it will name an anchor in prose.
+ */
+export function paceDisplayChanges(
+  aSecPerMi: number | null | undefined,
+  bSecPerMi: number | null | undefined,
+): boolean {
+  return fmtPace(aSecPerMi) !== fmtPace(bSecPerMi);
+}
+
 /** Seconds per mile as `"8:01/mi"`. For prose and for a standalone stat. */
 export function fmtPaceSlash(sPerMi: number | null | undefined): string | null {
   const p = fmtPace(sPerMi);
