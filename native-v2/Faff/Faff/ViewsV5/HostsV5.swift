@@ -2842,6 +2842,9 @@ struct SettingsHostV5: View {
     /// TRAVEL-1 · the travel-windows sheet, hosted here the way AddRaceHostV5
     /// hosts its own: a V5SheetHost over the screen, never a system sheet.
     @State private var travelOpen = false
+    /// SETTINGSREVERT-1 · see `ServerTruth`. Every writer below settles into
+    /// it, and `SettingsV5` watches its revision.
+    @State private var truth = ServerTruth()
 
     var body: some View {
         ZStack {
@@ -2866,7 +2869,11 @@ struct SettingsHostV5: View {
                                // Retry, which is the SAME load the full
                                // failure state's Retry runs. One quantity,
                                // one name (Rule 16).
-                               onRetry: { requestLoad() })
+                               onRetry: { requestLoad() },
+                               // SETTINGSREVERT-1 · the screen's cue to put
+                               // an optimistic value back when the write it
+                               // came from did not land. See `ServerTruth`.
+                               serverTruthRevision: truth.revision)
                 } else if let loadFailure {
                     // SETTINGSFAIL-1 · the third state. `ErrorNote` + Retry is
                     // the same treatment `TodayHostV5.pendingCard`'s `.failed`
@@ -3219,7 +3226,18 @@ struct SettingsHostV5: View {
     }
 
     private func setPref(_ key: String, _ value: Bool) async {
-        _ = await API.patchNotificationPref(key: key, value: value)
+        // SETTINGSREVERT-1 · THIS LINE USED TO BE `_ = await ...`.
+        //
+        // `patchNotificationPref` already answers "did it land" (it returns
+        // whether the response was 2xx) and the answer was dropped on the
+        // floor. These two switches take the SAME shape of defect as the
+        // settings writers, by a different route: prefs are never cached, so
+        // a failed PATCH is followed by a healthy GET that returns the value
+        // from BEFORE the toggle — an identical model, an `onChange` that
+        // does not fire, and a switch left standing where the runner put it.
+        // No cache to invalidate here, which is exactly why `settlement` is
+        // stated about the server rather than about the cache.
+        truth.settle(Self.settlement(landed: await API.patchNotificationPref(key: key, value: value)))
         // SETTINGSDEDUP-1 · `requestLoad()`, not `await load()` — see its own
         // doc comment. Two of these firing back-to-back (a fast double-tap
         // across two switches) used to run two independent, uncoordinated
@@ -3252,14 +3270,70 @@ struct SettingsHostV5: View {
     /// neither writer carries its own copy of the ordering (Rule 16).
     ///
     /// What it does NOT do: tell the runner the write failed. The screen
-    /// still only reverts to the server's value (see `SettingsV5`'s own
-    /// "THE SCREEN HAS TO FOLLOW THE SERVER BACK" note). A silent revert
-    /// beats a silent lie, and beats a wiped screen; saying it out loud is
-    /// still open.
+    /// reverts to the server's value and says nothing about why. A silent
+    /// revert beats a silent lie, and beats a wiped screen; saying it out
+    /// loud is still open.
+    ///
+    /// SETTINGSREVERT-1 (2026-09-08 review) · AND THAT REVERT HAD TO BE MADE
+    /// TRUE AGAIN. This comment used to assert it as a standing fact, and for
+    /// the "write fails, reads keep succeeding" case it was FALSE — precisely
+    /// BECAUSE of the fix above. Keeping the cached copy means the reload
+    /// rebuilds an identical model, and `SettingsV5`'s correction rode on
+    /// `.onChange(of: model)`, which is equality-gated and therefore never
+    /// fired. Two individually-correct fixes with a gap between them: the
+    /// toggle stayed where the runner put it, the server still held the old
+    /// value, and the tab bar (reading the same setting through
+    /// `PhoneRunGate`) contradicted the switch in the same frame.
+    ///
+    /// So the outcome is now RETURNED rather than swallowed, and each writer
+    /// is obliged to do something with it. See `WriteSettlement`.
+    @discardableResult
     static func applyWrite(write: () async -> Bool,
-                           invalidate: () async -> Void) async {
-        let landed = await write()
-        if landed { await invalidate() }
+                           invalidate: () async -> Void) async -> WriteSettlement {
+        let settlement = Self.settlement(landed: await write())
+        if settlement == .serverChanged { await invalidate() }
+        return settlement
+    }
+
+    /// SETTINGSREVERT-1 · WHAT A WRITE ATTEMPT LEAVES BEHIND.
+    ///
+    /// Stated as the fact about the SERVER, not as an instruction to the
+    /// cache, because two different writers spend it two different ways:
+    /// `patch`/`patchProfile` hold a `SettingsCache` copy to drop, and
+    /// `setPref` holds none at all (notification prefs are fetched fresh
+    /// every load). Both owe the screen the same thing on the failure side.
+    enum WriteSettlement: Equatable {
+        /// It landed. Whatever we were holding is now stale by definition,
+        /// and the screen's optimistic value is about to be confirmed by the
+        /// reload rather than contradicted by it.
+        case serverChanged
+        /// It did not land. The server holds exactly what it held before, so
+        /// what we cached is still the truth — AND the screen is currently
+        /// showing something that was never saved. Restating the held value
+        /// is not a fallback here; it is the correction.
+        case serverUnchanged
+    }
+
+    /// The whole decision, as a pure function, so a test can walk both sides
+    /// without a live outage.
+    static func settlement(landed: Bool) -> WriteSettlement {
+        landed ? .serverChanged : .serverUnchanged
+    }
+
+    /// SETTINGSREVERT-1 · the host's running count of how many times it has
+    /// had to tell the screen "what you are showing was never saved."
+    ///
+    /// The counter exists because the screen's correction is equality-gated
+    /// and the model does NOT move in this case — see `applyWrite` above. Its
+    /// value carries no meaning; only that it moved. `&+=` because a runner
+    /// who somehow reaches `Int.max` failed writes deserves a wrapped counter
+    /// rather than a crash.
+    struct ServerTruth: Equatable {
+        private(set) var revision = 0
+        mutating func settle(_ settlement: WriteSettlement) {
+            guard settlement == .serverUnchanged else { return }
+            revision &+= 1
+        }
     }
 
     /// True when the write actually landed. `patchSettings`/`updateProfile`
@@ -3270,9 +3344,14 @@ struct SettingsHostV5: View {
     }
 
     private func patch(_ fields: [String: Any]) async {
-        await Self.applyWrite(
+        // SETTINGSREVERT-1 · `long_run_day`, `units_distance` and
+        // `phone_run_enabled` all come through here, and the first of those
+        // is the day the training week ends. A runner who believes they moved
+        // their long run to Saturday, on a server that still says Sunday,
+        // gets a plan shaped against a week they think they changed.
+        truth.settle(await Self.applyWrite(
             write: { await Self.landed { try await API.patchSettings(fields) } },
-            invalidate: { await SettingsCache.shared.invalidate() })
+            invalidate: { await SettingsCache.shared.invalidate() }))
         await runGate.refresh()
         requestLoad()
     }
@@ -3287,9 +3366,11 @@ struct SettingsHostV5: View {
 
     private func patchProfile(_ fields: [String: Any]) async {
         // SETTINGSWRITE-1 · same sequence, same reason — see `applyWrite`.
-        await Self.applyWrite(
+        // SETTINGSREVERT-1 · and the same obligation. This one writes
+        // `weekly_frequency`: how many times a week the engine writes a run.
+        truth.settle(await Self.applyWrite(
             write: { await Self.landed { try await API.updateProfile(fields) } },
-            invalidate: { await SettingsCache.shared.invalidate() })
+            invalidate: { await SettingsCache.shared.invalidate() }))
         requestLoad()
     }
 }

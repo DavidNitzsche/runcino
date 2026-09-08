@@ -34,6 +34,11 @@
 //    3 · a fault-injecting proxy on 3130 in front of it, controlled by
 //        GET /__fault?rules=[{"match":"/api/settings","mode":"status","status":503}]
 //        modes: pass | status | delay(ms) | hang | drop
+//        SETTINGSREVERT-1 (2026-09-08) added one OPTIONAL field to a rule,
+//        `"method":"PATCH"`. Without it a rule matches a path whatever the
+//        verb, and the fourth review's defect is a failed WRITE with healthy
+//        READS on the same path, which such a rule cannot express. Rules that
+//        omit `method` behave exactly as before.
 //
 //  Then — NOTE THE `TEST_RUNNER_` PREFIX, it is load-bearing:
 //    TEST_RUNNER_FAFF_UI_HOST=http://127.0.0.1:3130 \
@@ -85,6 +90,12 @@
 //    that way, 2026-09-07 — render 2 read "faff is taking too long to
 //    respond"). It is still a sampler: a state narrower than one snapshot
 //    would be missed.
+//  · SETTINGSREVERT-1's case cannot fail on a FLICKER on the happy path. Its
+//    landed-write half breaks on the first correct reading, so a mis-fix that
+//    restated the old value on EVERY write (correcting it a moment later off
+//    the reload) would pass here. `SettingsWriteRevertTests
+//    .testALandedWriteInvalidatesAndRestatesNothing` is what fails on that,
+//    and it was falsified in that direction on 2026-09-08.
 //
 
 import XCTest
@@ -414,5 +425,194 @@ final class SettingsFailureUITests: XCTestCase {
         shot(app, "04-diagnostics-from-failure-state")
         print("[diagnostics from failure state] \(visibleText(app).prefix(400))")
         clearFaults()
+    }
+
+    // MARK: - 5 · SETTINGSREVERT-1 · the write fails, the reads do not
+
+    /// THE FOURTH REVIEWER'S EXACT REPRO, AND THE ONLY PLACE IT CAN BE
+    /// MEASURED.
+    ///
+    /// Fault ONLY `PATCH /api/settings`. Every GET stays healthy, which is
+    /// what separates this from every case above and what let the defect
+    /// live: with the reads up, `applyWrite` correctly keeps the cached copy
+    /// (SETTINGSWRITE-1), so the reload rebuilds an IDENTICAL model, and
+    /// `SettingsV5`'s correction rides on `.onChange(of: model)`, which is
+    /// equality-gated. It never fired. The switch stayed where the runner put
+    /// it, over a server that had refused the change.
+    ///
+    /// The assertion is the SWITCH'S OWN VALUE, read back off the screen, and
+    /// it is taken WITHOUT leaving Settings and returning — a revisit
+    /// self-corrects even on the unfixed build (the view is rebuilt and
+    /// `State(initialValue:)` runs again), so a test that navigates away
+    /// before looking would pass against the defect.
+    ///
+    /// The `method` field in the rule below is why this file's proxy contract
+    /// grew one: a rule that matches a path regardless of method cannot
+    /// express "the write fails and the reads do not".
+    ///
+    /// FALSIFIED TWICE, 2026-09-08, against the build without the fix — once
+    /// from each starting state, which is also what proves the baseline
+    /// handling below is real and not decorative:
+    ///
+    ///   · baseline "1": the switch read "0" on all 89 samples of the 30s
+    ///     window while the row still held `phone_run_enabled: true`
+    ///   · baseline "0": the switch read "1" for the whole window while the
+    ///     row still held false
+    ///
+    /// Both runs' proxy logs showed the PATCH 503'd and every GET passed, so
+    /// the reads were healthy throughout. The screenshot from the first also
+    /// caught the contradiction the reviewer described: switch off, subtitle
+    /// "Your watch starts every session", and the orange RUN pill still in
+    /// the tab bar underneath, because `PhoneRunGate` reads the TRUE value.
+    ///
+    /// It leaves the substrate as it found it, and does not care which way
+    /// the seed points — see the baseline comment below.
+    func testAFailedWriteWithHealthyReadsDoesNotLeaveTheSwitchWhereTheRunnerPutIt() throws {
+        clearFaults()
+        let app = launchIntoSettings()
+
+        // WHATEVER THE SUBSTRATE HOLDS, READ OFF THE SCREEN. An earlier
+        // version of this case asserted `phone_run_enabled: true` because
+        // that is how the substrate script seeds it — and then wrote to that
+        // same value in its own landed-write half below, so a run whose
+        // restore did not land left the NEXT run failing on its baseline.
+        // A repro that only works from one starting state is a repro that
+        // reports on the previous run.
+        let toggle = app.switches["Start runs from this phone"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 25), "no phone-run switch")
+        let baseline = (toggle.value as? String) ?? "?"
+        XCTAssertTrue(baseline == "0" || baseline == "1",
+                      "the phone-run switch has no readable value: \(baseline)")
+        let flipped = baseline == "1" ? "0" : "1"
+        let onSub = "RUN sits in the bottom bar"
+        let offSub = "Your watch starts every session"
+        let baselineSub = baseline == "1" ? onSub : offSub
+        let flippedSub = baseline == "1" ? offSub : onSub
+        print("[baseline] phone-run switch = \(baseline)")
+        shot(app, "05-before-toggle")
+
+        // Only the WRITE fails. Reads stay completely healthy.
+        XCTAssertTrue(setFaults([[
+            "match": "/api/settings", "method": "PATCH",
+            "mode": "status", "status": 503,
+        ]]), "fault proxy did not accept rules")
+
+        toggle.tap()
+
+        // Sample rather than assert on one frame, and record what the switch
+        // held at each sample so the evidence is readable (Rule 13).
+        let refused = sample(toggle, until: baseline, seconds: 30, settleSamples: 3)
+        print("[toggle across the REFUSED write] \(refused.samples.joined(separator: ","))")
+        shot(app, "06-after-failed-write")
+        print("[after] \(visibleText(app))")
+
+        XCTAssertTrue(refused.settled,
+                      "the switch still shows a change the server refused; last read \(refused.samples.last ?? "?")")
+        // The subtitle is drawn FROM the same optimistic value. Rule 16: a
+        // sentence about a value follows that value.
+        XCTAssertTrue(app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", baselineSub)).firstMatch.exists,
+                      "the subtitle still describes the state the server refused")
+        // AND THE SERVER ITSELF, not only the screen's account of it. This is
+        // the half a screenshot cannot settle: "the screen went back" and
+        // "the write never landed" are two facts, and the defect is only a
+        // defect because the second one is true.
+        XCTAssertEqual(serverPhoneRun(), baseline,
+                       "the faulted PATCH reached the row after all, so this case proves nothing")
+
+        // ── AND THE SWITCH STILL WORKS ───────────────────────────────────
+        //
+        // Rule 22, applied to this case's own bias: every assertion above
+        // asks "did the screen correctly refuse to keep a change?", and a
+        // screen that could not change AT ALL would satisfy every one of
+        // them. So the next thing measured is a write that LANDS — measured
+        // at the SERVER, because the screen shows an optimistic value the
+        // instant the switch is touched and would read "changed" either way.
+        clearFaults()
+        toggle.tap()
+        let landed = sample(toggle, until: flipped, seconds: 30, settleSamples: 6)
+        print("[toggle across the LANDED write] \(landed.samples.joined(separator: ","))")
+        shot(app, "07-after-landed-write")
+        XCTAssertTrue(landed.settled,
+                      "a healthy write no longer changes anything; last read \(landed.samples.last ?? "?")")
+        XCTAssertTrue(app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS %@", flippedSub)).firstMatch.exists,
+                      "the subtitle did not follow a write that landed")
+        XCTAssertTrue(waitForServerPhoneRun(flipped, seconds: 20),
+                      "a healthy write did not reach the row; it holds \(serverPhoneRun())")
+
+        // Put the substrate back where this case found it, and confirm it AT
+        // THE SERVER rather than tapping and walking away.
+        //
+        // Why this needs a retry loop, and it is not the fix under test: the
+        // switch's write is gated on `newValue != model.phoneRunEnabled`, and
+        // `model` only moves when the reload lands. A tap that arrives before
+        // then compares against the PREVIOUS server value, matches it, and is
+        // dropped — the screen moves optimistically and no PATCH is sent.
+        // Reported as a separate, pre-existing finding (a rapid double-tap
+        // loses the second tap); this case works around it rather than
+        // masking it, and would fail loudly if the workaround stopped working.
+        var attempts = 0
+        while serverPhoneRun() != baseline && attempts < 4 {
+            attempts += 1
+            toggle.tap()
+            _ = waitForServerPhoneRun(baseline, seconds: 15)
+        }
+        XCTAssertEqual(serverPhoneRun(), baseline,
+                       "this case did not put the substrate back after \(attempts) attempts")
+    }
+
+    // MARK: - Reading the server directly
+
+    /// `phone_run_enabled` as the ROW holds it, rendered in the switch's own
+    /// "0"/"1" vocabulary so the two can be compared without a translation
+    /// step in each assertion. Returns "?" if the read itself fails, which is
+    /// a third fact and never silently one of the other two (Rule 11).
+    private func serverPhoneRun() -> String {
+        guard let url = URL(string: "\(host)/api/settings") else { return "?" }
+        var req = URLRequest(url: url)
+        req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let sem = DispatchSemaphore(value: 0)
+        var out = "?"
+        URLSession.shared.dataTask(with: req) { data, resp, _ in
+            defer { sem.signal() }
+            guard (resp as? HTTPURLResponse)?.statusCode == 200, let data,
+                  let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            else { return }
+            // Absent means the runner has no stored value, and the server's
+            // own default for this field is true.
+            let v = obj["phone_run_enabled"] as? Bool ?? true
+            out = v ? "1" : "0"
+        }.resume()
+        _ = sem.wait(timeout: .now() + 10)
+        return out
+    }
+
+    private func waitForServerPhoneRun(_ want: String, seconds: TimeInterval) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            if serverPhoneRun() == want { return true }
+            Thread.sleep(forTimeInterval: 0.5)
+        }
+        return false
+    }
+
+    /// Poll `element.value` until it reads `want` for `settleSamples`
+    /// consecutive reads, or the window elapses. Returns every reading, so a
+    /// failure prints the whole sequence rather than one frame of it.
+    private func sample(_ element: XCUIElement, until want: String,
+                        seconds: TimeInterval, settleSamples: Int)
+        -> (settled: Bool, samples: [String]) {
+        var samples: [String] = []
+        var run = 0
+        let deadline = Date().addingTimeInterval(seconds)
+        while Date() < deadline {
+            let v = (element.value as? String) ?? "?"
+            samples.append(v)
+            run = (v == want) ? run + 1 : 0
+            if run >= settleSamples { return (true, samples) }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        return (false, samples)
     }
 }

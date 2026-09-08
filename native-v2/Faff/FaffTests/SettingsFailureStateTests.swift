@@ -42,6 +42,20 @@
 //       full-failure path refuses to blank a screen that already has content
 //       ("old content is not wrong, it is old"); the partial path did not.
 //
+//  A FOURTH review (2026-09-08) confirmed that one closed and returned the
+//  defect its fix had opened, covered here as SETTINGSREVERT-1 by
+//  `SettingsWriteRevertTests` at the bottom of this file:
+//
+//   5 · A FAILED WRITE WITH HEALTHY READS WAS COMPLETELY SILENT. Fault ONLY
+//       `PATCH /api/settings`. Toggle a switch: it animates, its subtitle
+//       follows, no banner, no Retry, and the server never took it. Keeping
+//       the cached copy (item 4, correct) means the reload rebuilds an
+//       IDENTICAL model, and the screen's correction rides on
+//       `.onChange(of: model)`, which is equality-gated — so it never fired.
+//       Every case in item 4 above failed the READ as well as the write,
+//       which moves `health` and therefore moves the model. That is exactly
+//       why they all passed while this was open.
+//
 //  ─────────────────────────────────────────────────────────────────────────
 //  RULE 22 · WHAT THIS GATE CANNOT FAIL ON
 //
@@ -383,5 +397,306 @@ final class SettingsFailureStateTests: XCTestCase {
             health: SettingsSourceHealth(settings: nil, profile: .serverError(503), prefs: nil))
         XCTAssertNotEqual(SettingsHostV5.LoadApplication.apply(km),
                           SettingsHostV5.LoadApplication.apply(kmPartial))
+    }
+}
+
+// MARK: - 5 · SETTINGSREVERT-1 · a write that did not land does not stand
+
+/// SETTINGSREVERT-1 (2026-09-08 review) · A FAILED WRITE WAS COMPLETELY
+/// SILENT, AND THE SCREEN SHOWED A VALUE THAT WAS NEVER SAVED.
+///
+/// ─────────────────────────────────────────────────────────────────────────
+/// WHAT WENT WRONG
+///
+/// A fourth review, on a healthy connection with ONLY `PATCH /api/settings`
+/// faulted, toggled "Start runs from this phone". The switch animated, its
+/// subtitle changed to match, and nothing else happened: no banner, no
+/// Retry, and the server still held the old value. The app's own tab bar,
+/// driven by the same setting through `PhoneRunGate`, still showed the TRUE
+/// state, so the screen contradicted another part of the app in the same
+/// frame. Leaving Settings and coming back self-corrected it, which is
+/// exactly why it survived: the state was recoverable, and a runner who
+/// toggles and navigates away never sees the correction.
+///
+/// It is an interaction between TWO CORRECT FIXES, not a simple bug:
+///
+///   · `SettingsV5` corrects its optimistic mirror in `.onChange(of: model)`,
+///     on the documented assumption that every writer ends in `await load()`.
+///   · SETTINGSWRITE-1 correctly stopped `applyWrite` invalidating the cache
+///     when a write fails, so a good cached value is not destroyed by a write
+///     that changed nothing.
+///
+/// Put together: the cache is intact, so the reload rebuilds an IDENTICAL
+/// model, and `onChange` is equality-gated, so the correction never runs.
+/// Every previous round's cases failed the READ alongside the write, which
+/// moves `health` and therefore moves the model, which is precisely why they
+/// all passed while this case was open.
+///
+/// ─────────────────────────────────────────────────────────────────────────
+/// RULE 22 · WHAT THIS GATE CANNOT FAIL ON
+///
+/// · It cannot fail on SwiftUI. `ScreenStandIn` MODELS the two `onChange`
+///   deliveries; it does not run them. What it does not model away is the
+///   thing that matters: the equality gate is reproduced faithfully, and
+///   `testTheEqualityGateAloneCannotCorrectAFailedWrite` proves the stand-in
+///   can still see the defect, so a pass here is not a pass by construction.
+///
+/// · It cannot fail on the WIRING: that `SettingsV5` really does hand
+///   `follow(model)` to BOTH `onChange` handlers, and that the host really
+///   passes `truth.revision` down. Two lines, read at the call site, and
+///   measured on device against a fault-injected PATCH.
+///
+/// · It cannot fail on a SEVENTH optimistic control added later with its own
+///   private `@State` instead of a `SettingsMirror` field. Nothing cheap can:
+///   the mirror's own field list is asserted below, which catches a control
+///   dropped FROM the mirror, not one that never joined it.
+///
+/// · It says nothing about whether the runner is TOLD the write failed. The
+///   screen reverts, silently. That is the posture SETTINGSWRITE-1 shipped
+///   with and the same open item: a silent revert beats a silent lie.
+final class SettingsWriteRevertTests: XCTestCase {
+
+    // MARK: - Fixtures
+
+    /// The server's own answer. Deliberately NOT the wire defaults (Saturday
+    /// and kilometres, six days a week) for the same reason the UI test's
+    /// substrate is seeded off-default: against a value that happens to equal
+    /// the fallback, a revert and a failure to revert look identical.
+    private func serverModel() -> SettingsV5Model {
+        SettingsV5Model(
+            longRunDay: "Saturday",
+            longRunDayOptions: ["Friday", "Saturday", "Sunday"],
+            daysPerWeek: 6,
+            phoneRunEnabled: true,
+            sessionReminders: true,
+            weeklySummary: false,
+            units: "Kilometres",
+            unitsOptions: ["Miles", "Kilometres"],
+            stravaConnected: true,
+            email: "d@faff.run")
+    }
+
+    /// SETTINGSREVERT-1 · a stand-in for what SwiftUI does with `SettingsV5`'s
+    /// two `onChange` handlers, and NOTHING else. `SettingsMirror` and the
+    /// re-seed (`mirror = model.mirror`) are the production type and the
+    /// production assignment; only the delivery is modelled, and modelled with
+    /// its equality gate intact, because that gate IS the defect.
+    private struct ScreenStandIn {
+        /// What the runner is looking at.
+        var mirror: SettingsMirror
+        private var lastModel: SettingsV5Model
+        private var lastRevision: Int
+
+        init(model: SettingsV5Model, revision: Int) {
+            mirror = model.mirror
+            lastModel = model
+            lastRevision = revision
+        }
+
+        /// One body evaluation. Each handler fires only if its own subject
+        /// moved, which is what `onChange(of:)` guarantees and all it
+        /// guarantees.
+        mutating func render(model: SettingsV5Model, revision: Int) {
+            if model != lastModel { mirror = model.mirror }
+            if revision != lastRevision { mirror = model.mirror }
+            lastModel = model
+            lastRevision = revision
+        }
+    }
+
+    /// Counts what `applyWrite` did to the cache. Kept local so the two suites
+    /// in this file cannot drift into sharing state.
+    private actor CacheStandIn {
+        private(set) var invalidateCalls = 0
+        func invalidate() { invalidateCalls += 1 }
+    }
+
+    /// The whole sequence the reviewer performed, as one helper: the runner
+    /// changes something, the PATCH does not land, the reads stay healthy so
+    /// the reload rebuilds the SAME model, and the screen renders again.
+    ///
+    /// `applyWrite` and `ServerTruth` are the production code; only the
+    /// render is a stand-in.
+    private func failedWrite(
+        touching change: (inout SettingsMirror) -> Void,
+        file: StaticString = #filePath, line: UInt = #line
+    ) async -> (screen: ScreenStandIn, server: SettingsV5Model, invalidations: Int) {
+        let server = serverModel()
+        var truth = SettingsHostV5.ServerTruth()
+        var screen = ScreenStandIn(model: server, revision: truth.revision)
+
+        // 1 · optimistic. This happens before the PATCH is even sent.
+        change(&screen.mirror)
+        XCTAssertNotEqual(screen.mirror, server.mirror,
+                          "the repro did not actually move the screen off the server's value",
+                          file: file, line: line)
+
+        // 2 · the PATCH 503s. Reads are healthy, so nothing else changes.
+        let cache = CacheStandIn()
+        truth.settle(await SettingsHostV5.applyWrite(
+            write: { false },
+            invalidate: { await cache.invalidate() }))
+
+        // 3 · the reload lands. Same cache, same wire, same model.
+        screen.render(model: server, revision: truth.revision)
+        return (screen, server, await cache.invalidateCalls)
+    }
+
+    // MARK: - The repro, on the control the reviewer used
+
+    func testAFailedPhoneRunWriteDoesNotLeaveTheSwitchWhereTheRunnerPutIt() async {
+        let (screen, server, invalidations) = await failedWrite {
+            $0.phoneRunEnabled = false
+        }
+        XCTAssertEqual(invalidations, 0,
+                       "SETTINGSWRITE-1 regressed: a write that changed nothing wiped the cache")
+        XCTAssertTrue(screen.mirror.phoneRunEnabled,
+                      "the switch still shows a change the server never took")
+        XCTAssertEqual(screen.mirror, server.mirror,
+                       "the screen does not agree with the server")
+    }
+
+    // MARK: - The two fields it would cost the most to get wrong
+
+    /// The day the training week ends. A runner who believes they moved their
+    /// long run to Sunday, on a server that still says Saturday, gets a plan
+    /// shaped against a week they think they changed.
+    func testAFailedLongRunDayWriteRevertsToTheServersDay() async {
+        let (screen, server, _) = await failedWrite { $0.longRunDay = "Sunday" }
+        XCTAssertEqual(screen.mirror.longRunDay, "Saturday")
+        XCTAssertEqual(screen.mirror, server.mirror)
+    }
+
+    /// How many times a week the engine writes a run. A different writer
+    /// (`patchProfile` rather than `patch`), the same settlement, the same
+    /// obligation.
+    func testAFailedWeeklyFrequencyWriteRevertsToTheServersCount() async {
+        let (screen, server, _) = await failedWrite { $0.daysPerWeek = 3 }
+        XCTAssertEqual(screen.mirror.daysPerWeek, 6)
+        XCTAssertEqual(screen.mirror, server.mirror)
+    }
+
+    func testAFailedUnitsWriteRevertsToTheServersUnits() async {
+        let (screen, server, _) = await failedWrite { $0.units = "Miles" }
+        XCTAssertEqual(screen.mirror.units, "Kilometres")
+        XCTAssertEqual(screen.mirror, server.mirror)
+    }
+
+    /// EVERY optimistic value, not just the one that was touched. The mirror
+    /// is one value precisely so this is one assertion.
+    func testEveryOptimisticValueFollowsTheServerBackAtOnce() async {
+        let (screen, server, _) = await failedWrite {
+            $0.longRunDay = "Friday"
+            $0.daysPerWeek = 2
+            $0.phoneRunEnabled = false
+            $0.sessionReminders = false
+            $0.weeklySummary = true
+            $0.units = "Miles"
+        }
+        XCTAssertEqual(screen.mirror, server.mirror,
+                       "some controls were corrected and others were left standing")
+    }
+
+    // MARK: - The notification switches, which take a different route
+
+    /// `setPref` never touches `SettingsCache` (prefs are fetched fresh every
+    /// load) and used to drop `patchNotificationPref`'s own landed answer with
+    /// `_ =`. The failure shape is identical: a healthy GET returns the value
+    /// from BEFORE the toggle, so the model does not move.
+    func testAFailedNotificationPrefWriteRevertsItsSwitch() {
+        let server = serverModel()
+        var truth = SettingsHostV5.ServerTruth()
+        var screen = ScreenStandIn(model: server, revision: truth.revision)
+
+        screen.mirror.weeklySummary = true          // the runner turns it on
+        XCTAssertNotEqual(screen.mirror, server.mirror)
+
+        // `patchNotificationPref` returns false on any non-2xx.
+        truth.settle(SettingsHostV5.settlement(landed: false))
+        screen.render(model: server, revision: truth.revision)
+
+        XCTAssertFalse(screen.mirror.weeklySummary,
+                       "the weekly-summary switch stands on a preference the server never stored")
+        XCTAssertEqual(screen.mirror, server.mirror)
+    }
+
+    // MARK: - The other direction · a landed write must NOT be restated
+
+    /// The fix cannot be "always restate". A write that DID land makes the
+    /// held copy stale by definition, and restating it would flip the control
+    /// back to the old value for the length of the reload and then forward
+    /// again: a visible flicker on the happy path.
+    func testALandedWriteInvalidatesAndRestatesNothing() async {
+        let cache = CacheStandIn()
+        var truth = SettingsHostV5.ServerTruth()
+        let before = truth.revision
+        truth.settle(await SettingsHostV5.applyWrite(
+            write: { true },
+            invalidate: { await cache.invalidate() }))
+        let calls = await cache.invalidateCalls
+        XCTAssertEqual(calls, 1, "a landed write left a stale copy in place")
+        XCTAssertEqual(truth.revision, before,
+                       "a landed write restated the OLD value over the one that just saved")
+    }
+
+    func testSettlementReadsBothWaysAndTheCounterOnlyMovesOnFailure() {
+        XCTAssertEqual(SettingsHostV5.settlement(landed: true), .serverChanged)
+        XCTAssertEqual(SettingsHostV5.settlement(landed: false), .serverUnchanged)
+        var truth = SettingsHostV5.ServerTruth()
+        truth.settle(.serverChanged)
+        XCTAssertEqual(truth.revision, 0)
+        truth.settle(.serverUnchanged)
+        XCTAssertEqual(truth.revision, 1)
+        truth.settle(.serverUnchanged)
+        XCTAssertEqual(truth.revision, 2, "two failures in a row must be two restatements")
+    }
+
+    // MARK: - RULE 18 · the stand-in can still see the defect
+
+    /// THE FALSIFIER, BUILT IN. Run the identical sequence with the
+    /// restatement withheld, which is exactly the code that shipped, and the
+    /// equality gate leaves the optimistic value standing. If this case ever
+    /// passes, `ScreenStandIn` has stopped modelling the gate and every
+    /// assertion above is passing by construction.
+    func testTheEqualityGateAloneCannotCorrectAFailedWrite() {
+        let server = serverModel()
+        var screen = ScreenStandIn(model: server, revision: 0)
+        screen.mirror.phoneRunEnabled = false
+
+        // The reload, with no restatement: same model, same revision.
+        screen.render(model: server, revision: 0)
+
+        XCTAssertNotEqual(screen.mirror, server.mirror,
+                          "the stand-in no longer reproduces the equality gate, so nothing above is proven")
+        XCTAssertFalse(screen.mirror.phoneRunEnabled)
+    }
+
+    /// And the gate still does its own job: when the model DOES move (a read
+    /// that failed alongside the write, which is every earlier round's case)
+    /// the correction runs without any restatement at all.
+    func testAMovedModelStillCorrectsOnItsOwn() {
+        let server = serverModel()
+        var screen = ScreenStandIn(model: server, revision: 0)
+        screen.mirror.phoneRunEnabled = false
+
+        var moved = server
+        moved.health = SettingsSourceHealth(settings: .serverError(503), profile: nil, prefs: nil)
+        screen.render(model: moved, revision: 0)
+
+        XCTAssertEqual(screen.mirror, moved.mirror)
+    }
+
+    // MARK: - The mirror covers every control the runner can touch
+
+    /// A control dropped from `SettingsMirror` is a control that stops being
+    /// corrected. This names the six by hand so removing one fails loudly
+    /// rather than quietly shrinking what "all optimistic UI" means.
+    func testTheMirrorCarriesEveryOptimisticControl() {
+        let fields = Swift.Mirror(reflecting: serverModel().mirror)
+            .children.compactMap(\.label).sorted()
+        XCTAssertEqual(fields,
+                       ["daysPerWeek", "longRunDay", "phoneRunEnabled",
+                        "sessionReminders", "units", "weeklySummary"],
+                       "the set of optimistic controls changed; every one of them needs the revert")
     }
 }
