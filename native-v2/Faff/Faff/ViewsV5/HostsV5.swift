@@ -2960,7 +2960,7 @@ struct SettingsHostV5: View {
     /// type with no dependency on `self`, so it can run inside a
     /// `withTaskGroup` child task (`withDeadline` below) without capturing
     /// this View across the boundary.
-    enum LoadOutcome: Sendable {
+    enum LoadOutcome: Equatable, Sendable {
         /// Whole OR partial. `health` says which — `.healthy` for whole, and
         /// otherwise the sources that failed, which the screen marks
         /// "Unavailable" instead of defaulting.
@@ -2991,9 +2991,19 @@ struct SettingsHostV5: View {
 
         // Both of the two sources that describe WHO THIS RUNNER IS are gone.
         // There is no screen to draw around, so this is the full failure
-        // state, unchanged from before. Settings leads because it is the one
-        // this screen is named for; the two categories agree in every outage
-        // shape observed.
+        // state, unchanged from before.
+        //
+        // SETTINGSCLASSIFY-1 (2026-09-07 review) · ONE CAUSE IS STATED, AND
+        // IT IS ALWAYS SETTINGS'. An earlier version of this comment claimed
+        // "the two categories agree in every outage shape observed", which
+        // overclaims: a staggered double failure (`/api/settings` 503 at
+        // once, `/api/profile` 500 after a delay) leaves the two carrying
+        // different statuses, and the screen then states 503 and never
+        // mentions the 500. That is a deliberate choice, not an accident —
+        // the runner reads one cause once (Rule 17), and this screen is named
+        // for settings — but it IS a choice, and the line below is where it
+        // is made. The unstated category is still readable in the request
+        // diagnostics the failure state now hosts.
         if let settingsFailure, profileFailure != nil {
             return .failed(settingsFailure)
         }
@@ -3105,6 +3115,18 @@ struct SettingsHostV5: View {
     /// The decision is a pure function of (outcome, cancelled) so a test can
     /// walk it without a live race: a cancelled task applies NOTHING,
     /// whatever it happens to be holding.
+    ///
+    /// SETTINGSEQ-1 (2026-09-07 review) · THE EQUALITY COMPARES THE PAYLOAD.
+    /// This conformance was hand-written and its `.apply` arm read
+    /// `case (.apply, .apply): return true` — any two applications were
+    /// equal, whatever model they carried, so
+    /// `XCTAssertEqual(application(...), .apply(expected))` would have passed
+    /// against the WRONG settings. An assertion that cannot distinguish its
+    /// own subject is Rule 18's exact defect. It is synthesized now, all the
+    /// way down: `LoadOutcome`, `UserSettings`, `ProfileFields` and
+    /// `FlexibleDouble` gained `Equatable` so the compiler writes the
+    /// comparison field by field and no future case can be silently dropped
+    /// from it.
     enum LoadApplication: Equatable {
         /// Cancelled. Leave every piece of state exactly as it is.
         case ignore
@@ -3112,15 +3134,6 @@ struct SettingsHostV5: View {
         /// already has content.
         case fail(SettingsLoadFailure)
         case apply(LoadOutcome)
-
-        static func == (lhs: LoadApplication, rhs: LoadApplication) -> Bool {
-            switch (lhs, rhs) {
-            case (.ignore, .ignore): return true
-            case (.fail(let a), .fail(let b)): return a == b
-            case (.apply, .apply): return true
-            default: return false
-            }
-        }
     }
 
     static func application(for outcome: LoadOutcome?, isCancelled: Bool) -> LoadApplication {
@@ -3215,9 +3228,51 @@ struct SettingsHostV5: View {
         requestLoad()
     }
 
+    /// SETTINGSWRITE-1 (2026-09-07 review) · A WRITE THAT DID NOT LAND
+    /// CHANGED NOTHING, SO IT INVALIDATES NOTHING.
+    ///
+    /// The reproduced sequence: a healthy load puts a value the screen has
+    /// actually READ on screen (on the review substrate, "Distance ·
+    /// Kilometres"). `/api/settings` then goes down.
+    /// The runner toggles a switch, the PATCH 503s, and the throw is
+    /// swallowed by `try?` — after which `invalidate()` wiped the good cached
+    /// copy, the reload's GET 503d too, and the row the runner was looking at
+    /// ONE SECOND EARLIER flipped from "Kilometres" to "Unavailable", as did
+    /// the switch they had just touched.
+    ///
+    /// That contradicts this file's own posture two hundred lines up
+    /// (`loadFailure`: "old content is not wrong, it is old"), which the FULL
+    /// failure path honours and this PARTIAL path did not. The cached copy is
+    /// stale only when the server actually changed; a write that threw
+    /// changed nothing, so what we hold is still the truth and keeping it is
+    /// the honest answer, not a fallback.
+    ///
+    /// The sequence lives here, as one function both writers call, so a test
+    /// can walk it with a stand-in cache instead of a live outage — and so
+    /// neither writer carries its own copy of the ordering (Rule 16).
+    ///
+    /// What it does NOT do: tell the runner the write failed. The screen
+    /// still only reverts to the server's value (see `SettingsV5`'s own
+    /// "THE SCREEN HAS TO FOLLOW THE SERVER BACK" note). A silent revert
+    /// beats a silent lie, and beats a wiped screen; saying it out loud is
+    /// still open.
+    static func applyWrite(write: () async -> Bool,
+                           invalidate: () async -> Void) async {
+        let landed = await write()
+        if landed { await invalidate() }
+    }
+
+    /// True when the write actually landed. `patchSettings`/`updateProfile`
+    /// both THROW on any non-2xx, and their `Bool` return is `replanned` —
+    /// not success — so "did not throw" is the only success signal there is.
+    private static func landed(_ write: () async throws -> Bool) async -> Bool {
+        do { _ = try await write(); return true } catch { return false }
+    }
+
     private func patch(_ fields: [String: Any]) async {
-        _ = try? await API.patchSettings(fields)
-        await SettingsCache.shared.invalidate()
+        await Self.applyWrite(
+            write: { await Self.landed { try await API.patchSettings(fields) } },
+            invalidate: { await SettingsCache.shared.invalidate() })
         await runGate.refresh()
         requestLoad()
     }
@@ -3231,8 +3286,10 @@ struct SettingsHostV5: View {
     }
 
     private func patchProfile(_ fields: [String: Any]) async {
-        _ = try? await API.updateProfile(fields)
-        await SettingsCache.shared.invalidate()
+        // SETTINGSWRITE-1 · same sequence, same reason — see `applyWrite`.
+        await Self.applyWrite(
+            write: { await Self.landed { try await API.updateProfile(fields) } },
+            invalidate: { await SettingsCache.shared.invalidate() })
         requestLoad()
     }
 }

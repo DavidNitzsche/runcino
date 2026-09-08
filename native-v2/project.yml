@@ -239,6 +239,13 @@ targets:
   # and reports skips rather than failing on a server nobody is running. That
   # is deliberate and it is also the honest weakness: this target cannot fail
   # in CI, and does not pretend to. See the file header for the invocation.
+  #
+  # AND THE VARIABLE MUST BE PASSED AS `TEST_RUNNER_FAFF_UI_HOST`. `xcodebuild`
+  # does not forward its own environment into the process running inside the
+  # simulator; only `TEST_RUNNER_`-prefixed names cross, with the prefix
+  # stripped. Documented without it (as this was until the 2026-09-07 review),
+  # the invocation reported "1 test, 1 skipped", exit 0, TEST EXECUTE
+  # SUCCEEDED — green, having run nothing.
   FaffUITests:
     type: bundle.ui-testing
     platform: iOS
