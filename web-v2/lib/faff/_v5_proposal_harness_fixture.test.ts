@@ -48,10 +48,29 @@ import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { toWire, directionOf, headlineFor } from '@/lib/faff/v5-proposals';
 import { _internals } from '@/lib/faff/v5-decisions';
+import { repriceReason } from '@/lib/plan/reanchor-plan';
+import type { RepriceAnchorMove } from '@/lib/plan/reprice-payload';
 import type { PendingProposal } from '@/lib/plan/workout-proposals';
 
 /** The day the harness renders as. Fixed so the fixture is deterministic. */
 const TODAY = '2026-09-05';
+
+/**
+ * `action_payload.reprice.anchorMoves` from production row 12, transcribed
+ * unaltered. The same six `lib/plan/_reprice_reason_names_the_mover.test.ts`
+ * calls `DAVID_MOVES` — one set of numbers, read out of one row, so the two
+ * suites cannot end up arguing about what the runner's repricing actually was
+ * (Rule 16). Threshold, interval, repetition and marathon did not move at all;
+ * the easy and shakeout ceilings each moved 10 s/mi faster.
+ */
+const DAVID_ROW_12_MOVES: RepriceAnchorMove[] = [
+  { key: 'threshold_s_per_mi', fromSecPerMi: 430, toSecPerMi: 430 },
+  { key: 'interval_s_per_mi', fromSecPerMi: 401, toSecPerMi: 401 },
+  { key: 'repetition_s_per_mi', fromSecPerMi: 365, toSecPerMi: 365 },
+  { key: 'easy_ceiling_s_per_mi', fromSecPerMi: 502, toSecPerMi: 492 },
+  { key: 'shakeout_ceiling_s_per_mi', fromSecPerMi: 532, toSecPerMi: 522 },
+  { key: 'marathon_s_per_mi', fromSecPerMi: 472, toSecPerMi: 472 },
+];
 
 const FIXTURE = path.join(process.cwd(), '..', 'docs', 'verification',
   'v5-proposal-harness.json');
@@ -149,11 +168,43 @@ const PRODUCTION_ROWS: Row[] = [
    * his phone and called "not telling me anything". A corpus that cannot reach
    * a branch is not covering it however many rows it holds.
    *
-   * The `reprice` payload is trimmed to the fields `affectedFrom` reads
-   * (`workoutsAffected`, `workoutsSealed`) rather than the whole 76-session
-   * anchor-move record; nothing else on this path reads the rest, and pasting
-   * it would put a wall of engine JSON in a file whose job is to be read.
-   * `evidence` is complete and verbatim. */
+   * ── REPRICEFIXTURE-1 (2026-09-08) · WHY `anchorMoves` IS HERE NOW ────────
+   *
+   * This payload used to be trimmed to `workoutsAffected` and `workoutsSealed`
+   * — "nothing else on this path reads the rest" — and that sentence stopped
+   * being true the moment `repriceHeadline` shipped: the headline is now
+   * resolved from `anchorMoves` through `repriceSubject`, so a fixture without
+   * them cannot reach the branch it exists to render. It is the exact failure
+   * this row's own comment describes one paragraph up, one level down (Rule
+   * 15), and it was found the honest way: the committed JSON was hand-edited
+   * to the new sentence while the row that builds it still produced the old
+   * one, so this suite passed on `main` and failed here.
+   *
+   * The six moves are `action_payload.reprice.anchorMoves` from production row
+   * 12, transcribed unaltered — the same six `_reprice_reason_names_the_mover
+   * .test.ts` calls `DAVID_MOVES`. Four anchors did not move at all; the easy
+   * and shakeout ceilings each moved 10 s/mi faster. That is the whole of what
+   * made the old headline say "faster paces" over a threshold the runner could
+   * see had not budged.
+   *
+   * `arm`, `workoutsAffected`, `workoutsSealed`, `meanAnchorDeltaSecPerMi` and
+   * `anchorMoves` are every field any render path reads. The rest of
+   * `RepricePayload` (`planId`, the VDOT pair, `toSource`, `computedAt`) is
+   * still omitted rather than invented, which is what the `as never` records:
+   * this is a real payload with fields left out, not a fabricated whole one.
+   *
+   * ── WHAT THE `why` LINE SAYS, AND WHY IT IS STILL THE OLD SENTENCE ────────
+   *
+   * `toWire` reads `p.reason`, the string PERSISTED when the row was written.
+   * Row 12 was raised 2026-09-08 before `3b1bbad0c`, so its stored reason is
+   * the threshold-twice sentence David actually read, and `writeReanchorProposal`
+   * will not refresh it — `isSameRepricing` answers "this card is already up"
+   * while the anchors have not moved again. So the honest render of row 12
+   * after REPRICEHEADLINE-1 is a NEW headline over its OLD body, and that is
+   * what this fixture shows. It is not the fix failing; it is the residue of
+   * one already-stored row, and hand-editing the JSON to hide it was the
+   * defect this comment replaces. The coherent card the writer produces today
+   * is drawn by row 108 below, from the real `repriceReason`. */
   row({
     id: 12, actionKind: 'reprice', workoutDateISO: '2026-09-08',
     actionPayload: {
@@ -164,6 +215,7 @@ const PRODUCTION_ROWS: Row[] = [
         workoutsAffected: 76,
         workoutsSealed: 0,
         meanAnchorDeltaSecPerMi: -3.3333333333333335,
+        anchorMoves: DAVID_ROW_12_MOVES,
       } as never,
     },
     reason: 'Your recent training puts your threshold at 7:10 per mile. '
@@ -260,6 +312,51 @@ const SYNTHETIC_ROWS: Row[] = [
       planned_distance_mi: 9,
       reassessOnISO: '2026-09-19',
     },
+  }),
+  /* ── REPRICEFIXTURE-1 (2026-09-08) · A REPRICING AS TODAY'S WRITER STORES IT
+   *
+   * Row 12 above is the only repricing the product has ever held, and it was
+   * written before `3b1bbad0c` fixed the body sentence, so its persisted
+   * `reason` names the anchor that stood still. Nothing in production can draw
+   * the card the writer produces NOW — headline and body resolving through the
+   * same `repriceSubject` — which is exactly the Rule 15 gap row 12 was added
+   * to close, one release later and one field over.
+   *
+   * The anchor moves are row 12's, unaltered, so the two cards are the SAME
+   * repricing seen through the old writer and the new one, and the difference
+   * on the screen is attributable to the code and to nothing else.
+   *
+   * `reason` is not typed out here. It is produced by calling the real
+   * `repriceReason` with the real move set, so this row cannot assert a body
+   * sentence the writer would not actually write — which is the failure mode
+   * that put a hand-edited string in the committed JSON in the first place.
+   */
+  row({
+    id: 108, actionKind: 'reprice', workoutDateISO: '2026-09-14',
+    actionPayload: {
+      reprice: {
+        arm: 'race-prep',
+        workoutsAffected: 76,
+        workoutsSealed: 0,
+        meanAnchorDeltaSecPerMi: -3.3333333333333335,
+        anchorMoves: DAVID_ROW_12_MOVES,
+      } as never,
+    },
+    reason: repriceReason({
+      arm: 'race-prep',
+      fromThresholdSecPerMi: 430,
+      toThresholdSecPerMi: 430,
+      moves: DAVID_ROW_12_MOVES,
+      evidence: { source: 'run', refId: null },
+    }),
+    evidence: {
+      anchor_vdot_now: 47.8,
+      evidence_source: 'run',
+      anchor_confidence: 0.8081792830507429,
+      anchor_vdot_proposed: 47.7,
+      ends_calibration_intro: false,
+    },
+    createdAt: '2026-09-08T07:00:28.475Z',
   }),
 ];
 
