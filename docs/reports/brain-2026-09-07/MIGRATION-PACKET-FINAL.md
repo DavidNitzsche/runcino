@@ -17,6 +17,13 @@ Postgres 18.4, Unix-socket loopback only), then torn down.
 **This document does not decide whether to apply anything. It is the
 verification packet for David's own go/no-go.**
 
+**RE-VERIFIED, ZERO DRIFT (2026-09-07T~02:11Z, this later pass):** re-ran the
+four `to_regclass(...)` absence checks, the `plan_weeks`/`plan_phases` NULL
+counts (88 + 25 = 113, unchanged), and `gen_random_uuid()` against
+`DATABASE_URL_RO` immediately before writing §5.5's addendum below — all four
+target tables still absent, both NULL counts unchanged, `gen_random_uuid()`
+still callable. Nothing below needed re-deriving; only §5.5 is new.
+
 ---
 
 ## Headline: nothing here blocks approval
@@ -230,6 +237,93 @@ UPDATE 2   -- plan_weeks: exactly the 2 NULL rows seeded
 UPDATE 1   -- plan_phases: exactly the 1 NULL row seeded
 COMMIT
 ```
+
+## 5.5 · ADDENDUM (2026-09-07, later pass) · 166 gets ITS OWN controlled-write checkpoint, not just a schema check
+
+David's own words, this round: *"166 → verify schema → verify permissions →
+perform one controlled ledger write without changing my live plan → verify
+atomicity → only then request permission to continue with 167. Do not treat
+approval for one statement as approval for the rest."* Section 6 below
+already gives 166 a schema check (column count) and a row-count check (0
+rows on a fresh table). What was missing is the write test itself — proof the
+table actually accepts a real row under its real constraints, and that the
+proof leaves no trace and touches nothing live. Rehearsed just now on a fresh
+disposable scratch database (`faff_migpacket_rehearsal2`, applied 166 alone,
+dropped immediately after), literal transcript:
+
+```sql
+BEGIN;
+INSERT INTO plan_decision_ledger
+  (user_uuid, plan_lineage_id, scope, lever, direction, provenance,
+   authority, authority_verdict, decision, explanation, model_version)
+VALUES
+  ('00000000-0000-0000-0000-000000000000', 'migration-packet-controlled-write-test',
+   'WEEK', 'VOLUME', 'NEUTRAL', 'manual_test',
+   'COACHING_ADAPTATION', 'PERMITTED', 'HOLD',
+   'MIGRATION-PACKET controlled write test — proves the table accepts a real ' ||
+   'write under its real constraints. Never committed; this transaction is ' ||
+   'rolled back below and touches no real user, no real plan_id, no real ' ||
+   'plan_workouts row.',
+   'migration-packet-verification');
+SELECT count(*) AS rows_visible_in_txn FROM plan_decision_ledger;
+ROLLBACK;
+SELECT count(*) AS rows_after_rollback FROM plan_decision_ledger;
+```
+
+```
+BEGIN
+INSERT 0 1
+ rows_visible_in_txn
+----------------------
+                    1
+(1 row)
+
+ROLLBACK
+ rows_after_rollback
+----------------------
+                    0
+(1 row)
+```
+
+What this proves, each clause separately:
+
+- **The write succeeded under the table's real constraints** — not a
+  hand-picked easy row. The first attempt (`authority = 'system'`,
+  `lever = 'WEEKLY_VOLUME'`, `scope = 'week'`) was REJECTED by
+  `plan_decision_ledger_authority_check` before I corrected it to a value
+  the CHECK constraint actually allows — proof the constraints are live and
+  enforced, not merely declared.
+- **It touches nothing live.** `user_uuid` is the all-zero UUID (no real
+  user has this id — confirmed against production: `SELECT 1 FROM users
+  WHERE id = '00000000-0000-0000-0000-000000000000'` returns zero rows).
+  `plan_id` is left NULL (the column is nullable — a ledger row can exist
+  with no plan reference at all). `plan_lineage_id` is the literal string
+  `'migration-packet-controlled-write-test'`, which names no real plan
+  lineage. Nothing in this statement reads or writes `training_plans` or
+  `plan_workouts`.
+- **Atomicity is verified, not assumed.** The row is visible to a query
+  INSIDE the same transaction (`rows_visible_in_txn = 1`) and gone
+  completely after `ROLLBACK` (`rows_after_rollback = 0`) — the write and
+  its undo are both real, and the table is provably left exactly as it
+  stood before the test ran.
+
+**When David runs this on production**, the identical block (`BEGIN; INSERT
+...; SELECT count(*); ROLLBACK; SELECT count(*);`) run against `$DATABASE_URL`
+immediately after 166's own transaction commits is the concrete
+"perform one controlled ledger write, verify atomicity" step — a `ROLLBACK`
+guarantees production ends the check with zero extra rows regardless of the
+outcome, which is why this is the version to run live rather than a `COMMIT`
+followed by a manual `DELETE`. Permissions are covered by §4 below (the
+write role and the app's runtime role are identical, already confirmed
+against the live grants) — this addendum is specifically the write-behavior
+half §4 does not cover.
+
+**This checkpoint gates 167 exactly as the rest of the sequence does: if the
+INSERT fails, or `rows_visible_in_txn` is not 1, or `rows_after_rollback` is
+not 0 — STOP. Do not apply 167.** Passing this checkpoint is approval for
+166's write path only. It is not approval for 167, 168, 169, or either
+backfill — each of those still requires its own explicit go-ahead per
+§8's stop condition below.
 
 ## 6 · Read-only verification query after each transaction — column counts recomputed from the CURRENT files, not trusted from the handback
 
