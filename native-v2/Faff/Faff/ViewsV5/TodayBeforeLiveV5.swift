@@ -74,7 +74,7 @@ struct TodayBeforeLiveV5: View {
     var onOpenRace: (String) -> Void = { _ in }
     /// TODAYWRITE-1 · straight through to `SickReportRowV5`, which may not
     /// say "Logged. Today rests." until the server has actually taken it.
-    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .landed }
+    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .cancelled }
     /// Re-reads the Today surface after a write. Owned by `TodayHostV5`'s
     /// own `V5Surface<V5Today>` — this view never holds a surface of its
     /// own, per "a screen does not fetch"; it only writes, then asks the

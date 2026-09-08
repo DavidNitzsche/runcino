@@ -49,11 +49,24 @@
 //    is the status check every one of the five actually calls — that is a
 //    one-line reading at five call sites.
 //
-//  · It cannot fail on a write that LANDS AND LOSES ITS RESPONSE. That is a
-//    genuinely different fact (`V5WriteSettlement.didNotLand`'s own doc says
-//    so), and neither the wire nor this suite can currently tell it from a
-//    refusal. A row that says "not saved" about something the server did in
-//    fact save is a known, argued-for cost of the two-state settlement.
+//  · It cannot DETECT a write that lands and loses its response. Neither the
+//    wire nor this suite can tell that from a refusal, and TODAYWRITE-2 does
+//    not change that — the settlement is still two-state on purpose.
+//
+//    What TODAYWRITE-2 DID change is what the row is allowed to SAY about it.
+//    The paragraph that used to stand here called a row reading "not saved"
+//    over a row the server had in fact saved "a known, argued-for cost". It
+//    was not a cost worth paying: `/api/sick` and `/api/niggle` were bare
+//    INSERTs, so the Retry that copy invited inserted a SECOND active episode,
+//    and the recovery endpoints cleared only the newest — the first stayed
+//    active forever and the runner stayed in forced rest. Proven end to end
+//    against a production clone with a forward-then-discard proxy.
+//
+//    So the copy tables below now assert the honest shape, and
+//    `testNoFailureCopyAssertsWhatTheServerDid` walks every failure sentence
+//    the five write helpers can draw and fails on any that claims to know.
+//    What this file still cannot see is whether the SERVER-side dedup holds;
+//    that is `_write_idempotency_scan.test.ts` plus the live repro.
 //
 //  · It says NOTHING about how likely any of these failures are. Only that
 //    when one arrives, no row claims the coach has something it does not.
@@ -169,7 +182,7 @@ final class WriteHonestyTests: XCTestCase {
         let state = V5RowWriteState.settled(.didNotLand, token: "Left calf")
         let copy = TodayAfterV5.niggleCopy(state)
         XCTAssertEqual(copy?.label, "Left calf")
-        XCTAssertEqual(copy?.sub, "Not saved")
+        XCTAssertEqual(copy?.sub, "Not confirmed")
         XCTAssertNotEqual(copy?.sub, "The coach has it \u{00B7} it shapes tomorrow")
     }
 
@@ -211,8 +224,8 @@ final class WriteHonestyTests: XCTestCase {
     func testASickReportThatDidNotLandNeverSaysThePlanRests() {
         let state = V5RowWriteState.settled(.didNotLand, token: "sick_report")
         let copy = SickReportRowV5.copy(for: state)
-        XCTAssertEqual(copy.label, "Not sent")
-        XCTAssertEqual(copy.sub, "The coach has not seen this yet")
+        XCTAssertEqual(copy.label, "Not confirmed")
+        XCTAssertEqual(copy.sub, "The coach may not have this yet")
         XCTAssertNotEqual(copy.sub, "Logged. Today rests.")
         // And the form stays available, so the report is not stranded.
         XCTAssertFalse(SickReportRowV5.isReported(state))
@@ -263,7 +276,157 @@ final class WriteHonestyTests: XCTestCase {
         let settlement = await v5SettleWrite { false }
         let state = V5RowWriteState.settled(settlement, token: "sick_report")
         XCTAssertEqual(state, .failed("sick_report"))
-        XCTAssertEqual(SickReportRowV5.copy(for: state).sub, "The coach has not seen this yet")
+        XCTAssertEqual(SickReportRowV5.copy(for: state).sub, "The coach may not have this yet")
+    }
+
+    // MARK: - TODAYWRITE-2 · no failure sentence claims to know what the
+    //         server did
+    //
+    // `.didNotLand` means "it did not land, OR WE COULD NOT TELL" — its own
+    // doc says so. `API.authedSend` bounds a request at 12 seconds, so a
+    // write that reaches the server, commits, and answers slowly arrives
+    // here identical to one that never left. Proven against a production
+    // clone: the row was written, the client saw an empty reply, the copy
+    // read "Nothing was written", the Retry it invited inserted a SECOND
+    // active episode, and "recovered" then cleared only the newer one.
+    //
+    // So: the row may state what THE PHONE knows, and may hedge what might
+    // follow. It may not assert what the server did.
+
+    /// The banned shape, as the runner would read it. Each entry is a
+    /// sentence fragment that asserts a fact about the SERVER — every one of
+    /// them was live copy before this change.
+    private static let confidentServerClaims = [
+        "nothing was written",
+        "did not save",
+        "did not send",
+        "has not seen",
+        "not saved",
+        "not sent",
+        "has not changed",
+        "still has yesterday",
+        "still logged against",
+    ]
+
+    /// THE GATE. Walks every sentence any of the five write helpers can draw
+    /// in its failure state — the shared `ErrorNote` sentences AND both row
+    /// copy tables — and fails on any that claims to know.
+    ///
+    /// Falsified before landing: restoring any one of the five original
+    /// literals fails this, naming the sentence and the phrase.
+    func testNoFailureCopyAssertsWhatTheServerDid() {
+        var sentences = V5UnconfirmedCopy.all
+        sentences.append(TodayAfterV5.niggleCopy(.failed("Left calf"))?.sub ?? "")
+        let sick = SickReportRowV5.copy(for: .failed("sick_report"))
+        sentences.append(sick.label)
+        sentences.append(sick.sub)
+
+        // 4 shared ErrorNote sentences + the niggle row's sub + the sick
+        // row's label and sub. A drop here means the walk got narrower, not
+        // that the app got safer.
+        XCTAssertEqual(sentences.count, 7, "a sentence was dropped from the walk, not from the app")
+
+        for sentence in sentences {
+            let lower = sentence.lowercased()
+            for claim in Self.confidentServerClaims {
+                XCTAssertFalse(
+                    lower.contains(claim),
+                    """
+                    THE DEFECT: "\(sentence)" asserts "\(claim)".
+                    `.didNotLand` cannot tell a refusal from a write that landed and
+                    lost its answer, so this sentence is false whenever the latter
+                    happened. Say what the phone knows, not what the server did.
+                    """)
+            }
+        }
+    }
+
+    /// The other direction (Rule 22). Copy that claims nothing at all is not
+    /// honest, it is useless — a runner who taps and sees nothing cannot tell
+    /// a failure from a dead button. Every failure sentence must still SAY
+    /// something and must still invite the retry.
+    func testEveryFailureSentenceStillTellsTheRunnerSomething() {
+        for sentence in V5UnconfirmedCopy.all {
+            XCTAssertTrue(sentence.lowercased().contains("not confirmed"),
+                          "a failure must name itself as unconfirmed: \(sentence)")
+            XCTAssertTrue(sentence.lowercased().contains("trying again is safe"),
+                          """
+                          \(sentence)
+                          The runner is told a retry is safe because `/api/sick` and
+                          `/api/niggle` de-duplicate an identical ACTIVE report. If
+                          that server guard is ever removed, this clause becomes a
+                          second false claim and must go with it.
+                          """)
+            XCTAssertFalse(sentence.contains("—"), "coach voice carries no em dashes")
+            XCTAssertFalse(sentence.contains("!"), "coach voice carries no exclamation marks")
+        }
+    }
+
+    /// Rule 16 · the niggle flag and the flare check-in are the same
+    /// situation, so they are the same sentence rather than two literals that
+    /// can drift.
+    func testThePainReportFailureIsOneSentenceNotTwo() {
+        XCTAssertEqual(V5UnconfirmedCopy.coachMayNotHaveIt,
+                       V5UnconfirmedCopy.coachMayNotHaveIt)
+        XCTAssertEqual(Set(V5UnconfirmedCopy.all).count, V5UnconfirmedCopy.all.count,
+                       "two sentences in the table are identical — collapse them into one name")
+    }
+
+    /// The shoe note names the pair the SCREEN is still showing. That is a
+    /// fact about this screen, true in both worlds, because the reload only
+    /// runs on `.landed`.
+    func testTheShoeFailureNamesTheScreenNotTheDatabase() {
+        let s = V5UnconfirmedCopy.shoePick(current: "Vaporfly 3")
+        XCTAssertTrue(s.contains("Vaporfly 3"))
+        XCTAssertTrue(s.contains("still shows"), "must describe the screen")
+        XCTAssertFalse(s.lowercased().contains("still logged"), "must not describe the database")
+    }
+
+    // MARK: - TODAYWRITE-2 · a view with no handler wired fails SAFE
+    //
+    // Every one of these closures defaulted to `{ _ in .landed }`, so any
+    // screen that forgot to pass a real handler FABRICATED a server success:
+    // tap, get the confirmed copy, zero network traffic.
+    //
+    // `InjuryPreviewHostV5` was exactly that call site, and it is reachable by
+    // a real runner ("If it's still there tomorrow, see Injury", off Today).
+    // It now passes a real handler. This case is the backstop for the NEXT
+    // view that forgets: `.cancelled` claims nothing in either direction and
+    // offers no Retry that could only repeat the same nothing (Rule 11's "we
+    // did not ask", the same reading `logSickTrend` gives an action it does
+    // not recognise).
+
+    @MainActor
+    func testAnUnwiredCheckInClaimsNothing() async {
+        let view = InjuryFlareV5(model: .sampleV5)
+        let row = view.model.checkIn.first
+        XCTAssertNotNil(row, "the sample flare has no check-in rows to tap")
+        let settlement = await view.onCheckIn(row!)
+        XCTAssertEqual(settlement, .cancelled,
+                       "an unwired check-in must claim nothing, not fabricate a landing")
+        XCTAssertEqual(V5RowWriteState.settled(settlement, token: row!.id), .idle,
+                       "and it must leave the row at its picker, with no confirmed copy")
+        XCTAssertNil(TodayAfterV5.niggleCopy(.settled(settlement, token: row!.id)),
+                     "`.idle` has no settled sentence at all — nothing is claimed")
+    }
+
+    @MainActor
+    func testAnUnwiredSickReportClaimsNothing() async {
+        let row = SickReportRowV5()
+        let settlement = await row.onReport(["head_cold"], "today", false)
+        XCTAssertEqual(settlement, .cancelled)
+        XCTAssertEqual(SickReportRowV5.copy(for: .settled(settlement, token: "sick_report")).label,
+                       "Not feeling right",
+                       "an unwired report returns to the untouched invitation")
+    }
+
+    @MainActor
+    func testAnUnwiredSickTrendClaimsNothing() async {
+        let view = SickFlareV5(model: .sampleV5)
+        let row = view.model.checkIn.first
+        XCTAssertNotNil(row)
+        let settlement = await view.onLogTrend(row!)
+        XCTAssertEqual(settlement, .cancelled)
     }
 
     /// The other half of the distribution: a healthy write must still land on

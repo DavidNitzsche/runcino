@@ -81,7 +81,7 @@ struct SickFlareV5: View {
     /// "Recovered" clears the episode server-side, so a swallowed failure
     /// here leaves a runner who believes they are back on the plan looking
     /// at a screen that has simply not changed, with no reason given.
-    var onLogTrend: (V5Row) async -> V5WriteSettlement = { _ in .landed }
+    var onLogTrend: (V5Row) async -> V5WriteSettlement = { _ in .cancelled }
     /// SHAREDSHELL-1 (2026-09-04) · see `InjuryFlareV5`'s own doc comment
     /// in StateScreensV5.swift.
     var suppressOwnHeader: Bool = false
@@ -145,7 +145,7 @@ struct SickFlareV5: View {
                         }
                     }
                     if let failed = failedRow {
-                        ErrorNote(text: "That did not send. The coach still has yesterday's answer, so it is safe to try again.",
+                        ErrorNote(text: V5UnconfirmedCopy.sickTrend,
                                   onRetry: { logTrend(failed) })
                     }
                 }
@@ -191,7 +191,7 @@ struct SickReportRowV5: View {
     /// database that had recorded no episode at all. "Today rests" is a
     /// claim about the PLAN, and the plan only rests once the server has the
     /// report.
-    var onReport: (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .landed }
+    var onReport: (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .cancelled }
 
     @State private var expanded = false
     @State private var selectedSymptoms: Set<String> = []
@@ -239,7 +239,7 @@ struct SickReportRowV5: View {
             // The failure sits outside the row, so collapsing the picker
             // does not take the only explanation with it.
             if case .failed = reportState {
-                ErrorNote(text: "That did not send, so the plan has not changed. Nothing was written, so it is safe to try again.",
+                ErrorNote(text: V5UnconfirmedCopy.sickReport,
                           onRetry: { submit() })
             }
         }
@@ -255,7 +255,10 @@ struct SickReportRowV5: View {
         switch state {
         case .done:    return ("Reported", "Logged. Today rests.")
         case .sending: return ("Sending", "Sending your report")
-        case .failed:  return ("Not sent", "The coach has not seen this yet")
+        // TODAYWRITE-2 · was ("Not sent", "The coach has not seen this yet").
+        // Both asserted a fact about the SERVER off a settlement that cannot
+        // tell a refusal from a lost answer. See `V5WriteSettlement.didNotLand`.
+        case .failed:  return ("Not confirmed", "The coach may not have this yet")
         case .idle:    return ("Not feeling right", "Report symptoms and pause today")
         }
     }

@@ -177,7 +177,22 @@ struct InjuryFlareV5: View {
     /// in the tap handler. So a `POST /api/niggle/recovery` that recorded
     /// nothing still read back as logged — the same fabrication measured on
     /// the niggle flag and the sick report. See `V5WriteSettlement`.
-    var onCheckIn: (V5Row) async -> V5WriteSettlement = { _ in .landed }
+    /// TODAYWRITE-2 · THE DEFAULT IS `.cancelled`, AND THAT IS THE POINT.
+    ///
+    /// It was `{ _ in .landed }`. Every screen that forgot to pass a handler
+    /// therefore FABRICATED a server success: tap a row, get "Logged.", zero
+    /// network traffic. `InjuryPreviewHostV5` was exactly that call site, and
+    /// it is reachable by a real runner ("See it in Injury", off Today), so
+    /// TODAYWRITE-1's claim that confirmed copy follows only a genuine server
+    /// success did not actually hold. That host now passes a real handler.
+    ///
+    /// The default is `.cancelled` rather than `.didNotLand` because a view
+    /// with no handler did not ASK the server anything — Rule 11's "we did
+    /// not ask", the same reading `logSickTrend` gives an unrecognised
+    /// action. It claims nothing in either direction and offers no Retry
+    /// that could only repeat the same nothing. The next view that forgets
+    /// to wire this now fails safe instead of lying.
+    var onCheckIn: (V5Row) async -> V5WriteSettlement = { _ in .cancelled }
     /// The way onward once the flare has cleared — pushes `V5Route.returnToRunning`,
     /// the eight-stage walk-run ladder (19a). Absent (`returnAvailable == false`)
     /// draws nothing rather than a disabled row.
@@ -274,7 +289,7 @@ struct InjuryFlareV5: View {
                 }
 
                 if let failed = failedRow {
-                    ErrorNote(text: "That did not save, so the coach has not seen it. Nothing was written, so it is safe to try again.",
+                    ErrorNote(text: V5UnconfirmedCopy.coachMayNotHaveIt,
                               onRetry: { checkIn(failed) })
                 }
             }

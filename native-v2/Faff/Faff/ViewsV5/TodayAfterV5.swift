@@ -85,7 +85,7 @@ struct TodayAfterV5: View {
     /// Job 1 · "report sick" — a runner who just finished and feels off
     /// should not have to wait for tomorrow's Today to say so. Same
     /// expand-in-place row as the before-run screen; see `SickV5.swift`.
-    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .landed }
+    var onReportSick: (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .cancelled }
 
     @State private var niggleOpen = false
     /// TODAYWRITE-1 · WHAT THIS ROW ACTUALLY KNOWS ABOUT THE FLAG.
@@ -123,10 +123,10 @@ struct TodayAfterV5: View {
 
     init(model: V5Today,
          onOpenAccount: @escaping () -> Void = {},
-         onFlagNiggle: @escaping (String) async -> V5WriteSettlement = { _ in .landed },
+         onFlagNiggle: @escaping (String) async -> V5WriteSettlement = { _ in .cancelled },
          onOpenInjuryFlare: @escaping () -> Void = {},
          onChangeShoe: @escaping () -> Void = {},
-         onPickShoe: @escaping (String) async -> V5WriteSettlement = { _ in .landed },
+         onPickShoe: @escaping (String) async -> V5WriteSettlement = { _ in .cancelled },
          onRowAction: @escaping (V5Row) -> Void = { _ in },
          onPushStrava: @escaping () -> Void = {},
          onPickDay: @escaping (String) -> Void = { _ in },
@@ -137,7 +137,7 @@ struct TodayAfterV5: View {
          canPageBackward: Bool = true,
          canPageForward: Bool = true,
          initials: String? = nil,
-         onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .landed }) {
+         onReportSick: @escaping (_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement = { _, _, _ in .cancelled }) {
         self.viewingDayLabel = viewingDayLabel
         self.selectedDateISO = selectedDateISO
         self.onBackToToday = onBackToToday
@@ -973,7 +973,11 @@ struct TodayAfterV5: View {
                 }
                 .task { await loadShoesIfNeeded() }
                 if let failedId = shoePickFailed {
-                    ErrorNote(text: "That pair did not save. The run is still logged against \(shoe.label).",
+                    // TODAYWRITE-2 · "did not save" was a claim the phone
+                    // cannot support. See `V5WriteSettlement.didNotLand`.
+                    // "still shows" is a fact about THIS SCREEN, which is
+                    // true either way: the reload only runs on `.landed`.
+                    ErrorNote(text: V5UnconfirmedCopy.shoePick(current: shoe.label),
                               onRetry: { pickShoe(failedId) })
                 }
             }
@@ -1681,7 +1685,11 @@ struct TodayAfterV5: View {
         case .done(let part):
             return ("\(part) flagged", "The coach has it \u{00B7} it shapes tomorrow")
         case .failed(let part):
-            return (part, "Not saved")
+            // TODAYWRITE-2 · was "Not saved", which asserts a fact about the
+            // SERVER that this phone never learned. `.didNotLand` covers a
+            // refusal AND a write that landed and lost its answer, so the
+            // row reports what it knows: no confirmation came back.
+            return (part, "Not confirmed")
         }
     }
 
@@ -1708,7 +1716,7 @@ struct TodayAfterV5: View {
             let copy = Self.niggleCopy(niggleState)
             VStack(alignment: .leading, spacing: V5.S.s8) {
                 ListRow(label: copy?.label ?? "", sub: copy?.sub, value: nil, onTap: nil)
-                ErrorNote(text: "That did not save, so the coach has not seen it. Nothing was written, so it is safe to try again.",
+                ErrorNote(text: V5UnconfirmedCopy.coachMayNotHaveIt,
                           onRetry: { flagNiggle(part) })
             }
         case .idle:

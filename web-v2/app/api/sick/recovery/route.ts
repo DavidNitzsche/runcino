@@ -88,11 +88,38 @@ export async function POST(req: NextRequest) {
     );
 
     if (body.today === 'recovered') {
-      await pool.query(
-        `UPDATE sick_episodes SET cleared_at = now() WHERE id = $1`,
-        [active.id],
+      // ───────────────────────────────────────────────────────────────────
+      // TODAYWRITE-2 (2026-09-08) · "RECOVERED" RESOLVES EVERY ACTIVE
+      // EPISODE, NOT THE ONE ROW THIS HANDLER HAPPENED TO SELECT.
+      //
+      // This was `WHERE id = $1` off the `LIMIT 1` select above. With the
+      // POST route's old bare INSERT, a phone retry after a lost response
+      // opened a SECOND active episode — so "recovered" cleared the newest
+      // and the FIRST one stayed active forever. The runner had said they
+      // were better, the app agreed for one request, and the next read
+      // picked up the leftover row and put them back in forced rest with no
+      // affordance anywhere to clear it.
+      //
+      // POST now refuses to create the duplicate in the first place. This is
+      // the second half: the runner's "I am better" is a statement about
+      // THEMSELVES, so it resolves everything that statement covers,
+      // including any duplicate already sitting in the table from before
+      // that guard existed. The trend row above is still recorded against
+      // the episode the runner was actually looking at.
+      const cleared = await pool.query(
+        `UPDATE sick_episodes
+            SET cleared_at = now()
+          WHERE COALESCE(user_uuid, user_id) = $1
+            AND cleared_at IS NULL`,
+        [userId],
       );
-      return NextResponse.json({ active: false, trend: 'recovered' });
+      return NextResponse.json({
+        active: false,
+        trend: 'recovered',
+        // Observable on purpose: >1 means a duplicate existed and was
+        // resolved rather than silently left behind.
+        cleared: cleared.rowCount ?? 0,
+      });
     }
 
     return NextResponse.json({ active: true, trend: body.today });

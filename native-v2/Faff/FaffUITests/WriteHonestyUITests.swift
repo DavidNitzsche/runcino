@@ -32,11 +32,19 @@
 //  first; only the database name and ports differ here.
 //
 //    1 · a scratch database built from the owner's real production rows
-//        FAFF_HARNESS_DB=faff_fix_resilience_honesty \
+//        FAFF_HARNESS_DB=faff_fix_resilience_honesty_v2 \
 //          bash web-v2/scripts/adapt-harness-substrate.sh
 //        then mint a bearer session in it against the owner's user row.
 //    2 · `next dev` with DATABASE_URL pointed at that database
 //    3 · the fault proxy in front of it, same `/__fault?rules=` contract
+//
+//  TODAYWRITE-2 · THE PROXY NEEDS A MODE THE FIRST ONE DID NOT HAVE.
+//  `mode: "status"` answers locally and never touches upstream, so nothing is
+//  written and "nothing was written" is trivially true — it cannot express the
+//  case that actually broke the runner. `mode: "forward_discard"` proxies the
+//  request upstream, WAITS for upstream to finish so the INSERT commits, then
+//  destroys the socket without answering. That is a write that LANDED and lost
+//  its answer, which the phone cannot tell from a refusal.
 //
 //    TEST_RUNNER_FAFF_UI_HOST=http://127.0.0.1:<proxy> \
 //    TEST_RUNNER_FAFF_UI_TOKEN=<bearer> \
@@ -196,7 +204,7 @@ final class WriteHonestyUITests: XCTestCase {
 
         // ── the failing world ────────────────────────────────────────────
         let failureCopy = app.staticTexts.containing(
-            NSPredicate(format: "label CONTAINS 'That did not send'")).firstMatch
+            NSPredicate(format: "label CONTAINS 'That was not confirmed'")).firstMatch
         XCTAssertTrue(failureCopy.waitForExistence(timeout: 25),
                       "a failed report said nothing at all\n\(visibleText(app))")
         shot(app, "02-failed-report-honest-state")
@@ -204,7 +212,7 @@ final class WriteHonestyUITests: XCTestCase {
         let afterFailure = visibleText(app)
         XCTAssertFalse(afterFailure.contains("Logged. Today rests."),
                        "THE DEFECT: the row claimed the plan rests over a write that 503d\n\(afterFailure)")
-        XCTAssertTrue(afterFailure.contains("Not sent"),
+        XCTAssertTrue(afterFailure.contains("Not confirmed"),
                       "the row must state the failure, not just fall silent\n\(afterFailure)")
 
         let retry = app.buttons.matching(
@@ -235,7 +243,97 @@ final class WriteHonestyUITests: XCTestCase {
         shot(app, "03-landed-report-confirms")
 
         let afterLanding = visibleText(app)
-        XCTAssertFalse(afterLanding.contains("That did not send"),
+        XCTAssertFalse(afterLanding.contains("That was not confirmed"),
                        "the failure note must clear once the write lands\n\(afterLanding)")
     }
+
+    // MARK: - TODAYWRITE-2 · the write that LANDS and loses its answer
+
+    /// THE SECOND REVIEWER'S SCENARIO, which `mode: status` above cannot
+    /// reach at all.
+    ///
+    /// `status` answers at the proxy without an upstream hop, so nothing is
+    /// ever written and "nothing was written" is trivially true. The case
+    /// that broke the runner is the opposite: the write REACHES the server,
+    /// the server SAVES it, and the answer is lost. `API.authedSend` bounds a
+    /// request at 12 seconds, so the phone settles that as `.didNotLand` —
+    /// the same case as a refusal, with no way to tell them apart.
+    ///
+    /// `mode: forward_discard` on the proxy is that exact split: proxy the
+    /// request upstream, WAIT for upstream to finish so the INSERT really
+    /// commits, then destroy the socket without answering.
+    ///
+    /// Two things must hold, and only the second is about this file:
+    ///   1 · the server has the row (checked directly against the database
+    ///       by the repro script; a UI test cannot see a table)
+    ///   2 · the SCREEN does not tell the runner nothing was written
+    ///
+    /// The duplicate-on-retry half is proven server-side, because a UI test
+    /// cannot count rows. See `app/api/sick/route.ts`'s POST comment.
+    func testALostResponseIsNeverReportedAsNothingWritten() throws {
+        XCTAssertTrue(setFaults([
+            ["match": "/api/sick", "mode": "forward_discard", "method": "POST"],
+        ]), "fault proxy did not accept forward_discard — is it the TODAYWRITE-2 proxy?")
+
+        let app = launchIntoToday()
+        let row = reveal(app, label: "Not feeling right")
+        XCTAssertTrue(row.exists, "the sick report row is not on Today\n\(visibleText(app))")
+        row.tap()
+
+        let symptom = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Head cold'")).firstMatch
+        XCTAssertTrue(symptom.waitForExistence(timeout: 10),
+                      "the symptom picker never expanded\n\(visibleText(app))")
+        symptom.tap()
+
+        let report = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Report it'")).firstMatch
+        XCTAssertTrue(report.waitForExistence(timeout: 10), "no Report it button")
+        report.tap()
+
+        let failureCopy = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS 'That was not confirmed'")).firstMatch
+        XCTAssertTrue(failureCopy.waitForExistence(timeout: 30),
+                      "a lost response said nothing at all\n\(visibleText(app))")
+        shot(app, "10-lost-response-honest-state")
+
+        let seen = visibleText(app)
+
+        // THE DEFECT, DIRECTLY. The server HAS this episode. Every one of
+        // these sentences was live copy, and every one is false right now.
+        for lie in ["Nothing was written", "did not save", "did not send",
+                    "has not seen", "the plan has not changed"] {
+            XCTAssertFalse(seen.contains(lie),
+                           "THE DEFECT: the screen asserted \"\(lie)\" over an episode the server SAVED\n\(seen)")
+        }
+        // And it must not have swung to the other failure either.
+        XCTAssertFalse(seen.contains("Logged. Today rests."),
+                       "no confirmation is owed for an answer that never arrived\n\(seen)")
+    }
+
+    // MARK: - TODAYWRITE-2 · what is NOT driven here, and why
+    //
+    // A third driver was written for the flare check-in — tap "Better today"
+    // on `InjuryFlareV5`, then ask the PROXY whether a
+    // `POST /api/niggle/recovery` actually went out, which is the half a
+    // screenshot cannot settle. It is not kept, because it could not be made
+    // to drive the row reliably: `app.buttons` reports the row hittable while
+    // the tap lands nowhere (the accessibility tree carries the Block and
+    // Races hierarchies too, so the match is not necessarily the on-screen
+    // row), and the run produced no "Sending" state and no request. That is a
+    // HARNESS failure, not an app finding — but an unreliable driver kept as
+    // a green line is worse than none (Rule 18), so it was deleted rather
+    // than left to flake.
+    //
+    // What covers that path instead:
+    //   · `WriteHonestyTests.testAnUnwiredCheckInClaimsNothing` — the default
+    //     closure is `.cancelled`, so a view that forgets to wire `onCheckIn`
+    //     claims NOTHING. Falsified: flipping it back to `.landed` makes the
+    //     state go to `.done("better")` and the copy read "The coach has it ·
+    //     it shapes tomorrow" over zero network traffic, which is exactly the
+    //     defect the reviewer found in `InjuryPreviewHostV5`.
+    //   · `V5NiggleCheckIn` — both hosts now build the request in ONE place,
+    //     so the preview host cannot drift from the live flare.
+    // The wiring itself (that `InjuryPreviewHostV5` passes that handler) is
+    // verified by reading it, not by rendering it. Said plainly per Rule 13.
 }
