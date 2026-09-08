@@ -125,8 +125,18 @@ function missedRouter(opts: { skipRowFor: string | null }) {
       }], rowCount: 1 };
     }
     if (text.includes('FROM day_actions')) {
+      // SKIPOWNER-1 (2026-09-07) · the column is `date_iso`, not `d`.
+      // `detectMissedKeyWorkout` used to carry its own inline skip query,
+      // aliased `AS d`, and this fixture was shaped to that alias. It now
+      // calls `loadSkippedDates` (`lib/plan/week-loader.ts`), the one owner of
+      // this question, which selects `date_iso::text AS date_iso`.
+      //
+      // Worth naming rather than quietly renaming: the fixture followed a
+      // private alias, so it could only ever have agreed with the copy it was
+      // written against. Pointing it at the canonical column is what makes it
+      // a test of the shared resolver rather than of a query this file owned.
       return opts.skipRowFor
-        ? { rows: [{ d: opts.skipRowFor }], rowCount: 1 }
+        ? { rows: [{ date_iso: opts.skipRowFor }], rowCount: 1 }
         : { rows: [], rowCount: 0 };
     }
     return { rows: [], rowCount: 0 };

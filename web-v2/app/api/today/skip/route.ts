@@ -26,6 +26,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { enqueueNotification, nextMorning0715 } from '@/lib/notifications/enqueue';
 import { renderSkipRecovery } from '@/lib/notifications/templates';
 import { requireUserId } from '@/lib/auth/session';
+import { isDaySkipped } from '@/lib/plan/week-loader';
 
 interface SkipBody {
   date?: string;
@@ -51,22 +52,24 @@ export async function GET(req: NextRequest) {
   const dateParam = req.nextUrl.searchParams.get('date');
   const date = dateParam && /^\d{4}-\d{2}-\d{2}$/.test(dateParam) ? dateParam : await runnerToday(userId);
 
-  try {
-    const row = await pool.query(
-      `SELECT 1 FROM day_actions
-        WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip' LIMIT 1`,
-      [userId, date],
-    );
-    return NextResponse.json({ skipped: row.rows.length > 0, date });
-  } catch (err) {
+  // SKIPOWNER-1 (2026-09-07) · this used to be its own inline
+  // `SELECT 1 … COALESCE(user_uuid, user_id) = $1 … LIMIT 1`, one of four
+  // hand-typed copies of the skip predicate live at once and NOT the one
+  // `loadSkippedDates` uses. Same question, one owner — see that function's
+  // header for the data check behind the fold.
+  const read = await isDaySkipped(userId, date);
+  if (read.failed) {
     // 2026-08-24 · swallowed-failure sweep · `skipped: false` is what the phone
     // uses to decide whether to draw the day as skipped, so a failed read
     // un-skipped a day the runner had explicitly skipped. `day_actions` has
     // been migrated since 2026-05; the "migration not applied yet" reasoning
-    // this catch was written under no longer holds, and it was covering a real
-    // outage. A read we could not do is an outage, and says so.
-    return outage('today/skip', err);
+    // the old catch was written under no longer holds, and it was covering a
+    // real outage. A read we could not do is an outage, and says so. The
+    // driver error itself is already logged by `rowsOrNull` inside the
+    // resolver; this carries the fact, not a second copy of the stack.
+    return outage('today/skip', new Error('day_actions skip read failed'));
   }
+  return NextResponse.json({ skipped: read.skipped, date });
 }
 
 export async function POST(req: NextRequest) {

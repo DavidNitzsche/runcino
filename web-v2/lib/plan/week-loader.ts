@@ -164,6 +164,27 @@ export interface SkippedDatesRead {
  *
  * `startIso`/`endIsoInclusive` are both inclusive, matching the `BETWEEN`
  * below.
+ *
+ * ── SKIPOWNER-1 (2026-09-07) · IT IS NOW ACTUALLY THE ONLY ONE ──────────────
+ *
+ * The paragraph above said "do not add a second inline query for this
+ * question" while FOUR were already live, each with its own predicate, none of
+ * them this one:
+ *
+ *   app/api/today/skip/route.ts    GET, `COALESCE(user_uuid, user_id) = $1`
+ *   app/api/v5/today/route.ts      `alreadySkipped`, same shape
+ *   lib/coach/glance-state.ts      same shape, AND `.catch(() => ({rows:[]}))`
+ *   lib/plan/adapt.ts              7-day lookback, `$1::uuid` + COALESCE
+ *
+ * All four now call this function (the first three through `isDaySkipped`
+ * below). That was checked against the data before it was done, not assumed:
+ * `day_actions` holds 20 production rows, ZERO with a null `user_uuid`, zero
+ * where `user_uuid <> user_id`, and all three INSERT sites
+ * (`today/skip`, `today/shoe`, `notifications/ack`) write
+ * `(user_id, user_uuid) VALUES ($1, $1)` with an
+ * `ON CONFLICT … SET user_uuid = COALESCE(day_actions.user_uuid, EXCLUDED.user_uuid)`
+ * backfill. So `user_uuid = $1` and `COALESCE(user_uuid, user_id) = $1` select
+ * the identical rows, and the fold changes no result.
  */
 export async function loadSkippedDates(
   userId: string,
@@ -188,6 +209,32 @@ export async function loadSkippedDates(
   const skippedDates = new Set<string>();
   for (const row of skipRows ?? []) skippedDates.add(row.date_iso);
   return { skippedDates, failed: skipRows === null };
+}
+
+/** One date's answer, with the read's own outcome kept separate from it. */
+export interface SkippedDayRead {
+  /** Best-effort. Meaningless unless `failed` is false — branch on `failed`
+   *  first, exactly as `SkippedDatesRead`'s callers do. */
+  skipped: boolean;
+  /** True when the read FAILED rather than found no row (Rule 11). */
+  failed: boolean;
+}
+
+/**
+ * SKIPOWNER-1 · "did this runner skip THIS date". The single-date shape three
+ * point-read call sites needed, expressed as a one-day window over the same
+ * query above rather than as a fourth `SELECT 1 … LIMIT 1` with a fourth
+ * hand-typed predicate.
+ *
+ * There is deliberately no second query here. A one-row-per-user-per-day table
+ * that holds 20 rows in production does not need its own index-optimised point
+ * read badly enough to justify a second definition of what "skipped" means —
+ * and a second definition is exactly how the three call sites this replaces
+ * drifted onto a predicate the canonical resolver did not share.
+ */
+export async function isDaySkipped(userId: string, dateIso: string): Promise<SkippedDayRead> {
+  const { skippedDates, failed } = await loadSkippedDates(userId, dateIso, dateIso);
+  return { skipped: skippedDates.has(dateIso), failed };
 }
 
 /**

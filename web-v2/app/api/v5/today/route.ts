@@ -51,7 +51,7 @@ import {
 } from '@/lib/safety/safety-verdict';
 import { mapWatchPhases } from '@/lib/coach/run-state';
 import { deriveReadingScopes } from '@/lib/coach/reading-scope';
-import { loadPlanWeek } from '@/lib/plan/week-loader';
+import { loadPlanWeek, isDaySkipped } from '@/lib/plan/week-loader';
 import { resolveViewedPlanDay, viewedDayIsUnresolved } from '@/lib/faff/viewed-day';
 import { derivePurpose, type Phase as PurposePhase, type WorkoutType as PurposeWorkoutType } from '@/lib/coach/run-purpose';
 import {
@@ -2107,12 +2107,22 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // so "Move or skip" said the identical "Move to another day, or skip it"
   // whether or not the runner had already tapped Skip five minutes earlier —
   // no confirmation anywhere on the day. Reproduced live 2026-09-06.
-  const alreadySkipped = (await rowOrNull('v5Today · alreadySkipped', pool.query(
-    `SELECT 1 FROM day_actions
-      WHERE COALESCE(user_uuid, user_id) = $1 AND date_iso = $2 AND action = 'skip'
-      LIMIT 1`,
-    [userId, today],
-  ))) != null;
+  //
+  // SKIPOWNER-1 (2026-09-07) · was a fourth hand-typed copy of the skip
+  // predicate. `isDaySkipped` (`lib/plan/week-loader.ts`) is the one owner —
+  // and it is the SAME resolver the week strip on this very screen already
+  // reads through `loadPlanWeek`, so this row and the strip beside it can no
+  // longer disagree about whether today is skipped.
+  //
+  // Rule 11 · a failed read is not "not skipped". The OUTCOME here is
+  // unchanged (the row falls back to the unskipped "Move or skip" wording,
+  // which is what `rowOrNull`'s null produced before), because the honest
+  // alternative — refusing to draw the row at all — would remove the runner's
+  // way to skip the day precisely when the database is unhappy. The failure is
+  // already logged by name inside the resolver; this branches on it explicitly
+  // rather than letting a null quietly mean false.
+  const skipRead = await isDaySkipped(userId, today);
+  const alreadySkipped = skipRead.failed ? false : skipRead.skipped;
 
   const beforeYouGo: V5Row[] = [];
   if (shoePick) {

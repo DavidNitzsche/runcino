@@ -373,7 +373,12 @@ export const EMPTIED_KNOWN: readonly string[] = [
   // (`lib/execution/verdict.ts`) instead. The remaining entry is the
   // coach_intents read.
   'lib/coach/glance-state.ts::computeTodayExecution',
-  'lib/coach/glance-state.ts::loadGlanceState',
+  // SKIPOWNER-1 (2026-09-07) · 4 -> 3 for this function. The
+  // `day_actions … action='skip'` read ended in `.catch(() => ({ rows: [] }))`,
+  // so a failed read became a confident "nothing skipped" — and that answer
+  // drove the `skipped` DayState, the fact-reciter and the glance adapter. It
+  // now calls `isDaySkipped` (`lib/plan/week-loader.ts`), which reports the
+  // failure as its own fact on `GlanceState.todaySkipReadFailed`.
   'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadGlanceState',
   'lib/coach/glance-state.ts::loadStableBaseline',
@@ -765,7 +770,10 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // reductions, which the gate refused: "EMPTIED_KNOWN holds 351 ids but
 // EMPTIED_BASELINE says 352". A ratchet that only ever moves down is exactly
 // the check that catches a merge keeping the smaller of two decrements.
-export const EMPTIED_BASELINE = 351;
+// SKIPOWNER-1 (2026-09-07) · 351 -> 350. `loadGlanceState`'s `day_actions`
+// skip read was the last hand-typed copy of that predicate AND a swallowed
+// failure; folding it onto the canonical resolver closed both at once.
+export const EMPTIED_BASELINE = 350;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
