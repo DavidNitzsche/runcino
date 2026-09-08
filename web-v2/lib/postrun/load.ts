@@ -105,7 +105,7 @@ export interface PostRunRef {
   dateISO?: string;
 }
 
-interface RunRow { id: string; data: Record<string, any> }
+export interface RunRow { id: string; data: Record<string, any> }
 
 async function loadRun(userId: string, ref: PostRunRef): Promise<RunRow | null> {
   if (ref.runId) {
@@ -138,19 +138,60 @@ async function loadRun(userId: string, ref: PostRunRef): Promise<RunRow | null> 
     // No prescription matched today (none exists, or nothing has satisfied
     // it yet) — fall back to the day's biggest run, same as before this fix,
     // for the by-date case that isn't naming any specific prescription.
-    const r = await pool.query<RunRow>(
-      `SELECT id::text AS id, data
-         FROM runs
-        WHERE user_uuid = $1
-          AND ${CANONICAL_ROW_SQL}
-          AND ${runDaySql()} = $2
-        ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
-        LIMIT 1`,
-      [userId, ref.dateISO],
-    );
-    if (r.rows[0]) return r.rows[0];
+    const fallback = await dayBiggestCanonicalRun(userId, ref.dateISO);
+    if (fallback) return fallback;
   }
   return null;
+}
+
+/**
+ * THE DAY'S BIGGEST CANONICAL RUN. One owner, because two surfaces now need it.
+ *
+ * `loadRun`'s second rung, lifted out on 2026-09-08 (GLANCE-FALLBACK-1) so
+ * `lib/coach/glance-state.ts#computeTodayExecution` reads it through the same
+ * function rather than writing a second copy of the same query. A second copy
+ * is a second answer to "which of this runner's runs is the day's run", and
+ * this file's whole subject is what happens when a surface answers that on its
+ * own (Rule 16).
+ *
+ * ── THE POPULATION, STATED (Rule 14) ────────────────────────────────────────
+ *
+ * This `user_uuid`, CANONICAL rows only (`CANONICAL_ROW_SQL`), the runner's own
+ * local day (`runDaySql`), largest first by `runDistanceMiSql`. Every row it
+ * can return is a real run of THIS RUNNER'S on THIS DAY. It is a tie-break
+ * among the runner's own runs, never a widening of the match: it cannot reach
+ * another runner, another date, a merged twin, or a `coach_intents` payload
+ * that no run of his names.
+ *
+ * ── WHAT IT DOES NOT ANSWER ─────────────────────────────────────────────────
+ *
+ * "Which run SATISFIED the prescription." That has one owner,
+ * `lib/execution/day-resolver.ts`, and it is asked FIRST at both call sites.
+ * This runs only when that resolver has said "nothing satisfied it", and
+ * biggest-of-the-day is explicitly named INSUFFICIENT evidence of execution by
+ * WORKOUT-EXECUTION-ID-1. So a caller may use this to decide WHAT TO READ off
+ * the day (phases, splits, a recap), and may never use it to seal a day, mark
+ * a workout complete, or claim a prescription was executed.
+ *
+ * Returns null when the runner has no canonical run on that day at all — which
+ * is a different fact from "a run with nothing stored on it", and callers are
+ * expected to keep the two apart (Rule 11).
+ */
+export async function dayBiggestCanonicalRun(
+  userId: string,
+  dateISO: string,
+): Promise<RunRow | null> {
+  const r = await pool.query<RunRow>(
+    `SELECT id::text AS id, data
+       FROM runs
+      WHERE user_uuid = $1
+        AND ${CANONICAL_ROW_SQL}
+        AND ${runDaySql()} = $2
+      ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
+      LIMIT 1`,
+    [userId, dateISO],
+  );
+  return r.rows[0] ?? null;
 }
 
 /**
