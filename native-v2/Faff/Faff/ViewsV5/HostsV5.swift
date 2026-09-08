@@ -2689,6 +2689,19 @@ enum SettingsLoadFailure: Equatable, Sendable {
     case timeout
     case unauthorized
     case serverError(Int)
+    /// SETTINGSCANCEL-1 (2026-09-07 review) · WE STOPPED ASKING. NOT A FAULT.
+    ///
+    /// A superseded load — a second Retry tap, a write's own reload landing
+    /// over an earlier one, the screen going away — cancels the first task,
+    /// and a cancelled `URLSession` request throws `URLError.cancelled`.
+    /// `categorize` had no branch for it, so it fell through to the
+    /// `.offline` catch-all and a healthy connection was reported to the
+    /// runner as a dead one. `load()` no longer writes ANY state from a
+    /// cancelled task (see `application(for:isCancelled:)`), so this should
+    /// never reach a screen — but a categorizer that silently mislabels its
+    /// input is a Rule 11 collapse whether or not anyone is looking, and
+    /// something else may call it directly tomorrow.
+    case cancelled
     /// A 2xx response we could not make sense of (decode failure, or a
     /// transport error this app has no more specific code for).
     case unknown
@@ -2703,8 +2716,31 @@ enum SettingsLoadFailure: Equatable, Sendable {
             return "Your session has expired. Sign in again to see your settings."
         case .serverError(let code):
             return "faff hit an error (\(code)) reading your settings. Try again."
+        case .cancelled:
+            return "That read was cancelled before it finished. Try again."
         case .unknown:
             return "Settings did not load. Try again."
+        }
+    }
+
+    /// SETTINGSPARTIAL-1 · the same fact, said as a clause rather than a
+    /// whole screen. The partial banner already carries "Some settings did
+    /// not load"; this adds only the cause, so the runner reads the reason
+    /// once (Rule 17) instead of the word "settings" three times.
+    var shortCause: String {
+        switch self {
+        case .offline:
+            return "Check your connection and try again."
+        case .timeout:
+            return "faff took too long to respond. Try again."
+        case .unauthorized:
+            return "Your session has expired. Sign in again."
+        case .serverError(let code):
+            return "faff hit an error (\(code)). Try again."
+        case .cancelled:
+            return "That read was cancelled. Try again."
+        case .unknown:
+            return "Try again."
         }
     }
 
@@ -2718,7 +2754,14 @@ enum SettingsLoadFailure: Equatable, Sendable {
 
     static func categorize(_ error: Error) -> SettingsLoadFailure {
         if error is APIAuthError { return .unauthorized }
+        if error is CancellationError { return .cancelled }
         if let urlError = error as? URLError {
+            // SETTINGSCANCEL-1 · order matters. `.cancelled` and `.timedOut`
+            // are both "the request did not finish", and only one of them is
+            // a statement about faff being slow. Neither is a statement about
+            // the connection, which is what the `.offline` fallback below
+            // asserts.
+            if urlError.code == .cancelled { return .cancelled }
             if urlError.code == .timedOut { return .timeout }
             if offlineCodes.contains(urlError.code) { return .offline }
             return .offline
@@ -2727,6 +2770,46 @@ enum SettingsLoadFailure: Equatable, Sendable {
             return code == 401 ? .unauthorized : .serverError(code)
         }
         return .unknown
+    }
+}
+
+/// SETTINGSPARTIAL-1 (2026-09-07 review) · WHICH SOURCE ANSWERED, PER SOURCE.
+///
+/// The failure gate this replaces fired only when `settings == nil AND
+/// profile == nil`. With ONE of `/api/profile` or `/api/settings` down and
+/// the other healthy, the screen rendered a completely normal, confident
+/// Settings page — with the failed endpoint's fields silently defaulted
+/// (`?? "sun"`, `?? "mi"`, `?? true`) or blank (Email). For a runner whose
+/// real values happen to match those defaults it is invisible; for a runner
+/// on kilometres, or a Saturday long run, the screen states the WRONG
+/// setting in the same ink it states a real one. That is the fabrication the
+/// whole fix exists to remove, and a partial outage is the likelier shape of
+/// it than a total one.
+///
+/// So the screen has three cases, not two: whole, partial, and nothing. This
+/// carries the middle one. A source is recorded here ONLY when it both failed
+/// and left us with no value — a source that is simply empty (the runner has
+/// no row yet) is not a failure, and a source we already hold a value for is
+/// not missing. Rule 11: "don't know", "measured zero" and "the read failed"
+/// are three facts.
+struct SettingsSourceHealth: Equatable, Sendable {
+    /// `/api/settings` — long run day, distance units, phone-run switch.
+    var settings: SettingsLoadFailure?
+    /// `/api/profile` — days per week, email.
+    var profile: SettingsLoadFailure?
+    /// `/api/notification-prefs` — the two notification switches.
+    var prefs: SettingsLoadFailure?
+
+    static let healthy = SettingsSourceHealth()
+
+    var isWhole: Bool { settings == nil && profile == nil && prefs == nil }
+
+    /// The one sentence the partial banner shows. Nil when nothing failed.
+    /// It does NOT enumerate the affected rows: those rows say "Unavailable"
+    /// themselves, and saying it in both places is Rule 17's exact defect.
+    var partialMessage: String? {
+        guard let worst = settings ?? profile ?? prefs else { return nil }
+        return "Some of your settings did not load. \(worst.shortCause)"
     }
 }
 
@@ -2778,7 +2861,12 @@ struct SettingsHostV5: View {
                                onSetPhoneRun: { v in Task { await patch(["phone_run_enabled": v]) } },
                                onOpenTravel: { travelOpen = true },
                                onOpenDecisions: { path.append(.decisions) },
-                               onBack: { dismiss() })
+                               onBack: { dismiss() },
+                               // SETTINGSPARTIAL-1 · the partial banner's
+                               // Retry, which is the SAME load the full
+                               // failure state's Retry runs. One quantity,
+                               // one name (Rule 16).
+                               onRetry: { requestLoad() })
                 } else if let loadFailure {
                     // SETTINGSFAIL-1 · the third state. `ErrorNote` + Retry is
                     // the same treatment `TodayHostV5.pendingCard`'s `.failed`
@@ -2788,6 +2876,19 @@ struct SettingsHostV5: View {
                         VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                             AppBar(title: "Settings", onBack: { dismiss() })
                             ErrorNote(text: loadFailure.message, onRetry: { requestLoad() })
+                            // SETTINGSDIAG-1 (2026-09-07 review) · THE DOOR
+                            // HAS TO EXIST ON THE SCREEN THAT NEEDS IT.
+                            //
+                            // Settings is the only way into the request
+                            // diagnostics sheet, and the hidden seven-tap
+                            // gesture lived on the version footer of the
+                            // LOADED screen only. So a runner looking at
+                            // "Can't reach faff" — the exact moment the
+                            // request log is worth reading, and the exact
+                            // moment a support conversation needs the build
+                            // number — had no way to reach either. The same
+                            // footer, on the failure state.
+                            SettingsDiagnosticsFooter()
                         }
                         .padding(.horizontal, V5.S.gutter)
                         .v5PageWidth()
@@ -2804,7 +2905,7 @@ struct SettingsHostV5: View {
                 }
             }
         }
-        .task { await load() }
+        .task { await initialLoad() }
         .navigationBarBackButtonHidden(true)
     }
 
@@ -2859,10 +2960,51 @@ struct SettingsHostV5: View {
     /// type with no dependency on `self`, so it can run inside a
     /// `withTaskGroup` child task (`withDeadline` below) without capturing
     /// this View across the boundary.
-    private enum LoadOutcome: Sendable {
+    enum LoadOutcome: Sendable {
+        /// Whole OR partial. `health` says which — `.healthy` for whole, and
+        /// otherwise the sources that failed, which the screen marks
+        /// "Unavailable" instead of defaulting.
         case loaded(settings: UserSettings?, profile: ProfileFields?,
-                    prefs: NotificationPrefs?, stravaConnected: Bool?)
+                    prefs: NotificationPrefs?, stravaConnected: Bool?,
+                    health: SettingsSourceHealth)
+        /// Nothing. We do not know this runner's settings at all.
         case failed(SettingsLoadFailure)
+    }
+
+    /// SETTINGSPARTIAL-1 · the whole/partial/nothing decision, as a pure
+    /// function of what came back, so it can be walked case by case in a test
+    /// instead of only through a live outage. Note what the discriminator is
+    /// and is not: a source is FAILED when it has no value AND carries an
+    /// error, not merely when its value is nil. A runner who genuinely has no
+    /// settings row yet is not an outage, and the server's own defaults are
+    /// the right answer for them.
+    static func classify(settings: UserSettings?, settingsError: Error?,
+                         profile: ProfileFields?, profileError: Error?,
+                         prefs: NotificationPrefs?, prefsError: Error?,
+                         stravaConnected: Bool?) -> LoadOutcome {
+        func failure<T>(_ value: T?, _ error: Error?) -> SettingsLoadFailure? {
+            guard value == nil, let error else { return nil }
+            return SettingsLoadFailure.categorize(error)
+        }
+        let settingsFailure = failure(settings, settingsError)
+        let profileFailure = failure(profile, profileError)
+
+        // Both of the two sources that describe WHO THIS RUNNER IS are gone.
+        // There is no screen to draw around, so this is the full failure
+        // state, unchanged from before. Settings leads because it is the one
+        // this screen is named for; the two categories agree in every outage
+        // shape observed.
+        if let settingsFailure, profileFailure != nil {
+            return .failed(settingsFailure)
+        }
+
+        let health = SettingsSourceHealth(
+            settings: settingsFailure,
+            profile: profileFailure,
+            prefs: failure(prefs, prefsError)
+        )
+        return .loaded(settings: settings, profile: profile, prefs: prefs,
+                       stravaConnected: stravaConnected, health: health)
     }
 
     /// Wraps a throwing async call so its error survives instead of being
@@ -2923,23 +3065,76 @@ struct SettingsHostV5: View {
         let prefs = await prefsOutcome
         let profileState = await profileStateOutcome
         let (settings, profile) = await SettingsCache.shared.read()
+        let (settingsErr, profileErr) = await SettingsCache.shared.lastErrors()
 
-        // SETTINGSFAIL-1 · the load-bearing failure: we do not know this
-        // runner's actual settings AT ALL. `SettingsCache`'s own
-        // `lastErrors()` is what lets us tell that apart from "the runner
-        // legitimately has neither row yet" — see its doc comment. Every
-        // other field below (notification prefs, the Strava mirror) is
-        // allowed to fall back to an honest default because none of them are
-        // "the runner's settings don't exist"; only settings+profile jointly
-        // missing is.
-        if settings == nil, profile == nil {
-            let (settingsErr, profileErr) = await SettingsCache.shared.lastErrors()
-            let source = settingsErr ?? profileErr ?? prefs.error ?? profileState.error
-            return .failed(source.map(SettingsLoadFailure.categorize) ?? .unknown)
-        }
-
-        return .loaded(settings: settings, profile: profile, prefs: prefs.value,
+        // SETTINGSPARTIAL-1 · `classify` owns the whole/partial/nothing
+        // decision — see its own doc comment for why a nil value is not by
+        // itself a failure. `SettingsCache.lastErrors()` is what makes the
+        // distinction available at all.
+        //
+        // The Strava mirror is deliberately NOT a health input. When
+        // `/api/profile/state` fails, the row falls back to
+        // `StravaConnection.isConnected`, which is a real value this session
+        // read at launch — stale, possibly, but never fabricated. Rule 11's
+        // distinction cuts the other way there: a known-old fact is not a
+        // failed read.
+        return classify(settings: settings, settingsError: settingsErr,
+                        profile: profile, profileError: profileErr,
+                        prefs: prefs.value, prefsError: prefs.error,
                         stravaConnected: profileState.value?.connections.strava.connected)
+    }
+
+    /// SETTINGSCANCEL-1 (2026-09-07 review) · A CANCELLED LOAD HAS NO ANSWER,
+    /// AND MUST NOT WRITE ONE.
+    ///
+    /// The reproduced defect: put the screen in a `serverError(503)` state,
+    /// then tap Retry twice about 250ms apart against a backend that takes
+    /// ~6s to answer — well inside every timeout, and about to SUCCEED. The
+    /// copy flipped to "faff is taking too long to respond" mid-reload before
+    /// settling. A false statement to the runner: the connection was healthy
+    /// the whole time.
+    ///
+    /// Two mechanisms, and this closes the first. `requestLoad()` cancels the
+    /// in-flight load before starting the new one. Cancelling the parent task
+    /// makes `withDeadline`'s sleeper child throw immediately, so the group
+    /// hands back `nil` — indistinguishable, at the call site, from the 20s
+    /// deadline actually elapsing — and `load()` wrote `.timeout` from it,
+    /// unconditionally. The cancelled task then went on to stomp the state
+    /// the LIVE load was about to fill in.
+    ///
+    /// The decision is a pure function of (outcome, cancelled) so a test can
+    /// walk it without a live race: a cancelled task applies NOTHING,
+    /// whatever it happens to be holding.
+    enum LoadApplication: Equatable {
+        /// Cancelled. Leave every piece of state exactly as it is.
+        case ignore
+        /// Terminal failure. The caller still refuses to blank a screen that
+        /// already has content.
+        case fail(SettingsLoadFailure)
+        case apply(LoadOutcome)
+
+        static func == (lhs: LoadApplication, rhs: LoadApplication) -> Bool {
+            switch (lhs, rhs) {
+            case (.ignore, .ignore): return true
+            case (.fail(let a), .fail(let b)): return a == b
+            case (.apply, .apply): return true
+            default: return false
+            }
+        }
+    }
+
+    static func application(for outcome: LoadOutcome?, isCancelled: Bool) -> LoadApplication {
+        if isCancelled { return .ignore }
+        guard let outcome else {
+            // LOADDEADLINE-1 · the composite backstop elapsed with nothing
+            // back at all. Only reachable now that cancellation is excluded
+            // above, which is what makes `.timeout` an honest reading of it.
+            return .fail(.timeout)
+        }
+        switch outcome {
+        case .failed(let reason): return .fail(reason)
+        case .loaded: return .apply(outcome)
+        }
     }
 
     /// SETTINGSDEDUP-1 · cancel any load already in flight (a superseded
@@ -2950,18 +3145,51 @@ struct SettingsHostV5: View {
         loadTask = Task { await load() }
     }
 
-    private func load() async {
-        guard let outcome = await Self.withDeadline(seconds: 20, { await Self.performFetch() }) else {
-            // LOADDEADLINE-1 · the composite backstop elapsed with nothing
-            // back at all. Still a terminal state, never an indefinite hang.
-            if model == nil { loadFailure = .timeout }
-            return
+    /// SETTINGSCANCEL-1 · the FIRST load goes through the same single-flight
+    /// slot every other caller uses. `.task { await load() }` bypassed
+    /// `requestLoad()` entirely, so a Retry or a write's reload arriving
+    /// during the opening load raced it instead of superseding it — the
+    /// dedup guarantee the host claims in `loadTask`'s doc comment simply did
+    /// not cover the one load that always happens. `withTaskCancellationHandler`
+    /// keeps `.task`'s own cancel-on-disappear working through the extra hop.
+    private func initialLoad() async {
+        loadTask?.cancel()
+        let task = Task { await load() }
+        loadTask = task
+        await withTaskCancellationHandler {
+            await task.value
+        } onCancel: {
+            task.cancel()
         }
-        switch outcome {
-        case .loaded(let settings, let profile, let prefs, let stravaConnected):
+    }
+
+    private func load() async {
+        let outcome = await Self.withDeadline(seconds: 20, { await Self.performFetch() })
+        switch Self.application(for: outcome, isCancelled: Task.isCancelled) {
+        case .ignore:
+            // SETTINGSCANCEL-1 · superseded. The load that replaced this one
+            // owns the state now; writing anything here is a guess presented
+            // as a reading.
+            return
+        case .fail(let reason):
+            // SETTINGSFAIL-1 · never blank a screen that already has good
+            // content — see `loadFailure`'s own doc comment.
+            if model == nil { loadFailure = reason }
+        case .apply(let outcome):
+            guard case .loaded(let settings, let profile, let prefs,
+                               let stravaConnected, let health) = outcome else { return }
             if let stravaConnected { StravaConnection.set(stravaConnected) }
             loadFailure = nil
             model = SettingsV5Model(
+                // SETTINGSPARTIAL-1 · every `??` below is the server's own
+                // default for a runner who has no stored value, and it is the
+                // right answer for exactly that runner. It is the wrong
+                // answer for a runner whose value we FAILED to read, which is
+                // why `health` travels with the model: the rows behind a
+                // failed source render as unavailable rather than taking one
+                // of these. Seeding them here regardless keeps the model
+                // total, and nothing draws a defaulted value once its source
+                // is marked.
                 longRunDay: Self.dayLabel(settings?.long_run_day ?? "sun"),
                 longRunDayOptions: Self.dayNames.map(\.label),
                 daysPerWeek: profile?.weekly_frequency ?? 5,
@@ -2971,12 +3199,9 @@ struct SettingsHostV5: View {
                 units: Self.unitLabel(settings?.units_distance ?? "mi"),
                 unitsOptions: Self.unitNames.map(\.label),
                 stravaConnected: StravaConnection.isConnected,
-                email: profile?.email ?? ""
+                email: profile?.email ?? "",
+                health: health
             )
-        case .failed(let reason):
-            // SETTINGSFAIL-1 · never blank a screen that already has good
-            // content — see `loadFailure`'s own doc comment.
-            if model == nil { loadFailure = reason }
         }
     }
 

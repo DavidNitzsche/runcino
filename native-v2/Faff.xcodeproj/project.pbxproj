@@ -242,6 +242,7 @@
 		DE224649DDD289495E37715D /* FacesLobbyV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71C4F2E6374884D975BBC496 /* FacesLobbyV5.swift */; };
 		DECF5720E3070DDD9BD23D18 /* MorningBriefBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918DFA9C4478972044408D2A /* MorningBriefBlock.swift */; };
 		DF214510EDD5AB5B065F0B39 /* PostRunLearnedV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0432108F7DEEA43D15C990 /* PostRunLearnedV5.swift */; };
+		DFCC502C7F6095DD3D77C470 /* SettingsFailureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0484FC0CD9F615E14D90C2 /* SettingsFailureUITests.swift */; };
 		E0BE2A0BC43ECFFFEFE7A395 /* RunActionMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8579E34E6C74E08AD40FCB48 /* RunActionMenu.swift */; };
 		E0EF4C586645C9F385C9911E /* HostsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F6FF20A96440B706E0DF836 /* HostsV5.swift */; };
 		E0FAADAA9A64E904A270BA5E /* TokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80D79010E6307A7B819FD164 /* TokenStore.swift */; };
@@ -267,6 +268,7 @@
 		F1732AC53879D98FF1A0B267 /* _SessionSim.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECBCD6E9046A23C7E277F44 /* _SessionSim.swift */; };
 		F1CA1817A927220804808DA0 /* FormatVectors.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F5209191C2534DDE41358F8 /* FormatVectors.generated.swift */; };
 		F36FFE86BA1F5C6A8215B496 /* PanelV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89B85857DDA2DA69F8C141A /* PanelV5.swift */; };
+		F474EE6E137971ABDB247394 /* SettingsFailureStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF573E25421532FFE0349AD /* SettingsFailureStateTests.swift */; };
 		F53F3625551185943AE4BACE /* _AutoPauseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 646ACB5EC8B399B1371ADF76 /* _AutoPauseTests.swift */; };
 		F5A3C78E3FBF5304D8B4C6A2 /* TreadmillStateMachineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7B9E9BED1212B61FE573EE3 /* TreadmillStateMachineTests.swift */; };
 		F64C10EDC3372CCA402D5759 /* OnboardingV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8825DD5FD2222468737B3C2 /* OnboardingV5.swift */; };
@@ -301,6 +303,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = F0F86E55A2FD163346E0F089;
 			remoteInfo = "FaffWatch Watch App";
+		};
+		363685E6BA3D20DD66BCD492 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 71044FC49B493BB4714930F0 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = D9BD02B3EBCA6139CDCA3B00;
+			remoteInfo = Faff;
 		};
 		718BAEC696AFE08A255D2F3B /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -355,6 +364,7 @@
 		09ABAABCF2CDD7B4DBC82200 /* A_Signals.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = A_Signals.swift; sourceTree = "<group>"; };
 		0B9D4547CDA7A3180224CA48 /* FaffComplicationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffComplicationViews.swift; sourceTree = "<group>"; };
 		0BBD87A2B7AEEDE1D12808EB /* BeltTrackerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BeltTrackerTests.swift; sourceTree = "<group>"; };
+		0BF573E25421532FFE0349AD /* SettingsFailureStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFailureStateTests.swift; sourceTree = "<group>"; };
 		0C18DDEE14414B527EFBB143 /* FaffMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffMesh.swift; sourceTree = "<group>"; };
 		0C7F0C958D7BCB61A44F07CC /* PlanVersionInvalidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanVersionInvalidationTests.swift; sourceTree = "<group>"; };
 		0F562BA41AED08247EB40613 /* FaffLogoMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffLogoMark.swift; sourceTree = "<group>"; };
@@ -370,11 +380,13 @@
 		180080F47DB86118277DF47B /* ShellV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellV5.swift; sourceTree = "<group>"; };
 		188559D9B23742DBC413C75E /* ProView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProView.swift; sourceTree = "<group>"; };
 		18AB8CD445EBE4A2FEB8649C /* TrendBarsHonestyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrendBarsHonestyTests.swift; sourceTree = "<group>"; };
+		18F4CBEA8F168ECCB88BAE35 /* FaffUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = FaffUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		1AA31DB52794BE1700934B01 /* PaceDrift.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceDrift.swift; sourceTree = "<group>"; };
 		1AB189A1C29F682554E49956 /* WatchKitV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchKitV5.swift; sourceTree = "<group>"; };
 		1AB61CC30CD62C9D33A506E4 /* FaffSmartStackView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffSmartStackView.swift; sourceTree = "<group>"; };
 		1B4214411E5A308A6B07D6E4 /* ToolkitPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToolkitPayloads.swift; sourceTree = "<group>"; };
 		1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Haptics.swift; sourceTree = "<group>"; };
+		1E0484FC0CD9F615E14D90C2 /* SettingsFailureUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFailureUITests.swift; sourceTree = "<group>"; };
 		1EA8EB84CF316484DDD472B3 /* SettingsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsV5.swift; sourceTree = "<group>"; };
 		1EB6EA7F37EF5FFF18E53441 /* CatalogSampleArithmeticTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CatalogSampleArithmeticTests.swift; sourceTree = "<group>"; };
 		1F097DD1FEE235AC5D4AD178 /* HealthSegmentedControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthSegmentedControl.swift; sourceTree = "<group>"; };
@@ -622,7 +634,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_CED5163B-4696-4707-ACF1-68DDA88B3E3D" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_6B14C30C-CAD2-4D84-ADE8-1B46060437F9" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -683,6 +695,7 @@
 				DAD38C7298C01A8DA4A62EB5 /* RequestDiagnosticsTests.swift */,
 				7A5588DFAB05E7FC333B1F14 /* RPECaptureTests.swift */,
 				5ECB1DD6BF684DF37A90CBBB /* RunLobbyV5Tests.swift */,
+				0BF573E25421532FFE0349AD /* SettingsFailureStateTests.swift */,
 				15FB44D69A865618A457AB74 /* SignInFlowTests.swift */,
 				2BFF8099E7BDD8737F90BDE0 /* StuckConnectionTests.swift */,
 				2186E706CECB42A380295C3E /* TodayNavigationTests.swift */,
@@ -907,6 +920,7 @@
 			children = (
 				D2AF09DF27FB96213F809229 /* Faff */,
 				0A0B437F099D018266433028 /* FaffTests */,
+				F9C899BE3C516E8123B91FF9 /* FaffUITests */,
 				8E817150E79B4BCF0540B7B1 /* FaffWatch Watch App */,
 				B9DD2B33D6FD7447ABC5CD89 /* FaffWatch Watch AppTests */,
 				5BFDA8DD3AC0007456A13871 /* FaffWatch Widgets */,
@@ -967,6 +981,7 @@
 			children = (
 				B6BF22DF1BD412FB1CA83446 /* Faff.app */,
 				801D9B1925F0DC65C5E66C0D /* FaffTests.xctest */,
+				18F4CBEA8F168ECCB88BAE35 /* FaffUITests.xctest */,
 				79B4012183AC95BF2BE27EB4 /* FaffWatch Watch App.app */,
 				7946847F45F40D00337CF5F6 /* FaffWatch Watch AppTests.xctest */,
 				574046EFA57DAA5E3FA61AB5 /* FaffWatch Widgets.appex */,
@@ -1057,10 +1072,18 @@
 			path = Util;
 			sourceTree = "<group>";
 		};
-		"TEMP_53248286-BCCC-4415-B6D8-C6F63F6DED7D" /* native-v2 */ = {
+		F9C899BE3C516E8123B91FF9 /* FaffUITests */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_CED5163B-4696-4707-ACF1-68DDA88B3E3D" /* Secrets.xcconfig */,
+				1E0484FC0CD9F615E14D90C2 /* SettingsFailureUITests.swift */,
+			);
+			path = FaffUITests;
+			sourceTree = "<group>";
+		};
+		"TEMP_F02AF754-4AD5-4D10-9FD1-60152F2791D8" /* native-v2 */ = {
+			isa = PBXGroup;
+			children = (
+				"TEMP_6B14C30C-CAD2-4D84-ADE8-1B46060437F9" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1068,6 +1091,24 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		57ED68D543E5B32D4EEAE781 /* FaffUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9A9EA6C8B092DD997F843A03 /* Build configuration list for PBXNativeTarget "FaffUITests" */;
+			buildPhases = (
+				2FD5C3ADE81ED04D952308E5 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C5B8C4F8FE7D030E140E3370 /* PBXTargetDependency */,
+			);
+			name = FaffUITests;
+			packageProductDependencies = (
+			);
+			productName = FaffUITests;
+			productReference = 18F4CBEA8F168ECCB88BAE35 /* FaffUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		9AF6A38CFEF69B65F1C70EEC /* FaffTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 4C6F430CD1E922FED0EFC96F /* Build configuration list for PBXNativeTarget "FaffTests" */;
@@ -1173,6 +1214,11 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					57ED68D543E5B32D4EEAE781 = {
+						DevelopmentTeam = F26TM6BCR3;
+						ProvisioningStyle = Automatic;
+						TestTargetID = D9BD02B3EBCA6139CDCA3B00;
+					};
 					9AF6A38CFEF69B65F1C70EEC = {
 						DevelopmentTeam = F26TM6BCR3;
 						ProvisioningStyle = Automatic;
@@ -1214,6 +1260,7 @@
 			targets = (
 				D9BD02B3EBCA6139CDCA3B00 /* Faff */,
 				9AF6A38CFEF69B65F1C70EEC /* FaffTests */,
+				57ED68D543E5B32D4EEAE781 /* FaffUITests */,
 				F0F86E55A2FD163346E0F089 /* FaffWatch Watch App */,
 				B7A4CE15D7B79D429B9C1091 /* FaffWatch Watch AppTests */,
 				B68CA05EC1909CDF78B46F24 /* FaffWatch Widgets */,
@@ -1255,6 +1302,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		2FD5C3ADE81ED04D952308E5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DFCC502C7F6095DD3D77C470 /* SettingsFailureUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3E4256A502D4832A469FB910 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -1340,6 +1395,7 @@
 				2A991BF46A64BE16C8E3B6B0 /* RequestCoalescingTests.swift in Sources */,
 				7772B8FFA13C514033773092 /* RequestDiagnosticsTests.swift in Sources */,
 				9B4E43AF15E093C4300838E2 /* RunLobbyV5Tests.swift in Sources */,
+				F474EE6E137971ABDB247394 /* SettingsFailureStateTests.swift in Sources */,
 				6BE40F3E6AA911AD15D8C08E /* SignInFlowTests.swift in Sources */,
 				33EB8E8F5A063626EDDFEDBD /* StuckConnectionTests.swift in Sources */,
 				2CECC6E66207BE2B489E1660 /* SweepLedger.swift in Sources */,
@@ -1574,6 +1630,11 @@
 			target = F0F86E55A2FD163346E0F089 /* FaffWatch Watch App */;
 			targetProxy = 0A0DB7EF2A01E8779D699655 /* PBXContainerItemProxy */;
 		};
+		C5B8C4F8FE7D030E140E3370 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = D9BD02B3EBCA6139CDCA3B00 /* Faff */;
+			targetProxy = 363685E6BA3D20DD66BCD492 /* PBXContainerItemProxy */;
+		};
 		E18ECFC0A4A87A41AF4994CB /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = B68CA05EC1909CDF78B46F24 /* FaffWatch Widgets */;
@@ -1584,7 +1645,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_CED5163B-4696-4707-ACF1-68DDA88B3E3D" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_6B14C30C-CAD2-4D84-ADE8-1B46060437F9" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1811,7 +1872,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_CED5163B-4696-4707-ACF1-68DDA88B3E3D" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_6B14C30C-CAD2-4D84-ADE8-1B46060437F9" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1872,6 +1933,23 @@
 			};
 			name = Release;
 		};
+		AD40489A0843D99BD1B72976 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = run.faff.app.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Faff;
+			};
+			name = Debug;
+		};
 		B8EDFF02414F1620B23F5C25 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1892,6 +1970,23 @@
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 4;
 				WATCHOS_DEPLOYMENT_TARGET = 10.0;
+			};
+			name = Release;
+		};
+		DAE9460044F3264C3AB87F2A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = run.faff.app.uitests;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Faff;
 			};
 			name = Release;
 		};
@@ -1972,6 +2067,15 @@
 			buildConfigurations = (
 				0D95FB212EAB452FEF8FF123 /* Debug */,
 				730A99E08A5CCDDD01792ABC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		9A9EA6C8B092DD997F843A03 /* Build configuration list for PBXNativeTarget "FaffUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AD40489A0843D99BD1B72976 /* Debug */,
+				DAE9460044F3264C3AB87F2A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

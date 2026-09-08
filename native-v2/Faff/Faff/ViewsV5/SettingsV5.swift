@@ -71,6 +71,20 @@ struct SettingsV5Model: Equatable {
     var unitsOptions: [String]
     var stravaConnected: Bool
     var email: String
+    /// SETTINGSPARTIAL-1 (2026-09-07 review) · WHICH OF THESE VALUES ARE REAL.
+    ///
+    /// Every field above has a default the host fills in when the wire says
+    /// nothing. That default is correct for a runner who has no stored value
+    /// and WRONG for a runner whose value we failed to read — and on screen
+    /// the two are the same pixels. With `/api/settings` down and
+    /// `/api/profile` up, a runner on kilometres was shown "Miles", and a
+    /// runner whose long run is Saturday was shown "Sunday", in the same ink
+    /// as a value that had actually been read.
+    ///
+    /// So the model carries which sources answered, and the rows behind a
+    /// failed source render `UnavailableRow` instead of a value. Defaults to
+    /// `.healthy`, which is what every preview and every whole load is.
+    var health: SettingsSourceHealth = .healthy
 }
 
 // MARK: - Screen
@@ -101,6 +115,10 @@ struct SettingsV5: View {
     /// never draws a dead entry.
     var onOpenDecisions: (() -> Void)? = nil
     var onBack: (() -> Void)? = nil
+    /// SETTINGSPARTIAL-1 · retries the load behind the partial-failure
+    /// banner. Same closure the full failure state's Retry runs. Nil drops
+    /// the button (a preview has nothing to retry), never the sentence.
+    var onRetry: (() -> Void)? = nil
 
     @State private var longRunDay: String
     @State private var daysPerWeek: Int
@@ -108,12 +126,6 @@ struct SettingsV5: View {
     @State private var sessionReminders: Bool
     @State private var weeklySummary: Bool
     @State private var units: String
-    // STAGE1-DIAG-1 · hidden entry point into the internal request-diagnostics
-    // sheet. Deliberately not a visible settings row — this is a support tool,
-    // not a runner-facing feature (see RequestDiagnosticsView's own header).
-    @State private var diagTapCount = 0
-    @State private var showDiagnostics = false
-
     init(model: SettingsV5Model,
          onSetLongRunDay: @escaping (String) -> Void,
          onSetDaysPerWeek: @escaping (Int) -> Void,
@@ -124,8 +136,10 @@ struct SettingsV5: View {
          onSetPhoneRun: ((Bool) -> Void)? = nil,
          onOpenTravel: (() -> Void)? = nil,
          onOpenDecisions: (() -> Void)? = nil,
-         onBack: (() -> Void)? = nil) {
+         onBack: (() -> Void)? = nil,
+         onRetry: (() -> Void)? = nil) {
         self.model = model
+        self.onRetry = onRetry
         self.onSetLongRunDay = onSetLongRunDay
         self.onSetDaysPerWeek = onSetDaysPerWeek
         self.onToggleSessionReminders = onToggleSessionReminders
@@ -155,13 +169,16 @@ struct SettingsV5: View {
     /// two rows above was told the wrong night by the row underneath. The
     /// backend was right; the sentence was the only thing that was wrong.
     private var weeklySummarySub: String {
-        "\(longRunDay) evening, after the long run"
-    }
-
-    private var appVersionString: String {
-        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
-        return "faff.run \(short) (\(build))"
+        // SETTINGSPARTIAL-1 · the day comes from `/api/settings`, so this
+        // sentence is gated on that read (Rule 16: a sentence asserting a
+        // fact about a measurement is gated on that measurement). With
+        // settings down, `longRunDay` holds the "sun" default and this line
+        // would have told a Saturday runner "Sunday evening" — a fabricated
+        // fact inside an otherwise honest partial screen.
+        guard model.health.settings == nil else {
+            return "The evening of your long run"
+        }
+        return "\(longRunDay) evening, after the long run"
     }
 
     var body: some View {
@@ -173,6 +190,13 @@ struct SettingsV5: View {
                 // onto the app's one "between top-level sections" rhythm instead —
                 // see `betweenGroups`'s own doc comment.
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                    // SETTINGSPARTIAL-1 · one source down, the rest up. The
+                    // screen keeps everything that DID load and says, once,
+                    // that some of it did not. Which rows are affected is
+                    // said by the rows themselves, not restated here.
+                    if let note = model.health.partialMessage {
+                        ErrorNote(text: note, onRetry: onRetry)
+                    }
                     trainingSection
                     travelSection
                     coachSection
@@ -185,23 +209,12 @@ struct SettingsV5: View {
                     }
 
                     // STAGE1-DIAG-1 · plain version/build text, useful on its
-                    // own for a support conversation. Seven taps within the
-                    // gesture's own window opens the internal request-
-                    // diagnostics sheet — never advertised, never a labeled
-                    // row, so it stays out of the normal runner interface.
-                    Text(appVersionString)
-                        .font(.faffText(TypeScaleV5.label12))
-                        .foregroundStyle(V5.textQuiet)
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, V5.S.s8)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            diagTapCount += 1
-                            if diagTapCount >= 7 {
-                                diagTapCount = 0
-                                showDiagnostics = true
-                            }
-                        }
+                    // own for a support conversation. Seven taps opens the
+                    // internal request-diagnostics sheet. SETTINGSDIAG-1 ·
+                    // extracted so the FAILURE state can host the identical
+                    // affordance — it had none, which locked a runner out of
+                    // diagnostics at the one moment they need them.
+                    SettingsDiagnosticsFooter()
                 }
                 .padding(.horizontal, V5.S.gutter)
                 .padding(.bottom, V5.S.s32)
@@ -211,9 +224,6 @@ struct SettingsV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
-        .sheet(isPresented: $showDiagnostics) {
-            RequestDiagnosticsView()
-        }
         // The phone-run switch is the ONE control here that talks to the
         // network directly — see the file header.
         .onChange(of: phoneRunEnabled) { _, newValue in
@@ -270,20 +280,36 @@ struct SettingsV5: View {
         VStack(alignment: .leading, spacing: V5.S.s10) {
             V5SectionLabel(text: "Training").padding(.horizontal, V5.S.s4)
             VStack(alignment: .leading, spacing: V5.S.s16) {
-                FaffSelect(label: "Long run day",
-                           value: longRunDay,
-                           options: model.longRunDayOptions,
-                           onChange: { day in
-                    longRunDay = day
-                    onSetLongRunDay(day)
-                })
-                FaffStepper(label: "Days per week",
-                            value: $daysPerWeek,
-                            range: model.daysPerWeekRange,
-                            onChange: onSetDaysPerWeek)
-                FaffSwitch(label: "Start runs from this phone",
-                           sub: phoneRunSub,
-                           isOn: $phoneRunEnabled)
+                // SETTINGSPARTIAL-1 · this one tile draws from BOTH
+                // endpoints, which is exactly why a per-section marker would
+                // have been dishonest: with `/api/profile` down, "Long run
+                // day" is still real and "Days per week" is not.
+                if model.health.settings == nil {
+                    FaffSelect(label: "Long run day",
+                               value: longRunDay,
+                               options: model.longRunDayOptions,
+                               onChange: { day in
+                        longRunDay = day
+                        onSetLongRunDay(day)
+                    })
+                } else {
+                    UnavailableRow(label: "Long run day")
+                }
+                if model.health.profile == nil {
+                    FaffStepper(label: "Days per week",
+                                value: $daysPerWeek,
+                                range: model.daysPerWeekRange,
+                                onChange: onSetDaysPerWeek)
+                } else {
+                    UnavailableRow(label: "Days per week")
+                }
+                if model.health.settings == nil {
+                    FaffSwitch(label: "Start runs from this phone",
+                               sub: phoneRunSub,
+                               isOn: $phoneRunEnabled)
+                } else {
+                    UnavailableRow(label: "Start runs from this phone")
+                }
             }
             .padding(V5.S.tilePad)
             .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
@@ -338,12 +364,21 @@ struct SettingsV5: View {
                 // quality day" described something that has never been sent —
                 // a switch for a thing that does not exist. Same correction
                 // the legacy and web surfaces took on 2026-08-21.
-                FaffSwitch(label: "Skipped-run check",
-                           sub: "The morning after a skip \u{00B7} are you good for today",
-                           isOn: $sessionReminders)
-                FaffSwitch(label: "Weekly summary",
-                           sub: weeklySummarySub,
-                           isOn: $weeklySummary)
+                // SETTINGSPARTIAL-1 · both switches read
+                // `profile.notification_prefs`, and both defaulted to ON
+                // when that read failed. A runner who had turned the weekly
+                // summary off was shown it on.
+                if model.health.prefs == nil {
+                    FaffSwitch(label: "Skipped-run check",
+                               sub: "The morning after a skip \u{00B7} are you good for today",
+                               isOn: $sessionReminders)
+                    FaffSwitch(label: "Weekly summary",
+                               sub: weeklySummarySub,
+                               isOn: $weeklySummary)
+                } else {
+                    UnavailableRow(label: "Skipped-run check")
+                    UnavailableRow(label: "Weekly summary")
+                }
             }
             .padding(V5.S.tilePad)
             .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
@@ -365,13 +400,20 @@ struct SettingsV5: View {
         VStack(alignment: .leading, spacing: V5.S.s10) {
             V5SectionLabel(text: "Units").padding(.horizontal, V5.S.s4)
             Tile {
-                FaffSelect(label: "Distance",
-                           value: units,
-                           options: model.unitsOptions,
-                           onChange: { u in
-                    units = u
-                    onSetUnits(u)
-                })
+                // SETTINGSPARTIAL-1 · `?? "mi"` is the reason this matters
+                // most. A runner on kilometres, with /api/settings down, was
+                // shown "Miles" in exactly the ink a real answer uses.
+                if model.health.settings == nil {
+                    FaffSelect(label: "Distance",
+                               value: units,
+                               options: model.unitsOptions,
+                               onChange: { u in
+                        units = u
+                        onSetUnits(u)
+                    })
+                } else {
+                    UnavailableRow(label: "Distance")
+                }
             }
         }
     }
@@ -387,8 +429,96 @@ struct SettingsV5: View {
             ListRow(label: "Strava",
                     value: .measured(model.stravaConnected ? "Connected" : "Not connected"),
                     onTap: onToggleStrava)
-            ListRow(label: "Email", value: .measured(model.email))
+            // SETTINGSPARTIAL-1 · with /api/profile down this rendered
+            // `?? ""` — an Email row with nothing beside it, which reads as
+            // "faff has no email for you" rather than "we could not read it".
+            // A blank is a claim too.
+            if model.health.profile == nil {
+                ListRow(label: "Email", value: .measured(model.email))
+            } else {
+                UnavailableRow(label: "Email", inGroup: true)
+            }
         }
+    }
+}
+
+// MARK: - SETTINGSPARTIAL-1 · a row whose source failed
+
+/// What a row shows when the endpoint behind it did not answer.
+///
+/// It shows NO VALUE. That is the whole point: a control seeded from a
+/// fallback default is pixel-identical to one seeded from the runner's real
+/// setting, so the only honest rendering of "we could not read this" is to
+/// decline to state it. Not editable either — writing a setting whose current
+/// value we could not read is how a runner overwrites something they never
+/// saw.
+///
+/// The fault mark is carried by the banner above, once. This row stays quiet
+/// (`textQuiet`, the same ink every secondary value uses) rather than
+/// repeating fault red per row, which would paint a two-endpoint outage as
+/// six separate alarms.
+struct UnavailableRow: View {
+    let label: String
+    /// `ListGroup` supplies its own tile; a bare `Tile`-hosted stack does not.
+    var inGroup: Bool = false
+
+    var body: some View {
+        HStack(alignment: .center, spacing: V5.S.s12) {
+            Text(label)
+                .font(.faffText(16, weight: .medium))
+                .foregroundStyle(V5.textQuiet)
+            Spacer(minLength: V5.S.s8)
+            Text("Unavailable")
+                .font(.faffText(TypeScaleV5.body15))
+                .foregroundStyle(V5.textQuiet)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, inGroup ? V5.S.tilePad : 0)
+        .padding(.vertical, inGroup ? V5.S.s10 : 0)
+        .frame(minHeight: inGroup ? 58 : 0)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(label), unavailable")
+    }
+}
+
+// MARK: - SETTINGSDIAG-1 · the version footer, and the door behind it
+
+/// STAGE1-DIAG-1's hidden seven-tap entry into `RequestDiagnosticsView`,
+/// lifted out of `SettingsV5` so the host's FAILURE state can render the
+/// identical affordance.
+///
+/// It lived only inside the loaded screen, and the failure state is an
+/// `AppBar` plus an `ErrorNote` with no footer at all — so a runner staring
+/// at "Can't reach faff" could reach neither the request log nor the build
+/// number, at the one moment both are worth having. Settings is the only door
+/// to this tool in the whole app.
+struct SettingsDiagnosticsFooter: View {
+    @State private var tapCount = 0
+    @State private var showDiagnostics = false
+
+    private var appVersionString: String {
+        let short = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "?"
+        return "faff.run \(short) (\(build))"
+    }
+
+    var body: some View {
+        Text(appVersionString)
+            .font(.faffText(TypeScaleV5.label12))
+            .foregroundStyle(V5.textQuiet)
+            .frame(maxWidth: .infinity)
+            .padding(.top, V5.S.s8)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                tapCount += 1
+                if tapCount >= 7 {
+                    tapCount = 0
+                    showDiagnostics = true
+                }
+            }
+            .sheet(isPresented: $showDiagnostics) {
+                RequestDiagnosticsView()
+            }
     }
 }
 
