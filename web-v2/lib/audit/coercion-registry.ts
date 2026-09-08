@@ -90,6 +90,22 @@ export const COERCION_ARGUED: readonly CoercionExemption[] = [
     reason: 'runnerTimezoneOrPacific(userId).catch(() => "America/Los_Angeles") mirrors the identical fallback lib/coach/run-state.ts loadPhaseBreakdown already uses for this exact "coach_intents watch-completion day bucketing" case — and runnerTimezoneOrPacific itself already treats a NULL profile.timezone as "assume Pacific" by its own documented convention (pre-multi-tenant rows were all stamped in Pacific wall time), so a thrown read and an absent column reach the identical fallback value by design; this catch only extends that same convention to the rarer case where the lookup throws instead of returning null.',
   },
   {
+    id: 'lib/coach/recap-phase-readings.ts::recapPhaseReadings::workPhases.length',
+    reason: 'SIMROW-1 · RECAP (2026-09-08) · `workPhases.length > 0 ? workPhases.length : null` for '
+      + '`repCount`, RELOCATED from app/api/runs/[id]/recap/route.ts rather than newly written — the '
+      + 'route was auto-cleared and stated no argument, moving the code cost that clearance and '
+      + 'bought this sentence. Traced to its consumer: `repCount` reaches exactly one place, '
+      + '`lib/coach/run-recap.ts`\'s intervals arm, as `input.repCount ? `${input.repCount} rep…` : '
+      + 'null` — a TRUTHINESS test, so 0 and null take the identical branch and produce the '
+      + 'identical sentence by construction; no consumer anywhere can tell them apart. The two '
+      + 'facts are also not collapsed upstream of it: a run with NO stored phases returns the '
+      + '`NONE` reading before this line is reached, so the only way to arrive here with zero work '
+      + 'phases is a payload that recorded phases and no paced work phase among them — for which '
+      + '"there is no rep count to state" is the true answer, not an erasure of a measurement. If '
+      + 'a future consumer ever branches on `repCount === 0`, this entry is where the argument '
+      + 'stops holding and the reading should carry the count with an explicit absent state.',
+  },
+  {
     id: 'lib/adaptation/load.ts::loadAdaptationInput::verdicts.length',
     reason: 'the only consumer is `readInternalCost`, which opens with `if (input.targetVerdicts && input.targetVerdicts.length > 0)` — it tests BOTH shapes, so an empty array and a null reach identical code and no branch anywhere can tell them apart.',
   },
@@ -582,7 +598,15 @@ export const HANDED_BACK_FAILS = false;
 // `workStatsForDisplay` in `lib/runs/work-averages.ts`, which the registry
 // already carries at `workAveragesFromPhases::totalSec`. One peripheral
 // collapse left the peripheral set; none was added.
-export const PERIPHERAL_BASELINE = 173;
+// SIMROW-1 · RECAP (2026-09-08) · 173 -> 171. The recap route's own inline
+// `Number(p.actualPaceSPerMi) || null` ladder — the same shape, one screen
+// over — moved into `lib/coach/recap-phase-readings.ts`, where the numeric
+// core now comes from `run-shape.ts#runPhases` and the per-field ladders are
+// gone rather than relocated. Two peripheral collapses left the set; the ONE
+// that moved with the code is `recapPhaseReadings::workPhases.length`, and it
+// crossed into an engine module, so it is argued on LOAD_BEARING_KNOWN below
+// rather than counted here.
+export const PERIPHERAL_BASELINE = 171;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
@@ -690,11 +714,11 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/coach/dow-patterns.ts::computeDowPatterns::catch',
   'lib/coach/easy-discipline.ts::loadEasyDiscipline::catch',
   'lib/coach/fact-reciter.ts::reciteHealth::state.watchItems.length',
-  'lib/coach/glance-state.ts::computeTodayExecution::catch',
   'lib/coach/glance-state.ts::loadStableBaseline::catch',
   'lib/coach/health-state.ts::loadHealthState::catch',
   'lib/coach/heat-acclimatization.ts::computeHeatAcclimatization::catch',
   'lib/coach/log-state.ts::loadLogState::totalSec',
+  'lib/coach/recap-phase-readings.ts::recapPhaseReadings::workPhases.length',
   'lib/coach/quality-predictors.ts::computeQualityPredictors::catch',
   'lib/coach/readiness-brief.ts::computeYesterdayPillars::catch',
   'lib/coach/readiness-brief.ts::loadReadinessBrief::catch',

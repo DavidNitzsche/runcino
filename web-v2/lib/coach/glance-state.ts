@@ -21,11 +21,13 @@ import { computeAcwr } from './acwr';
 import { runCadenceSpmSql } from '@/lib/runs/run-shape';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { isDaySkipped } from '@/lib/plan/week-loader';
-import { runnerToday, runnerTimezone, runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
+import { runnerToday, runnerTimezone } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
 import { weekWindowFor } from '@/lib/coach/week-window';
 import type { WorkoutSpec } from '@/lib/faff/types';
 import { fellShortShare, resolveWorkoutVerdict } from '@/lib/execution/verdict';
+import { resolveDayExecutions, primaryPrescription } from '@/lib/execution/day-resolver';
+import { resolveStoredPhases } from '@/lib/postrun/load';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PaceAnchorRead } from '@/lib/training/prescription-resolver';
 import { roundTo } from '@/lib/format/run';
@@ -130,15 +132,16 @@ export interface GlanceState {
    * E5 · how TODAY's completed run actually went vs what was prescribed.
    * Drives the done-state copy in glance-adapter (resolveDayState +
    * poster/sibling) so a missed or abandoned session no longer reads
-   * "ON TARGET". Derived from the frozen watch-completion phases (same
-   * source as loadPhaseBreakdown), not doneMi alone — Jun 2 ran the planned
-   * mileage but missed 2 of 4 reps, invisible to a distance check.
+   * "ON TARGET". Derived from the frozen watch-completion phases OF THE RUN
+   * THAT SATISFIED TODAY'S PRESCRIPTION (`resolveDayExecutions` naming the
+   * run, `resolveStoredPhases` naming its phases — SIMROW-1 · GLANCE), not
+   * doneMi alone: Jun 2 ran the planned mileage but missed 2 of 4 reps,
+   * invisible to a distance check.
    *   · 'nailed' — ran today, hit the work (or no negative signal / non-watch)
    *   · 'short'  — the WORK (quality) block was cut short (a work phase didn't
-   *               complete) or missed pace vs the HEAT-ADJUSTED target. Cutting
-   *               only a warmup/cooldown short does NOT count, and a run done
-   *               correctly for the heat is not "short" (weather-adjusted like
-   *               the phase panel) — the quality is what defines the session
+   *               complete) or missed pace vs its target. Cutting only a
+   *               warmup/cooldown short does NOT count — the quality is what
+   *               defines the session
    *   · 'over'   — ran ≥1.25× the planned distance (the deferred ease-off case)
    *   · null     — no run logged today (the done-state isn't active)
    * Optional: loadGlanceState always sets it for real data; minimal fixtures
@@ -228,52 +231,83 @@ export interface GlanceState {
 
 /**
  * E5 · classify how TODAY's completed run went vs the prescription.
- * Reads the frozen watch-completion phases (same field-date query as
- * loadPhaseBreakdown / the recap route) so a missed-rep session is caught
- * even when total mileage matched the plan. Cold-start / non-watch / no-phase
- * runs default to 'nailed' (a logged run with no negative signal). Returns
- * null when there's no run today, so the done-state simply isn't active.
- *
- * Targets are HEAT-ADJUSTED before judging (mirrors loadPhaseBreakdown), so a
- * run executed correctly for the conditions isn't called short — the watch's
- * on-device verdict is weather-unaware and is NOT trusted here.
+ * Reads the frozen watch-completion phases OF THE RUN THAT SATISFIED TODAY'S
+ * PRESCRIPTION, so a missed-rep session is caught even when total mileage
+ * matched the plan. Cold-start / non-watch / no-phase runs default to 'nailed'
+ * (a logged run with no negative signal). Returns null when there's no run
+ * today, so the done-state simply isn't active.
  *
  * Only WORK phases count — cutting a warmup/cooldown short (status='abandoned'
  * during the CD) is not "coming up short" on the session. Threshold (tunable
  * coach judgment): 'short' when a work phase didn't complete, or ≥ ~1/3 of the
- * ran work phases missed the heat-honest target — leaving a single off-rep in a
- * long set as still "nailed".
+ * ran work phases missed the target — leaving a single off-rep in a long set as
+ * still "nailed".
  */
-async function computeTodayExecution(
+/* EXPORTED SO IT CAN BE TESTED, and for no other reason — `loadGlanceState`
+ * below is its only production caller. Same argument as `mapWatchPhases` in
+ * `lib/coach/run-state.ts`: the row-identity defect this function carried
+ * (SIMROW-1 · GLANCE) was unreachable from any test while it was private, and
+ * a defect nothing can reach is a defect nothing can catch (Rule 15). See
+ * `_glance_done_state_row_identity.test.ts`. */
+export async function computeTodayExecution(
   userId: string,
   today: string,
   todayRow: GlanceWeekDay | undefined,
 ): Promise<'nailed' | 'short' | 'over' | null> {
   if (!todayRow || todayRow.doneMi < 0.5) return null; // no run today
-  // 2026-08-27 · the #HHmm-suffix branch below was itself the fix for the
-  // fallback's flaw (P1-34), but a treadmill completion's field (`trd_<uuid>`)
-  // carries no date suffix at all and always falls through to it — so every
-  // treadmill run still hit the UTC-shifted date compare this comment warned
-  // about. Convert to the runner's own timezone before taking the date.
-  // runnerTimezoneOrPacific — this is the exact "coach_intents
-  // watch-completion day bucketing" case that helper is named for. A
-  // runner with no stored timezone is legacy single-user-era data
-  // stamped in Pacific wall time, never UTC.
-  const tz = await runnerTimezoneOrPacific(userId).catch(() => 'America/Los_Angeles');
-  const row = (await pool.query(
-    `SELECT value FROM coach_intents
-      WHERE COALESCE(user_uuid, user_id) = $1
-        AND reason = 'watch_completion'
-        AND (CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
-                  THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-                  ELSE (ts AT TIME ZONE $3::text)::date = $2::date END)
-      ORDER BY ts DESC LIMIT 1`,
-    [userId, today, tz],
-  ).catch(() => ({ rows: [] }))).rows[0];
+
+  /* ── WHICH COMPLETION IS *TODAY'S RUN'S* (SIMROW-1 · GLANCE, 2026-09-08) ──
+   *
+   * This used to run its own `coach_intents` query — the runner, the reason,
+   * and the DAY, `ORDER BY ts DESC LIMIT 1`, over a swallowing catch that
+   * turned any failure into an empty result set — and grade whatever came back. It named no run at all, so on a day
+   * carrying more than one completion payload the done-state on Today was
+   * decided by whichever payload was written LAST.
+   *
+   * Measured against the owner's production rows, not theorised. On
+   * 2026-09-02 he ran 6.41 mi easy with six strides and the day also carries
+   * two `sim-recovery-live` payloads posted 47 minutes later; the query took
+   * one of those, whose single work phase carries the stored verdict
+   * `missed`, and Today told him he had come up SHORT on a session he
+   * nailed. On 2026-09-03 the day carries a 12:25 watch run and a 17:25
+   * treadmill interval session, and the grade came off whichever landed
+   * second regardless of which run the strip was describing.
+   *
+   * TWO questions, two owners, and neither of them is a date:
+   *   · WHICH RUN executed today's prescription — `lib/execution/day-resolver.ts`
+   *     (`resolveDayExecutions` + `primaryPrescription`), the one resolver
+   *     EXECID-SCAN-1 exists to keep surfaces from re-deriving. A run that
+   *     merely happened today has not necessarily satisfied anything.
+   *   · WHICH STORED PHASE ARRAY belongs to that run —
+   *     `lib/postrun/load.ts#resolveStoredPhases`, whose three rungs are the
+   *     ref this run NAMES, the run row's own `data.phases`, and only then a
+   *     `sim-`-bounded legacy date match.
+   *
+   * Rule 11 · NOTHING MATCHING IS AN ANSWER. When no run satisfied today's
+   * prescription, or the matched run carries no phases, this grades nothing
+   * and falls through to the volume read below — the same 'nailed'/'over' a
+   * genuine non-watch run has always produced. It does NOT reach for another
+   * payload. A done-state graded off a stranger's reps is worse than one
+   * graded off no reps at all, because it is confidently wrong.
+   *
+   * NO `.catch`, deliberately, for the reason `resolveStoredPhases` gives in
+   * its own header: an empty array and a FAILED read are different facts, and
+   * the swallow that used to sit here turned a database outage into a
+   * confident "nailed". `loadGlanceState`'s callers already carry the
+   * failure — /api/v5/today turns it into the honest data-outage screen.
+   *
+   * The SPEC is still `todayRow`'s — the same active-plan row the strip and
+   * the poster draw — so the session is classified exactly as it was before
+   * this fix; only the phases changed. */
+  const resolvedToday = await resolveDayExecutions(userId, today);
+  const matchedRun = primaryPrescription(resolvedToday)?.matchedRun ?? null;
+  const phases = matchedRun
+    ? await resolveStoredPhases(userId, today, matchedRun.data as Record<string, unknown>)
+    : [];
 
   const overreach = todayRow.plannedMi > 0 && todayRow.doneMi >= todayRow.plannedMi * 1.25;
 
-  if (row?.value) {
+  if (phases.length > 0) {
     /* VERDICT-1 (2026-09-01) · THE canonical grade, not a local comparator.
      *
      * This walked the work phases itself through `heatAdjustedStatus` at its
@@ -291,7 +325,7 @@ async function computeTodayExecution(
     const grade = resolveWorkoutVerdict({
       type: todayRow.plannedType,
       spec: (todayRow.plannedSpec ?? null) as Record<string, unknown> | null,
-      phases: row.value,
+      phases,
     });
     const shortShare = fellShortShare(grade);
     if (grade.work.incomplete || (shortShare != null && shortShare >= 0.34)) return 'short';

@@ -23,12 +23,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
-import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
 import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { composeRecap } from '@/lib/faff/recap-voice';
 import { resolveCanonicalRunRowId } from '@/lib/runs/canonical-ref';
-import { loadPostRunExperience } from '@/lib/postrun/load';
+import { loadPostRunExperience, resolveStoredPhases } from '@/lib/postrun/load';
+import { recapPhaseReadings } from '@/lib/coach/recap-phase-readings';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
 import { mapWatchPhases } from '@/lib/coach/run-state';
 import { resolveWorkoutVerdict } from '@/lib/execution/verdict';
@@ -50,20 +50,6 @@ const PHASE_FROM_LABEL: Record<string, Phase> = {
   TAPER: 'TAPER', taper: 'TAPER',
   RECOVERY: 'RECOVERY', recovery: 'RECOVERY',
 };
-
-/** Most common value in a list (ties resolve to the first seen). Picks the
- *  representative frozen work-phase target across reps (E3). */
-function modePace(xs: number[]): number {
-  const counts = new Map<number, number>();
-  let best = xs[0];
-  let bestN = 0;
-  for (const x of xs) {
-    const n = (counts.get(x) ?? 0) + 1;
-    counts.set(x, n);
-    if (n > bestN) { bestN = n; best = x; }
-  }
-  return best;
-}
 
 /** seconds-per-mile → "M:SS/mi". */
 function fmtPaceSlash(s: number): string {
@@ -242,64 +228,68 @@ export async function GET(
   // and it is read through the reconciler like every other fact here.
   const plannedMi = planRow?.distance_mi ? Number(planRow.distance_mi) : actualMi;
 
-  // A4 — load per-rep phases from coach_intents for interval/structured
-  // runs. Same query as loadPhaseBreakdown in run-state.ts; winIntervals
-  // uses these instead of unreliable per-mile splits.
-  // Cold-start: returns [] when no watch_completion intent exists (any
-  // runner's first run, non-Faff-watch sources, open easy runs).
-  let winPhases: Array<{ type?: string | null; verdict?: string | null; actualPaceSPerMi?: number | null; targetPaceSPerMi?: number | null; actualDistanceMi?: number | null; isFinishSegment?: boolean; actualSpeedMph?: number | null; actualInclinePct?: number | null; completed?: boolean | null; avgHr?: number | null; actualDurationSec?: number | null }> = [];
-  if (date) {
-    try {
-      // 2026-08-27 · the #HHmm-suffix branch fixed the field-suffix check,
-      // but a treadmill completion's field (`trd_<uuid>`) carries no date
-      // suffix at all and always falls through to the ts::date fallback —
-      // still UTC-shifted, still the wrong calendar day for a run after
-      // ~5pm Pacific. Convert to the runner's own timezone before comparing.
-      // runnerTimezoneOrPacific, not the plain UTC-fallback variant — see
-      // today/route.ts's identical comment: this is the exact
-      // "coach_intents watch-completion day bucketing" case that helper is
-      // named for. A runner with no stored timezone is legacy single-user-
-      // era data stamped in Pacific wall time, never UTC.
-      const recapTz = await runnerTimezoneOrPacific(userId).catch(() => 'America/Los_Angeles');
-      const intentRow = (await pool.query(
-        `SELECT value FROM coach_intents
-          WHERE COALESCE(user_uuid, user_id) = $1
-            AND reason = 'watch_completion'
-            AND (
-              CASE WHEN field ~ '-[0-9]{4}-[0-9]{2}-[0-9]{2}(#[0-9]+)?$'
-                   THEN field ~ ('-' || $2::text || '(#[0-9]+)?$')
-                   ELSE (ts AT TIME ZONE $3::text)::date = $2::date
-              END
-            )
-          ORDER BY ts DESC LIMIT 1`,
-        [userId, date, recapTz],
-      )).rows[0];
-      if (intentRow?.value) {
-        let payload: any = intentRow.value;
-        if (typeof payload === 'string') { try { payload = JSON.parse(payload); } catch { /* leave as-is */ } }
-        const phases = Array.isArray(payload?.phases) ? payload.phases : [];
-        winPhases = phases.map((p: any) => ({
-          type: p.type ?? null,
-          verdict: p.verdict ?? null,
-          actualPaceSPerMi: Number(p.actualPaceSPerMi) || null,
-          targetPaceSPerMi: Number(p.targetPaceSPerMi) || null,
-          actualDistanceMi: Number(p.actualDistanceMi) || null,
-          // RULE 16 · carried so the recap's threshold-band sentences can be
-          // gated on the WORK heart rate rather than the whole run's.
-          avgHr: Number(p.avgHr) || null,
-          actualDurationSec: Number(p.actualDurationSec) || null,
-          isFinishSegment: p.isFinishSegment === true,
-          // BELT-WIN-1 · the treadmill console's own readings, carried so
-          // `winTreadmill` has something to read. `completed` keeps its
-          // three states — a phase that never said is not a phase that
-          // said no, and the composer's `!== false` test depends on that.
-          actualSpeedMph: Number(p.actualSpeedMph) || null,
-          actualInclinePct: typeof p.actualInclinePct === 'number' ? p.actualInclinePct : null,
-          completed: typeof p.completed === 'boolean' ? p.completed : null,
-        }));
-      }
-    } catch { /* non-fatal: win falls back to per-mile heuristic */ }
-  }
+  /* ── WHICH COMPLETION IS *THIS RUN'S* (SIMROW-1 · RECAP, 2026-09-08) ──────
+   *
+   * A4 — the per-rep phases the recap sentences are built from. This block
+   * used to run its own `coach_intents` query: the runner, the reason, and the
+   * DAY, `ORDER BY ts DESC LIMIT 1`, wrapped in a swallowing try/catch. It was
+   * never joined to `runRow.id` — the run this route was asked about, resolved
+   * through `resolveCanonicalRunRowId` sixty lines above — so on any day
+   * carrying more than one completion payload it built the recap from
+   * whichever was written last. It was the ONLY unmodified copy of the defect
+   * left: no `watchCompletionRef` branch and, unlike `loadPhaseBreakdown`, not
+   * even the `sim-%` bound.
+   *
+   * Confirmed against the owner's own rows, read straight out of production —
+   * not theorised. Three days resolve to a stranger, and the recap is a
+   * different, worse reading than the Today card's on each:
+   *
+   *   2026-09-02  his 6.41 mi easy + 6 strides, 7 work phases, 5.33 work mi
+   *               at 8:26/mi, frozen target 401 s/mi. The route took
+   *               `sim-recovery-live#1038` — a SIMULATOR payload, 47 minutes
+   *               later — whose single work phase is 31 s / 0.09 mi. So
+   *               `repCount` 1 for 7, `workDistanceMi` 0.09 for 5.33,
+   *               `workPaceSPerMi` 5:44 for 8:26, and `frozenTargetSPerMi`
+   *               391 for 401 — which is `evalPlannedPaceSPerMi`, the target
+   *               the WHOLE verdict is judged against and which this route
+   *               returns on the wire as `prescribed_pace_s_per_mi`.
+   *   2026-09-03  a 4.48 mi 12:25 watch run with no completion of its own
+   *               BORROWED the 21-phase interval session recorded at 17:25
+   *               that evening. Five hours and a different workout.
+   *   2026-06-01  his 4.9 mi session took a `trd_` treadmill payload of his
+   *               own — one 0-mile phase, no frozen target at all.
+   *
+   * The 2026-09-03 case is the one worth naming twice, and it is NOT closed by
+   * this change. Nothing matches that run — its `client_workout_id` names no
+   * intent and it carries no phases — so the honest answer is that there are
+   * none. `resolveStoredPhases`' third rung is a LEGACY date match for rows
+   * written before `watchCompletionRef` existed, bounded only against `sim-%`,
+   * and the evening treadmill payload is not `sim-`-prefixed. It still wins.
+   * Fixing that is one clause in the OWNER (rung 3 does not run when the run
+   * named a ref) and it moves `/api/v5/today`, run detail and the post-run
+   * experience too, so it belongs to whoever owns that resolver rather than
+   * here. Exactly one of the account's 160 canonical runs is affected. It is
+   * pinned, with the evidence, in `_recap_phase_row_identity.test.ts`'s
+   * "known gap" block, which fails the day it is fixed.
+   *
+   * Rule 14: filtering on the runner and the day is not filtering on the right
+   * ROWS. Rule 16: `lib/postrun/load.ts#resolveStoredPhases` already owns
+   * "which stored phase array belongs to this run" — run detail, the post-run
+   * experience and `/api/v5/today` all read it — so this calls it rather than
+   * keeping another answer. Its three rungs, most specific first: the intent
+   * this run NAMES via `watchCompletionRef`; the run row's OWN `data.phases`,
+   * written verbatim by the same request; and only then the legacy date match,
+   * bounded so a `sim-` field can never satisfy it.
+   *
+   * NO try/catch, deliberately. An empty array and a FAILED read are different
+   * facts (Rule 11), and the swallow that used to sit here degraded the recap
+   * to the per-mile heuristic without saying so. A genuine database failure
+   * now propagates to the route's own 500, which is the honest outcome.
+   *
+   * Cold-start is unchanged and still returns `[]`: a runner's first run, a
+   * non-Faff-watch source, an open easy run. */
+  const phaseReadings = recapPhaseReadings(await resolveStoredPhases(userId, date, data));
+  const winPhases = phaseReadings.phases;
 
   /* SPLITS · deliberately NOT gated on `runc.splitsCoverRun`.
    *
@@ -337,42 +327,21 @@ export async function GET(
   // The phase panel already judges vs the frozen target (loadPhaseBreakdown);
   // this aligns the recap/win to the same contract. Fall back to the live plan
   // only when no frozen phase exists (non-watch runs, manual entries, cold-start).
-  const frozenWorkTargets = winPhases
-    .filter((p) => p.type === 'work' && p.targetPaceSPerMi)
-    .map((p) => p.targetPaceSPerMi as number);
-  const frozenTargetSPerMi = frozenWorkTargets.length > 0 ? modePace(frozenWorkTargets) : null;
+  //
+  // ALL SIX OFF ONE ARRAY — `phaseReadings`, which SIMROW-1 · RECAP above
+  // resolved to THIS RUN'S completion rather than to whatever payload was
+  // posted last on this date. The derivations themselves moved to
+  // `lib/coach/recap-phase-readings.ts` so a test can exercise the exact code
+  // this route runs; see that file's header for why an inline mapping made
+  // them unreachable. Nothing here may re-derive one of them from a different
+  // array (Rule 16) — a rep count from one payload beside a pace from another
+  // is the shape of the defect, not a lesser version of it.
+  const {
+    frozenTargetSPerMi, workPaceSPerMi, workDistanceMi, repCount, repPaces,
+  } = phaseReadings;
   const livePlanTargetSPerMi = planRow?.pace_target_s ?? null;
   const evalPlannedPaceSPerMi = frozenTargetSPerMi ?? livePlanTargetSPerMi;
 
-  // Work-phase pace + distance for tempo recap copy. Both derived from the
-  // same work-phase filter so the "4.0 mi @ 7:18" pair is always consistent.
-  const workPhases = winPhases.filter((p) => p.type === 'work' && p.actualPaceSPerMi);
-  const workDistMiRaw = workPhases.reduce((s, p) => s + (p.actualDistanceMi ?? 0), 0);
-  const workDistanceMi: number | null = workDistMiRaw > 0 ? workDistMiRaw : null;
-  // AUDIT #33 · DISTANCE-WEIGHTED work pace = total work time / total work
-  // distance. The old unweighted mean of rep paces over-/under-weighted short
-  // reps (1mi@6:00 + 0.5mi@7:00 → mean 6:30 but true avg 6:20) and disagreed
-  // with the workDistanceMi printed beside it. For equal-length reps the
-  // weighted value EQUALS the mean, so this is a no-op on the standard set.
-  // Weight only phases that carry a real distance; fall back to the unweighted
-  // mean when none do (so we never lose a value we previously had).
-  const weightablePhases = workPhases.filter((p) => (p.actualDistanceMi ?? 0) > 0);
-  const workPaceSPerMi: number | null = (() => {
-    if (workPhases.length === 0) return null;
-    if (weightablePhases.length > 0) {
-      const totalDist = weightablePhases.reduce((s, p) => s + (p.actualDistanceMi as number), 0);
-      const totalTime = weightablePhases.reduce(
-        (s, p) => s + (p.actualPaceSPerMi as number) * (p.actualDistanceMi as number), 0);
-      return totalDist > 0 ? totalTime / totalDist : null;
-    }
-    // No phase carries a distance — keep the legacy unweighted mean.
-    return workPhases.reduce((s, p) => s + (p.actualPaceSPerMi as number), 0) / workPhases.length;
-  })();
-  const repCount: number | null = workPhases.length > 0 ? workPhases.length : null;
-  // Per-rep actual paces (in rep order) for the interval pacing-pattern read.
-  const repPaces: number[] = workPhases
-    .map((p) => p.actualPaceSPerMi as number)
-    .filter((p) => typeof p === 'number' && p > 0);
   // Prescribed rep count · lets the recap say "did 3 of 4" when reps were
   // missed or the session stopped early, instead of treating the reps run
   // as the whole workout.
@@ -387,8 +356,9 @@ export async function GET(
   const finishMiSpec = type === 'long' ? (Number((planRow?.workout_spec as any)?.finish_mi) || null) : null;
   const finishPaceSpec = type === 'long' ? (Number((planRow?.workout_spec as any)?.finish_pace_s_per_mi) || null) : null;
   const finishLabelRaw = type === 'long' ? (String((planRow?.workout_spec as any)?.finish_label ?? '').trim() || null) : null;
-  const finishPhase = winPhases.find((p) => p.isFinishSegment === true && p.actualPaceSPerMi != null);
-  const finishPaceSPerMi = finishPhase?.actualPaceSPerMi ?? finishPaceSpec;
+  // Off the SAME `phaseReadings` as everything above — never a seventh read of
+  // a possibly-different array.
+  const finishPaceSPerMi = phaseReadings.finishPaceSPerMi ?? finishPaceSpec;
 
   /* THE RACE BEHIND THIS RUN, for the recap's per-finding race-recency filter.
    *

@@ -365,13 +365,14 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/coach/easy-discipline.ts::loadEasyDiscipline',
   'lib/coach/episode-log.ts::<module>',
   'lib/coach/episode-log.ts::<module>',
-  // One, not two, since 2026-09-01: `computeTodayExecution` no longer runs the
-  // weather query it used to swallow. That query existed only to feed a heat
-  // allowance the pace comparator stopped reading on 2026-08-27, and the whole
-  // comparator is gone — the done-state reads the canonical verdict
-  // (`lib/execution/verdict.ts`) instead. The remaining entry is the
-  // coach_intents read.
-  'lib/coach/glance-state.ts::computeTodayExecution',
+  // ZERO since SIMROW-1 · GLANCE (2026-09-08). It was one, not two, from
+  // 2026-09-01 — the weather query it used to swallow went with the heat
+  // comparator — and the last entry was the `coach_intents` read itself, which
+  // is gone with the query. The done-state now asks
+  // `resolveDayExecutions` which run satisfied today's prescription and
+  // `resolveStoredPhases` which phases are that run's, and neither catches:
+  // a database failure reaching this function used to become a confident
+  // "nailed" on the runner's own Today screen.
   // SKIPOWNER-1 (2026-09-07) · 4 -> 3 for this function. The
   // `day_actions … action='skip'` read ended in `.catch(() => ({ rows: [] }))`,
   // so a failed read became a confident "nothing skipped" — and that answer
@@ -783,7 +784,14 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // MERGE (2026-09-08) · both SKIPOWNER-1 and SIMROW-1 removed a different
 // swallow from 351, each independently landing on 350. Combining them (not
 // picking one) is the correct resolution: 351 -> 350 -> 349.
-export const EMPTIED_BASELINE = 349;
+// SIMROW-1 · GLANCE (2026-09-08) · 349 -> 348. `computeTodayExecution` no
+// longer runs its own `watch_completion` lookup, so the
+// `.catch(() => ({ rows: [] }))` over it is gone with the query. Same shape
+// and same argument as the Today route's, one screen further in: an empty
+// result there did not degrade anything visibly, it reported the runner's
+// session as cleanly executed — and the query it guarded was grading whichever
+// payload the DAY happened to carry last, not the run's own.
+export const EMPTIED_BASELINE = 348;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
