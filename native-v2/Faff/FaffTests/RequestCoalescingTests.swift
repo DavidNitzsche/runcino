@@ -108,9 +108,12 @@ final class RequestCoalescingTests: XCTestCase {
     /// deleted; the endpoint now routes through this same
     /// `V5RequestCoalescer`/`TestableCoalescer` shape, and the special case
     /// falls out of URL-keying for free — a `?date=` query string is a
-    /// different map key. This proves that property directly against the
-    /// real request shapes: two of the three cold-launch callers ask for
-    /// "today" (no date) while a concurrent legacy-shell day-preview asks
+    /// different map key. This proves that property against `TestableCoalescer`,
+    /// a hand-maintained COPY of the real actor — see WATCH-TODAY-SINGLEFLIGHT-2
+    /// below for the same property proved against the real
+    /// `V5RequestCoalescer.shared`, which is the one that actually enforces it.
+    /// Real request shapes either way: two of the three cold-launch callers ask
+    /// for "today" (no date) while a concurrent legacy-shell day-preview asks
     /// for a specific date, and the dated call must NOT share today's
     /// in-flight slot.
     func testDatedWatchTodayRequestDoesNotShareTodaysSlot() async throws {
@@ -322,7 +325,7 @@ final class CountingTransportStub: URLProtocol {
     /// How long a response is held open: long enough that every caller in a
     /// test has entered the actor before the first one finishes and its
     /// `defer` clears the slot, short enough to keep the suite fast.
-    private static let holdOpenSec = 0.15
+    nonisolated private static let holdOpenSec = 0.15
 
     nonisolated static func reset() {
         lock.lock(); defer { lock.unlock() }
