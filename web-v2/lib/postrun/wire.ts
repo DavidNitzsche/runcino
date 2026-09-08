@@ -53,6 +53,22 @@ export interface PostRunWire {
    * `PostRunExecution.targetProvenanceNote` for the full reasoning.
    */
   targetProvenanceNote: string | null;
+  /**
+   * TODAYHERO-1 (2026-09-07) · true exactly when `execution.reasons` carries
+   * `NO_PHASE_STRUCTURE_RECORDED` — the SAME signal `headline`/`summary`
+   * already speak in prose ("Run recorded" / "This run carries no session
+   * structure, so there is nothing to grade it against."). Reused rather than
+   * re-derived: a caller that needs this as a BOOLEAN (Today's hero, deciding
+   * whether to present the day's planned word or the run itself as the
+   * story) must not re-guess it from `headline` text or from the day's own
+   * `todayPlan` — a plan-shaped guess and a run's own graded verdict can
+   * disagree (see `lib/faff/v5-today.ts`'s `after_run` branch for the one
+   * case that matters: a day with genuinely no prescription at all always
+   * puts the runner's ONLY run through this exact branch, so the two checks
+   * happen to agree there — but nothing else in this file should assume that
+   * and re-derive it a second way).
+   */
+  noPrescribedStructure: boolean;
   cost: string | null;
   learned: string;
   change: string;
@@ -141,6 +157,7 @@ export function postRunWire(x: PostRunExperienceV1): PostRunWire {
     headline: x.execution.headline,
     summary: x.execution.summary,
     targetProvenanceNote: x.execution.targetProvenanceNote,
+    noPrescribedStructure: x.execution.reasons.includes('NO_PHASE_STRUCTURE_RECORDED'),
     cost: x.cost.summary,
     learned: x.evidence.runnerSummary,
     change: x.plan.runnerSummary,

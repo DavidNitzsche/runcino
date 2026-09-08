@@ -192,7 +192,13 @@ struct TodayAfterV5: View {
                 // right under the hero, never inside it — visible, never a
                 // second completion. See `supplementalRunsSection`'s own
                 // doc comment for why.
-                if !model.supplementalRuns.isEmpty {
+                //
+                // Gated on the DEDUPLICATED list (TODAYHERO-1), not the raw
+                // wire array — on a day with no prescription at all, the
+                // day's only run IS this screen's hero, and after it is
+                // filtered out of `supplementalRuns` an empty "Also today"
+                // group must not still draw.
+                if !deduplicatedSupplementalRuns.isEmpty {
                     supplementalRunsSection
                 }
                 // Block-transition note (2026-08-28) — same section the
@@ -657,9 +663,24 @@ struct TodayAfterV5: View {
     /// unrelated 4.48mi easy run once rendered AS the day's graded interval
     /// session; this is the correct representation of what actually
     /// happened, distinct from that completion, not merely hidden from it.
+    /// TODAYHERO-1 (2026-09-07) · belt-and-suspenders against the exact
+    /// duplicate David hit live: on a day with no prescription at all, the
+    /// server used to re-query "today's run" separately from the resolver
+    /// that builds `supplementalRuns`, so the SAME run drew once as this
+    /// screen's own hero and again here, demoted, captioned "not part of
+    /// today's session" under a hero built from its own numbers. Fixed at
+    /// the source (`lib/faff/v5-today.ts`'s `after_run` branch excludes
+    /// `runId` from `supplementalRuns` before the wire is built) — this
+    /// filter is the second guarantee, not the first, so an older cached
+    /// payload or a future regression upstream cannot reintroduce the
+    /// self-footnote either.
+    private var deduplicatedSupplementalRuns: [V5SupplementalRun] {
+        model.supplementalRuns.filter { $0.runId != model.runId }
+    }
+
     private var supplementalRunsSection: some View {
         ListGroup(header: "Also today") {
-            ForEach(model.supplementalRuns) { run in
+            ForEach(deduplicatedSupplementalRuns) { run in
                 ListRow(
                     label: FaffFmt.miles(run.distanceMi).map { "\($0) easy" } ?? "Extra run",
                     sub: run.indoor ? "Treadmill · not part of today's session" : "Not part of today's session",

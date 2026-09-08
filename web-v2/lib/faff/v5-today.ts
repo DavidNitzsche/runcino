@@ -1988,8 +1988,39 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
   if (ctx.recentRun) {
     const built = buildRecentRun(ctx.recentRun);
     const t = EMPTY_TODAY(ctx.todayISO, 'after_run', ctx.planVersion);
+    /* TODAYHERO-1 (2026-09-07) · David, live, real phone: today was a
+     * prescribed REST day and he ran anyway (5.01 mi). The hero kept the
+     * day's PLANNED word ("Rest") and crammed the run's own distance/time/
+     * pace underneath it, while the very same run repeated one section down
+     * as a demoted "Also today" row captioned "Not part of today's session"
+     * — the run that IS this screen's entire story, footnoted under a
+     * headline that no longer describes what happened. His own words: "this
+     * was a rest but I ran... I want the full post-run screen."
+     *
+     * `ctx.postRun.noPrescribedStructure` is the REUSED signal, not a second
+     * derivation of "was today prescribed" — see its own doc comment on
+     * `PostRunWire`. It is `readExecution`'s `NO_PHASE_STRUCTURE_RECORDED`
+     * reason, the exact fact that already speaks through
+     * `postRun.headline`/`summary` ("Run recorded" / "This run carries no
+     * session structure, so there is nothing to grade it against.") on this
+     * very screen. In THIS branch specifically it agrees with "today carries
+     * no prescription at all": `ranToday` (route.ts) only reaches
+     * `ctx.recentRun` unmatched-query path when `todayPrimary` (the day's own
+     * prescription) is null, so a run with nothing to grade against and a day
+     * with nothing prescribed are the same fact here, checked once.
+     *
+     * When it holds, the hero names the RUN — there is no prescription left
+     * to name — and the day's planned word (when there was one) moves to the
+     * kicker, so "it was supposed to be a rest day" is still said, just not
+     * as the 56pt headline sitting over a real run's numbers. A day that DOES
+     * carry a real prescription (a graded quality session, an easy run that
+     * matched) is untouched — this only fires when there was nothing to grade
+     * the run against in the first place. */
+    const noPrescribedStructure = ctx.postRun?.noPrescribedStructure === true;
+    const plannedWord = displayTypeFor(ctx.todayPlan?.type, ctx.todayPlan?.subLabel);
+    const restKicker = noPrescribedStructure && plannedWord === 'Rest' ? 'Scheduled rest, logged anyway' : null;
     t.panel = {
-      dayState: dayStateWordFor(ctx.todayPlan?.type),
+      dayState: noPrescribedStructure ? 'easy' : dayStateWordFor(ctx.todayPlan?.type),
       quiet: false,
       place: 'Today',
       dateLine: ctx.phaseLine ?? dateLineFor(ctx.todayISO),
@@ -2006,8 +2037,8 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
       // twice on one screen" — is satisfied by deleting it, not by finding it
       // a different number to hold.
       weekLine: null,
-      kicker: built.panelKicker,
-      type: displayTypeFor(ctx.todayPlan?.type, ctx.todayPlan?.subLabel),
+      kicker: [restKicker, built.panelKicker].filter((s): s is string => !!s).join(' · ') || null,
+      type: noPrescribedStructure ? 'Run' : plannedWord,
       dose: null,
       stats: built.panelStats,
     };
@@ -2063,7 +2094,16 @@ export function composeV5Today(rawCtx: V5TodayContext): V5Today {
     t.whatThisDidToTheWeek = built.whatThisDidToTheWeek;
     t.postRun = ctx.postRun ?? null;
     t.runId = ctx.recentRun.runId;
-    t.supplementalRuns = ctx.supplementalRuns ?? [];
+    /* TODAYHERO-1 · `resolvedToday.supplementalRuns` does not know this run
+     * became `ctx.recentRun` — on a day with no prescription at all, the
+     * route re-queries "today's biggest run" separately from the resolver
+     * (its own comment: "the old, unmatched-population-safe way") rather
+     * than reading it off a claimed prescription, so the SAME run stayed
+     * unclaimed in the resolver's own list and drew a second time, demoted,
+     * as "Also today · not part of today's session" — directly under a hero
+     * built from its own numbers. One run, one row: never the day's hero AND
+     * a footnote to itself. */
+    t.supplementalRuns = (ctx.supplementalRuns ?? []).filter((r) => r.runId !== t.runId);
     t.weekStrip = buildWeekStrip(ctx);
     return t;
   }

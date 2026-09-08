@@ -452,3 +452,104 @@ describe('composeV5Today · state precedence', () => {
     });
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────
+// TODAYHERO-1 (2026-09-07) · a day with no prescribed session structure at
+// all, and a real run, is that run's OWN screen — not a REST hero with the
+// run's numbers crammed underneath it, and a demoted duplicate of the same
+// run one section down. David, live, real phone, a genuine rest day he ran
+// anyway (5.01 mi): "this was a rest but I ran... I want the full post-run
+// screen." Falsified against the pre-fix composer first (both assertions
+// below failed: `panel.type` read 'Rest' and `supplementalRuns` still held
+// the same run id `recentRun` carried).
+describe('after_run · TODAYHERO-1 · no prescribed structure to grade against', () => {
+  function runFor(runId: string, distanceMi: number): NonNullable<V5TodayContext['recentRun']> {
+    return {
+      runId, distanceMi, durationSec: 2369, paceSPerMi: 473,
+      avgHr: 148, indoor: false, speedMph: null, inclinePct: null,
+      askedPaceSPerMi: null, askedHrCap: null, askedHrIsHardCap: false,
+      askedMi: null,
+      facts: [], win: null, conditionsNote: null, coachTip: null,
+      effortAsked: null, effortLogged: null,
+      verdict: 'Run recorded.',
+      zoneShares: null, zoneTarget: null, zoneTargets: [],
+      elevationSamples: null, elevGainFt: null, elevGainMeasured: false,
+      hrMax: 162, cadenceAvg: 168, tempF: 64, workoutType: null,
+      hrAvgWork: null, cadenceAvgWork: null, paceWork: null,
+      routePolyline: null, routeSplits: [], routePhases: [], workoutPhases: [],
+      hrZones: [], paceBand: null,
+      weekDoneMi: distanceMi, weekPlannedMi: null,
+      shoeOptions: [], shoeWorn: null, niggleFlagged: null,
+    };
+  }
+
+  /** The SAME shape `postRunWire()` (`lib/postrun/wire.ts`) actually emits —
+   *  this test locks the composer's own CONSUMPTION of that field, not the
+   *  wire's derivation of it (that is `_postrun_wire_consumed.audit.test.ts`
+   *  and `experience.ts`'s own suite). */
+  function postRunFor(noPrescribedStructure: boolean): NonNullable<V5TodayContext['postRun']> {
+    return {
+      version: 'v1', runId: 'r1', dateISO: TODAY, decisionVersion: 'd1',
+      headline: noPrescribedStructure ? 'Run recorded' : 'Held it honestly',
+      summary: noPrescribedStructure
+        ? 'This run carries no session structure, so there is nothing to grade it against.'
+        : 'The session came in as prescribed.',
+      targetProvenanceNote: null,
+      noPrescribedStructure,
+      cost: null, learned: '', change: 'UNCHANGED', changeState: 'UNCHANGED',
+      changes: [], next: null, why: [], accessibilitySummary: '',
+      capture: null,
+      coverage: {
+        totalDistanceMi: null, structuredDistanceMi: null,
+        overtimeDistanceMi: null, overtimeDurationSec: null,
+        splitCount: null, splitDistanceMi: null,
+      },
+      strides: null,
+    };
+  }
+
+  it('a genuine rest day run anyway names the RUN, not "Rest" — and says so was scheduled rest in the kicker, never the 56pt headline', () => {
+    const out = composeV5Today(baseCtx({
+      todayPlan: null, // the exact overload David's day carried — no row at all
+      recentRun: runFor('r1', 5.01),
+      postRun: postRunFor(true),
+      // The day-resolver's own unclaimed list still carries this run — see
+      // `lib/faff/v5-today.ts`'s own TODAYHERO-1 comment for why.
+      supplementalRuns: [
+        { runId: 'r1', distanceMi: 5.01, durationSec: 2369, paceSPerMi: 473, indoor: false },
+      ],
+    }));
+    expect(out.state).toBe('after_run');
+    expect(out.panel.type).toBe('Run');
+    expect(out.panel.dayState).toBe('easy');
+    expect(out.panel.kicker).toBe('Scheduled rest, logged anyway');
+    // The one run that happened today is the hero. It must never ALSO draw,
+    // demoted, as a footnote to itself.
+    expect(out.supplementalRuns).toEqual([]);
+  });
+
+  it('a graded prescription is untouched — the hero keeps the planned word', () => {
+    const out = composeV5Today(baseCtx({
+      todayPlan: { type: 'easy', subLabel: null, distanceMi: 6, originalType: null, originalSubLabel: null },
+      recentRun: runFor('r2', 6.0),
+      postRun: postRunFor(false),
+    }));
+    expect(out.state).toBe('after_run');
+    expect(out.panel.type).toBe('Easy');
+    expect(out.panel.dayState).toBe('easy');
+  });
+
+  it('a real prescribed session plus a genuine bonus run keeps the prescribed hero and still lists the bonus — this fix does not touch that case', () => {
+    const out = composeV5Today(baseCtx({
+      todayPlan: { type: 'tempo', subLabel: 'THRESHOLD', distanceMi: 8, originalType: null, originalSubLabel: null },
+      recentRun: runFor('r3', 8.0),
+      postRun: postRunFor(false),
+      supplementalRuns: [
+        { runId: 'r4', distanceMi: 3.2, durationSec: 1500, paceSPerMi: 469, indoor: false },
+      ],
+    }));
+    expect(out.state).toBe('after_run');
+    expect(out.panel.type).toBe('Threshold');
+    expect(out.supplementalRuns.map((r) => r.runId)).toEqual(['r4']);
+  });
+});

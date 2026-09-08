@@ -78,6 +78,21 @@ struct PostRunV5: Decodable, Equatable {
     /// Americas Finest City half, the run that found this gap: five real
     /// per-segment targets, graded correctly, attributed to nobody.
     let targetProvenanceNote: String?
+    /// TODAYHERO-1 (2026-09-07) · true exactly when `headline`/`summary`
+    /// already speak "Run recorded" / "This run carries no session
+    /// structure, so there is nothing to grade it against." — the SAME
+    /// `readExecution` reason (`NO_PHASE_STRUCTURE_RECORDED`) carried as a
+    /// boolean rather than re-parsed out of prose. Not read by this screen
+    /// today: `lib/faff/v5-today.ts`'s `after_run` branch already consults
+    /// the server-side twin of this same field (`PostRunWire
+    /// .noPrescribedStructure`) to decide the day's own hero — a rest day
+    /// David ran anyway names the RUN, not the day's planned word — so the
+    /// phone renders `panel` as composed rather than re-deciding it here.
+    /// Decoded anyway so a future reader of this exact fact (this screen,
+    /// `RunDetailV5`, or a test) has ONE field to read rather than re-parsing
+    /// `headline` text, and so this addition is visible to
+    /// `_postrun_wire_consumed.audit.test.ts` rather than a silent gap.
+    let noPrescribedStructure: Bool
     /// Already drawn by the recap tile as the first `fact`. Null when nothing
     /// honest can be said about what the session cost.
     let cost: String?
@@ -132,7 +147,7 @@ struct PostRunV5: Decodable, Equatable {
     enum K: String, CodingKey {
         case version, runId, decisionVersion, headline, summary, targetProvenanceNote, cost
         case learned, change, changeState, changes, next, why, accessibilitySummary
-        case capture, strides, coverage
+        case capture, strides, coverage, noPrescribedStructure
     }
 
     /// LENIENT BY DESIGN, and written out rather than borrowed.
@@ -153,6 +168,7 @@ struct PostRunV5: Decodable, Equatable {
         headline = str(.headline)
         summary = str(.summary)
         targetProvenanceNote = optStr(.targetProvenanceNote)
+        noPrescribedStructure = ((try? c.decodeIfPresent(Bool.self, forKey: .noPrescribedStructure)) ?? false) ?? false
         cost = optStr(.cost)
         learned = str(.learned)
         change = str(.change)
@@ -172,13 +188,15 @@ struct PostRunV5: Decodable, Equatable {
          changeState: String, changes: [String], next: String?, why: [String],
          accessibilitySummary: String,
          capture: String? = nil, strides: PostRunStridesV5? = nil,
-         coverage: PostRunCoverageV5? = nil, targetProvenanceNote: String? = nil) {
+         coverage: PostRunCoverageV5? = nil, targetProvenanceNote: String? = nil,
+         noPrescribedStructure: Bool = false) {
         self.version = version
         self.runId = runId
         self.decisionVersion = decisionVersion
         self.headline = headline
         self.summary = summary
         self.targetProvenanceNote = targetProvenanceNote
+        self.noPrescribedStructure = noPrescribedStructure
         self.cost = cost
         self.learned = learned
         self.change = change
