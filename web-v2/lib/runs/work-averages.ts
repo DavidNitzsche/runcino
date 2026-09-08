@@ -1,4 +1,5 @@
 import { fmtPace } from '@/lib/format/run';
+import { runPhases, type RunData } from '@/lib/runs/run-shape';
 /**
  * lib/runs/work-averages.ts · the run's numbers with the jogging taken out.
  *
@@ -106,4 +107,93 @@ export function workAveragesFromPhases(phases: WorkPhaseSample[]): WorkAverages 
  */
 export function formatWorkPace(sPerMi: number | null): string | null {
   return fmtPace(sPerMi);
+}
+
+/** The three work-scoped numbers exactly as the wire carries them. */
+export interface WorkStatsWire {
+  hrAvgWork: number | null;
+  cadenceAvgWork: number | null;
+  paceWork: string | null;
+}
+
+/**
+ * The three work-scoped stats a post-run screen draws, from STORED phases.
+ *
+ * -- WHY THIS IS HERE AND NOT INLINE IN THE ROUTE (SIMROW-1 · TODAY) ---------
+ *
+ * `/api/v5/today` mapped the raw phase array into `WorkPhaseSample` itself,
+ * with its own hand-written field-name ladder, and then called
+ * `workAveragesFromPhases`. That inline mapping was the only thing standing
+ * between a test and the numbers the runner actually reads, so a test of the
+ * route's work stats had to re-implement it, and a test that re-implements the
+ * code it checks cannot fail on the code changing (Rule 18).
+ *
+ * -- THE NUMERIC CORE COMES FROM ITS OWNER, NOT A LADDER WRITTEN HERE --------
+ *
+ * `run-shape.ts#runPhases` already owns "what is in a stored phase": the three
+ * eras, which fields each populates, that a heart rate outside 30-230 is a
+ * strap sentinel rather than a reading, and that a phase carrying `hrSamples`
+ * but no `avgHr` still has a measured heart rate. The route's copy knew none
+ * of that. `gradeStoredPhases` in `lib/execution/verdict.ts` already routes
+ * through the same owner and says so in its own header; this is that decision
+ * applied to the second consumer.
+ *
+ * Two consequences worth stating, because both are behaviour changes:
+ *
+ *   1. A work phase whose `avgHr` is absent but whose per-second `hrSamples`
+ *      are present now CONTRIBUTES its heart rate instead of being skipped.
+ *      Those phases are real (every work phase of the owner's 2026-09-03 hill
+ *      session is one) and the Today route's `workoutPhases` block already
+ *      computed the same fallback inline for its per-phase rows
+ *      (WORKOUTPHASES-2). The screen's per-phase column and its work average
+ *      now agree by construction rather than by coincidence (Rule 16).
+ *   2. The dead legs of the old ladder are gone. It fell back to `durationSec`,
+ *      `duration_sec`, `distanceMi`, `distance_mi`, `avg_hr` and `avg_cadence`.
+ *      Measured across all 368 stored phases in this account's history, every
+ *      `runs.data.phases` element and every `watch_completion` payload, those
+ *      six spellings appear ZERO times and the `actual`-prefixed camelCase
+ *      ones appear on all of them. The ladder was not compatibility, it was a
+ *      guess, and one of its rungs is what made all three numbers null on
+ *      every watch-completed run until 2026-09-01.
+ *
+ * CADENCE IS READ OFF THE ELEMENT BY POSITION, because `NormalizedPhase` does
+ * not carry it. Same shape and same argument as `gradeStoredPhases` and
+ * `lib/postrun/experience.ts`, both on `_cadence_units`' allowlist for exactly
+ * this: `avgCadence` on a watch PHASE is watch-authored and both-feet already,
+ * and a run-level unit question is not a phase-level one.
+ *
+ * ALL THREE COME FROM ONE ARRAY, always. That is the point of returning them
+ * as a set rather than as three reads: the defect this function was extracted
+ * for put a stranger's heart rate beside a stranger's pace, and a mixed row is
+ * the one outcome that must be impossible by construction (Rule 16).
+ *
+ * A NULL IS NOT A ZERO. `workAveragesFromPhases` weights by time and skips a
+ * phase carrying no reading, so a session whose phases have distance and
+ * duration but no strap returns a real `paceWork` and a null `hrAvgWork`:
+ * "we did not measure it", which is the honest answer, not a reason to
+ * suppress a number we did measure (Rule 11).
+ */
+export function workStatsForDisplay(phases: readonly unknown[]): WorkStatsWire {
+  // Pre-filtered so `normalized[i]` and `elements[i]` name the same phase.
+  // `runPhases` drops non-objects, and cadence is read off the element.
+  const elements = phases.filter(
+    (el): el is Record<string, unknown> => !!el && typeof el === 'object' && !Array.isArray(el),
+  );
+  const normalized = runPhases({ phases: elements } as unknown as RunData);
+  const w = workAveragesFromPhases(normalized.map((n, i) => ({
+    // `n.type` is null for a spelling outside the four the owner knows. The
+    // raw value still decides, because `workAveragesFromPhases` lower-cases
+    // and compares it itself, and dropping the phase here would silently
+    // shrink the work set (Rule 11).
+    type: n.type ?? (typeof elements[i]?.type === 'string' ? (elements[i].type as string) : null),
+    sec: n.actualDurationSec,
+    mi: n.actualDistanceMi,
+    hr: n.avgHr,
+    cadence: Number(elements[i]?.avgCadence) || null,
+  })));
+  return {
+    hrAvgWork: w.hrAvg,
+    cadenceAvgWork: w.cadenceAvg,
+    paceWork: formatWorkPace(w.paceSPerMi),
+  };
 }

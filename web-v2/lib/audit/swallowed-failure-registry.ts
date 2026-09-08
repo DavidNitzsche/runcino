@@ -336,7 +336,6 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'app/api/v5/today/route.ts::composeToday',
   'app/api/v5/today/route.ts::composeToday',
   'app/api/v5/today/route.ts::composeToday',
-  'app/api/v5/today/route.ts::composeToday',
   'app/api/v5/today/route.ts::loadShoes',
   'app/api/watch/workouts/complete/route.ts::POST',
   'app/dev/route-map-mockups/route.ts::loadRun',
@@ -765,7 +764,15 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // reductions, which the gate refused: "EMPTIED_KNOWN holds 351 ids but
 // EMPTIED_BASELINE says 352". A ratchet that only ever moves down is exactly
 // the check that catches a merge keeping the smaller of two decrements.
-export const EMPTIED_BASELINE = 351;
+// SIMROW-1 · TODAY (2026-09-08) · 351 -> 350. `/api/v5/today` no longer runs
+// its own `watch_completion` lookup at all, so the
+// `.catch(() => ({ rows: [] }))` over it is gone with the query. It was the
+// worst-placed swallow of the eleven this route carried: an empty result there
+// did not degrade the screen visibly, it silently swapped the work-scoped
+// pace, heart rate and cadence for nulls — and the query it guarded was
+// selecting the wrong run's payload anyway. `resolveStoredPhases` owns the
+// read now and deliberately does not catch (Rule 11).
+export const EMPTIED_BASELINE = 350;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

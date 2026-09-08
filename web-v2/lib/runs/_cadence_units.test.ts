@@ -227,7 +227,19 @@ describe('cadence units · one label, two units', () => {
         + 'per-leg convention rather than resolving; unverifiable from this side. '
         + 'Raised with the owner 2026-08-24, not changed.',
       'lib/coach/run-state.ts': 'reads `p.avgCadence` off a watch PHASE as well as calling the resolver for the run.',
-      'app/api/v5/today/route.ts': 'reads `ph.avgCadence` off a watch PHASE as well as calling the resolver.',
+      /* `app/api/v5/today/route.ts` was here and is GONE, not moved by hand:
+       * SIMROW-1 · TODAY lifted its work-stat mapping into
+       * `lib/runs/work-averages.ts` (below), and the route now reads no
+       * cadence key of its own at all. Rule 18 · an exemption whose target is
+       * clean is deleted, not kept "in case". */
+      'lib/runs/work-averages.ts':
+        'reads `ph.avgCadence` off a watch PHASE in `workStatsForDisplay`, and '
+        + 'nothing else. Same watch-authored, both-feet field the entries below '
+        + 'are allowed for, and the same argument: a run-level unit question is '
+        + 'not a phase-level one. This is where the v5 Today route\'s own copy '
+        + 'of the mapping went when it was extracted so a test could exercise '
+        + 'the code the route actually runs — one read moved, none added. It '
+        + 'never touches the run-level key and imports no resolver.',
       'lib/execution/verdict.ts':
         'reads `p.avgCadence` off a watch PHASE and nothing else. It is the ONE '
         + 'parser of the completion payload (VERDICT-1), so `mapWatchPhases` and '
