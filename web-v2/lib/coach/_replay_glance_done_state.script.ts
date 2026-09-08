@@ -7,8 +7,17 @@
  * `lib/**\/*.test.ts`. Same shape and same argument as
  * `lib/adaptation/volume-evidence/_replay_real_history.script.ts`.
  *
- *     FAFF_REPLAY_DB=faff_fix_glance_flattering \
+ *     DATABASE_URL=postgresql://localhost:5432/faff_fix_glance_flattering \
  *       npx vitest run --config vitest.glance-replay.config.ts
+ *
+ * `FAFF_REPLAY_DB` was named here at first and nothing ever read it — this
+ * script imports the app's own write-capable `pool` (`@/lib/db/pool`), which
+ * takes its connection from plain `DATABASE_URL`. Following the old header
+ * literally, with `.env.local`'s `DATABASE_URL` pointed at Railway, would
+ * have run this replay against PRODUCTION. Read-only queries only, so no
+ * corruption risk — but `assertHarnessDatabase()` below refuses to start
+ * unless `DATABASE_URL` is a real localhost connection, the same guard
+ * `scripts/adapt-harness.sh`'s own callers rely on.
  *
  * ── WHAT IT MEASURES ────────────────────────────────────────────────────────
  *
@@ -52,6 +61,26 @@ import { resolveDayExecutions, primaryPrescription } from '@/lib/execution/day-r
 import { resolveStoredPhases } from '@/lib/postrun/load';
 import { computeTodayExecution, type GlanceWeekDay } from '@/lib/coach/glance-state';
 import type { WorkoutSpec } from '@/lib/faff/types';
+
+// Loopback-only fence. This replay is meant to run against WHATEVER local
+// scratch database the operator built (name varies by session — unlike
+// `lib/adaptation-harness/fence.ts#assertHarnessDatabase`, which requires
+// one specific fixed database name and would wrongly refuse a differently-
+// named scratch copy), so this checks host only, not database name.
+{
+  const url = process.env.DATABASE_URL;
+  const host = url ? (() => { try { return new URL(url).hostname; } catch { return null; } })() : null;
+  const LOOPBACK = new Set(['localhost', '127.0.0.1', '::1', '[::1]', '']);
+  if (!host || !LOOPBACK.has(host)) {
+    throw new Error(
+      `[glance-replay] REFUSING TO RUN · DATABASE_URL points at host `
+      + `'${host ?? '(unset)'}', which is not loopback. This script reads via `
+      + `the app's own write-capable pool, so a non-local target risks reading `
+      + `(and, via any future edit, writing) production. Point it at a local `
+      + `scratch database built with adapt-harness-substrate.sh.`,
+    );
+  }
+}
 
 const OWNER = process.env.FAFF_REPLAY_OWNER ?? '0645f40c-951d-4ccc-b86e-9979cd26c795';
 

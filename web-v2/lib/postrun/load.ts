@@ -157,11 +157,24 @@ async function loadRun(userId: string, ref: PostRunRef): Promise<RunRow | null> 
  * ── THE POPULATION, STATED (Rule 14) ────────────────────────────────────────
  *
  * This `user_uuid`, CANONICAL rows only (`CANONICAL_ROW_SQL`), the runner's own
- * local day (`runDaySql`), largest first by `runDistanceMiSql`. Every row it
- * can return is a real run of THIS RUNNER'S on THIS DAY. It is a tie-break
- * among the runner's own runs, never a widening of the match: it cannot reach
- * another runner, another date, a merged twin, or a `coach_intents` payload
- * that no run of his names.
+ * local day (`runDaySql`), largest first by `runDistanceMiSql`, `id` as a
+ * deterministic tie-break so two runs of equal distance don't pick a
+ * different winner depending on row order. Every row it can return is a real
+ * run of THIS RUNNER'S on THIS DAY. It is a tie-break among the runner's own
+ * runs, never a widening of the match: it cannot reach another runner,
+ * another date, a merged twin, or a `coach_intents` payload that no run of
+ * his names.
+ *
+ * The exposure this creates is real and worth naming plainly, not just
+ * describing: on a day with two canonical runs and no matched prescription,
+ * this reads the BIGGER run's phases — which, if the smaller run is the one
+ * that actually fell short, means the day's clean run can grade the day,
+ * silently discarding the genuinely-missed work. The failure direction is
+ * flattering, the same shape GLANCE-FALLBACK-1 exists to close elsewhere.
+ * Narrower than the bug it replaced, and rare (4 of 160 real account-days
+ * carry two canonical runs at all), but not zero. A caller that needs to
+ * rule this out should check `resolveDayExecutions` returned no match at
+ * all, not assume a fallback hit means the day was single-run.
  *
  * ── WHAT IT DOES NOT ANSWER ─────────────────────────────────────────────────
  *
@@ -187,7 +200,7 @@ export async function dayBiggestCanonicalRun(
       WHERE user_uuid = $1
         AND ${CANONICAL_ROW_SQL}
         AND ${runDaySql()} = $2
-      ORDER BY ${runDistanceMiSql()} DESC NULLS LAST
+      ORDER BY ${runDistanceMiSql()} DESC NULLS LAST, id DESC
       LIMIT 1`,
     [userId, dateISO],
   );

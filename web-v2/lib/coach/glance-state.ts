@@ -309,8 +309,17 @@ export async function computeTodayExecution(
    * because their own self-reported `type` is the generic 'Run'. The resolver
    * is right — none of them PROVES it executed the prescription. But "I cannot
    * prove which prescription this run completed" is not "the runner has no
-   * session to describe", and collapsing the two is what let four sessions he
-   * cut short be reported back to him as clean.
+   * session to describe", and collapsing the two is what made this function
+   * — the one grading whether a session was cut short — return `nailed` for
+   * four sessions of his that were not. `computeTodayExecution`'s value does
+   * not reach any client surface today (its one consumer,
+   * `lib/faff/glance-adapter.ts`, feeds `buildWorkoutBreakdown`, which
+   * currently returns `null` for both `done_nailed` and `done_ease_off` —
+   * verified 2026-09-08, review of GLANCE-FALLBACK-1). So no runner has
+   * actually read a wrong word yet. That does not make the four wrong grades
+   * a non-issue: this IS the function that will speak once something wires
+   * its output to a screen, and the bug was in the engine's own belief about
+   * those four days, not merely in an unwritten sentence.
    *
    * So this asks the SAME second question `lib/postrun/load.ts#loadRun` has
    * always asked, through the same function: when no prescription is
