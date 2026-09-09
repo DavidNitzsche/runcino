@@ -259,6 +259,12 @@ struct TodayBeforeV5: View {
     /// Present only when `model.paceNote != nil` — the way in must appear
     /// exactly when there is something to say, never as a standing nudge.
     var onOpenPacesMoved: () -> Void = {}
+    /// P0PROPOSALFETCH-1 · re-read Today after `proposalsSection`'s outage
+    /// note asks to retry. This screen "does not fetch" (see file header),
+    /// so the retry itself is the host's `surface.load()` — `TodayBeforeLiveV5`
+    /// hands its own `reload` straight through, the same closure every other
+    /// write in that file already re-triggers on success.
+    var onRetryProposals: () -> Void = {}
     /// DECISION-2 · "link to full race detail" on the race card, present
     /// only when `model.race != nil`. Takes the slug so the caller can push
     /// `V5Route.raceDetail(slug:)` without this file knowing the route enum.
@@ -574,6 +580,7 @@ struct TodayBeforeV5: View {
             proposals: model.proposals ?? [],
             proposalsRead: model.proposalsRead,
             onDetails: { openProposalDetail = $0 },
+            onRetry: onRetryProposals,
         )
     }
 

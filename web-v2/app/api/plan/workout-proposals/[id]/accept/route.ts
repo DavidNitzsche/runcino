@@ -21,7 +21,7 @@ import { asRepricePayload } from '@/lib/plan/reprice-payload';
 import { applyAdaptations } from '@/lib/plan/adapt';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { loadPendingProposalById } from '@/lib/plan/workout-proposals';
-import { readLiveRows, actionFromPending } from '@/lib/brain/proposal/staleness';
+import { readLiveRows, actionFromPending, LEGACY_MUTATING_ACTION_KINDS } from '@/lib/brain/proposal/staleness';
 import { prepareAction } from '@/lib/brain/proposal/execute';
 
 export const dynamic = 'force-dynamic';
@@ -247,8 +247,7 @@ export async function POST(
    * a refusal the runner is owed, not a silent nothing — and the card goes back
    * so he can try again rather than being spent.
    */
-  const LEGACY_KINDS = new Set(['downgrade', 'shave', 'reschedule', 'field_test', 'mark_upgrade']);
-  if (!LEGACY_KINDS.has(proposal.actionKind)) {
+  if (!LEGACY_MUTATING_ACTION_KINDS.has(proposal.actionKind)) {
     console.error(
       `[proposal/accept] ${proposalId} carries kind ${proposal.actionKind} and no readable stored `
       + 'action; the legacy lane has no fields for it',

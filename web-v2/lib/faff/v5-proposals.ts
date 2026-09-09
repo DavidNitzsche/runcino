@@ -48,7 +48,10 @@ import type {
 } from '@/lib/faff/v5-today';
 import { fmtMi } from '@/lib/format/run';
 import type { PendingProposal } from '@/lib/plan/workout-proposals';
-import { actionFromPending, actionShapeOfEngineKind } from '@/lib/brain/proposal/staleness';
+import {
+  actionFromPending, actionShapeOfEngineKind, LEGACY_MUTATING_ACTION_KINDS,
+} from '@/lib/brain/proposal/staleness';
+import { isLedgerAvailable } from '@/lib/brain/ledger/decision-ledger';
 import { deserializeAction } from '@/lib/brain/proposal/serialize';
 import { phoneDirectionOf, actionHeadline } from '@/lib/faff/v5-action-render';
 import { executorFor } from '@/lib/brain/proposal/executor-map';
@@ -335,7 +338,67 @@ export function detailFor(p: PendingProposal): V5ProposalDetailWire {
   };
 }
 
-export function toWire(p: PendingProposal, todayISO: string): V5ProposalWire | null {
+/**
+ * P0PROPOSALFETCH-1 (2026-09-09) · WOULD "DO IT" ACTUALLY LAND RIGHT NOW.
+ *
+ * Only meaningful for a `standing === 'proposal'` card — a condition, a
+ * deferral and a notice draw no accept button at all, so there is nothing
+ * here to say cannot be applied. `mutatePlan`'s `LEDGERREQUIRED-1` refuses
+ * every touch except plan authorship while `plan_decision_ledger` (migration
+ * 166) is absent, and every real apply path a workout proposal can take runs
+ * through it:
+ *
+ *   · a row with a stored `BrainAction` — `executorFor(action).path` is
+ *     `ADAPTATION_PIPELINE`, `REPRICE_APPLY` (reprice/`COORDINATED`) or
+ *     `DIRECT_PLAN_WRITE`, and all three call `mutatePlan` with
+ *     `touches: 'structural'` or `'derivations'` (`lib/plan/adapt.ts`,
+ *     `lib/plan/reanchor-plan.ts`, `lib/brain/proposal/accept.ts`) — blocked.
+ *   · `RECORD_ONLY` (HOLD/REFUSAL/SAFETY_STOP/CONDITIONAL) writes no plan
+ *     row and is never reached here anyway, because `standingOf` maps those
+ *     to `notice`/`condition`, not `proposal` — not blocked, moot.
+ *   · `UNIMPLEMENTED` (ADD_WORKOUT, FREQUENCY_CHANGE) has no apply path at
+ *     all, which is a real, separate, pre-existing gap this task does not
+ *     touch — not a ledger question, so not reported as one here.
+ *   · a row with NO stored action (pre-2026-09-05) falls to the accept
+ *     route's legacy lane for exactly `LEGACY_MUTATING_ACTION_KINDS`, which
+ *     is `applyAdaptations` again — same `touches: 'structural'` door,
+ *     blocked the same way.
+ *
+ * "Leave it" is never affected — `dismiss` never calls `mutatePlan` (its own
+ * route header says so) — so this must gate the accept control only.
+ */
+function applyBlockedBecauseFor(
+  p: PendingProposal,
+  standing: V5ProposalStanding,
+  ledgerAvailable: boolean,
+): string | null {
+  if (standing !== 'proposal' || ledgerAvailable) return null;
+  const action = actionFromPending(p);
+  if (action != null) {
+    const path = executorFor(action).path;
+    if (path === 'RECORD_ONLY' || path === 'UNIMPLEMENTED') return null;
+    return LEDGER_BLOCKED_WHY;
+  }
+  return LEGACY_MUTATING_ACTION_KINDS.has(p.actionKind) ? LEDGER_BLOCKED_WHY : null;
+}
+
+// Coach voice: no em dashes (locked rule, gated everywhere except this
+// proposal surface, which is exactly the gap that let 1,804 rows through
+// elsewhere — not repeating it here).
+const LEDGER_BLOCKED_WHY =
+  'This decision can’t be applied yet. The record it would write to is not set up on '
+  + 'this server. Leave it still works. Try Do it again later.';
+
+export function toWire(
+  p: PendingProposal,
+  todayISO: string,
+  // Defaults `true` (available) rather than being strictly required: the
+  // existing test corpus calls this with no opinion about migration 166 at
+  // all, and the safe default for an unstated ledger state is the one that
+  // does not fabricate a block nothing asked about. The two real callers in
+  // `loadV5PendingProposals` below always pass the measured value.
+  ledgerAvailable: boolean = true,
+): V5ProposalWire | null {
   const direction = directionOf(p.actionKind, p.actionPayload);
   if (direction == null) return null;
   const why = (p.reason ?? '').trim();
@@ -343,11 +406,13 @@ export function toWire(p: PendingProposal, todayISO: string): V5ProposalWire | n
   // runner is asked to accept with nothing said about why. Withheld, not
   // guessed at.
   if (why === '') return null;
+  const standing = standingOf(p, todayISO);
   return {
     id: String(p.id),
     dateISO: p.workoutDateISO,
     direction,
-    standing: standingOf(p, todayISO),
+    standing,
+    applyBlockedBecause: applyBlockedBecauseFor(p, standing, ledgerAvailable),
     headline: headlineFor(p),
     why,
     detail: detailFor(p),
@@ -390,14 +455,22 @@ export async function loadV5PendingProposals(
     // same catch as a throw from `loadPendingProposals` instead of needing a
     // second fallback.
     const todayISO = await runnerToday(userId);
-    const read = await loadPendingProposals(userId);
+    // One probe for the whole list, not one per row: it is a single global
+    // fact about this database, not a per-proposal read, and the cached
+    // probe behind it (`decision-ledger.ts`'s `ledgerTableExists`) already
+    // shares a positive result across callers — this just avoids asking N
+    // times in the same request for a fact that cannot change mid-request.
+    const [read, ledgerAvailable] = await Promise.all([
+      loadPendingProposals(userId),
+      isLedgerAvailable(),
+    ]);
     if (!read.ok) {
       console.log('[v5/today] proposal read FAILED, showing none · '
         + 'this is not the same fact as having none · ' + read.error.message.slice(0, 160));
       return { items: [], read: 'failed', todayISO };
     }
     const items = read.proposals
-      .map((r) => toWire(r, todayISO))
+      .map((r) => toWire(r, todayISO, ledgerAvailable))
       .filter((w): w is V5ProposalWire => w !== null);
     /* ── WITHHOLDLOG-1 (2026-09-05) · A CARD WITHHELD IS SAID OUT LOUD ─────
      *
@@ -416,7 +489,7 @@ export async function loadV5PendingProposals(
     const withheld = read.proposals.length - items.length;
     if (withheld > 0) {
       const kinds = read.proposals
-        .filter((r) => toWire(r, todayISO) === null)
+        .filter((r) => toWire(r, todayISO, ledgerAvailable) === null)
         .map((r) => `${r.id}:${r.actionKind}`)
         .join(', ');
       console.log(

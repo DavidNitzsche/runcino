@@ -78,6 +78,11 @@ struct BlockV5: View {
     /// rejected). Nil default so a caller wiring only the read path still
     /// compiles; the row just does nothing until it is wired.
     var onOpenRunLog: () -> Void = {}
+    /// P0PROPOSALFETCH-1 · re-read Block after `DecisionsSectionV5`'s outage
+    /// note asks to retry. See `TodayBeforeV5.onRetryProposals`'s sibling
+    /// comment — same component, same gap, same fix, so the two hosts do not
+    /// answer "how do I retry this" two different ways (Rule 16).
+    var onRetryProposals: () -> Void = {}
 
     @State private var openWeekID: String?
     @State private var openLibraryID: String?
@@ -98,10 +103,12 @@ struct BlockV5: View {
 
     init(model: V5Block,
          onChanged: @escaping (V5PlanChangeProposal) -> Void = { _ in },
-         onOpenRunLog: @escaping () -> Void = {}) {
+         onOpenRunLog: @escaping () -> Void = {},
+         onRetryProposals: @escaping () -> Void = {}) {
         self.model = model
         self.onChanged = onChanged
         self.onOpenRunLog = onOpenRunLog
+        self.onRetryProposals = onRetryProposals
         _planSheetOpen = State(initialValue: false)
         _stage = State(initialValue: .menu)
         // TOMORROW, not today. The engine's own rule is "pick a window that
@@ -434,6 +441,7 @@ struct BlockV5: View {
             proposals: model.proposals ?? [],
             proposalsRead: model.proposalsRead,
             onDetails: { openProposalDetail = $0 },
+            onRetry: onRetryProposals,
         )
     }
 
