@@ -1,0 +1,350 @@
+# faff.run — Canonical Handback (2026-09-09, supersedes prior master report and correction log)
+
+**STATUS: FINAL for this pass.** This document is self-contained. It supersedes `docs/audit-2026-09-08-full-status-master-report.md` and `docs/audit-2026-09-08-correction-log.md` as the single source of current truth — those files are kept for history, not as a second live status. Generated `2026-09-09T19:19Z`. `main` at push time: `79d18bd8b`.
+
+**Evidence-type key used throughout** (per your instruction, every claim is tagged):
+`[SRC]` source inspection · `[TEST]` automated test run I executed or an independent reviewer executed · `[SIM]` simulator render (mine or a reviewer's) · `[PROD]` production query/log · `[DEVICE]` physical-device evidence · `[INF]` inference from the above, not directly observed · `[BLOCKED: reason]` evidence that does not exist yet and why.
+
+Three background agents are still running as this document is generated (recovery-ended-early wire field, RouteMapView root-cause fix, status-bar-gradient independent review). Their rows are marked `INVESTIGATING` / `IMPLEMENTED — REVIEW PENDING` with an explicit note that this report will need one more update once they land — that update is a small diff to this table, not a new document.
+
+---
+
+## 0. What changed since the last correction log (concise diff, not restated prose)
+
+Since `docs/audit-2026-09-08-full-status-master-report.md`'s last commit (`f6e890fe9` / `90b212de5` / `79d18bd8b`):
+
+1. **Migration 166 packet** — independent review landed: **PASS**. `[TEST]`/`[SRC]` — SQL diffed line-for-line against `origin/main` (88/88 executable lines identical), 36 columns/5 indexes/12 constraints recounted independently, `mutate.ts`/`decision-ledger.ts` line citations verified exact. One precision note: the packet's "byte-identical"/"verbatim" language means "matches another comment-stripped transcription," not an unedited file copy — cosmetic, not substantive.
+2. **Walk-back fix** (`fix/walkback-recovery-not-completed`) — independent review landed: **PASS**, including a reviewer-executed reverse falsification (reverted the fix's guard to its literal inverse, rebuilt, reran — exactly the reported bug reproduced, then fix restored and re-confirmed). `[TEST]`
+3. **Vanished-decisions fix** (`fix/vanished-decisions-p0`) — independent review found a real, reproduced regression: a manually-reconstructed JSON fixture didn't byte-match live `toWire()` output (unicode re-escaping + field reordering). Regenerated via the file's own documented `UPDATE_PROPOSAL_FIXTURE=1` mechanism, re-verified green (4/4, plus 286 passed elsewhere), pushed as commit `00741417b`. `[TEST]` — fresh re-review not yet dispatched.
+4. **RouteMapView fix** (`fix/routemap-green-start-marker`) — independent review found the source diff correct in isolation but the **rendered** marker color reverts to the old literal green on warm relaunch on one simulator (5/5 reproductions), while staying correct on a different simulator (4/4). `[SIM]`, pixel-sampled not eyeballed. Root-cause fix dispatched, **still running**.
+5. **Coach-voice fix** (`fix/coach-voice-tie-and-primer`) — independent review returned **PASS WITH CONDITIONS**: (A) a header comment falsely claimed full `isHard()` `SessionType` coverage — `race_week_tuneup` is real and uncovered; (B) three conflicting counts of how many falsification tests fail pre-fix (12/"each", "6", reviewer's own "10 of 12"). Both fixed in follow-up commit `49be10229`, pushed. `[SRC]` — not yet re-reviewed (comment-only changes, low risk, but not independently re-confirmed).
+6. **RaceDecisionCardV5 header fix** (`fix/races-decision-header-label`) — third attempt (two prior attempts stalled) succeeded: `IMPLEMENTED`, then independently reviewed: **PASS**. `[TEST]`/`[SIM]` — reviewer rendered all 4 fixtures, ran 480/480 `FaffTests`, and falsified the gate itself (reverted `.fact`'s copy, confirmed the new test catches it, restored). One out-of-scope sample-fixture bug found in passing (see item 7).
+7. **New — `RacesV5Sample` verdict-string bug** (`fix/races-sample-verdict-string`): two sample specs used Swift enum-case-name spelling (`"outOfReach"`, `"openEnded"`) instead of `V5Feasibility`'s real raw values (`"out-of-reach"`, `"open-ended"`), so `V5Feasibility`'s lenient decoder silently fell back to `.unreadable` — the `7a-two` catalog fixture showed badge "Cannot read it" instead of "Open ended." `[SRC]` fixed and pushed (`38b33f0f5`); build succeeded `[SIM: build only]`; render verification of the fix itself did not complete in this pass — the disposable simulator's install/launch stalled under this session's heavy concurrent simulator load. `[BLOCKED: simulator contention under concurrent agent load — retry needed]`. The bug's *existence* is independently confirmed twice over (the RaceDecisionCardV5 reviewer saw the wrong badge live on screen `[SIM]`, and I confirmed the raw-value mismatch by direct source grep `[SRC]`); only the *fix's own* render-proof is outstanding.
+8. **New — status-bar / full-bleed gradient fix** (`fix/races-fullbleed-gradient`): root cause is **shared across Today, Block and Races**, not Races-specific — `\.v5TopInset` is measured once at shell root before `HostsV5.swift`'s `.safeAreaInset`-attached stale/offline banner grows the ambient safe area, so the panel's pull-up falls short by exactly the banner's height whenever the banner is showing (an ordinary state — any spotty-signal moment, not an edge case). `[SRC]`/`[SIM]` — implementer built unfixed code, triggered the stale banner, screenshotted the gap, then fixed and re-screenshotted its absence, on both Today and Races. Independent review dispatched, **still running**.
+9. **CI status re-checked live, not carried forward** (`[PROD]` — live `gh run list`/`gh run view` against `origin/main`'s actual latest runs, 2026-09-09T19:18Z): confirms the master report's row 1/row 3 are still exactly the open items they were — nothing has drifted, nothing has silently fixed itself. See §9 for full detail.
+10. **Disk crisis**: no new developments this pass. `/Volumes/WP` currently at **1.8 TiB free of 7.3 TiB** `[SRC: df -h]` — stable since the cleanup, no regression.
+
+**Not re-investigated this pass** (named explicitly per your instruction rather than silently carried forward as if current): the backend 502/~13s timeout production incident (§1), today's post-run walk-back/pace physical-screenshot findings beyond what was already implemented as `WALKBACK-1` (§2), the fragmented-prose/multi-pass coach-voice investigation (§4), and the full 27-area product sweep (§8) — each is called out at its own section with the exact evidence gap, not glossed over.
+
+---
+
+## 1. Outage-banner fix and the backend 502 incident (kept separate, as instructed)
+
+### 1a. The fix itself
+
+| Question | Answer | Evidence |
+|---|---|---|
+| Installed physical-device build number / source SHA | **UNKNOWN — not queried this pass.** No TestFlight build has shipped since this branch was created; nothing has been installed to David's phone containing this fix. | `[BLOCKED: no build exists yet to query]` |
+| Does the currently-installed production build contain this fix | **NO.** The fix lives only on branch `fix/today-banner-stale-outage`, unmerged. Whatever is on the phone now predates it. | `[INF]` from merge state below |
+| Independent reviewer verdict on the actual diff | **PASS**, with one non-blocking residual noted (a start-order vs. completion-order edge case that fails safe — does not create a new false-positive, only a theoretical missed-suppress in one ordering) | `[TEST]` — reviewer built both directions, ran the full 178-test native suite, confirmed Today/Block/Races share one implementation, confirmed Watch's exclusion is architecturally real (not just untested) |
+| Fail-before/pass-after for all 6 falsification tests | **All 6 confirmed failing against unfixed code, all 6 passing against the fix**, per the implementer's own falsification run, independently spot-checked by the reviewer rebuilding both directions | `[TEST]` |
+| Full post-merge native-suite result | **N/A — not merged yet**, so there is no post-merge run to report. Pre-merge: 178/178 native tests green on the fix branch. | `[TEST]` |
+| Merged into `main`? | **NO.** | `[SRC: git log origin/main]` |
+| Merge commit SHA | **N/A — not merged.** | — |
+| Reached a TestFlight artifact? | **NO.** | `[INF]` |
+| Physical failure→recovery verification on that artifact | **N/A — no artifact exists to verify.** | `[BLOCKED: no build]` |
+
+**Current branch tip:** `fix/today-banner-stale-outage` @ `0dbf3143d`. Note: an earlier status page in this project's history cited this branch at `32a8f612b` — that SHA does not match what `git log origin/fix/today-banner-stale-outage` reports now (`0dbf3143d`, sitting on `7e1cd0e2a`). I cannot reconcile that discrepancy from history alone this pass; treat `0dbf3143d` as the current, live truth, confirmed by direct git inspection just now, and flag the older SHA as either a transcription error in an earlier report or a rebase this session has no record of. **This does not affect the fix's own correctness** (independently reviewed and tested as above) — it only means an earlier status document's branch-pointer citation should not be trusted without re-checking.
+
+**Status: `REVIEWED — MERGE PENDING`.**
+
+### 1b. The backend 502 / ~13-second timeout incident — kept explicitly separate
+
+| Item | Status |
+|---|---|
+| Current status | **BLOCKED — not investigated further this pass.** No new production log or observability access was established since the last report. |
+| Production evidence inspected | None new this pass. `[BLOCKED: no production log/observability access]` |
+| Confirmed cause | **Not established.** The prior report's "probably HTTP/2" language is explicitly NOT being restated as a finding — it was never confirmed and is not being carried forward as if it were. |
+| Exact access/evidence blocker | Railway's production logs are not queryable from this environment in a way that was exercised this session. No dedicated 502-diagnostic endpoint has been built (per the project's own "operational tasks self-execute" doctrine — an agent-built, agent-run diagnostic endpoint would be in-scope to build, and has not been). |
+| Observability needed for the next occurrence | A durable, timestamped log of every 5xx/timeout at the edge (Railway) or app layer, correlated to the request path, that survives longer than whatever Railway's default retention is — this does not exist yet as far as this pass can confirm. |
+
+**Status: `BLOCKED`** — this is a decision/infrastructure item, not a code fix. It needs either Railway log access provisioned to an agent, or a purpose-built diagnostic endpoint (self-executable per the operational-tasks doctrine) added and run. Neither has happened this pass.
+
+---
+
+## 2. Today's post-run findings (physical screenshot)
+
+### 2a. Walk-back semantics
+
+| Item | Answer | Evidence |
+|---|---|---|
+| Exact stored workout/segment records for today's run | **Not re-queried this pass.** The implementation below was built against the general mechanism (`p.type`, `p.completed` on `TodayAfterV5`'s phase pieces), not a fresh read of today's specific row. | `[BLOCKED: not re-queried this pass — the fix is general, not this-run-specific]` |
+| Prescribed vs. executed duration per walk-back | Not independently re-derived this pass beyond what the original fix's tests assert (a shortened recovery, `completed == false`). | `[INF]` from the fix's own test names |
+| Which action advanced each segment | **Not distinguished yet.** This is exactly the gap row 33 (recovery-ended-early wire field) is trying to close — see below, still in progress. | `[BLOCKED: wire field not yet implemented]` |
+| Skip / Next / End / automatic / manual-advance distinguishable in stored data today | **NO, not yet.** `recordRepSkip()` explicitly no-ops for recovery phases (confirmed by source read this session and in the prior session). The four-wrist-decision pattern (bail-taken, HR-ceiling-lift, `recordRepSkip()`, `recordRecoveryExtension()`) has no "recovery ended early" member. | `[SRC]` |
+| Exact code producing "not completed" | `TodayAfterV5.swift`'s `completionNote(type:completed:)` (now patched — see below) | `[SRC]` |
+| Display-only, or does execution/grading also treat this as failed | **Both, and they are different bugs at different severities.** The display bug (`TodayAfterV5.swift`) is fixed (below). The grading bug is NOT fixed: `execution-semantics.ts`'s `recoveriesHonestOf`/`sessionLadder` requires `recoveriesHonest !== false` for a session to grade `'executed'` — meaning an intentionally-shortened recovery can still downgrade an otherwise-perfect session's VERDICT, not just its screen label. This is the still-open, higher-severity half of this finding. | `[SRC]` |
+| Treatment of the final walk-back after Stride 6 | Not specially handled by the shipped display fix — the fix's guard (`type != "recovery"`) applies uniformly to every recovery phase, last one included. No special-case regression found, but also no special-case handling was built (none was asked for in the implemented fix; it may still be needed once the wire field lands, since "the last recovery of the session" and "a recovery ended early to end the run" could be facts worth distinguishing from an ordinary early-advance). | `[SRC]` |
+| Proposed truthful state vocabulary | Not yet designed. This is the deliverable of row 33 below, still in progress. | `[BLOCKED: in progress]` |
+| Implementation + falsification-test results (for the fix that DID ship) | 7 new tests, independently re-run by the reviewer against both the fixed and the reverted-to-inverse code: reverting reproduces exactly `testAnEndedEarlyRecoveryCarriesNoCompletionNote` failing, all 6 others still pass; restoring the fix, all 7 pass. | `[TEST]` |
+
+**Required distinction (completed-as-prescribed / advanced-early-intentionally / genuinely-skipped / interrupted / automatically-advanced / session-ended / unknown-evidence):** **NOT YET BUILT.** The shipped fix only suppresses a false "not completed" label for ANY non-completed recovery phase — it cannot yet tell "runner deliberately moved on because he was ready" from "recovery was cut short because something went wrong" from "unknown." That is precisely the gap the recovery-ended-early wire-field task (row 33) exists to close, end-to-end from watch → wire → `execution-semantics.ts` → display. **That task is still running as this document is written** — see §6 for its live status.
+
+**Status of the shipped display fix: `REVIEWED — MERGE PENDING`** (branch `fix/walkback-recovery-not-completed` @ `7b0163c85`, PASS). **Status of the underlying execution-semantics/wire-field problem: `INVESTIGATING`**, not resolved by the shipped fix, and not to be conflated with it.
+
+### 2b. Missing pace
+
+| Item | Answer | Evidence |
+|---|---|---|
+| Pace/distance/cadence samples exist for the 5-mile easy phase and all 6 strides | **Not independently re-queried this pass against today's specific run.** The root-cause finding from the prior session (a design-review agent) identified the mechanism, not a fresh per-sample audit of this exact run's raw data. | `[BLOCKED: not re-queried this pass]` |
+| Why the 5-mile phase omitted pace despite having enough data | **Root cause identified, not yet fixed.** `workoutPhasePieces` (`TodayAfterV5.swift`) — a treadmill-only fallback rendering lane — is incorrectly catching outdoor stride+walkback runs when GPS mile-splits are unavailable for some other reason, and this SAME root cause simultaneously produces (a) no pace shown, (b) the "not completed" mislabeling partially patched in §2a, and (c) raw undeduplicated stride/walkback pairs instead of the already-built, clean `PostRunLearnedV5(.strides)` treatment. | `[SRC]` — identified by a design-review agent in the prior session, not yet re-verified against today's specific screenshot, and **not yet fixed** |
+| Whether Piece-by-Piece currently omits pace from every phase | **Not confirmed as a blanket fact.** The known mechanism is a routing/fallback bug (wrong lane selected for certain runs), not a universal omission — `PostRunShapeV5.decomposition(hasMiles:hasSections:)`'s `.milesAndSections` lane is the correct lane for "easy run with strides" and DOES show pace when it fires; it only fails to fire when `hasMiles == false`, which per the same root-cause finding, some outdoor runs incorrectly report. | `[SRC]` |
+| GPS/sample reliability during the 20-22s strides | **Not measured this pass.** This needs the piece-by-piece evidence hierarchy work below, which has not started. | `[BLOCKED: not started]` |
+| Chosen short-stride metric and why | **Not yet decided.** No implementation has started on the evidence-hierarchy/metric-choice work your prior brief specified (avg/median/rolling pace decision, amber `~` for estimated values, "Pace unavailable" if truly insufficient). | `[BLOCKED: not started]` |
+| Treatment of measured vs. estimated/modelled values | Tied to Decision 5 in the prior master report (the amber `~` marker is confirmed current product direction per your explicit ruling, but the VISUAL restoration itself is scoped remaining work, not implemented) — see §5 note. | `[SRC: your prior ruling]`, implementation `[BLOCKED: not started]` |
+| Proposed and rendered row hierarchy | **Not yet proposed or rendered.** This whole workstream (root-cause fix to the routing bug, the piece-by-piece evidence hierarchy, the short-stride metric choice, amber-marker application) has not been implemented this pass — only diagnosed. | `[BLOCKED: not started]` |
+
+**Status: `INVESTIGATING` — root cause named, NOT fixed.** This is the single largest unclosed item from your post-run brief and should not be read as further along than it is: one design-review agent traced the mechanism; no code has changed for it yet.
+
+---
+
+## 3. Vanished adaptation decisions
+
+| Item | Answer | Evidence |
+|---|---|---|
+| On-device diagnostic result for the workout-proposals request | Traced in source, not captured live on a physical device this pass. `fetchWorkoutProposals()` was found to silently collapse a failed fetch into the same "zero pending decisions" empty result — confirmed by reading the function, not by an on-device network trace. | `[SRC]`, not `[DEVICE]` |
+| Did a failed request cause the empty card state | **Yes, as a class of bug** — confirmed by source (the collapse described above). Whether it was THIS SPECIFIC empty-card observation was a failed request specifically (vs. a genuinely-empty result) was not independently confirmed with a device-side network capture. | `[SRC]` for the mechanism, `[INF]` for this specific instance |
+| Implementation distinguishing failure/empty/loaded | **IMPLEMENTED.** Retry threaded end-to-end; "Do it" is replaced (not greyed out) with the server's own explanation when Migration 166 blocks the specific `action_kind`. | `[SRC]` + `[TEST]` (reviewer traced the action-kind coverage against `executor-map.ts` directly and confirmed correct blocking for every kind that reaches `ADAPTATION_PIPELINE`/`REPRICE_APPLY`/`DIRECT_PLAN_WRITE`) |
+| Durable semantics for "Decide later" | **Investigated, found to be a non-issue in live code.** The originally-reported "local-only dismiss" bug was confirmed to exist only in dead `-faffLegacy` code; the live V5 "Leave it" control already round-trips server-side. Reviewer confirmed this sub-finding without objection. | `[SRC]` + reviewer confirmation |
+| Confirmation rows 12 and 10 remain unchanged and pending | **Confirmed unchanged** — no accept/decline/mutation has occurred on either row this session. Row 12's data-fix SQL remains unexecuted (still flagged as having a non-atomicity gap needing a corrected compare-and-swap version before it could ever be run — see prior report §11 item 4). | `[PROD: read-only, no writes performed]` |
+| Exact native reachability of the sibling `plan_proposals` table | **Confirmed:** a dead `-faffLegacy` actionable consumer exists, plus a live but read-only `DecisionHistoryV5` reader. **Zero live actionable consumer.** Recommendation on record (not yet actioned): extend `ProposalCardV5`/`DecisionsSectionV5`'s existing contract to whole-plan rows rather than building a new card type — this is a scope decision, explicitly not decided here. | `[SRC]` |
+| Disposition of pending rows 66, 62, 61 | **NOT RE-QUERIED this pass.** No new production read was performed against these specific row IDs this session. | `[BLOCKED: not re-queried this pass]` |
+| Where every unresolved decision remains discoverable | Decision History screen (`DecisionHistoryV5`), confirmed as a live, read-only reader. Whether it is complete/authoritative for EVERY unresolved decision type was not independently re-audited this pass. | `[SRC]`, partial |
+| Behavior after cold launch / foreground refresh / retry | **Not independently tested this pass on a physical device.** The retry-threading fix (above) is a source-level claim (`[SRC]`/`[TEST]`), not a device-observed cold-launch/foreground-refresh trace. | `[BLOCKED: no device trace this pass]` |
+| Independent review and tests | **FAIL found, then fixed, re-review not yet re-dispatched.** First review: full `xcodebuild build` succeeded, Swift wiring correct, but a real regression was found and reproduced — `_v5_proposal_harness_fixture.test.ts`'s byte-exact comparison failed because a manually-reconstructed JSON fixture (needed after an earlier worktree-corruption artifact) mis-escaped unicode and mis-ordered one field vs. live `toWire()` output. Fixed by regenerating via the file's own `UPDATE_PROPOSAL_FIXTURE=1` mechanism; re-ran clean (4/4), plus 286 tests elsewhere passed with 0 failures. **A fresh reviewer has not yet re-confirmed the corrected commit.** | `[TEST]` |
+
+**Do not accept/decline/apply/expire/mutate any production proposal** — none has been. Confirmed by session action log: every touch to rows 12/10/66/62/61 this session was read-only or non-existent.
+
+**Migration 166:**
+
+| Item | Answer |
+|---|---|
+| Absent from production | **Confirmed still absent.** No DDL has been executed. `DATABASE_URL_RO` cannot execute it either (a live-falsified proof exists in the packet, re-verified by the independent reviewer this pass by fetching and reading the actual recheck report — quoted verbatim: "permission denied for schema public" / "permission denied for table users"). |
+| Adaptation-apply excluded from next build, or made operational | **UNDECIDED — this is explicitly your decision, not mine to infer** (prior report's decision 2). Neither path has been implemented. |
+| Do visible cards currently explain Apply cannot succeed | **UNKNOWN — not verified this pass.** This is the one piece of narrowly-targeted verification the prior report recommended before committing to the "exclude from this release" path, and it has not been done. `[BLOCKED: not verified]` |
+| Migration 166 packet status | **Complete, and now independently reviewed: PASS** (§0.1 above / prior report row 14). Only your approval remains — no further engineering evidence gap exists on the packet itself. |
+| Recommendation to run it | **None given, deliberately.** The packet is neutral input to your decision, not a pitch. |
+
+**Status: rows 24/26 `REVIEWED — MERGE PENDING` (with the caveat that "reviewed" here means "the FAIL was found and fixed; a fresh reviewer has not yet re-confirmed the fix")**. Migration 166 itself: `BLOCKED — REQUIRES DAVID` (packet review is done; only the approval decision is outstanding).
+
+---
+
+## 4. Coach-voice fix
+
+| Item | Answer | Evidence |
+|---|---|---|
+| Branch and commit | `fix/coach-voice-tie-and-primer` @ `49be10229` (base fix at `bc8010bbe`, follow-up conditions-fix at `49be10229`) | `[SRC]` |
+| Tied longest runs no longer produce false uniqueness | **Confirmed.** `TIEFIX-1` — tie detection in `generate.ts` fixed so a tied week names no single day as the "longest easy run" winner. Falsified: confirmed firing on 63% of weeks in the project's own corpus before the fix; `_sentence_repetition.test.ts` corpus findings went from 8 (with TIEFIX-1 alone) back to 0 with both fixes together. | `[TEST]` |
+| Rule 17 primer resolution implementation | **Implemented.** `PRIMER-SPECIFIC-1` — `resolvePrimerLines()` in `runner-instruction.ts`: two easy days that each genuinely prime a DIFFERENT next-day key session both name that actual session; a genuine collision (same next-day type, or unresolvable) steps down a deterministic, non-blank, non-repeating fallback ladder (`PRIMER_COLLISION_FALLBACK`) rather than repeating. | `[SRC]` + `[TEST]` |
+| Wording generated from the actual next-day workout type/purpose, not hardcoded pair | **Confirmed by source read.** `primerLineForNextSessionType()` resolves off `canonicalSessionType(nextType)` — the composer's OWN answer for what tomorrow's session is — not a hardcoded pair of examples. `PRIMER_SESSION_LINE` covers threshold/tempo/intervals/long/race explicitly; anything else falls through to the generic fallback (an honest "cannot be determined," not a guess). | `[SRC]` |
+| Two genuine primer days remain useful without identical canned copy | **Confirmed by the falsification tests** (`_primer_specific.test.ts`, 12 fixtures) and by the tie-break rule itself (earliest day keeps the sharper text; the later colliding day steps down its own ladder) — this was independently reverted-and-rerun by the reviewer, who found **10 of 12 fail against the pre-fix composer** (this exact number, corrected in this pass — see below). | `[TEST]` |
+| No invented workout purpose | **Confirmed.** `PRIMER_COLLISION_FALLBACK` ("Another easy day. Save it for the work ahead this week.") deliberately says nothing about WHICH session on a genuine third-collision case (not reachable at today's dosing caps, but built defensively) — inventing a session-specific reason would be exactly the fabrication your ruling forbids, and the code doesn't do it. | `[SRC]` |
+| All relevant tests fully green | **Yes**, per the implementer's own full doctrine/sweep/tsc suite run — **not yet independently re-run in full** by a reviewer (the reviewer's falsification pass covered `_primer_specific.test.ts` and `_sentence_repetition.test.ts` specifically, not the entire suite). | `[TEST]`, partial independent coverage |
+| Independent reviewer verdict | **PASS WITH CONDITIONS, both now addressed.** Condition A: a header comment falsely claimed coverage of every `isHard()` `SessionType` — `race_week_tuneup` is real and uncovered; narrowed the comment to the true, specific claim (already correctly stated in the adjacent doc comment it was contradicting). Condition B: three conflicting counts of pre-fix failures (commit message "each"/12, a test comment "6", reviewer's actual revert-and-rerun "10 of 12") — corrected the test comment to the reviewer's verified number. Follow-up commit `49be10229` pushed. **Not yet independently re-reviewed** (comment-only changes; low risk, but "reviewed" here means the ORIGINAL diff was reviewed, and the follow-up hasn't had its own pass). | `[SRC]` + `[TEST]` |
+| Merge state and commit | **Not merged.** Branch `fix/coach-voice-tie-and-primer` @ `49be10229`, pushed to origin. | `[SRC]` |
+
+**The fragmented-prose/multi-pass concatenation problem is explicitly separate and still OPEN.** Nothing in this fix addresses it, and this report does not imply otherwise. No new evidence on it this pass. `[BLOCKED: not investigated this pass]`
+
+**Status: `REVIEWED — MERGE PENDING`** (rows 29/30).
+
+---
+
+## 5. Design-System Phase 2
+
+| Item | Answer | Evidence |
+|---|---|---|
+| Independent reviewer verdict on Phase 2 | **PASS WITH CONDITIONS** (from the prior session's correction pass — not re-run this pass). Confirmed present as a note at the top of `docs/audit-design-system-phase2.md`. | `[SRC]`, not re-verified this pass |
+| Findings the reviewer confirmed/changed/rejected | Three corrections made to the Phase-2 report per its own reviewer: (1) `.system()` font-site file attribution corrected (`ComponentsV5.swift` ×6, matching Phase 1); (2) font-fallback claim corrected from "could not find the branch" to "CONFIRMED PRESENT" citing `FontsV5.swift:301-310`; (3) dark-ink-contrast citation corrected to `ThemeV5.swift:95-125` only (a `TokensV5.swift` citation was wrong entirely). All three applied in the prior session, not re-verified this pass. | `[SRC]`, not re-verified this pass |
+| Status of the 3 catalog-only additions | **Not re-verified this pass.** Prior report classifies these as tooling changes, not product fixes, requiring their own separate diff review — that separate review has not happened. | `[BLOCKED: not reviewed]` |
+| Status of the unconditional "NEEDS A DECISION" Races header | **FIXED, independently reviewed PASS.** See §0.6/§6 — `fix/races-decision-header-label` @ `79a1e894e`. | `[TEST]` + `[SIM]` |
+| Status of the green route-start marker | **FIX ATTEMPTED, FOUND DEFECTIVE ON RE-RENDER, ROOT-CAUSE FIX IN PROGRESS.** See §0.4/§6. | `[SIM]` |
+| Rendered before/after evidence for implemented design fixes | RaceDecisionCardV5: yes, 4/4 fixtures, both by implementer and independently by reviewer. RouteMapView: yes for the ORIGINAL bug (green marker existed), and yes for the NEW bug this fix introduced/failed to fully close (reverts on warm relaunch) — pixel-sampled, not eyeballed, by the reviewer. Status-bar gradient: yes, implementer screenshotted the gap before and its absence after; independent review of THAT evidence still running. | `[SIM]` throughout |
+| Status of the 14 live `.system()` typography bypasses | **Not re-verified this pass.** No new source scan run this session. | `[BLOCKED: not re-scanned this pass]` |
+| Status of the amber `~` restoration | **Decision resolved (your ruling: current direction, not retired), implementation NOT started.** Converted into a scoped remaining-work item in the prior report (full inventory of modelled values, marker attachment point, VoiceOver treatment, affected catalog states) — none of that scoping work has been done this pass. | `[SRC: your ruling]`, implementation `[BLOCKED: not started]` |
+| Status of the treadmill overlay/cues-menu collision | **Not touched this pass.** Still `OPEN — not started` per the prior release-decision table (row 17). | `[BLOCKED: not started]` |
+| Status of the Today/Block/Settings top-inset collision | **Overlapping but not identical to the status-bar/full-bleed-gradient fix.** The full-bleed gradient fix (§0.8) fixes `\.v5TopInset` for the stale-banner case specifically. Whether it also resolves the SEPARATE "header/status-bar text collision" item (prior report row 19, mis-cased Races verdict literals aside) has not been independently confirmed — these may be the same root cause or two different ones sharing a symptom family. **Flagging this as an open question for the next reviewer pass, not asserting an answer.** | `[BLOCKED: not disambiguated this pass]` |
+| Status of the mis-cased Races verdict literals | **Different bug than the outOfReach/openEnded sample-fixture issue found this pass** — the prior report's row 18 refers to literals in the LIVE render path (not `RacesV5Sample`'s catalog fixtures). **Not independently re-checked this pass** whether row 18's original finding is the same defect class as §0.7's sample-fixture fix, or a separate live-path bug still open. Treat as still `OPEN — not started` unless a future pass confirms otherwise. | `[BLOCKED: not disambiguated this pass]` |
+| Dynamic Type | **INCONCLUSIVE — unchanged, not re-verified.** Per your explicit instruction, this stays INCONCLUSIVE until genuinely verified; nothing this pass changes that. | `[BLOCKED: not verified]` |
+| Training-calendar sheet render coverage | **OPEN — unchanged.** Not rendered this pass. | `[BLOCKED: not rendered]` |
+| Physical design-system verification | **OPEN — unchanged.** No physical (real-device, not simulator) design-system verification pass has occurred. | `[BLOCKED: no physical-device pass]` |
+
+**"Audit complete" is not "design-system compliant."** Repeating your own instruction verbatim because it remains true: Phase 2's audit EXECUTION is complete and independently reviewed; the underlying product defects it found are only partially fixed (2 of the design-defect items have shipped fixes, one of which broke on re-render and is being re-fixed).
+
+---
+
+## 6. Current agent, branch and worktree state
+
+**Scope note:** this table covers only worktrees/branches THIS session created or touched. `git worktree list` on this machine currently shows dozens of additional worktrees belonging to OTHER concurrent Claude sessions on this same repo (confirmed via `ListAgents`: 59 peer sessions exist, most idle/offline, some cloud sessions that may be active on this same codebase) — I am not claiming knowledge of or responsibility for those, and did not touch them.
+
+| # | Task | Implementer | Worktree | Branch | Base SHA | Current commit | Dirty/clean | Tests run | Reviewer | Reviewer verdict | Merged? | Remaining action |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | Outage banner (LATEFAILURE-1) | prior-session agent | (released) | `fix/today-banner-stale-outage` | ~`7e1cd0e2a` | `0dbf3143d` | clean (pushed) | 178/178 native `[TEST]` | dispatched agent | **PASS** (1 non-blocking residual) | NO | Your merge approval |
+| 2 | Walk-back "not completed" | prior-session agent | (released) | `fix/walkback-recovery-not-completed` | `origin/main` | `7b0163c85` | clean (pushed) | 7 new `[TEST]`, reviewer-executed reverse falsification | agent `afdeffc440e2472cf` | **PASS** | NO | Your merge approval |
+| 3 | Vanished-decisions P0 | prior-session agent + this session (2 compile-error fixes + fixture regen) | `/private/tmp/faff-vanished-decisions-fix` | `fix/vanished-decisions-p0` | `origin/main` | `00741417b` | clean (pushed) | 4/4 fixture `[TEST]` + 286 elsewhere | agent `afdeffc440e2472cf` | **FAIL → fixed**, re-review not yet dispatched | NO | Fresh independent re-review |
+| 4 | RouteMapView green marker | prior-session agent | `/private/tmp/faff-routemap-fix` | `fix/routemap-green-start-marker` | `origin/main` | `12355ae06` | clean (pushed) | build only `[SIM]` | agent `ab87d2aef9f4d2602` | **FAIL** (reverts on warm relaunch, 5/5 on one sim) | NO | Root-cause fix — **agent `abaa7ecf0e79edbeb`, RUNNING** |
+| 5 | Coach-voice tie+primer | prior-session agent + this session (2 review conditions) | `.claude/worktrees/agent-a90fdf293ec11227a` | `fix/coach-voice-tie-and-primer` | `origin/main` | `49be10229` | clean (pushed) | full suite `[TEST]` (implementer), partial independent | dispatched agent | **PASS WITH CONDITIONS → both addressed** | NO | Fresh re-review of follow-up (low priority — comment-only) |
+| 6 | RaceDecisionCardV5 header | this session, agent `a272189f83084f8d2` | `.claude/worktrees/agent-a272189f83084f8d2` | `fix/races-decision-header-label` | `origin/main` | `79a1e894e` | clean (pushed) | 480/480 `[TEST]` | agent `a2937fd27d13cbe0b` | **PASS** | NO | Your merge approval |
+| 7 | Races sample verdict-string bug | this session, direct | `/tmp/faff-verdict-fixture-fix` | `fix/races-sample-verdict-string` | `origin/main` | `38b33f0f5` | clean (pushed) | build only `[SIM: build]` | none dispatched yet | — | NO | Render-verify (stalled once on sim contention, retry), then review |
+| 8 | Status-bar full-bleed gradient | this session, agent `ae0b497b216d37080` | `.claude/worktrees/agent-ae0b497b216d37080` | `fix/races-fullbleed-gradient` | `origin/main` | `4a52e48a7` | clean (pushed) | `[SIM]` before/after by implementer | agent `a2489596c77a30d7f` | **RUNNING** | NO | Wait for review |
+| 9 | Migration 166 packet review | this session, agent `a931bcaf55f9b8cc8` | (released) | N/A (docs review, no code branch) | — | — | — | `[SRC]` — SQL diffed, structure recounted | agent `a931bcaf55f9b8cc8` | **PASS** | N/A | Your approval decision |
+| 10 | Recovery-ended-early wire field | this session, agent `a9b8e8204b29c21f5` | (agent-managed) | not yet known — in progress | `origin/main` | in progress | — | — | none yet | **RUNNING (52+ min)** | NO | Wait for completion |
+| 11 | Migration-166-adjacent race-outlook epoch pin | **NOT this session** — pre-existing worktree found on disk, `adoring-tu-313b39` @ `46c2fe85f` on branch `fix/race-outlook-epoch-pin` | `.claude/worktrees/adoring-tu-313b39` | `fix/race-outlook-epoch-pin` | unknown | `46c2fe85f` | not inspected | not inspected | not inspected | not inspected | not inspected | **Flagging for visibility only** — this looks like it may be a fix for the exact CI failure named in §9 (SHADOW_EVIDENCE_EPOCH pin mismatch), but I did not create it, have not inspected its diff, and make no claim about its correctness or relevance. Someone (another session, or an earlier stage of this one, not confirmed) may already be working the CI-failure item named in §9 — worth checking before dispatching a duplicate fix. |
+
+**Docs-only commits this session** (no code, no review needed): `f6e890fe9`, `90b212de5`, `79d18bd8b` — all pushed directly to `main` per this project's own doctrine that docs carry no schema/data risk.
+
+### Storage-cleanup result (from the earlier disk crisis this session, re-confirmed now)
+
+| Item | Value | Evidence |
+|---|---|---|
+| Space before | ~1-3 MiB free (at worst, confirmed as low as 1 MiB) at worst, `[SRC: df -h at the time]` |
+| Space after | **1.8 TiB free of 7.3 TiB**, confirmed live again just now | `[SRC: df -h, 2026-09-09T19:xx]` |
+| Exact paths/sizes removed | `node_modules` directories across ~54 worktrees (one alone 44 GiB) and build artifacts (DerivedData/.build/Pods/xcuserdata/.next, 73 instances) — all confirmed gitignored and regenerable before deletion | `[SRC]` — this session's own `find`+`du` survey, from the summarized prior work |
+| Retained worktrees/branches and why | Every worktree with uncommitted, unverified changes was left alone; nothing with unpushed unique work was deleted. Backups of every known in-flight diff were made to `/tmp/faff-fix-backup/` (a healthy, non-`/Volumes/WP` disk) BEFORE any deletion, as a safety net. | `[SRC]` |
+| Ambiguous large directories left untouched | None identified as ambiguous at the time; the cleanup criteria (gitignored + regenerable + not itself a diff) were mechanical, not judgment calls, for every directory actually deleted. | `[SRC]` |
+
+**Confirmed: no unique work was lost during drive cleanup.** Every fix branch listed in the table above exists, is pushed to `origin`, and its content matches what was in progress at the time of the disk crisis (cross-checked against the `/tmp/faff-fix-backup/` diffs during the prior session, not re-diffed byte-for-byte this pass).
+
+---
+
+## 7. Master execution ledger (regenerated)
+
+This supersedes §10a/§10b of the prior master report. Same row numbering preserved where the item is unchanged, so cross-referencing old material still works; new rows appended at the end. Status vocabulary uses your exact required set.
+
+| ID | Item | Status | Severity | Evidence type | Physical reachability | Runner impact | Safety/truth impact | Owner | Branch/commit | Independent reviewer | Dependencies | Next-TestFlight disposition | Merge state | Test state | Physical-verification state | Closure requirement |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | Two backend CI failures (SHADOW_EVIDENCE_EPOCH pin mismatch on `race-outlook.ts`; a new hand-rolled rounding rule in `_replay_glance_done_state.script.ts` not in the format-lint allowlist) | **OPEN** | High (process — blocks green CI) | `[PROD]` — confirmed live via `gh run view` moments ago | Reachable on every push to `main` | None directly, but blocks confident merging | None directly | Engineering | none | N/A | Epoch bump-vs-re-pin decision, then an allowlist entry or a real fix for the rounding call | YES | N/A | 2 test files failing, 587/589 passing | N/A | Decide + fix both; a possibly-unrelated worktree (`adoring-tu-313b39`) may already be working the epoch half — verify before duplicating |
+| 2 | `native-check` CI job failing — watchOS simulator platform/version mismatch (`FaffUITests`/`FaffTests` run against a watch destination; `FaffWatch Watch AppTests` needs watchOS 26.5, runner has 26.4 booted) | **OPEN** | Low-Medium (CI infra, not app code) | `[PROD]` — confirmed live via `gh run view` moments ago | CI-only | None directly | None directly | Engineering | none | N/A | Fix the CI workflow's simulator selection/boot step | YES (cheap) | N/A | N/A | N/A | Fix the workflow YAML / runner image simulator list |
+| 3 | `DATABASE_URL_RO` not provisioned in CI | **OPEN** | Medium (process) | `[PROD]` — confirmed live: `AUDIT-SUITE: BLOCKED_MISSING_CREDENTIAL`, all 28 audit tests skip | CI-only | None directly | Indirect — production audits don't run in CI at all right now | David + Engineering | none | N/A | Secret provisioned | Conditional | N/A | 28 files skip entirely | N/A | Provision the secret, confirm scoping (read-only) both ways |
+| 14 | Migration 166 | **BLOCKED — REQUIRES DAVID** | High | `[TEST]` (packet independently reviewed PASS) | N/A (DDL) | N/A until applied | High if misapplied; currently zero risk since untouched | David (approve) | `docs/migration-166-review-packet.md` | **PASS** | David's scope decision (§11.2 of prior report — still open) | Conditional | N/A (DDL) | N/A | N/A | Your approval only |
+| 20 | Outage banner | **REVIEWED — MERGE PENDING** | High | `[TEST]` | Testable now, not yet on any build | High once shipped (visible bug) | Medium (false info to runner) | Engineering → David | `fix/today-banner-stale-outage` @ `0dbf3143d` | **PASS** (1 non-blocking residual) | none | YES | NOT MERGED | 178/178 | Not built/verified | Your merge approval |
+| 24/26 | Vanished decisions — fail/empty collapse + Decide-later semantics | **REVIEWED — MERGE PENDING** (fixture regression found+fixed; fresh re-review outstanding) | High | `[TEST]` | Testable now | High (a runner can't see or act on pending coaching decisions) | High (silent data loss from the runner's perspective) | Engineering → reviewer | `fix/vanished-decisions-p0` @ `00741417b` | FAIL→fixed, not re-confirmed | none | YES | NOT MERGED | 4/4 + 286 passing | Not built/verified | Fresh independent re-review |
+| 27 | RaceDecisionCardV5 header bug | **REVIEWED — MERGE PENDING** | Medium (release-blocking) | `[TEST]`+`[SIM]` | Rendered on simulator, not yet physical device | Medium (misleading header on a race card) | Medium | Engineering → David | `fix/races-decision-header-label` @ `79a1e894e` | **PASS** | none | YES | NOT MERGED | 480/480 | Simulator only | Your merge approval |
+| 28 | RouteMapView green start marker | **IMPLEMENTED — REVIEW PENDING** (original fix REVIEWED and FAILED; root-cause re-fix in progress) | Low-Medium | `[SIM]`, pixel-sampled | Rendered, defect found on real render | Low (cosmetic, but the wrong color also collides with the app's "good/on-plan" green semantics) | Low | Engineering | `fix/routemap-green-start-marker` @ `12355ae06` | **FAIL** (reverts on warm relaunch) | none | NO (bundled) | NOT MERGED | build only | **Failed** on repeated relaunch | Root-cause fix in progress (agent `abaa7ecf0e79edbeb`, running) |
+| 29/30 | Coach-voice false "longest" claim + Rule 17 primer collision | **REVIEWED — MERGE PENDING** | High (frequency) | `[TEST]` | Testable now | High (a coach lying about which day is hardest undermines trust in every claim) | High (truth-in-coaching) | Engineering → David | `fix/coach-voice-tie-and-primer` @ `49be10229` | **PASS WITH CONDITIONS → addressed** | none | YES | NOT MERGED | full suite (implementer), partial (reviewer) | Not built/verified | Your merge approval |
+| 31 | Status-bar/full-bleed gradient gap (Today/Block/Races, shared root cause) | **IMPLEMENTED — REVIEW PENDING** | Medium (visible whenever offline/stale, on 3 screens) | `[SIM]` before/after | Rendered on simulator | Medium (visible whenever signal is spotty — an ordinary state, not rare) | Low | Engineering | `fix/races-fullbleed-gradient` @ `4a52e48a7` | **RUNNING** | none | YES | NOT MERGED | not yet reported | Simulator only | Wait for review (agent `a2489596c77a30d7f`) |
+| 32 | Walk-back "not completed" mislabeling — DISPLAY fix | **REVIEWED — MERGE PENDING** | Medium | `[TEST]` (reviewer-executed reverse falsification) | Testable now | Medium (a runner sees themselves marked as failing when they weren't) | Medium (truth-in-display) | Engineering → David | `fix/walkback-recovery-not-completed` @ `7b0163c85` | **PASS** | none | YES | NOT MERGED | 7/7 + reverse-falsification confirmed | Not built/verified | Your merge approval |
+| 33 | Recovery-ended-early wire field (execution semantics, NOT just display) | **INVESTIGATING** | High (feeds the actual session grading verdict, not just a screen label) | `[SRC]` for the gap, no fix yet | Not reachable — nothing built | High (a session can grade as non-`'executed'` for a deliberate, correct choice) | High | Engineering | none yet | N/A | Row 32 (display fix this extends/supersedes for the deeper case) | Longer-horizon, not this build | N/A | N/A | N/A | Agent `a9b8e8204b29c21f5` running (52+ min) |
+| 34 | Missing pace on 5-mile easy phase + strides (routing bug in `workoutPhasePieces`) | **INVESTIGATING** — root cause named, not fixed | High (visible on every affected run, and the same root cause produces 3 separate symptoms) | `[SRC]` | Not reachable — nothing built | High | Medium (silently omitted information, not wrong information) | Engineering | none yet | N/A | none | Unclear — not scoped | N/A | N/A | N/A | Needs its own implementation pass — not started |
+| 35 | Piece-by-piece evidence hierarchy + short-stride metric choice + amber `~` application | **OPEN — not started** | Medium-High | none | N/A | Medium-High | Medium (measured vs. estimated conflation risk if built wrong) | Engineering | none | N/A | Item 34 (shares the routing-bug root cause) | Unclear | N/A | N/A | N/A | Full design+implementation pass, not started |
+| 36 | `RacesV5Sample` verdict-string bug (`outOfReach`/`openEnded` vs. real raw values) | **IMPLEMENTED — REVIEW PENDING** | Low (sample-fixture only, not confirmed to affect any real server payload) | `[SRC]` fix; `[SIM: build only]` for render | Build succeeded; render-verify stalled on simulator contention | Low (a catalog/preview tool defect, not a runner-facing defect) | Low | Engineering | `fix/races-sample-verdict-string` @ `38b33f0f5` | none dispatched | none | NO | NOT MERGED | build only | **Not completed this pass** — retry needed | Render-verify, then review |
+| 37 | Backend 502 / ~13s timeout production incident | **BLOCKED** | Unclear — severity can't be assessed without evidence | none this pass | N/A | Unclear | Unclear | Unassigned | N/A | N/A | Production log/observability access | Unclear | N/A | N/A | N/A | Provision access or build a diagnostic endpoint |
+
+---
+
+## 8. Full master product status — 27 areas
+
+**Honesty note, stated once rather than 27 times:** most of these 27 areas were NOT re-audited from scratch this pass. Where a status below says "carried from prior audit, not re-verified this pass," that is the literal truth — I am not asserting it is still accurate, only that it was accurate as of the prior report and nothing in this session's work contradicted or confirmed it either way. Where this session's work DID touch an area, that is called out specifically with fresh evidence.
+
+| # | Area | Proven complete | Implemented but unverified | Open | Regressed | Deferred | Next concrete action |
+|---|---|---|---|---|---|---|---|
+| 1 | Today | Outage-banner fix, walk-back display fix, status-bar gradient fix all touch this screen this pass — none merged yet | — | Recovery-ended-early wire field (execution semantics) | None found this pass | — | Merge the 3 reviewed fixes; finish the wire field |
+| 2 | Pre-run | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 3 | Run execution | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 4 | Post-run | Missing-pace root cause identified (routing bug) | Walk-back display fix implemented, reviewed | Missing-pace fix itself; evidence hierarchy | None found this pass | — | Implement the `workoutPhasePieces` routing fix |
+| 5 | Activity/history | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 6 | Block/plan | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 7 | Adaptation | Migration 166 packet reviewed PASS | Vanished-decisions fix, fixture bug found+fixed, re-review pending | Whole-plan proposal card contract decision | None found this pass | — | Re-review vanished-decisions fix; decide adaptation-apply scope |
+| 8 | Move a Run | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 9 | Coaching voice | Tie+primer fix reviewed PASS WITH CONDITIONS, addressed | — | Fragmented-prose/multi-pass concatenation problem (explicitly separate, untouched) | None found this pass | — | Merge tie+primer fix; scope fragmented-prose work |
+| 10 | Progress and fitness | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 11 | Race page | RaceDecisionCardV5 header fix reviewed PASS; RouteMapView marker fix FAILED on re-render, re-fix in progress; sample verdict-string bug found+fixed (render-verify pending); status-bar gradient fix (shared with Today/Block) implemented, review running | — | RouteMapView root cause; render-verify of verdict-string fix | RouteMapView: fix regressed on warm relaunch — this IS a regression finding, not a clean fix | — | Wait for RouteMapView root-cause agent; retry verdict-string render-verify; merge header fix |
+| 12 | Race morning | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 13 | Post-race | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 14 | Shoes | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 15 | Health and runner metrics | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 16 | Profile/settings | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 17 | Notifications | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 18 | Reliability/synchronization | Backend 502 incident named, not investigated further | — | Production log/observability access | — | — | Provision access or build a diagnostic endpoint |
+| 19 | Onboarding | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 20 | Readiness/illness/injury | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 21 | Travel/missed training | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 22 | Cold-start/returning runners | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 23 | Additional runner types/goals | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 24 | Generalized coaching rules | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 25 | App Store/privacy/auth/commercial readiness | Not touched this pass | — | Carried from prior audit, not re-verified | — | — | Re-audit when scheduled |
+| 26 | Accessibility/device coverage | Dynamic Type explicitly still INCONCLUSIVE per your instruction | — | Physical design-system verification | — | — | Schedule the physical-device design pass |
+| 27 | Dead-code and obsolete-path removal | The "vanished decisions" investigation confirmed one dead `-faffLegacy` consumer and one dead `-faffLegacy` bug-that-doesn't-exist-in-live-code | — | `is_peak`/`selectionRationale`/other dormant phase-answer fields (prior report §11 decision 6, unresolved) | — | — | Your decision on deletion vs. surfacing |
+
+---
+
+## 9. CI and next TestFlight — current truth, checked live this pass
+
+**Checked live via `gh run list`/`gh run view` against `origin/main`, 2026-09-09T19:18Z — not carried forward from any prior report.**
+
+| Item | Current truth | Evidence |
+|---|---|---|
+| Current `main` SHA | `79d18bd8b68897c3879752a0a3d8a22e03be0c64` | `[SRC]` |
+| `build-check` | **PASS** (11m36s, latest push) | `[PROD]` |
+| `test-full` | **FAIL** — 2 failing test files: `_belief_source_pins.test.ts` (SHADOW_EVIDENCE_EPOCH pin stale for `lib/race/race-outlook.ts`, expected `79bc095d2f7ceb3b` got `18f75b129d5d3ae8` — a real decision needed, not a flake) and `_format_lint.test.ts` (a new hand-rolled rounding rule, `Math.round(x*10)/10`, in `lib/coach/_replay_glance_done_state.script.ts`, not in the allowlist). 587 test files passed, 2 failed; 11,898 tests passed, 2 failed, 1 expected-fail, 205 skipped. | `[PROD]` |
+| `native-check` | **FAIL** — CI runner's watchOS simulator is booted at 26.4 while `FaffWatch Watch AppTests` needs 26.5, and `FaffUITests`/`FaffTests` were run against the watch destination at all (a workflow configuration issue, not an app defect) | `[PROD]` |
+| `audit-suite` | **FAIL** — `BLOCKED_MISSING_CREDENTIAL`: `DATABASE_URL_RO` is not set in CI, so all 28 `*.audit.test.ts` files skip entirely. Confirmed by the workflow's OWN verdict step, which treats an unset credential as an explicit third state (not a silent pass) — this is itself a well-built gate (Rule 18-compliant: it can't silently report clean). | `[PROD]` |
+| Unresolved red/false-green gate | All 3 above are genuinely red for genuine, understood reasons (not false-reds) — except `native-check`, which IS arguably a false-red (a CI environment/workflow config problem, not a code defect) and may be what the prior report's row 2 "native-check false-red parser" already refers to, though the SPECIFIC mechanism (simulator version mismatch) had not been previously documented with this exact evidence. | `[PROD]`+`[INF]` |
+| `DATABASE_URL_RO` status | **Confirmed not provisioned in CI**, live, this pass. | `[PROD]` |
+| format-lint fix status | **Not fixed.** New violation found live in CI just now (`_replay_glance_done_state.script.ts`). | `[PROD]` |
+| native-check parser status | Root cause now has fresh, specific evidence (simulator version mismatch) — not previously this precisely documented. Not fixed. | `[PROD]` |
+| Test skip-category status | 205 skipped in `test-full` (unchanged proportion from what's typical for this suite per prior reports; not independently re-categorized this pass). | `[PROD]`, partial |
+| iPhone and Watch build readiness | iPhone: `build-check` passes on `main`. Watch: cannot currently confirm via CI (native-check's watch job fails for the environment reason above, not necessarily a real watch-app defect) — **UNKNOWN whether the watch app itself is currently buildable/correct**, only that the CI job checking it is misconfigured. | `[PROD]`+`[INF]` |
+| Current TestFlight build / mapped SHA | **UNKNOWN — not queried this pass.** No TestFlight-side check (App Store Connect API, or `web-v2/scripts/_asc_review_status.mjs` per the project's own memory of that tool) was run this session. | `[BLOCKED: not queried]` |
+| Commits between TestFlight and `main` | **UNKNOWN — depends on the above.** Prior report cited "44 commits behind" as of 2026-09-08; that number has certainly grown (at minimum by every commit landed this pass) but was not recomputed. | `[BLOCKED: not queried]` |
+| Exact blockers to the next candidate | (1) CI is red on 3 of 4 required workflows for reasons independent of any of this session's fixes; (2) 6 fix branches are implemented+reviewed but unmerged, needing your approval; (3) 1 fix branch (RouteMapView) is implemented but FAILED review and is being re-fixed; (4) 2 fix branches (vanished-decisions fixture regen, status-bar gradient) need a fresh/first review pass; (5) Migration 166's scope decision (adaptation-apply in-or-out) is undecided. | `[SRC]`+`[PROD]` |
+
+### Dependency-ordered execution plan to the next TestFlight
+
+**Must fix before building:**
+1. Resolve the 2 `test-full` failures (SHADOW_EVIDENCE_EPOCH decision + format-lint allowlist/fix) — these block a genuinely-green `main`, independent of any feature work.
+2. Get your merge approval on the 3 fully-reviewed-PASS branches (outage banner, walk-back display, RaceDecisionCardV5 header) and merge them.
+3. Get your merge approval on the coach-voice fix (PASS WITH CONDITIONS, both addressed) and merge it.
+4. Wait for and act on the 3 currently-running agents (RouteMapView root-cause fix, recovery-ended-early wire field, status-bar-gradient review) before considering the release scope final.
+5. Get a fresh independent review on the vanished-decisions fix's corrected commit before merging it.
+
+**Must verify in the candidate build:**
+6. Physical device re-test of the outage banner, walk-back label, and (once merged) RaceDecisionCardV5 header and status-bar gradient — simulator/source verification is not the same as physical verification, and none of these fixes has crossed that line yet.
+7. Confirm whether visible decision cards correctly explain "Apply cannot succeed" when Migration 166 is absent (the one piece of targeted verification the prior report flagged as still needed before committing to excluding adaptation-apply from this release).
+
+**Acceptable to defer from this internal build:**
+8. The missing-pace root-cause fix and the piece-by-piece evidence hierarchy (large, not yet started, not blocking anything else).
+9. The fragmented-prose coach-voice investigation (explicitly separate, not blocking the tie+primer fix).
+10. Design-System Phase 2's remaining product-cleanup items (14 `.system()` bypasses, amber `~` restoration, treadmill overlay collision) — named as NOT COMPLETE, not gating this build unless you decide otherwise.
+
+**Required before broader beta (not just this internal build):**
+11. `native-check`'s CI workflow fix (watch simulator version) — needed for any confidence the watch app itself builds correctly in CI, not just locally.
+12. `DATABASE_URL_RO` provisioning in CI, so production audits actually run automatically rather than requiring a manual local pass.
+13. Backend 502 observability — needed before broader beta exposes more users to whatever is causing it.
+
+**Required for the complete product, not this release:**
+14. Migration 166's actual application (pending your scope decision).
+15. Recovery-ended-early wire field, once built, needs its own full falsification pass and physical verification before it can inform grading.
+16. The full 27-area re-audit this pass explicitly did not perform.
+
+---
+
+## 10. Final runner-loop verdict
+
+| Question | Verdict | Blocking evidence |
+|---|---|---|
+| Can the current product build the training? | **YES** (unchanged from prior report; not re-challenged this pass) | `[INF]` — not re-verified this pass, no contrary evidence found |
+| Present it? | **PARTIAL** | Missing pace on some post-run screens (root cause known, unfixed); status-bar gradient gap (fixed, unreviewed); RaceDecisionCardV5 header bug (fixed, reviewed PASS, unmerged) |
+| Execute it? | **PARTIAL** | Walk-back mislabeling display fix exists (reviewed PASS, unmerged); the deeper execution-semantics gap (recovery-ended-early wire field) is unresolved and affects actual session grading, not just a label |
+| Interpret it? | **UNKNOWN** | Recovery-ended-early wire field, once built, is specifically about interpretation (can the engine tell "chosen" from "lapse"); currently it cannot, confirmed by source |
+| Learn from it? | **UNKNOWN** | Not evaluated this pass; no new evidence either way |
+| Adapt it? | **PARTIAL, BLOCKED** | Adaptation-apply's whole-plan pathway exists in the engine but Migration 166 (required for its ledger) is not deployed; vanished-decisions display/retry fix exists but is unmerged and its own fixture had a real bug, now fixed but unreviewed |
+| Explain it? | **PARTIAL** | Coach-voice tie+primer fix (truthful explanation of what's hardest this week) is reviewed PASS, unmerged; the separate fragmented-prose problem remains open and unaddressed |
+| Recover honestly? | **PARTIAL** | The outage-banner fix (a stale failure no longer overwrites a newer success) is reviewed PASS but unmerged — so the CURRENTLY-RUNNING production app still has the bug David screenshotted |
+| Operate without backend intervention? | **UNKNOWN** | Backend 502 incident's cause is unconfirmed; observability to answer this doesn't exist yet |
+| Ship through the required release pipeline? | **NO, currently** | 3 of 4 CI workflows are red on `main` right now (test-full, native-check, audit-suite), for reasons independent of this session's fixes; 6+ reviewed fixes await your merge approval; the release-pipeline standard this project set for itself (IMPLEMENTED → REVIEWED → MERGED → FULL GATES → BUILT → PHYSICALLY VERIFIED) has no single item that has reached the end of that chain yet this pass |
+
+---
+
+## Explicit decisions/permissions still required from you
+
+1. **Merge approval** for 4 branches now IMPLEMENTED + INDEPENDENTLY REVIEWED (PASS, or PASS WITH CONDITIONS already addressed): outage banner (`0dbf3143d`), walk-back display fix (`7b0163c85`), RaceDecisionCardV5 header (`79a1e894e`), coach-voice tie+primer (`49be10229`). None has a migration/data-write dependency.
+2. **Migration 166 approval decision** (§3/§7 row 14) — the packet is complete and independently reviewed PASS; only your go/no-go and scope call (adaptation-apply in or out of the next release) remain.
+3. **CI decision** on the SHADOW_EVIDENCE_EPOCH pin for `lib/race/race-outlook.ts` (§9) — bump the epoch (a belief-resolution change) or re-pin the digest alone (a non-resolving change)? This needs someone who knows what actually changed in that file to answer correctly; I have not inspected the diff between the pinned and current digest this pass.
+4. **Whether to provision `DATABASE_URL_RO` in CI** (currently blocking all 28 production audit tests from running automatically).
+5. **Whether to investigate the pre-existing `fix/race-outlook-epoch-pin` worktree** (§6, item 11) before any new work touches the same CI failure — I did not create it and have not inspected it; it may already be a partial answer to decision 3 above.
+6. **Scope decision on the missing-pace fix and evidence hierarchy** (§2b/§7 row 34/35) — this is a real, multi-part product gap with a known root cause and zero implementation; it needs to be explicitly scoped (full rebuild now, vs. deferred) rather than left ambiguous.
+7. **Whether to authorize a fresh production-log/observability effort** for the backend 502 incident, or continue treating it as blocked indefinitely.
+
+---
+
+*This document was produced by direct source inspection, live CI queries, live git/worktree inspection, and integration of independent-review agent results that completed during this session. Three agents were still running when this was generated (recovery-ended-early wire field, RouteMapView root-cause fix, status-bar-gradient review) — their landing will require a small, explicit update to §6/§7/§10 of this document, not a new one.*
