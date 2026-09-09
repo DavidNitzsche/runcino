@@ -227,6 +227,7 @@
 		C6A2A7918BF78AD7655141C8 /* MatchedWorkoutV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDB2FFAE1C35FF5532669FEA /* MatchedWorkoutV5.swift */; };
 		CBCBD59107DBD5C69D2DE353 /* CoachIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 516DCD5B946ABCCE017F3F40 /* CoachIntents.swift */; };
 		CC56F6522DB4029831F4ECE1 /* BeltTrackerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BBD87A2B7AEEDE1D12808EB /* BeltTrackerTests.swift */; };
+		CCB6508CB0BDB54845CA10AD /* WalkBackCompletionLabelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34130E2348685DF2259472DC /* WalkBackCompletionLabelTests.swift */; };
 		CD6CDE532ADFEC86D020C8E6 /* PlanSnapshotNavigationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A34FDF3F6A6AE06227A16DD /* PlanSnapshotNavigationTests.swift */; };
 		CF1C1E572DC1A191D8D58977 /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A2DDEC15725161C4032FEC9 /* SignInView.swift */; };
 		D015F75F19467F2CC4F858F4 /* TodayReliabilityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 54F7FD10DD9073D194489F29 /* TodayReliabilityTests.swift */; };
@@ -420,6 +421,7 @@
 		31AB0DE9A9BF90BBAEF5661D /* PlanSnapshotModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSnapshotModels.swift; sourceTree = "<group>"; };
 		3319534867031A9898793E4E /* LiveRunOutdoorV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunOutdoorV5.swift; sourceTree = "<group>"; };
 		339FE2F9F859B2369B4348E2 /* TrainingCalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrainingCalendarView.swift; sourceTree = "<group>"; };
+		34130E2348685DF2259472DC /* WalkBackCompletionLabelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WalkBackCompletionLabelTests.swift; sourceTree = "<group>"; };
 		3650C3635F31A5B912030FCE /* V5PhaseAnswersDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5PhaseAnswersDecodeTests.swift; sourceTree = "<group>"; };
 		39372D39D00335DD55A60910 /* PlanSnapshotStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSnapshotStoreTests.swift; sourceTree = "<group>"; };
 		39A87ED56AB9F59CDC05C03F /* RequestDiagnostics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestDiagnostics.swift; sourceTree = "<group>"; };
@@ -646,7 +648,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_2E49933A-AC22-4F2A-9A71-A3B7FF1EF1F6" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_83D48388-CC2E-4063-811D-728ECC20B969" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -725,6 +727,7 @@
 				79E3B5D87821AFCDAD52B70A /* V5RaceOnTodayDecodeTests.swift */,
 				EE6DEE8E1E5A40B942A2E036 /* V5RaceStatsColumnsTests.swift */,
 				4B06CB04BB75562F9A1BC187 /* V5RaceWireTests.swift */,
+				34130E2348685DF2259472DC /* WalkBackCompletionLabelTests.swift */,
 				0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */,
 				861C565055555BF5D5275FE2 /* WatchWorkoutPhaseRestampTests.swift */,
 				2CED47C2665D8AD913FB6A8A /* WriteHonestyTests.swift */,
@@ -1098,10 +1101,10 @@
 			path = FaffUITests;
 			sourceTree = "<group>";
 		};
-		"TEMP_8D2B580C-C56D-47ED-98B3-5E48C95DDACB" /* native-v2 */ = {
+		"TEMP_54E66ED9-E3B2-4DAB-9911-17743DC441EE" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_2E49933A-AC22-4F2A-9A71-A3B7FF1EF1F6" /* Secrets.xcconfig */,
+				"TEMP_83D48388-CC2E-4063-811D-728ECC20B969" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1435,6 +1438,7 @@
 				841DE1DC82A6E3421EFCE494 /* V5RaceOnTodayDecodeTests.swift in Sources */,
 				1E2A914A6F9494BD4D0F69E4 /* V5RaceStatsColumnsTests.swift in Sources */,
 				5F846D56101A279D2FD2D3F8 /* V5RaceWireTests.swift in Sources */,
+				CCB6508CB0BDB54845CA10AD /* WalkBackCompletionLabelTests.swift in Sources */,
 				FCE849E5CE19B79865639C37 /* WatchRelayQueueTests.swift in Sources */,
 				A9E46F3AF38EF131C8396F71 /* WatchWorkoutPhaseRestampTests.swift in Sources */,
 				78379E4F50F43536FD9546E5 /* WireCorpus.swift in Sources */,
@@ -1669,7 +1673,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_2E49933A-AC22-4F2A-9A71-A3B7FF1EF1F6" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_83D48388-CC2E-4063-811D-728ECC20B969" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1896,7 +1900,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_2E49933A-AC22-4F2A-9A71-A3B7FF1EF1F6" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_83D48388-CC2E-4063-811D-728ECC20B969" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;

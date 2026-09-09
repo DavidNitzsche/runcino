@@ -1540,6 +1540,51 @@ struct TodayAfterV5: View {
      *
      * Used ONLY as the fallback: whenever `routePhases` has real pieces they
      * win, because they carry the pace, the target and the verdict too. */
+    /// WALKBACK-1 (2026-09-09) · whether an unfinished phase reads "not
+    /// completed" in this fallback lane. NEVER for a `recovery` phase.
+    ///
+    /// David, on his own stride session: six walk-backs, five of them ended
+    /// early by his own hand and each stamped "not completed" — "the walk
+    /// back says not completed but I did, I just didn't do the full minute.
+    /// I was ready to go to the next stride." He is right, and the canonical
+    /// resolver already agrees with him: `execution-semantics.ts`'s
+    /// `paceShapeFor` returns `'none'` for EVERY recovery phase
+    /// unconditionally ("A recovery has no prescribed pace even when a
+    /// legacy row carries one... Grading it against anything is the
+    /// defect"), which routes it to `not_graded` and no verdict word at all
+    /// on the GPS-keyed path (`RunDetailV5`/`sectionPieces`, via
+    /// `phaseVerdictPhrase`'s `guard type == "work"`). This raw fallback —
+    /// built straight off `runs.data.phases` for a session `routePhases`
+    /// cannot represent, e.g. sub-mile strides+walkbacks it cannot key by
+    /// GPS mile — never consulted that resolver at all and stamped the raw
+    /// wire `completed` flag on every phase type alike, so the SAME
+    /// underlying fact read "Ended early"/nothing on one lane and "not
+    /// completed" on this one (Rule 16: one quantity, one name).
+    ///
+    /// `Research/04-workout-vocabulary.md` §7.2 names the walk-back's actual
+    /// job: "Full walk-back or 60–90 s jog — no fatigue between strides."
+    /// That is a runner-judged condition, not a clock — "Full walk-back" is
+    /// offered as a recovery METHOD with no minimum duration attached, and a
+    /// runner who feels no fatigue has met the prescription regardless of
+    /// how much of the modelled 60 s the watch's countdown had left.
+    /// `WorkoutEngine.endCurrentPhase()` ("End interval") exists on the
+    /// watch precisely so a runner can act on that judgement — it is the
+    /// documented way to leave ANY phase early, work or recovery, and CLAUDE.md's
+    /// standing rule is that a missed run is stated, never judged. Ending a
+    /// walk-back on purpose is not a miss to state at all.
+    ///
+    /// A work phase keeps the flag: this thin lane has no `pace_shape`
+    /// awareness to route a stride's `effort` grade to `not_graded` the way
+    /// the canonical resolver does, so an unfinished structured work
+    /// interval (the treadmill case this lane was built for) still says so
+    /// — the asymmetry this fixes is specifically that recovery, alone among
+    /// phase types, had a NEGATIVE reading with no positive counterpart: the
+    /// stride itself never carried any completion word either way.
+    static func completionNote(type: String?, completed: Bool?) -> String? {
+        guard completed == false, type != "recovery" else { return nil }
+        return "not completed"
+    }
+
     private var workoutPhasePieces: [RepPiece] {
         let usable = model.workoutPhases.filter { ($0.durationSec ?? 0) > 0 }
         // A LIST OF ONE IS THE RUN, and the poster already states it — the
@@ -1553,7 +1598,7 @@ struct TodayAfterV5: View {
                 let incline = p.inclinePct.map { String(format: "%.1f%%", $0) } ?? ""
                 parts.append(String(format: "%.1fmph", speed) + (incline.isEmpty ? "" : "\u{00B7}\(incline)"))
             }
-            if p.completed == false { parts.append("not completed") }
+            if let note = Self.completionNote(type: p.type, completed: p.completed) { parts.append(note) }
             return RepPiece(
                 id: i,
                 label: p.label ?? p.type?.capitalized ?? "Phase \(i + 1)",
