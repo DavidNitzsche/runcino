@@ -652,7 +652,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_40DE11E8-C174-45FB-9666-D0767C7F6B3A" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_AF3E0848-3DA5-4090-A823-8E41578E4203" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -1107,10 +1107,10 @@
 			path = FaffUITests;
 			sourceTree = "<group>";
 		};
-		"TEMP_5AE3D806-F57A-4125-B091-6C9DE4217E51" /* native-v2 */ = {
+		"TEMP_75C10219-96EC-469E-832A-763238CCFD17" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_40DE11E8-C174-45FB-9666-D0767C7F6B3A" /* Secrets.xcconfig */,
+				"TEMP_AF3E0848-3DA5-4090-A823-8E41578E4203" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1681,7 +1681,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_40DE11E8-C174-45FB-9666-D0767C7F6B3A" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_AF3E0848-3DA5-4090-A823-8E41578E4203" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1790,6 +1790,7 @@
 				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = 4;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FaffWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FaffWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
 			};
 			name = Debug;
 		};
@@ -1858,6 +1859,7 @@
 				SWIFT_VERSION = 5.9;
 				TARGETED_DEVICE_FAMILY = 4;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FaffWatch Watch App.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FaffWatch Watch App";
+				WATCHOS_DEPLOYMENT_TARGET = 10.0;
 			};
 			name = Release;
 		};
@@ -1908,7 +1910,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_40DE11E8-C174-45FB-9666-D0767C7F6B3A" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_AF3E0848-3DA5-4090-A823-8E41578E4203" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;

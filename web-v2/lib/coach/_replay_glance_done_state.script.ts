@@ -60,6 +60,7 @@ import { fellShortShare, resolveWorkoutVerdict, phasesFromCompletion } from '@/l
 import { resolveDayExecutions, primaryPrescription } from '@/lib/execution/day-resolver';
 import { resolveStoredPhases } from '@/lib/postrun/load';
 import { computeTodayExecution, type GlanceWeekDay } from '@/lib/coach/glance-state';
+import { roundTo } from '@/lib/format/run';
 import type { WorkoutSpec } from '@/lib/faff/types';
 
 // Loopback-only fence. This replay is meant to run against WHATEVER local
@@ -197,7 +198,11 @@ async function loadDays(): Promise<Day[]> {
       plannedType: p.type ?? 'rest',
       plannedLabel: p.sub_label,
       plannedSpec: (p.workout_spec ?? null) as WorkoutSpec | null,
-      doneMi: Math.round(done * 10) / 10,
+      // Mirrors glance-state.ts's own construction of this exact field
+      // (`doneMi: actual ? roundTo(actual.mi, 1) : 0`) — this replay compares
+      // against LIVE `computeTodayExecution`, so its GlanceWeekDay rows must
+      // round identically to production's, not merely equivalently.
+      doneMi: roundTo(done, 1),
       activityId: null,
       isToday: false,
       isPast: true,
