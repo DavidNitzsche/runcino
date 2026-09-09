@@ -433,6 +433,27 @@ export interface RunData {
     atSec?: number;
   }>;
 
+  /**
+   * WALKBACK-2 (2026-09-09) · a recovery/walk-back the runner CHOSE to end
+   * before its modelled duration ran out. Written by
+   * `app/api/watch/workouts/complete/route.ts`'s `normalizeRecoveryEndedEarly`,
+   * mirroring `repSkips`'s contract exactly: `completed === false` on the
+   * phase itself cannot tell a choice from a lapse, so this is an explicit
+   * record, never inferred from a duration comparison downstream. ABSENT ON
+   * EVERY ROW BEFORE THIS FIELD SHIPPED — a reader must treat absence as
+   * "this run predates the field or nothing was ended early," never as "no
+   * recovery ran short." `prescribedSec`/`actualSec` are always present on a
+   * stored entry (the normalizer drops anything missing either), and never a
+   * delta against each other.
+   */
+  recoveryEndedEarly?: Array<{
+    afterRepIndex?: number; beforeRepIndex?: number;
+    repCount?: number;
+    prescribedSec: number; actualSec: number;
+    phaseIndex?: number; phaseLabel?: string;
+    atSec?: number;
+  }>;
+
   /** The watch's own id for the completion this row came from. 28% / 42%.
    *  Also the `coach_intents.field` value the full payload is filed under. */
   watchCompletionRef?: string;

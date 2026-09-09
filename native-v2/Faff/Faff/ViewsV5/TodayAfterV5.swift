@@ -1580,7 +1580,34 @@ struct TodayAfterV5: View {
     /// — the asymmetry this fixes is specifically that recovery, alone among
     /// phase types, had a NEGATIVE reading with no positive counterpart: the
     /// stride itself never carried any completion word either way.
-    static func completionNote(type: String?, completed: Bool?) -> String? {
+    ///
+    /// WALKBACK-2 (2026-09-09) · `endedEarly` is the POSITIVE counterpart
+    /// WALKBACK-1's own header called out as missing: an explicit
+    /// `recoveryEndedEarly` record (`V5WorkoutPhase.recoveryEndedEarly`,
+    /// sourced from the watch's `RecoveryEndedEarlyRecord` via
+    /// `runs.data.recoveryEndedEarly`) naming exactly how much of the
+    /// modelled recovery the runner actually held before choosing to move
+    /// on. Where it exists, this reads "0:43 of 1:00 · advanced early" —
+    /// the truthful statement WALKBACK-1's silence stood in for, because
+    /// nothing on the wire could say WHY the phase ended short. Where it
+    /// does NOT exist — an older payload, or a recovery that simply came
+    /// apart (GPS loss, a crash) — this falls straight back to WALKBACK-1's
+    /// original silent behaviour: no claim in either direction, never an
+    /// inferred "not completed".
+    ///
+    /// `endedEarly` is only ever consulted for `type == "recovery"`: the
+    /// field is meaningless on any other phase type and the server never
+    /// populates it there (`V5WorkoutPhase.recoveryEndedEarly`'s own doc
+    /// comment), so a work/warmup/cooldown phase is untouched by this arm
+    /// and keeps exactly the behaviour the tests below already pin.
+    static func completionNote(
+        type: String?, completed: Bool?, endedEarly: V5RecoveryEndedEarly? = nil
+    ) -> String? {
+        if type == "recovery", let e = endedEarly, e.prescribedSec > 0, e.actualSec >= 0 {
+            let actual = FaffFmt.clock(sec: Double(e.actualSec)) ?? "0:00"
+            let prescribed = FaffFmt.clock(sec: Double(e.prescribedSec)) ?? "0:00"
+            return "\(actual) of \(prescribed) \u{00B7} advanced early"
+        }
         guard completed == false, type != "recovery" else { return nil }
         return "not completed"
     }
@@ -1598,7 +1625,9 @@ struct TodayAfterV5: View {
                 let incline = p.inclinePct.map { String(format: "%.1f%%", $0) } ?? ""
                 parts.append(String(format: "%.1fmph", speed) + (incline.isEmpty ? "" : "\u{00B7}\(incline)"))
             }
-            if let note = Self.completionNote(type: p.type, completed: p.completed) { parts.append(note) }
+            if let note = Self.completionNote(type: p.type, completed: p.completed, endedEarly: p.recoveryEndedEarly) {
+                parts.append(note)
+            }
             return RepPiece(
                 id: i,
                 label: p.label ?? p.type?.capitalized ?? "Phase \(i + 1)",

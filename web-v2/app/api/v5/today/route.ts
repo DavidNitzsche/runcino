@@ -1528,7 +1528,27 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // same field-name lesson `workAveragesFromPhases` above already
         // learned the hard way for `actualDistanceMi`).
         workoutPhases: Array.isArray(data.phases)
-          ? (data.phases as any[]).map((ph) => {
+          ? (data.phases as any[]).map((ph, phaseArrayPos) => {
+              // WALKBACK-2 (2026-09-09) · which recovery this phase is, if
+              // any, per `data.recoveryEndedEarly` — matched by `phaseIndex`
+              // against the phase's own `index` (falling back to array
+              // position for a payload whose phase objects predate `index`).
+              // Resolved once here, server-side, so `TodayAfterV5` reads a
+              // plain nested object rather than re-doing this match itself.
+              const recoveryEndedEarly = ((): { prescribedSec: number; actualSec: number } | null => {
+                if (ph.type !== 'recovery' || !Array.isArray(data.recoveryEndedEarly)) return null;
+                const phaseIdx = Number.isFinite(Number(ph.index))
+                  ? Math.round(Number(ph.index)) : phaseArrayPos;
+                const rec = (data.recoveryEndedEarly as any[]).find(
+                  (r) => Number(r?.phaseIndex) === phaseIdx,
+                );
+                if (!rec) return null;
+                const prescribedSec = Number(rec.prescribedSec);
+                const actualSec = Number(rec.actualSec);
+                if (!Number.isFinite(prescribedSec) || prescribedSec <= 0) return null;
+                if (!Number.isFinite(actualSec) || actualSec < 0) return null;
+                return { prescribedSec: Math.round(prescribedSec), actualSec: Math.round(actualSec) };
+              })();
               // WORKOUTPHASES-2 (2026-09-04) · `avgHr`/`maxHr` are absent on
               // several phases in THIS account's own stored rows (every
               // "work" phase in a 2026-09-03 hill session, confirmed
@@ -1570,6 +1590,9 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                   ? Math.round(Number(ph.actualSpeedMph) * 10) / 10 : null,
                 inclinePct: Number.isFinite(Number(ph.actualInclinePct))
                   ? Math.round(Number(ph.actualInclinePct) * 10) / 10 : null,
+                // WALKBACK-2 · nil unless this recovery carries an explicit
+                // "ended early, by choice" record. See the resolver above.
+                recoveryEndedEarly,
               };
             })
           : [],
