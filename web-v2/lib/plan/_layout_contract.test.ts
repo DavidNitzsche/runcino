@@ -53,8 +53,9 @@
  *     only `notes`, on exactly the rows Rule 17 already governs. Falsified in
  *     `_sentence_repetition.test.ts` (TIEFIX-1 alone turns this corpus's 0
  *     findings into 8; both fixes together return it to 0) and
- *     `_primer_specific.test.ts` (12 hand-built fixtures, 6 of which fail
- *     against the pre-TIEFIX-1 composer).
+ *     `_primer_specific.test.ts` (12 hand-built fixtures, 10 of which fail
+ *     against the pre-fix composer — independently reverted and re-run to
+ *     confirm the count, 2026-09-09).
  *
  *   · 2026-09-03 · SENTENCEREP-1 / RUNNERLANG-2. `applyRunnerVoice` is a new
  *     final pass in `finalizeComposedPlan`: a sentence true of every row of its

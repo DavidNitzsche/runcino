@@ -486,9 +486,13 @@ export function easyDayRole(f: {
  * `PRIMER_SESSION_LINE` is the one new thing this file adds: what to SAY once
  * the session type is known. It is a fixed table, same discipline as
  * `INSTRUCTION_REWRITES` and `EASY_DAY_ROLE_LINES` — no score, no tone, no
- * branch on runner state — and it covers every `SessionType` `isHard()`
- * (`generate.ts`) can put on the day after an easy row, not only the two
- * types David's own examples named.
+ * branch on runner state — and it covers threshold/tempo/intervals/long/race,
+ * not only the two types David's own examples named. It does NOT cover every
+ * `SessionType` `isHard()` can put on the day after an easy row —
+ * `race_week_tuneup` is a real, reachable, `isHard()`-true type (seated during
+ * TAPER-phase quality substitution) with no entry here, so a day priming one
+ * falls through to the generic fallback. See the doc comment on
+ * `PRIMER_SESSION_LINE` itself for the exact, narrower claim.
  */
 
 /**
