@@ -137,6 +137,86 @@ struct StaleBannerV5: View {
     }
 }
 
+// MARK: - Full-bleed-safe attachment (FULLBLEED-1)
+//
+// The three hosts that draw this banner (Today, Block, Races) all used to
+// attach it the same copy-pasted way: `.safeAreaInset(edge: .top)` on a
+// screen that opens with a `DayPanel` (`PanelV5.swift`). `DayPanel` reaches
+// behind the status bar by reading `\.v5TopInset` — the device's own
+// physical inset, measured ONCE by a `GeometryReader` at the shell's root
+// (`ShellV5.swift`'s `RootV5.body`), before any host has had a chance to add
+// this banner — and pulling itself up by exactly that much. A
+// `.safeAreaInset` added below the root grows the ambient safe area for
+// everything inside it by the banner's own rendered height, but
+// `\.v5TopInset` never learns about that growth: it is a value captured once,
+// at the top of the tree, and the banner lives beneath it. So the panel's
+// pull-up falls short by exactly the banner's height, and the gap it leaves
+// is painted in the ordinary page background — a BLACK STRIP, the same
+// colour as the rest of the app, sitting between the banner and the panel.
+// Invisible when nothing is stale (the gap is 0pt), and exactly the shape of
+// "the colour stops short of the top" the moment a runner is offline, which
+// is a completely ordinary thing to be mid-run.
+//
+// The fix stays local to the banner: measure its own rendered height and
+// feed the difference back into `\.v5TopInset` for everything the banner
+// sits above, so `DayPanel` always pulls up by the FULL amount actually
+// consumed — the device inset alone when nothing else is stacked above it,
+// device inset plus banner height when there is. One call site
+// (`v5StaleBanner`), reused by all three hosts, rather than the same lines
+// duplicated a third time with no shared owner to keep them in sync.
+private struct V5BannerHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+private struct V5StaleBannerModifier: ViewModifier {
+    let stale: Bool
+    let cachedAt: Date?
+    let onRetry: () -> Void
+
+    /// The device's own inset, as published at the shell's root — correct
+    /// on its own, and the base this modifier adds the banner's height to.
+    @Environment(\.v5TopInset) private var deviceTopInset
+    @State private var bannerHeight: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if stale {
+                    StaleBannerV5(cachedAt: cachedAt, onRetry: onRetry)
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.bottom, V5.S.s12)
+                        .background(V5.surfacePage)
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear.preference(key: V5BannerHeightKey.self,
+                                                        value: geo.size.height)
+                            }
+                        )
+                        .transition(.opacity)
+                }
+            }
+            .onPreferenceChange(V5BannerHeightKey.self) { bannerHeight = $0 }
+            .animation(V5.Motion.fill, value: stale)
+            // Reaches every `DayPanel` beneath this point in the tree — see
+            // the header comment above for why the plain device inset alone
+            // is not enough once this banner is actually on screen.
+            .environment(\.v5TopInset, deviceTopInset + (stale ? bannerHeight : 0))
+    }
+}
+
+extension View {
+    /// The offline/stale banner (`StaleBannerV5`), attached the one correct
+    /// way: in the top safe area, AND keeping any full-bleed `DayPanel`
+    /// beneath it pulled up by the banner's own height too. See
+    /// `V5StaleBannerModifier`'s header comment for the bug this replaces.
+    func v5StaleBanner(stale: Bool, cachedAt: Date?, onRetry: @escaping () -> Void) -> some View {
+        modifier(V5StaleBannerModifier(stale: stale, cachedAt: cachedAt, onRetry: onRetry))
+    }
+}
+
 #Preview("Stale · known age") {
     VStack(spacing: V5.S.s16) {
         StaleBannerV5(cachedAt: Date().addingTimeInterval(-42 * 60), onRetry: {})
