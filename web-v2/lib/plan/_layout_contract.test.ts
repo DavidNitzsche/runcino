@@ -53,9 +53,22 @@
  *     only `notes`, on exactly the rows Rule 17 already governs. Falsified in
  *     `_sentence_repetition.test.ts` (TIEFIX-1 alone turns this corpus's 0
  *     findings into 8; both fixes together return it to 0) and
- *     `_primer_specific.test.ts` (12 hand-built fixtures, 10 of which fail
- *     against the pre-fix composer — independently reverted and re-run to
- *     confirm the count, 2026-09-09).
+ *     `_primer_specific.test.ts` (12 hand-built fixtures, 6 of which fail
+ *     against the pre-fix composer when the new API surface exists but its
+ *     underlying fix does not — bringing the test file forward onto a
+ *     reconstructed pre-fix `generate.ts` beside the post-fix
+ *     `runner-instruction.ts` so every case reaches its real assertion,
+ *     independently re-verified twice, 2026-09-09. A naive full revert (the
+ *     new test file dropped onto fully pre-fix `generate.ts` AND
+ *     `runner-instruction.ts`) additionally reports 10 failures, not 6 — but
+ *     7 of those 10 are `TypeError`s from the new API not existing at all
+ *     (`resolvePrimerLines is not a function`, `Cannot read properties of
+ *     undefined`), three of which mask three of the same 6 real bugs and
+ *     four of which are pure artifacts of the missing API with no real bug
+ *     behind them; only 3 survive as genuine assertion failures there. A test
+ *     that crashes before reaching its own assertion isn't falsifying
+ *     behavior, per Rule 18's "fail for the right reason" standard, so the
+ *     naive-revert count is not the falsification count).
  *
  *   · 2026-09-03 · SENTENCEREP-1 / RUNNERLANG-2. `applyRunnerVoice` is a new
  *     final pass in `finalizeComposedPlan`: a sentence true of every row of its
