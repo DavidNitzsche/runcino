@@ -179,6 +179,23 @@ export async function register(): Promise<void> {
  * "correlation id defaults to a fresh one, class defaults from the error
  * alone" rather than throwing inside an error handler, which would be the
  * worst possible failure mode for this specific file.
+ *
+ * RULE 19, CAUGHT THIS TIME BY THE GATE IT ADDED: the first version of this
+ * hook imported `lib/observability/record.ts` directly, which reaches
+ * `@/lib/db/pool` → `pg`. `next build`'s pre-push check (the exact check
+ * Rule 19 added after `lthr-reanchor.ts`'s dynamic import did the same thing
+ * to `main` for a full day) failed immediately: this file is bundled for
+ * BOTH the Node and Edge runtimes, and the `fs`/`path`/`stream` `pg` needs do
+ * not exist in the edge bundle — a `NEXT_RUNTIME` check at RUN time does not
+ * stop webpack needing to resolve the import graph at BUILD time. Fixed the
+ * way `register()` above already solves the identical problem for the cron
+ * tick: this hook imports only the PURE, dependency-free `classify.ts`/
+ * `constants.ts` directly, and relays the actual database write to
+ * `POST /api/internal/observability/record` — an ordinary Node-runtime route
+ * (routes are never edge-bundled by default; 154 of them already import
+ * `@/lib/db/pool` directly with no issue) — over the same loopback base URL
+ * `register()` already resolves, with the same `CRON_SECRET` bearer auth
+ * `/api/cron/tick` already uses. See that route's header for the full story.
  */
 export async function onRequestError(
   error: unknown,
@@ -194,16 +211,16 @@ export async function onRequestError(
   },
 ): Promise<void> {
   // Same Node-only guard as register() — this file is also evaluated for the
-  // Edge runtime, which cannot run the Node-only `pool`/AsyncLocalStorage
-  // code this hook needs.
+  // Edge runtime, which cannot run the Node-only fetch-with-secret call below
+  // (the secret should never be reachable from an edge-bundled code path).
   if (process.env.NEXT_RUNTIME !== 'nodejs') return;
 
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return; // same silent-skip posture as register() when unset
+
   try {
-    const [{ recordRequestFailure }, { classifyFailure }, { CORRELATION_ID_HEADER }] = await Promise.all([
-      import('./lib/observability/record'),
-      import('./lib/observability/classify'),
-      import('./lib/observability/constants'),
-    ]);
+    const { classifyFailure } = await import('./lib/observability/classify');
+    const { CORRELATION_ID_HEADER } = await import('./lib/observability/constants');
 
     const headerBag = request?.headers ?? {};
     const rawHeaderVal = headerBag[CORRELATION_ID_HEADER] ?? headerBag[CORRELATION_ID_HEADER.toUpperCase()];
@@ -215,21 +232,31 @@ export async function onRequestError(
     const correlationId = headerVal && headerVal.trim().length > 0 ? headerVal.trim().slice(0, 128) : `no-header-${Date.now()}`;
 
     const classified = classifyFailure(error);
-    await recordRequestFailure({
-      correlationId,
-      routePath: context?.routePath || request?.path || 'unknown',
-      httpMethod: request?.method || 'UNKNOWN',
-      failureClass: classified.failureClass,
-      // Next.js is about to render its own 500 for a Route Handler whose
-      // error escaped this far — an approximation stated as one, not a
-      // fact this hook independently confirmed (it never sees the response
-      // Next.js goes on to send).
-      httpStatus: 500,
-      durationMs: null,
-      error,
-      upstreamService: classified.upstreamService,
-      metadata: { detail: classified.detail, routerKind: context?.routerKind, routeType: context?.routeType },
-      source: 'instrumentation.onRequestError',
+    const base = process.env.CRON_TICK_BASE_URL?.replace(/\/+$/, '')
+      ?? `http://127.0.0.1:${process.env.PORT ?? '3000'}`;
+
+    await fetch(`${base}/api/internal/observability/record`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+      body: JSON.stringify({
+        correlationId,
+        routePath: context?.routePath || request?.path || 'unknown',
+        httpMethod: request?.method || 'UNKNOWN',
+        failureClass: classified.failureClass,
+        // Next.js is about to render its own 500 for a Route Handler whose
+        // error escaped this far — an approximation stated as one, not a
+        // fact this hook independently confirmed (it never sees the response
+        // Next.js goes on to send).
+        httpStatus: 500,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        upstreamService: classified.upstreamService,
+        metadata: { detail: classified.detail, routerKind: context?.routerKind, routeType: context?.routeType },
+        source: 'instrumentation.onRequestError',
+      }),
+      // Bounded, same order of magnitude as ops/sentry.ts's own outbound
+      // timeouts — this hook must never itself become a hang.
+      signal: AbortSignal.timeout(3000),
     });
   } catch (hookError) {
     // This IS the error-reporting path; it must not become the thing that

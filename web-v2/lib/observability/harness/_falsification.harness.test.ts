@@ -40,6 +40,7 @@ const { fetchUpstream } = await import('../upstream-fetch');
 const { withObservability } = await import('../with-observability');
 const { NextRequest } = await import('next/server');
 const { POST: clientReportPost } = await import('@/app/api/observability/client-report/route');
+const { POST: internalRecordPost } = await import('@/app/api/internal/observability/record/route');
 
 interface FailureRow {
   id: string;
@@ -95,6 +96,44 @@ describe('APPLICATION · an unhandled exception, the onRequestError / with-obser
     expect(row!.http_status).toBe(500);
     expect(row!.error_message).not.toContain('sk-should-be-redacted-aaaaaaaaaaaaaaaa');
     expect(row!.error_message).toContain('[redacted]');
+  });
+});
+
+describe('POST /api/internal/observability/record · the indirection instrumentation.ts relays through', () => {
+  const originalSecret = process.env.CRON_SECRET;
+  beforeAll(() => { process.env.CRON_SECRET = 'harness-test-secret'; });
+  afterAll(() => { process.env.CRON_SECRET = originalSecret; });
+
+  it('rejects a request with no/wrong bearer secret', async () => {
+    const req = new NextRequest('http://localhost/api/internal/observability/record', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ correlationId: 'x', routePath: '/x', failureClass: 'APPLICATION' }),
+    });
+    const res = await internalRecordPost(req);
+    expect(res.status).toBe(401);
+  });
+
+  it('records a real row given the correct secret — this is the exact call instrumentation.ts makes', async () => {
+    const correlationId = `falsify-internalroute-${Date.now()}`;
+    const req = new NextRequest('http://localhost/api/internal/observability/record', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer harness-test-secret' },
+      body: JSON.stringify({
+        correlationId, routePath: '/api/plan/today', httpMethod: 'GET',
+        failureClass: 'APPLICATION', httpStatus: 500,
+        errorMessage: 'TypeError: cannot read properties of undefined, session Bearer abcdefghijklmnopqrstuvwx',
+        source: 'instrumentation.onRequestError',
+      }),
+    });
+    const res = await internalRecordPost(req);
+    expect(res.status).toBe(200);
+    const row = await rowFor(correlationId);
+    expect(row).toBeDefined();
+    expect(row!.failure_class).toBe('APPLICATION');
+    // Proves sanitize.ts still runs on THIS path too, independent of whether
+    // the caller (instrumentation.ts) already classified the error.
+    expect(row!.error_message).not.toContain('abcdefghijklmnopqrstuvwx');
   });
 });
 
