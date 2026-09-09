@@ -746,7 +746,7 @@ enum RacesV5Sample {
             goal: "Sub 3:30", gap: "+2:56", gapAttention: false
         )),
         ("injury", Spec(
-            shape: "decision", verdict: "outOfReach",
+            shape: "decision", verdict: "out-of-reach",
             question: "Sub 3:30 was set before the calf flare \u{b7} four weeks back running is not four weeks of marathon buildup.",
             cautions: [
                 "Longest run back is 9 mi, not 20",
@@ -791,7 +791,7 @@ enum RacesV5Sample {
             goal: "Sub 3:30", gap: "+2:56", gapAttention: false
         )),
         ("races", Spec(
-            shape: "choice", verdict: "openEnded",
+            shape: "choice", verdict: "open-ended",
             question: "CIM and the half in October are both marked A \u{b7} the plan can peak for one, not both \u{b7} which one is the goal.",
             cautions: [
                 "The half sits five weeks before CIM",
