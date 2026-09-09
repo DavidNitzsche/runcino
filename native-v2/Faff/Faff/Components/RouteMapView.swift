@@ -530,7 +530,17 @@ struct RouteMapView: UIViewRepresentable {
         // share a single source and layer.
         let start = MLNPointFeature()
         start.coordinate = coords.first!
-        start.attributes = ["circleColor": UIColor(Color(hex: 0x3EBD41))]   // start · Success green (palette)
+        // PALETTE-NEUTRAL, NOT GREEN. This used to be #3EBD41 — byte-identical
+        // to the "Easy" day-state gradient — despite the pace-ramp note above
+        // already arguing "there is no green in the palette on purpose" and
+        // that this map "asserts nothing about pace here"; that ruling was
+        // applied to the line and missed this endpoint. The start marker has
+        // no grade to assert, so it takes `V5.textPrimary` (pure white) — the
+        // same neutral ink the rest of the app uses for "the value, read
+        // plainly", not a day-state hex and not a verdict. Still clearly
+        // distinguishable from the finish marker's coral #FC4D64 by hue, and
+        // reads at full contrast against CartoDB Dark Matter.
+        start.attributes = ["circleColor": UIColor(V5.textPrimary)]
         let finish = MLNPointFeature()
         finish.coordinate = coords.last!
         finish.attributes = ["circleColor": UIColor(Color(hex: 0xFC4D64))]  // finish · Warning red (palette)
