@@ -5,6 +5,7 @@
       "dateISO": "2026-09-09",
       "direction": "push",
       "standing": "proposal",
+      "applyBlockedBecause": null,
       "headline": "Make Wednesday a field test",
       "why": "No race or field test in the last 6 weeks. Pace anchors are going stale. Convert 2026-09-09's quality session to a 30-minute threshold field test to lock in current fitness.",
       "detail": {
@@ -20,18 +21,18 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-09",
-            "what": "intervals \u00b7 2.5 mi"
+            "what": "intervals · 2.5 mi"
           }
         ],
         "policyAssumptions": null
-      },
-      "applyBlockedBecause": null
+      }
     },
     {
       "id": "12",
       "dateISO": "2026-09-08",
       "direction": "push",
       "standing": "proposal",
+      "applyBlockedBecause": null,
       "headline": "Easy ceiling moves to 8:12 across the block",
       "why": "Your recent training puts your threshold at 7:10 per mile. This block is written at 7:10 per mile.",
       "detail": {
@@ -50,14 +51,14 @@
           }
         ],
         "policyAssumptions": null
-      },
-      "applyBlockedBecause": null
+      }
     },
     {
       "id": "101",
       "dateISO": "2026-09-10",
       "direction": "push",
       "standing": "proposal",
+      "applyBlockedBecause": null,
       "headline": "Thursday goes to 9 mi",
       "why": "You absorbed 47.3 miles against 45.5 prescribed, and the last three long runs held their pace into the final third.",
       "detail": {
@@ -80,20 +81,20 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-10",
-            "what": "long run \u00b7 8 mi"
+            "what": "long run · 8 mi"
           }
         ],
         "policyAssumptions": [
           "Three comparable sessions before this engine claims a capacity ceiling"
         ]
-      },
-      "applyBlockedBecause": null
+      }
     },
     {
       "id": "102",
       "dateISO": "2026-09-11",
       "direction": "pull_back",
       "standing": "proposal",
+      "applyBlockedBecause": null,
       "headline": "Take 17% off Friday",
       "why": "Your last two long runs lost 22 and 19 seconds a mile across the final third.",
       "detail": {
@@ -107,18 +108,18 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-11",
-            "what": "long run \u00b7 18 mi"
+            "what": "long run · 18 mi"
           }
         ],
         "policyAssumptions": null
-      },
-      "applyBlockedBecause": null
+      }
     },
     {
       "id": "103",
       "dateISO": "2026-09-12",
       "direction": "recovery",
       "standing": "proposal",
+      "applyBlockedBecause": null,
       "headline": "Saturday becomes a rest day",
       "why": "Three quality sessions land inside five days this week, and the last one sits on the day after your long run.",
       "detail": {
@@ -130,18 +131,18 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-12",
-            "what": "intervals \u00b7 7 mi"
+            "what": "intervals · 7 mi"
           }
         ],
         "policyAssumptions": null
-      },
-      "applyBlockedBecause": null
+      }
     },
     {
       "id": "104",
       "dateISO": "2026-09-13",
       "direction": "move",
       "standing": "proposal",
+      "applyBlockedBecause": null,
       "headline": "Move Sunday to Tuesday",
       "why": "This session and Monday's threshold sit one day apart, which leaves neither a recovery day.",
       "detail": {
@@ -153,7 +154,7 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-13",
-            "what": "tempo \u00b7 8 mi"
+            "what": "tempo · 8 mi"
           },
           {
             "dateISO": "2026-09-15",
@@ -161,14 +162,14 @@
           }
         ],
         "policyAssumptions": null
-      },
-      "applyBlockedBecause": null
+      }
     },
     {
       "id": "105",
       "dateISO": "2026-10-08",
       "direction": "push",
       "standing": "condition",
+      "applyBlockedBecause": null,
       "headline": "Thursday goes to 20 mi",
       "why": "Week 9 opens at 55 miles, which is 6 more than you have run in a week.",
       "detail": {
@@ -183,18 +184,18 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-10-08",
-            "what": "long run \u00b7 18 mi"
+            "what": "long run · 18 mi"
           }
         ],
         "policyAssumptions": null
-      },
-      "applyBlockedBecause": null
+      }
     },
     {
       "id": "106",
       "dateISO": "2026-09-24",
       "direction": "pull_back",
       "standing": "deferral",
+      "applyBlockedBecause": null,
       "headline": "Take 10% off Thursday",
       "why": "Two of the last three weeks ended above your usual resting heart rate, and the third has not finished.",
       "detail": {
@@ -206,18 +207,18 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-24",
-            "what": "threshold \u00b7 9 mi"
+            "what": "threshold · 9 mi"
           }
         ],
         "policyAssumptions": null
-      },
-      "applyBlockedBecause": null
+      }
     },
     {
       "id": "108",
       "dateISO": "2026-09-14",
       "direction": "push",
       "standing": "proposal",
+      "applyBlockedBecause": null,
       "headline": "Easy ceiling moves to 8:12 across the block",
       "why": "Your recent training puts your easy ceiling at 8:12 per mile. This block is written at 8:22 per mile.",
       "detail": {
@@ -236,8 +237,7 @@
           }
         ],
         "policyAssumptions": null
-      },
-      "applyBlockedBecause": null
+      }
     }
   ],
   "proposalsRead": "ok",
@@ -357,7 +357,7 @@
       "direction": "pull_back",
       "outcome": "expired",
       "headline": "Thursday becomes an easy run",
-      "why": "Readiness pullback \u00b7 HRV below 5 days running."
+      "why": "Readiness pullback · HRV below 5 days running."
     }
   ]
 }
