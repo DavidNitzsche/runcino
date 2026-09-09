@@ -12,6 +12,8 @@ altering this worktree's checkout). This report does not repeat Phase 1's
 methodology narrative; it cites Phase 1 findings by number and states
 explicitly which are carried forward, closed, or superseded.
 
+**Independent review: `PASS WITH CONDITIONS` (2026-09-09).** A fresh, no-implementer-framing reviewer actively tried to falsify this report's findings rather than summarize them. Verdict: the two new product bugs (§4's `RaceDecisionCardV5` header, §3's `RouteMapView` green dot), the 62-state catalog inventory, the full palette table, and the tooling-only catalog diff all check out exactly as described, file:line, independently re-derived. Two real errors were found and are corrected in place below, each flagged inline rather than silently fixed: (1) §5's `.system()` font-site file attribution had swapped which file carries the ×6 count, and this report's own "re-grepped, unchanged" claim was not actually re-verified as stated; (2) §5's font-fallback claim ("could not find the branch") was simply wrong — the branch was 9 lines below where this report had already stopped reading in the same function. Neither error changes this report's headline findings or its Dynamic Type inconclusion (independently assessed as a justified inconclusion, not a dodge). Full review on record in the master audit's own task history.
+
 ## 0. Scope and methodology — read this before the findings
 
 ### 0.1 What "bounded" means here, restated as decisions actually taken
@@ -329,16 +331,21 @@ and sits in `Components/`, not `ViewsV5`/`DesignV5` — worth noting as a
 scope gap in Phase 1's own "76 live files" count, since `RouteMapView.swift`
 apparently wasn't counted as part of that boundary).
 
-**The dark-ink-on-light-ramp exception, verified intentional** `[Source]`:
-`ThemeV5.swift` lines 80-131 and `TokensV5.swift` lines 152-311 document, with
-measured contrast ratios cited to two decimal places (quality start 8.42:1,
-race start 6.89:1, shared mid-stop 4.68:1 for dark ink vs. 1.94:1 for white
-on the quality start), that the Threshold/quality and Race gradients
-deliberately use `Theme.V5.DayState.darkInk` (`#3A1410`, drawn from the
-ramp's own deep terminal, not neutral black) instead of white, because white
-fails WCAG AA badly on those two lighter, warmer ramps. This is a real,
-argued, David-ruled (`TokensV5.swift:101-105` cites a specific reversion of
-an earlier "72%" mid-stop position on his ruling) departure from the design
+**The dark-ink-on-light-ramp exception, verified intentional** `[Source]`,
+**citation corrected by this report's own independent review** (originally
+misattributed to two files; this content lives entirely in one):
+`ThemeV5.swift` lines 95-125 document, with measured contrast ratios cited
+to two decimal places (quality start 8.42:1, race start 6.89:1, shared
+mid-stop 4.68:1 for dark ink vs. 1.94:1 for white on the quality start),
+that the Threshold/quality and Race gradients deliberately use
+`Theme.V5.DayState.darkInk` (`#3A1410`, drawn from the ramp's own deep
+terminal, not neutral black) instead of white, because white fails WCAG AA
+badly on those two lighter, warmer ramps. This is a real, argued,
+David-ruled (`ThemeV5.swift:101-105` cites a specific reversion of an
+earlier "72%" mid-stop position on his ruling — **not `TokensV5.swift`,
+which the independent reviewer confirmed contains only unrelated token
+definitions with no mention of this reversion anywhere in the file**)
+departure from the design
 handoff's literal "grain … keeps white type legible on the gradient" text —
 **verdict: KEEP, not a defect.** I did not independently re-derive the cited
 contrast numbers from scratch (same disclosed limit as Phase 1's spot-check
@@ -411,29 +418,18 @@ Registers actually observed across the 65-state pass, cross-checked against
 | Body (`faffText` reading register) | Instrument Sans | 17, 15 | Documented to scale to an `.accessibilityMedium` ceiling; **not visually confirmed to scale in this environment** (§11) |
 | Label | Instrument Sans | 14, 13, 12 | Same caveat |
 
-**Fallback behavior if a font fails to load:** traced in code rather than
-forced at runtime (forcing a missing-font condition was judged too invasive
-for a read-only audit given the font files are bundled resources, not
-downloaded). `FontsV5.swift`'s `FaffCoreTextV5.font(...)` (referenced at
-lines 301, 326) wraps CoreText font creation; `faffDisplay`'s own doc
-comment (line 320-324) shows a `fatalError`-style assertion path for a size
-below the display face's minimum, which is a deliberate build-time contract
-violation catch, not a runtime fallback — I did not find, in the time
-available, an explicit "if the custom font fails to register, fall back to
-`.system(size:)`" branch in `FontsV5.swift` itself; the thirteen `.system()`
-call sites Phase 1 already found (carried forward below) are a *different*
-mechanism (call sites bypassing the helper entirely, not the helper's own
-fallback). **This is reported as unverified rather than assumed absent** —
-tracing the full `FaffCoreTextV5` implementation was out of the time budget
-this pass had left after the render matrices; flagging as a follow-up rather
-than guessing.
+**Fallback behavior if a font fails to load — CORRECTED, per this report's own independent review.** This section originally claimed the fallback branch could not be located in the time available. That claim is wrong, not merely unverified: `FontsV5.swift:301-310`, inside the very `faffText` function this section was already reading, contains exactly the branch:
+
+```swift
+if let ct = FaffCoreTextV5.font(...) { return Font(ct) }
+let fallback = Font.system(size: pt, weight: weight.systemWeight)
+return tabular ? fallback.monospacedDigit() : fallback
+```
+
+— nine lines below where this report had already stopped reading. **Corrected finding: the fallback branch is CONFIRMED PRESENT**, not unverified. This was caught by this document's own independent reviewer, who traced the same function further than this section originally did; left here as a direct correction rather than silently edited away, since it is exactly the kind of "claimed re-verification that wasn't actually re-verified" gap Rule 18 warns about.
 
 **Phase 1 finding #3 (14 `.system()` sites bypassing `faffText`) — status:
-still present, re-confirmed** `[Source]`: the same file list Phase 1 named
-(`LiveRunWatchCompanionV5.swift`, `LiveRunTreadmillV5.swift`, `ShellV5.swift`,
-`ChartsV5.swift` ×6, `ComponentsV5.swift`, `WorkoutResultV5.swift` ×2) was
-re-grepped this pass and the count is unchanged at this commit. REFINE,
-priority 3, carried forward unchanged from Phase 1.
+still present, re-confirmed, with one citation error CORRECTED by this report's own independent review** `[Source]`: the file/count attribution below was originally inverted (this document had written "`ChartsV5.swift` ×6, `ComponentsV5.swift`"); the independent reviewer re-grepped fresh and confirmed Phase 1's original attribution was the correct one all along: `LiveRunWatchCompanionV5.swift` (1), `ShellV5.swift` (2), `LiveRunTreadmillV5.swift` (2), `ChartsV5.swift` (1), **`ComponentsV5.swift` (×6)**, `WorkoutResultV5.swift` (2) — 14 sites total, unchanged in count from Phase 1, but this document's own file attribution for the ×6 had swapped which file it belonged to and was not actually re-verified as claimed. REFINE, priority 3, carried forward from Phase 1 with this citation now corrected.
 
 **Tabular figures:** confirmed by inspection of every numeral column
 rendered (pace bands, splits, treadmill dial) — no visible digit-width
