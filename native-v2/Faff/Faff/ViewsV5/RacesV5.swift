@@ -283,6 +283,30 @@ struct RacesV5: View {
 
 // MARK: - The decision card
 
+/// The eyebrow names what KIND of card this is, and that is `shape`'s job
+/// exactly — the same axis `RaceDecisionCardV5.body` already switches on for
+/// the target tiles and the answer style, never `verdict`. A `.fact` card
+/// (course changed, chip-time lock, race-morning heat) is not asking the
+/// runner to move the goal, and labelling it "needs a decision" is the same
+/// mistake the design contract warns against for a target-naming button under
+/// a question nobody asked (`docs/faff-iphone-design-contract.md` §2). A
+/// `.choice` card gets its own word too: the engine did not fail to decide,
+/// there simply isn't one answer for it to reach.
+///
+/// A free function on `V5CardShape` rather than a private computed property
+/// on the view, so it is the one place this decision is made (never re-typed
+/// per call site) and so a test can call it without instantiating a SwiftUI
+/// view.
+extension V5CardShape {
+    var raceDecisionEyebrow: String {
+        switch self {
+        case .decision: return "Needs a decision"
+        case .fact:     return "Worth knowing"
+        case .choice:   return "Choose one"
+        }
+    }
+}
+
 /// Two bodies under one identical top, switched on `shape` — never on
 /// `verdict`, and never by checking whether `safeTarget`/`stretchTarget`
 /// happen to be present (a `.fact` payload could carry them and still must
@@ -294,7 +318,7 @@ struct RaceDecisionCardV5: View {
     var body: some View {
         VStack(alignment: .leading, spacing: V5.S.s16) {
             HStack(alignment: .center, spacing: V5.S.s10) {
-                V5SectionLabel(text: "Needs a decision", color: V5.attention, size: TypeScaleV5.label12)
+                V5SectionLabel(text: card.shape.raceDecisionEyebrow, color: V5.attention, size: TypeScaleV5.label12)
                 Spacer(minLength: V5.S.s10)
                 Text(card.verdict.badge)
                     .font(.faffText(TypeScaleV5.label12))
