@@ -322,6 +322,22 @@ struct V5WorkoutPhase: Decodable, Equatable {
     /// is deliberately NOT smoothed toward the nominal target.
     let speedMph: Double?
     let inclinePct: Double?
+    /// WALKBACK-2 (2026-09-09) · non-nil only for a `type == "recovery"`
+    /// phase the runner explicitly ended before `prescribedSec` ran out —
+    /// resolved server-side (`route.ts` matches `runs.data.recoveryEndedEarly`
+    /// onto this phase by index) so this model just reads the answer. Nil
+    /// means either this is not a recovery phase, or no such record exists;
+    /// `TodayAfterV5.completionNote` falls back to its existing silent
+    /// behaviour in that case rather than inferring a choice from
+    /// `completed == false` alone.
+    let recoveryEndedEarly: V5RecoveryEndedEarly?
+}
+
+/// See `V5WorkoutPhase.recoveryEndedEarly`. Two absolute figures, never a
+/// delta — same posture as the watch's `RecoveryEndedEarlyRecord`.
+struct V5RecoveryEndedEarly: Decodable, Equatable {
+    let prescribedSec: Int
+    let actualSec: Int
 }
 
 /// The pace window the session asked for, seconds per mile. When present the

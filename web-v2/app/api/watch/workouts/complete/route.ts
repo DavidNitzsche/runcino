@@ -254,6 +254,39 @@ interface WatchCompletionBody {
     phaseLabel?: string | null;
     atSec?: number | null;
   }> | null;
+
+  /**
+   * WALKBACK-2 (2026-09-09) · a recovery/walk-back the runner CHOSE to end
+   * before its modelled duration ran out ("End interval" / the extend-
+   * recovery face's "Go now", pressed on a `.recovery` phase). The deeper
+   * half of WALKBACK-1: that fix stopped the phone reading a shortened
+   * walk-back as a shortfall, but had no way to say anything POSITIVE,
+   * because nothing on the wire recorded WHY the phase ended short. This is
+   * that record — mirrors `repSkips`'s exact contract (a decision is not a
+   * lapse, and the data has to say so) rather than something inferred from
+   * `actualDurationSec < targetDurationSec`, because a chosen early end and
+   * an unrecorded short recovery (GPS loss, a crash) are different facts
+   * and only a field can say which one this was.
+   *
+   * `prescribedSec`/`actualSec` are two absolute figures, never a delta —
+   * same posture as `ceilingLift`'s reading-and-limit pair — so the phone
+   * can say "0:43 of 1:00" without reconstructing either side.
+   */
+  recoveryEndedEarly?: Array<{
+    /** 1-based · the rep just finished. */
+    afterRepIndex?: number | null;
+    /** 1-based · the rep this recovery was delaying. */
+    beforeRepIndex?: number | null;
+    repCount?: number | null;
+    /** What the plan modelled for this recovery, seconds — including any
+     *  "+30 sec" already pressed on it. */
+    prescribedSec?: number | null;
+    /** How long the recovery actually ran before "End interval". */
+    actualSec?: number | null;
+    phaseIndex?: number | null;
+    phaseLabel?: string | null;
+    atSec?: number | null;
+  }> | null;
   // GPS polyline shipped directly by the watch app (build 172+). Eliminates
   // the separate iPhone HK import hop that was the sole GPS source.
   // 2026-06-08 · the watch's WatchCompletion (Encodable, no CodingKeys)
@@ -723,6 +756,7 @@ export async function POST(req: NextRequest) {
   const ceilingLift = normalizeCeilingLift(body.ceilingLift);
   const repSkips = normalizeRepSkips(body.repSkips);
   const recoveryExtensions = normalizeRecoveryExtensions(body.recoveryExtensions);
+  const recoveryEndedEarly = normalizeRecoveryEndedEarly(body.recoveryEndedEarly);
 
   const data: any = {
     id: effectiveWorkoutId,
@@ -804,6 +838,7 @@ export async function POST(req: NextRequest) {
     ...(ceilingLift ? { ceilingLift } : {}),
     ...(repSkips.length > 0 ? { repSkips } : {}),
     ...(recoveryExtensions.length > 0 ? { recoveryExtensions } : {}),
+    ...(recoveryEndedEarly.length > 0 ? { recoveryEndedEarly } : {}),
     // 2026-06-06 · derive genuine per-mile splits from the watch's
     // paceSamples stream.  Each phase ships ~5s-cadence samples with
     // cumulative distMi + tSec.  Walking those to find mile crossings
@@ -1267,6 +1302,41 @@ function normalizeRecoveryExtensions(
     if (afterRepIndex != null) e.afterRepIndex = afterRepIndex;
     if (beforeRepIndex != null) e.beforeRepIndex = beforeRepIndex;
     if (addedSec != null) e.addedSec = addedSec;
+    const repCount = idx(r.repCount);
+    if (repCount != null) e.repCount = repCount;
+    const phaseIndex = num(r.phaseIndex);
+    if (phaseIndex != null) e.phaseIndex = Math.round(phaseIndex);
+    if (typeof r.phaseLabel === 'string' && r.phaseLabel !== '') e.phaseLabel = r.phaseLabel;
+    const atSec = num(r.atSec);
+    if (atSec != null && atSec >= 0) e.atSec = Math.round(atSec);
+    out.push(e);
+  }
+  return out;
+}
+
+/** WALKBACK-2 · normalise the recovery-ended-early records. An entry
+ *  carrying no usable `prescribedSec`/`actualSec` pair says nothing the
+ *  phone can render ("0:43 of 1:00" needs both halves) and is dropped —
+ *  same posture as `normalizeCeilingLift` refusing a claim it cannot back. */
+function normalizeRecoveryEndedEarly(
+  raw: WatchCompletionBody['recoveryEndedEarly'],
+): Array<Record<string, unknown>> {
+  if (!Array.isArray(raw)) return [];
+  const out: Array<Record<string, unknown>> = [];
+  for (const r of raw) {
+    if (!r || typeof r !== 'object') continue;
+    const prescribedSecRaw = num(r.prescribedSec);
+    const actualSecRaw = num(r.actualSec);
+    if (prescribedSecRaw == null || prescribedSecRaw <= 0) continue;
+    if (actualSecRaw == null || actualSecRaw < 0) continue;
+    const e: Record<string, unknown> = {
+      prescribedSec: Math.round(prescribedSecRaw),
+      actualSec: Math.round(actualSecRaw),
+    };
+    const afterRepIndex = idx(r.afterRepIndex);
+    if (afterRepIndex != null) e.afterRepIndex = afterRepIndex;
+    const beforeRepIndex = idx(r.beforeRepIndex);
+    if (beforeRepIndex != null) e.beforeRepIndex = beforeRepIndex;
     const repCount = idx(r.repCount);
     if (repCount != null) e.repCount = repCount;
     const phaseIndex = num(r.phaseIndex);

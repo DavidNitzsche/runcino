@@ -1474,6 +1474,43 @@ struct WatchCompletion: Encodable {
         }
     }
 
+    /// One recovery/walk-back the runner chose to end before its modelled
+    /// duration ran out. WALKBACK-2 (2026-09-09) — see
+    /// `WorkoutEngine.RecoveryEndedEarlyRecord`'s header for why this exists
+    /// as its own explicit field rather than something inferred from
+    /// `WatchCompletionPhase.completed == false` on a recovery phase: a
+    /// chosen early end and an unrecorded short recovery (GPS loss, a
+    /// crash) are different facts, and only a field can say which one this
+    /// was.
+    struct RecoveryEndedEarly: Encodable {
+        /// 1-based · the rep just finished.
+        let afterRepIndex: Int?
+        /// 1-based · the rep this recovery was delaying.
+        let beforeRepIndex: Int?
+        let repCount: Int?
+        /// What the plan modelled for this recovery, seconds — including any
+        /// "+30 sec" already pressed. Never a delta against `actualSec`.
+        let prescribedSec: Int?
+        /// How long the recovery actually ran before "End interval".
+        let actualSec: Int?
+        let phaseIndex: Int?
+        let phaseLabel: String?
+        let atSec: Int?
+
+        init(afterRepIndex: Int? = nil, beforeRepIndex: Int? = nil,
+             repCount: Int? = nil, prescribedSec: Int? = nil, actualSec: Int? = nil,
+             phaseIndex: Int? = nil, phaseLabel: String? = nil, atSec: Int? = nil) {
+            self.afterRepIndex = afterRepIndex
+            self.beforeRepIndex = beforeRepIndex
+            self.repCount = repCount
+            self.prescribedSec = prescribedSec
+            self.actualSec = actualSec
+            self.phaseIndex = phaseIndex
+            self.phaseLabel = phaseLabel
+            self.atSec = atSec
+        }
+    }
+
     /// nil unless the runner lifted the ceiling. Omitted from the wire when nil.
     var ceilingLift: CeilingLift? = nil
     /// nil unless at least one rep was skipped BY CHOICE. Never `[]` — see
@@ -1482,6 +1519,9 @@ struct WatchCompletion: Encodable {
     /// nil unless at least one recovery was extended. Never `[]` — see
     /// recordRecoveryExtension.
     var recoveryExtensions: [RecoveryExtension]? = nil
+    /// nil unless at least one recovery was ended early BY CHOICE. Never
+    /// `[]` — see recordRecoveryEndedEarly.
+    var recoveryEndedEarly: [RecoveryEndedEarly]? = nil
 
     /// Append one skip, holding the wire contract: the field is either
     /// absent or a non-empty array. Assigning `[]` by hand would clobber a
@@ -1536,6 +1576,12 @@ struct WatchCompletion: Encodable {
     /// Append one extension. Same contract as recordRepSkip.
     mutating func recordRecoveryExtension(_ ext: RecoveryExtension) {
         recoveryExtensions = (recoveryExtensions ?? []) + [ext]
+    }
+
+    /// Append one recovery-ended-early record. Same contract as
+    /// recordRepSkip: creates the array only by putting something in it.
+    mutating func recordRecoveryEndedEarly(_ r: RecoveryEndedEarly) {
+        recoveryEndedEarly = (recoveryEndedEarly ?? []) + [r]
     }
 }
 

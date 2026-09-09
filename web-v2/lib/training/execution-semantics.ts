@@ -696,12 +696,38 @@ export function lateCollapseOf(
 /**
  * Recovery execution · absence is absence (Rule 11), never compliance.
  * Exported for the same reason as `lateCollapseOf`.
+ *
+ * WALKBACK-2 (2026-09-09) · `endedEarlyByChoice` is the watch's explicit
+ * `recoveryEndedEarly` record (`WorkoutEngine.RecoveryEndedEarlyRecord`,
+ * mirroring `RepSkipRecord`'s pattern), matched onto this recovery by its
+ * caller. Before this field existed, EVERY recovery outside
+ * `RECOVERY_DURATION_TOLERANCE` failed this check regardless of intent — a
+ * runner who deliberately, correctly cut several walk-backs short (real
+ * account, 2026-09-09: 8-43s against a 60s model) was graded exactly like
+ * one whose recovery came apart from a lapse or a lost signal. Rule 11's
+ * distinction applies here as much as anywhere else in this file: a chosen
+ * early end and a genuinely short, UNRECORDED recovery are different facts,
+ * and only the explicit record can tell them apart. A recovery carrying the
+ * choice is excluded from the tolerance check entirely — not forced to
+ * "honest" — so it drops out of `known` the same way an unprescribed
+ * recovery already does; one whose only recoveries are all explicit early
+ * ends returns `null` (no signal), same as recording nothing. A recovery
+ * with NO such record and a duration outside tolerance still fails — that
+ * is a genuine data-quality/lapse signal, not a choice, and this function
+ * must not soften it.
  */
 export function recoveriesHonestOf(
-  recs: readonly { prescribedSec?: number | null; actualSec?: number | null }[],
+  recs: readonly {
+    prescribedSec?: number | null;
+    actualSec?: number | null;
+    /** True when this recovery carries an explicit "ended early, by
+     *  choice" record. Never inferred from the duration itself. */
+    endedEarlyByChoice?: boolean;
+  }[],
 ): boolean | null {
   const known = recs.filter(
-    (r) => r.prescribedSec != null && r.prescribedSec > 0 && r.actualSec != null && r.actualSec > 0,
+    (r) => r.prescribedSec != null && r.prescribedSec > 0 && r.actualSec != null && r.actualSec > 0
+      && r.endedEarlyByChoice !== true,
   );
   if (known.length === 0) return null;
   return known.every(
