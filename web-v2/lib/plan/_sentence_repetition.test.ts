@@ -318,6 +318,10 @@ describe('SENTENCEREP-1 · the copy in the module check-coach-voice cannot see',
   const RUNNER_FACING = [
     ...voiceModule.BLOCK_STANDING_SENTENCES.map((s) => s.text),
     ...Object.values(voiceModule.EASY_DAY_ROLE_LINES).filter((s) => s.length > 0),
+    // PRIMER-SPECIFIC-1 · the third table RUNNERLANG-2's own comment warned
+    // about ("a new table of copy in this module has to update this pin").
+    ...Object.values(voiceModule.PRIMER_SESSION_LINE),
+    voiceModule.PRIMER_COLLISION_FALLBACK,
   ];
 
   it('every standing sentence and role line is clean by the lexicon', () => {
@@ -337,8 +341,12 @@ describe('SENTENCEREP-1 · the copy in the module check-coach-voice cannot see',
       'BlockScopedSpeaker',
       'EASY_DAY_ROLE_LINES',
       'INSTRUCTION_REWRITES',
+      'PRIMER_COLLISION_FALLBACK',
+      'PRIMER_SESSION_LINE',
       'easyDayRole',
+      'primerLineForNextSessionType',
       'renderRunnerInstruction',
+      'resolvePrimerLines',
     ].sort());
   });
 });
@@ -351,6 +359,17 @@ describe('SENTENCEREP-1 · the distribution, not just the count (Rule 22)', () =
     // `recovery` fired ZERO times across a whole fourteen-week block while
     // every count looked healthy. Nothing but a per-verdict count could see
     // it.
+    // PRIMER-SPECIFIC-1 · `primer` no longer means ONE literal string. A
+    // primer day now carries the specific `PRIMER_SESSION_LINE` for its own
+    // next-day type, the classic generic line, or `PRIMER_COLLISION_FALLBACK`
+    // when a week's colliding days have already spent the sharper options —
+    // see `resolvePrimerLines`. The role still fires exactly when one of
+    // THOSE texts shows up; the counted role is still `primer`.
+    const PRIMER_TEXTS = [
+      voiceModule.EASY_DAY_ROLE_LINES.primer,
+      ...Object.values(voiceModule.PRIMER_SESSION_LINE),
+      voiceModule.PRIMER_COLLISION_FALLBACK,
+    ];
     const counts: Record<string, number> = {};
     for (const c of CASES) {
       const built = buildSimPlan({
@@ -367,6 +386,10 @@ describe('SENTENCEREP-1 · the distribution, not just the count (Rule 22)', () =
         for (const d of w.days) {
           const note = (d as unknown as { notes?: string }).notes ?? '';
           for (const [role, line] of Object.entries(EASY_DAY_ROLE_LINES)) {
+            if (role === 'primer') {
+              if (PRIMER_TEXTS.some((t) => note.includes(t))) counts[role] = (counts[role] ?? 0) + 1;
+              continue;
+            }
             if (line.length > 0 && note.includes(line)) counts[role] = (counts[role] ?? 0) + 1;
           }
         }

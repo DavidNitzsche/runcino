@@ -36,6 +36,26 @@
  *
  * ── DIGEST MOVES ────────────────────────────────────────────────────────────
  *
+ *   · 2026-09-09 · TIEFIX-1 / PRIMER-SPECIFIC-1. Two fixes inside
+ *     `applyRunnerVoice`, landed together because the second was found while
+ *     fixing the first. TIEFIX-1: the week's-longest-easy-run comparison used
+ *     a bare `>` with no tie check, so a genuinely tied week still named the
+ *     chronologically-first day as uniquely "the week's longest" — measured
+ *     firing on 63% of weeks in this corpus. PRIMER-SPECIFIC-1: fixing that
+ *     let two easy days in one week both fall through to the `primer` role,
+ *     which used to write the byte-identical generic line on both — now each
+ *     names its own actual next-day session type (`runner-instruction.ts`'s
+ *     `PRIMER_SESSION_LINE`), and a genuine collision (same next-day type, or
+ *     an unresolvable one) steps down a deterministic, non-blank, non-
+ *     repeating fallback ladder instead of repeating. `composed` (8781),
+ *     `days` (699860) and `raceWeeks` (3969) are ALL unchanged — no plan
+ *     gained or lost a day and no race week moved. The pass still touches
+ *     only `notes`, on exactly the rows Rule 17 already governs. Falsified in
+ *     `_sentence_repetition.test.ts` (TIEFIX-1 alone turns this corpus's 0
+ *     findings into 8; both fixes together return it to 0) and
+ *     `_primer_specific.test.ts` (12 hand-built fixtures, 6 of which fail
+ *     against the pre-TIEFIX-1 composer).
+ *
  *   · 2026-09-03 · SENTENCEREP-1 / RUNNERLANG-2. `applyRunnerVoice` is a new
  *     final pass in `finalizeComposedPlan`: a sentence true of every row of its
  *     kind is said once per block, and a generic easy row says instead what

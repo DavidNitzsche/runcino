@@ -80,6 +80,8 @@
  *     which is the same wiring guard `_week_note_scrub.test.ts` uses.
  */
 
+import { canonicalSessionType, type SessionType } from '@/lib/training/workout-type';
+
 /** One retired phrase, and the instruction that replaces it. */
 export interface InstructionRewrite {
   id: string;
@@ -442,4 +444,147 @@ export function easyDayRole(f: {
   if (f.nextIsHard) return 'primer';
   if (f.prevWasQuality) return 'between';
   return 'plain';
+}
+
+/**
+ * ── PRIMER-SPECIFIC-1 (2026-09-09) · THE PRIMER TIE-FIX SURFACED A SECOND
+ * BUG ──────────────────────────────────────────────────────────────────────
+ *
+ * TIEFIX-1 (see `generate.ts`) made a tied week name no single day as its
+ * `volume` winner, and both formerly-tied days fall through to whatever the
+ * next true fact is. When that fact is `primer`, TWO easy days in the same
+ * week now both legitimately carry `EASY_DAY_ROLE_LINES.primer` — "Short and
+ * easy. The session is tomorrow." — which is byte-identical, twice, in one
+ * week. Rule 17 again, and the tie-bug had been hiding it: its buggy
+ * tie-break always consumed one of the two candidate days into `volume`
+ * first, which silently removed one of the two primer contenders before this
+ * collision could ever fire. Confirmed on `10k/advanced/35/6d` and
+ * `5k/advanced/35/6d` in `_sentence_repetition.test.ts`'s own corpus: fixing
+ * TIEFIX-1 alone turns 0 findings into 8.
+ *
+ * David's ruling, verbatim: two easy days that each genuinely prepare the
+ * runner for a DIFFERENT next-day key session may both carry primer
+ * guidance, but each must NAME that actual next-day session and say what
+ * THAT day needs — never the same interchangeable sentence twice. Where the
+ * generator cannot say something materially different — the two days
+ * protect the SAME next-day session type, or the next day's type cannot be
+ * read at all — exactly one day keeps the sharper line and the other gets a
+ * different, still-true fact. Never a blank, never a repeat, never an
+ * invented purpose the schedule does not actually show.
+ *
+ * ── ONE QUESTION, ONE OWNER (Brain Constitution) ───────────────────────────
+ *
+ * "What kind of session is tomorrow" is not re-derived here. `DayPlan.type`
+ * already carries the composer's own answer — `lib/training/workout-type.ts`
+ * says so explicitly: "`intervals` (plural) is canonical... it is what
+ * `DayPlan['type']` in the generator emits" — so this reuses
+ * `canonicalSessionType`, the file's own "ONE spelling authority", rather
+ * than re-classifying the next day from scratch. A `null` return is left
+ * alone and treated as "cannot be determined", per that function's own
+ * contract ("Null means... never a fallback guess").
+ *
+ * `PRIMER_SESSION_LINE` is the one new thing this file adds: what to SAY once
+ * the session type is known. It is a fixed table, same discipline as
+ * `INSTRUCTION_REWRITES` and `EASY_DAY_ROLE_LINES` — no score, no tone, no
+ * branch on runner state — and it covers every `SessionType` `isHard()`
+ * (`generate.ts`) can put on the day after an easy row, not only the two
+ * types David's own examples named.
+ */
+
+/**
+ * The session-specific primer sentence for a resolved next-day type. Two
+ * families, because the composer already treats them as two different kinds
+ * of stress: `tempo`/`threshold` are continuous-effort sessions (the same
+ * grouping `generate.ts` uses when it collapses `slotType === 'threshold' ||
+ * slotType === 'tempo'` onto one pace family), and `intervals` is reps — "the
+ * work" versus "needs the legs" says which kind of hard tomorrow is.
+ *
+ * Deliberately does NOT cover every `SessionType` the union exports — only
+ * the ones `isHard()` in `applyRunnerVoice` can put on the day after an easy
+ * row. A day that resolves to anything else falls through to the generic
+ * line, which is the "cannot be determined" case David's ruling names.
+ */
+export const PRIMER_SESSION_LINE: Readonly<Partial<Record<SessionType, string>>> = {
+  threshold: 'Keep this short. Tomorrow\'s threshold session is the work.',
+  tempo: 'Keep this short. Tomorrow\'s tempo session is the work.',
+  intervals: 'Stay controlled today. Tomorrow\'s interval session needs the legs.',
+  long: 'Stay easy today. Tomorrow\'s long run is the work.',
+  race: 'Stay easy today. Tomorrow is race day.',
+};
+
+/**
+ * The specific primer sentence for a raw `DayPlan.type` value, or null when
+ * the type does not resolve to one this table names — "cannot be
+ * determined" is a real answer, not a fallback guess (Rule 11), and the
+ * caller is the one that knows what to say instead (the generic line).
+ */
+export function primerLineForNextSessionType(nextType: string | null | undefined): string | null {
+  const t = canonicalSessionType(nextType);
+  if (t == null) return null;
+  return PRIMER_SESSION_LINE[t] ?? null;
+}
+
+/** One easy day that resolved to the `primer` role, and what it primes for. */
+export interface PrimerCandidate {
+  /** Stable per-day key, unique within the week — `applyRunnerVoice` uses the
+   *  day's ISO date. Used only to hand results back to the caller; carries no
+   *  meaning here. */
+  key: string;
+  /** `DayPlan.type` of the day immediately AFTER this one. */
+  nextType: string | null | undefined;
+}
+
+/**
+ * Every truthful, non-generic fallback this file can say about an easy day
+ * that is priming for a key session, ORDERED from sharpest to most generic.
+ * `resolvePrimerLines` walks this ladder per day so a collision never lands
+ * on a blank and never repeats a sentence already spent this week.
+ *
+ * The classic line is first because it was always true and is what every
+ * primer day said before this fix — a day that loses the specific line loses
+ * nothing it did not already have. `PRIMER_COLLISION_FALLBACK` only exists
+ * for the case doctrine's own quality-density ceiling allows but this file's
+ * corpus has never produced: three primer days colliding on one type in one
+ * week (`tierTarget.qualityPerWeek >= 3` in `generate.ts` can seat two
+ * `intervals` sessions in one week, which is the two-way collision this was
+ * built for; a third is not reachable at today's dosing caps). It says
+ * nothing about WHICH session, on purpose — inventing a session-specific
+ * reason for the third occurrence would be exactly the fabrication David's
+ * ruling forbids.
+ */
+export const PRIMER_COLLISION_FALLBACK =
+  'Another easy day. Save it for the work ahead this week.';
+
+/**
+ * Resolve final primer text for every `primer`-role day in ONE week, so two
+ * (or more) never carry byte-identical text.
+ *
+ * `candidates` MUST already be in the week's chronological order — the
+ * tie-break depends on it and this function does not sort.
+ *
+ * THE TIE-BREAK. When two candidates would otherwise say the identical
+ * thing — same resolved next-day type, or next-day type unresolved for both
+ * — the EARLIEST one keeps the sharper text (specific if the type resolved,
+ * else the classic generic line) and every later colliding day steps down
+ * its own ladder (specific → generic → `PRIMER_COLLISION_FALLBACK`) to the
+ * next sentence this week has not already spent. This is the SAME
+ * "earliest wins" convention TIEFIX-1 uses for the week's longest easy run —
+ * one tie-break rule for this pass, not two, per Rule 16's "one quantity,
+ * one name" read onto ties rather than values.
+ *
+ * Pure and deterministic: same candidates in, same map out, every time.
+ */
+export function resolvePrimerLines(candidates: readonly PrimerCandidate[]): ReadonlyMap<string, string> {
+  const out = new Map<string, string>();
+  const used = new Set<string>();
+  for (const c of candidates) {
+    const specific = primerLineForNextSessionType(c.nextType);
+    const ladder = specific
+      ? [specific, EASY_DAY_ROLE_LINES.primer, PRIMER_COLLISION_FALLBACK]
+      : [EASY_DAY_ROLE_LINES.primer, PRIMER_COLLISION_FALLBACK];
+    const chosen = ladder.find((line) => !used.has(line)) ?? ladder[ladder.length - 1];
+    used.add(chosen);
+    out.set(c.key, chosen);
+  }
+  return out;
 }
