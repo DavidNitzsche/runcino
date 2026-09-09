@@ -137,7 +137,7 @@ struct StaleBannerV5: View {
     }
 }
 
-// MARK: - Full-bleed-safe attachment (FULLBLEED-1, corrected by FULLBLEED-2)
+// MARK: - Full-bleed-safe attachment (FULLBLEED-1 → 2 → 3)
 //
 // The three hosts that draw this banner (Today, Block, Races) all attach it
 // the same way: `.safeAreaInset(edge: .top)` on a screen that opens with a
@@ -150,7 +150,7 @@ struct StaleBannerV5: View {
 // banner height) for everything beneath it, so `DayPanel` would "pull up by
 // the full amount actually consumed."
 //
-// THAT FIX DOES NOTHING, AND HERE IS THE PROOF (FULLBLEED-2, 2026-09-09).
+// THAT FIX DID NOTHING, AND HERE IS THE PROOF (FULLBLEED-2, 2026-09-09).
 //
 // `DayPanel` reaches behind the status bar with a paired
 // `.padding(.top, topInset)` / `.padding(.top, -topInset)` around its
@@ -175,21 +175,49 @@ struct StaleBannerV5: View {
 // stale render — the value the fixed code computes is simply never consulted
 // by the geometry that would need it, in this configuration.
 //
-// So `\.v5TopInset` republishing is deleted here: it is provably inert, and
+// So `\.v5TopInset` republishing was deleted: it is provably inert, and
 // leaving it in place — with a comment asserting it is "how DayPanel always
 // pulls up by the full amount actually consumed" — is exactly the Rule 20
 // failure mode (a claim nothing verifies, now disproven). `.safeAreaInset`
-// alone already places the panel correctly against the banner; there is
+// alone already places the panel correctly against the banner; there was
 // nothing left for `DayPanel` to be told.
 //
-// WHAT IS STILL OPEN. The panel lands flush against the banner's full
-// reserved footprint, which includes the banner's own trailing
-// `.padding(.bottom, V5.S.s12)` — a small (~12pt), same-colour band that
-// reads as more black than a true zero-gap full-bleed would. One attempt to
-// close it (deleting that padding outright) produced a much larger, harder
-// regression — the panel overlapping the banner entirely — that this session
-// did not have a verified explanation for, so it was reverted rather than
-// shipped as a guess. See the follow-up task spawned for that specific gap.
+// THE RESIDUAL ~12PT BAND IS CLOSED (FULLBLEED-3, 2026-09-09).
+//
+// FULLBLEED-2 left the banner's own trailing `.padding(.bottom, V5.S.s12)` in
+// the safeAreaInset content — a small, same-colour band below the banner card
+// that read as more black than a true zero-gap full-bleed. Its own header
+// recorded one attempt to delete that padding outright, which "produced a
+// much larger, harder regression — the panel overlapping the banner
+// entirely" — and reverted it unexplained, per Rule 13.
+//
+// That regression does NOT reproduce against this file as it now stands.
+// Reason, confirmed by rendering (a temporary harness —
+// `FullbleedHarnessV5.swift`, deleted after use, the same idiom
+// `-faffRunDetail`/`-faffProposals` and FULLBLEED-2's own harness
+// established): the regression happened while `\.v5TopInset` was STILL being
+// republished by a `GeometryReader`/`PreferenceKey` pair that measured this
+// exact banner content's height. Deleting the trailing padding changed that
+// measured height, and — per FULLBLEED-2's own account — that fed a "likely
+// timing interaction between the GeometryReader-based height preference and
+// `.safeAreaInset`'s own reservation." FULLBLEED-2 then deleted that entire
+// republishing mechanism as provably inert to `DayPanel`'s own placement.
+// With it gone, there is no GeometryReader left anywhere in this file for a
+// padding change to race against.
+//
+// Verified on a clean rebuild of this exact modifier body (spacing 0, no
+// GeometryReader, just the padding deleted): pixel-sampled screenshots on
+// iPhone 17 Pro (iOS 26.5) show the banner's `V5.materialTile` grey (23,25,27)
+// transitioning to the panel's gradient on the VERY NEXT PIXEL ROW — zero
+// gap, not merely a smaller one — with no overlap, no bleed-through, and
+// rounded corners on both the banner and the panel intact. Re-verified across
+// a repeated on/off/on toggle of `stale` (matching FULLBLEED-2's own bar) and
+// against the no-banner case, which still reaches y=0 unchanged. The banner's
+// own `.transition(.opacity)` fade produces a brief (~200ms) blend between the
+// banner and whatever is behind it while it is still translucent — present
+// identically before and after this change, so it is a pre-existing property
+// of animating a `.safeAreaInset`'s content in and out, not something this
+// fix introduced.
 private struct V5StaleBannerModifier: ViewModifier {
     let stale: Bool
     let cachedAt: Date?
@@ -201,7 +229,6 @@ private struct V5StaleBannerModifier: ViewModifier {
                 if stale {
                     StaleBannerV5(cachedAt: cachedAt, onRetry: onRetry)
                         .padding(.horizontal, V5.S.gutter)
-                        .padding(.bottom, V5.S.s12)
                         .background(V5.surfacePage)
                         .transition(.opacity)
                 }

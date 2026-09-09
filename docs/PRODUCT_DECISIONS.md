@@ -1612,6 +1612,78 @@ across a repeated on/off/on toggle sequence, not just a single transition.
 
 ---
 
+## 2026-09-09 · FULLBLEED-3 — the residual band closes, and why the earlier attempt didn't
+
+**What FULLBLEED-2 left open.** The panel lands flush against the banner's
+full reserved safe-area footprint, but that footprint includes the banner's
+own trailing `.padding(.bottom, V5.S.s12)` inside the `.safeAreaInset` content
+— a small (~12pt), same-colour band that read as more black than a true
+zero-gap full-bleed. FULLBLEED-2's own header recorded one attempt to close
+it (deleting that padding outright), which "produced a much larger, harder
+regression — the panel overlapping the banner entirely" and was reverted
+unexplained, per Rule 13's bar against shipping an unverified guess.
+
+**Bisected with a temporary harness** (`FullbleedHarnessV5.swift`, gated
+behind `-faffFullbleedTest N`, deleted after use — the same idiom
+`-faffRunDetail`/`-faffProposals` and FULLBLEED-2's own harness established):
+a `ScrollView` + full-bleed `DayPanel` reproduced in isolation, with the
+banner's `.safeAreaInset` content swappable across three variants — (0) the
+shipped modifier byte-for-byte, (1) the reverted fix (padding deleted,
+spacing left 0), (2) the reverted second attempt (padding deleted, `spacing:
+V5.S.s12` passed to `.safeAreaInset` instead) — plus a fourth pass against the
+REAL, post-fix `.v5StaleBanner()` extension, not a reimplementation.
+
+**The regression does not reproduce.** Variant 1, run against the current
+tree, renders with the banner's `V5.materialTile` grey (23,25,27) transitioning
+to the panel's gradient on the very next pixel row — verified by pixel-
+sampling an iPhone 17 Pro (iOS 26.5) screenshot at 3x scale: row 361 is
+(23,25,27), row 362 is (233,99,41). Zero gap, no overlap, no bleed-through,
+both sets of rounded corners intact. Variant 2 (the `spacing:` substitution)
+rendered IDENTICALLY to variant 1 in this tree — not identically to the
+shipped 12pt-gapped baseline, which is itself a finding: whatever made
+`spacing:` behave as an inline-padding substitute during the original
+investigation is gone along with the mechanism below.
+
+**Why: the earlier regression was a symptom of machinery FULLBLEED-2 already
+deleted, not of `.safeAreaInset` itself.** The reverted attempt happened
+while `V5StaleBannerModifier` still carried the `GeometryReader`/
+`PreferenceKey` pair that measured this exact banner content's height in
+order to republish `\.v5TopInset` beneath it. Deleting the trailing padding
+changed that measured height, and — per FULLBLEED-2's own account — that fed
+a "likely timing interaction between the GeometryReader-based height
+preference and `.safeAreaInset`'s own reservation." FULLBLEED-2's fix then
+deleted that entire republishing mechanism as provably inert to `DayPanel`'s
+own placement (see that entry above). With it gone, there is no
+`GeometryReader` left anywhere in this file for a padding change to race
+against, and the padding deletion that once triggered a full-screen overlap
+now does exactly what it looks like it should: shrinks `.safeAreaInset`'s
+reserved height by the amount removed, with nothing else to disturb.
+
+**The fix.** Deleted `.padding(.bottom, V5.S.s12)` from inside
+`V5StaleBannerModifier`'s `.safeAreaInset` content. `spacing: 0` is
+unchanged — per the variant-2 result above, moving the 12pt into `spacing`
+instead does not reproduce the old gapped baseline in this tree, so there is
+no reason to prefer it over deleting the padding outright.
+
+**What else was checked, not just assumed.** The banner's own
+`.transition(.opacity)` fade produces a brief (~200ms) blend between the
+banner and whatever renders behind it while it is still translucent — burst-
+captured across the fade-in for both the shipped baseline and the fix, this
+blend is pixel-for-pixel the same shape in both, so it is a pre-existing
+property of animating a `.safeAreaInset`'s content in and out, not something
+this fix introduced. Re-verified across a repeated on/off/on toggle of
+`stale` (matching FULLBLEED-2's own bar): the gap stays closed and the
+no-banner case still reaches y=0 unchanged on every cycle.
+
+**Enforcement.** No new gate — this is a two-line visual fix inside a file
+`check-palette-sync.sh` and the doctrine scripts don't reach, and Rule 13's
+render-and-pixel-sample bar is what caught FULLBLEED-1 and 2's false "fixed"
+claims in the first place. Re-run the same harness idiom (temporarily
+restore `FullbleedHarnessV5.swift` from this commit's history) if this file
+is touched again and the gap question resurfaces.
+
+---
+
 ## Standing constraints referenced above
 
 - Paces come from evidence. The goal stays visible and never distorts training.
