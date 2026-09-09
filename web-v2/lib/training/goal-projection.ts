@@ -1520,6 +1520,12 @@ export async function loadRecentTestPoints(
     weather: unknown;
     work_pace_s: number | string | null;
     work_phases: unknown;
+    // WALKBACK-2 follow-up (2026-09-09) · `runs.data.recoveryEndedEarly`,
+    // threaded through exactly like `postrun/load.ts` already does, so a
+    // deliberately-shortened recovery doesn't silently disappear in this
+    // second consumer of the canonical verdict resolver. See the
+    // `recoveryEndedEarly` field on `ResolveWorkoutVerdictArgs` below.
+    recovery_ended_early: unknown;
     workout_spec: WorkoutSpec;
     splits: unknown;
     splits_unreliable: boolean | null;
@@ -1534,7 +1540,7 @@ export async function loadRecentTestPoints(
             dedup.distance_mi, dedup.pace_target_s, dedup.workout_spec,
             dedup.distance_actual, dedup.duration_s, dedup.weather,
             dedup.splits, dedup.splits_unreliable, dedup.work_pace_s,
-            dedup.work_phases
+            dedup.work_phases, dedup.recovery_ended_early
        FROM (
          SELECT DISTINCT ON (pw.id)
                 pw.id AS pw_id, pw.date_iso, pw.type, pw.sub_label,
@@ -1547,6 +1553,13 @@ export async function loadRecentTestPoints(
                 -- runs can still get a work-phase read (see judgeTestPointExecution).
                 r.data->'splits' AS splits,
                 (r.data->>'splits_unreliable')::boolean AS splits_unreliable,
+                -- WALKBACK-2 follow-up · RunData.recoveryEndedEarly, the
+                -- SAME field postrun/load.ts already reads off this row
+                -- (data.recoveryEndedEarly) to build its own verdict call.
+                -- Absent on every row before the field shipped -- a null here
+                -- is resolveWorkoutVerdict's documented "behaves exactly as
+                -- before this field existed" case, not a new failure mode.
+                r.data->'recoveryEndedEarly' AS recovery_ended_early,
                 -- Work-phase actual pace from the watch_completion blob.
                 -- jsonb_path_query_first returns the first matching value ·
                 -- we then cast to numeric. NULL when no watch payload exists
@@ -1666,6 +1679,12 @@ export async function loadRecentTestPoints(
             type: r.type,
             spec: (r.workout_spec ?? null) as unknown as Record<string, unknown> | null,
             phases: r.work_phases,
+            // WALKBACK-2 follow-up (2026-09-09) · without this, a recovery
+            // the runner deliberately ended early reads as a genuine lapse
+            // here even though `postrun/load.ts`'s grade of the SAME run
+            // correctly excludes it — the canonical verdict field silently
+            // disappearing in this second, historical consumer.
+            recoveryEndedEarly: r.recovery_ended_early,
           })
         : null,
     });
