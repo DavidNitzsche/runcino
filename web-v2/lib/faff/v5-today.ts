@@ -553,6 +553,14 @@ export interface V5Today {
      *  smoothed to the nominal target. */
     speedMph: number | null;
     inclinePct: number | null;
+    /** WALKBACK-2 (2026-09-09) · non-null only for a `type: 'recovery'`
+     *  phase the runner explicitly ended before this figure's own
+     *  `prescribedSec` — resolved server-side from `runs.data.recoveryEndedEarly`
+     *  (see `RunData.recoveryEndedEarly`). Null means either this is not a
+     *  recovery phase, or no such record exists — the phone must render its
+     *  existing silent/negative fallback in that case, never infer a choice
+     *  from `completed === false` alone. */
+    recoveryEndedEarly: { prescribedSec: number; actualSec: number } | null;
   }>;
   /** The runner's own HR zone bands. Empty at cold start. */
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
@@ -1103,6 +1111,8 @@ export interface V5RecentRunCtx {
     type: string | null; label: string | null; durationSec: number | null;
     avgHr: number | null; maxHr: number | null; completed: boolean | null;
     speedMph: number | null; inclinePct: number | null;
+    /** WALKBACK-2 · see `V5Today.workoutPhases`'s own doc comment. */
+    recoveryEndedEarly: { prescribedSec: number; actualSec: number } | null;
   }>;
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
   paceBand: { lo: number; hi: number } | null;

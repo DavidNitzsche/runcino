@@ -261,6 +261,16 @@ export interface GradeOptions {
    * caller with no plan row must not have its phases relabelled by their text.
    */
   stridesPrescribed?: number | null;
+  /**
+   * WALKBACK-2 (2026-09-09) · `runs.data.recoveryEndedEarly` (or its
+   * `RunData` typed form) — recoveries the runner explicitly chose to end
+   * before their modelled duration. Matched onto a recovery phase by
+   * `phaseIndex` against that phase's own `index`. When present for a
+   * recovery, `recoveriesHonestOf` excludes it from the tolerance check
+   * rather than failing it — a decision is not a lapse. Absent or an empty
+   * array behaves exactly as before this field existed.
+   */
+  recoveryEndedEarly?: readonly { phaseIndex?: number | null }[] | null;
 }
 
 /**
@@ -464,11 +474,20 @@ export function gradeStoredPhases(
 
   // The session ladder, off the SAME per-phase grades — never re-graded.
   const workPhases = phases.filter((p) => p.type === 'work');
+  // WALKBACK-2 · which recovery PHASE INDICES carry an explicit "ended
+  // early, by choice" record — matched the same way `repSkips`/
+  // `recoveryExtensions` already match onto a phase, by `phaseIndex`.
+  const earlyEndPhaseIndices = new Set(
+    (opts.recoveryEndedEarly ?? [])
+      .map((r) => (typeof r?.phaseIndex === 'number' ? r.phaseIndex : null))
+      .filter((i): i is number => i != null),
+  );
   const recoveries = phases
     .filter((p) => p.type === 'recovery')
     .map((p) => ({
       prescribedSec: p.targetDurationSec ?? opts.prescribedRecoverySec ?? null,
       actualSec: p.actualDurationSec,
+      endedEarlyByChoice: earlyEndPhaseIndices.has(p.index),
     }));
   const session = sessionLadder(
     workPhases.map((p) => p.verdict),
@@ -523,6 +542,11 @@ export interface ResolveWorkoutVerdictArgs {
   spec: Record<string, unknown> | null | undefined;
   /** `runs.data.phases`, a `coach_intents.value` blob, or its parsed form. */
   phases: unknown;
+  /** WALKBACK-2 (2026-09-09) · `runs.data.recoveryEndedEarly` (see
+   *  `RunData.recoveryEndedEarly`'s doc comment). Optional — a caller with
+   *  no run row (a synthetic phase array, a test) passes nothing and grades
+   *  exactly as it did before this field existed. */
+  recoveryEndedEarly?: unknown;
 }
 
 /**
@@ -535,9 +559,13 @@ export function resolveWorkoutVerdict(args: ResolveWorkoutVerdictArgs): WorkoutV
   const sessionClass = classifySession(String(args.type ?? ''), spec);
   const restS = spec ? num(spec.rep_rest_s) : null;
   const strides = spec ? num(spec.strides_reps) : null;
+  const recoveryEndedEarly = Array.isArray(args.recoveryEndedEarly)
+    ? (args.recoveryEndedEarly as Array<{ phaseIndex?: number | null }>)
+    : null;
   return gradeStoredPhases(args.phases, sessionClass, {
     prescribedRecoverySec: restS,
     stridesPrescribed: strides,
+    recoveryEndedEarly,
   });
 }
 

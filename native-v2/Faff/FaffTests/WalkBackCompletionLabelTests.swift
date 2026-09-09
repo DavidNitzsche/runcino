@@ -108,4 +108,59 @@ final class WalkBackCompletionLabelTests: XCTestCase {
     func testEndedEarlyUntypedPhaseStillReadsNotCompleted() {
         XCTAssertEqual(TodayAfterV5.completionNote(type: nil, completed: false), "not completed")
     }
+
+    // MARK: - 4 · WALKBACK-2 · the positive label, once the watch can say why
+
+    /// THE POSITIVE COUNTERPART WALKBACK-1's OWN HEADER CALLED OUT AS
+    /// MISSING. A walk-back cut to 43 of a modelled 60 seconds, with the
+    /// watch's explicit record present, reads the truthful sentence instead
+    /// of silence.
+    func testAnEndedEarlyRecoveryWithARecordReadsThePositiveLabel() {
+        let record = V5RecoveryEndedEarly(prescribedSec: 60, actualSec: 43)
+        XCTAssertEqual(
+            TodayAfterV5.completionNote(type: "recovery", completed: false, endedEarly: record),
+            "0:43 of 1:00 \u{00B7} advanced early")
+    }
+
+    /// A different pair of figures, to prove the sentence is built from the
+    /// record's own numbers and not hardcoded.
+    func testTheLabelReflectsTheRecordsOwnFigures() {
+        let record = V5RecoveryEndedEarly(prescribedSec: 90, actualSec: 8)
+        XCTAssertEqual(
+            TodayAfterV5.completionNote(type: "recovery", completed: false, endedEarly: record),
+            "0:08 of 1:30 \u{00B7} advanced early")
+    }
+
+    /// NO REGRESSION OF WALKBACK-1'S FIX: a recovery with NO record still
+    /// falls back to today's silent behaviour — nil, never "not completed"
+    /// and never a fabricated positive label.
+    func testARecoveryWithNoRecordStillFallsBackToSilence() {
+        XCTAssertNil(TodayAfterV5.completionNote(type: "recovery", completed: false, endedEarly: nil))
+        // And the default-parameter call site (no third argument at all)
+        // behaves identically — this is what every pre-WALKBACK-2 call site
+        // in this file above already exercises.
+        XCTAssertNil(TodayAfterV5.completionNote(type: "recovery", completed: false))
+    }
+
+    /// A record with a non-positive `prescribedSec` carries nothing the
+    /// phone can render truthfully ("X of 0:00" is not a sentence) and must
+    /// fall back to silence rather than printing a broken figure.
+    func testARecordWithNoPrescribedDurationFallsBackToSilence() {
+        let record = V5RecoveryEndedEarly(prescribedSec: 0, actualSec: 8)
+        XCTAssertNil(TodayAfterV5.completionNote(type: "recovery", completed: false, endedEarly: record))
+    }
+
+    /// THE ASYMMETRY THIS MUST NOT CREATE, PART TWO: the positive label is
+    /// consulted ONLY for `type == "recovery"`. A work phase carrying a
+    /// (meaningless, server-never-sends-this) record still reads "not
+    /// completed" exactly as it always has — the server's own contract
+    /// (`V5WorkoutPhase.recoveryEndedEarly`'s doc comment) already promises
+    /// this never happens in practice, and this pins the client's side of
+    /// that promise too.
+    func testAWorkPhaseNeverReadsThePositiveLabelEvenIfARecordIsPresent() {
+        let record = V5RecoveryEndedEarly(prescribedSec: 60, actualSec: 43)
+        XCTAssertEqual(
+            TodayAfterV5.completionNote(type: "work", completed: false, endedEarly: record),
+            "not completed")
+    }
 }
