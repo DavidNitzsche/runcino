@@ -137,49 +137,63 @@ struct StaleBannerV5: View {
     }
 }
 
-// MARK: - Full-bleed-safe attachment (FULLBLEED-1)
+// MARK: - Full-bleed-safe attachment (FULLBLEED-1, corrected by FULLBLEED-2)
 //
-// The three hosts that draw this banner (Today, Block, Races) all used to
-// attach it the same copy-pasted way: `.safeAreaInset(edge: .top)` on a
-// screen that opens with a `DayPanel` (`PanelV5.swift`). `DayPanel` reaches
-// behind the status bar by reading `\.v5TopInset` — the device's own
-// physical inset, measured ONCE by a `GeometryReader` at the shell's root
-// (`ShellV5.swift`'s `RootV5.body`), before any host has had a chance to add
-// this banner — and pulling itself up by exactly that much. A
-// `.safeAreaInset` added below the root grows the ambient safe area for
-// everything inside it by the banner's own rendered height, but
-// `\.v5TopInset` never learns about that growth: it is a value captured once,
-// at the top of the tree, and the banner lives beneath it. So the panel's
-// pull-up falls short by exactly the banner's height, and the gap it leaves
-// is painted in the ordinary page background — a BLACK STRIP, the same
-// colour as the rest of the app, sitting between the banner and the panel.
-// Invisible when nothing is stale (the gap is 0pt), and exactly the shape of
-// "the colour stops short of the top" the moment a runner is offline, which
-// is a completely ordinary thing to be mid-run.
+// The three hosts that draw this banner (Today, Block, Races) all attach it
+// the same way: `.safeAreaInset(edge: .top)` on a screen that opens with a
+// `DayPanel` (`PanelV5.swift`). FULLBLEED-1's own diagnosis was that
+// `DayPanel`'s pull-up trick — reading `\.v5TopInset`, published ONCE by
+// `RootV5.body`'s root `GeometryReader` (`ShellV5.swift`) before this banner
+// exists — falls short once the banner grows the ambient safe area, leaving
+// a black strip between banner and panel. The prescribed fix was to measure
+// the banner's real height and republish `\.v5TopInset` (device inset +
+// banner height) for everything beneath it, so `DayPanel` would "pull up by
+// the full amount actually consumed."
 //
-// The fix stays local to the banner: measure its own rendered height and
-// feed the difference back into `\.v5TopInset` for everything the banner
-// sits above, so `DayPanel` always pulls up by the FULL amount actually
-// consumed — the device inset alone when nothing else is stacked above it,
-// device inset plus banner height when there is. One call site
-// (`v5StaleBanner`), reused by all three hosts, rather than the same lines
-// duplicated a third time with no shared owner to keep them in sync.
-private struct V5BannerHeightKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
+// THAT FIX DOES NOTHING, AND HERE IS THE PROOF (FULLBLEED-2, 2026-09-09).
+//
+// `DayPanel` reaches behind the status bar with a paired
+// `.padding(.top, topInset)` / `.padding(.top, -topInset)` around its
+// `.background`+`.clipShape` — see `PanelV5.swift`. That trick only has a
+// visible effect when it is bleeding into NON-VIEW safe area (the physical
+// status bar / Dynamic Island, which is window chrome, not a SwiftUI view
+// competing for space). It has NO effect once a real `.safeAreaInset` — a
+// SwiftUI view actively reserving space, exactly what this banner is — is
+// active above it: SwiftUI's own automatic safe-area avoidance is what
+// places the ScrollView's content in that case, and it does not consult
+// `\.v5TopInset` at all.
+//
+// Verified four independent ways with a real `DayPanel` + real
+// `v5StaleBanner`, real `.safeAreaInset`, and pixel-sampled screenshots (see
+// the FULLBLEED-2 investigation notes in `docs/PRODUCT_DECISIONS.md`):
+// with the host's own ancestor `.animation(value:)` present and absent, with
+// `\.v5TopInset` pinned to the OLD, banner-unaware value (62pt) instead of
+// the "corrected" one (132.5pt), and with `.id(topInset)` forcing a full
+// view-identity reset. All four rendered PIXEL-IDENTICAL: the panel starts
+// exactly at the banner's own reserved safe area, regardless of what
+// `\.v5TopInset` said. Changing `\.v5TopInset` is not being ignored on some
+// stale render — the value the fixed code computes is simply never consulted
+// by the geometry that would need it, in this configuration.
+//
+// So `\.v5TopInset` republishing is deleted here: it is provably inert, and
+// leaving it in place — with a comment asserting it is "how DayPanel always
+// pulls up by the full amount actually consumed" — is exactly the Rule 20
+// failure mode (a claim nothing verifies, now disproven). `.safeAreaInset`
+// alone already places the panel correctly against the banner; there is
+// nothing left for `DayPanel` to be told.
+//
+// WHAT IS STILL OPEN. The panel lands flush against the banner's full
+// reserved footprint, which includes the banner's own trailing
+// `.padding(.bottom, V5.S.s12)` — a small (~12pt), same-colour band that
+// reads as more black than a true zero-gap full-bleed would. One attempt to
+// close it (deleting that padding outright) produced a much larger, harder
+// regression — the panel overlapping the banner entirely — that this session
+// did not have a verified explanation for, so it was reverted rather than
+// shipped as a guess. See the follow-up task spawned for that specific gap.
 private struct V5StaleBannerModifier: ViewModifier {
     let stale: Bool
     let cachedAt: Date?
     let onRetry: () -> Void
-
-    /// The device's own inset, as published at the shell's root — correct
-    /// on its own, and the base this modifier adds the banner's height to.
-    @Environment(\.v5TopInset) private var deviceTopInset
-    @State private var bannerHeight: CGFloat = 0
 
     func body(content: Content) -> some View {
         content
@@ -189,29 +203,19 @@ private struct V5StaleBannerModifier: ViewModifier {
                         .padding(.horizontal, V5.S.gutter)
                         .padding(.bottom, V5.S.s12)
                         .background(V5.surfacePage)
-                        .background(
-                            GeometryReader { geo in
-                                Color.clear.preference(key: V5BannerHeightKey.self,
-                                                        value: geo.size.height)
-                            }
-                        )
                         .transition(.opacity)
                 }
             }
-            .onPreferenceChange(V5BannerHeightKey.self) { bannerHeight = $0 }
             .animation(V5.Motion.fill, value: stale)
-            // Reaches every `DayPanel` beneath this point in the tree — see
-            // the header comment above for why the plain device inset alone
-            // is not enough once this banner is actually on screen.
-            .environment(\.v5TopInset, deviceTopInset + (stale ? bannerHeight : 0))
     }
 }
 
 extension View {
-    /// The offline/stale banner (`StaleBannerV5`), attached the one correct
-    /// way: in the top safe area, AND keeping any full-bleed `DayPanel`
-    /// beneath it pulled up by the banner's own height too. See
-    /// `V5StaleBannerModifier`'s header comment for the bug this replaces.
+    /// The offline/stale banner (`StaleBannerV5`), attached in the top safe
+    /// area. `.safeAreaInset` alone is what keeps any full-bleed `DayPanel`
+    /// beneath it correctly placed — see `V5StaleBannerModifier`'s header
+    /// comment for why nothing else is needed, and for the fix this replaced
+    /// that turned out to be inert.
     func v5StaleBanner(stale: Bool, cachedAt: Date?, onRetry: @escaping () -> Void) -> some View {
         modifier(V5StaleBannerModifier(stale: stale, cachedAt: cachedAt, onRetry: onRetry))
     }

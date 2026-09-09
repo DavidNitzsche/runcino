@@ -1545,6 +1545,73 @@ defects, each named by the gate, restored byte for byte).
 
 ---
 
+## 2026-09-09 · FULLBLEED-2 — a "fixed" value the render never consults
+
+**The report.** David: the Races gradient panel stops short of the top,
+leaving black behind the status bar/Dynamic Island. FULLBLEED-1
+(`StaleStateV5.swift`) diagnosed this as `\.v5TopInset` — published once by
+`RootV5.body`'s root `GeometryReader` (`ShellV5.swift`), before the stale/
+offline banner (`V5StaleBannerModifier`) has a chance to grow the ambient
+safe area — falling short once the banner is showing, and fixed it by
+measuring the banner's real height and republishing `\.v5TopInset` (device
+inset + banner height) beneath it. A reviewer instrumented both branches with
+NSLog and confirmed the environment value genuinely updates (62.0 → 132.5
+once the banner shows) — but pixel-precise screenshots showed **zero visible
+change**: the panel started at the exact same row whether the fix was
+present or not.
+
+**Root cause, proven by rendering, not read from the code.** A temporary
+harness (`StaleGradientHarnessV5.swift`, deleted after use, per this
+project's own established idiom for `-faffRunDetail`/`-faffProposals`)
+composed the REAL `DayPanel`, the REAL `v5StaleBanner` modifier, and a REAL
+root `GeometryReader`-published `\.v5TopInset`, toggling a REAL `stale`
+transition. `DayPanel` reaches behind the status bar with a paired
+`.padding(.top, topInset)` / `.padding(.top, -topInset)` around its
+`.background`+`.clipShape` (`PanelV5.swift`). That trick only has a visible
+effect bleeding into NON-VIEW safe area (the physical status bar/Dynamic
+Island — window chrome, not a SwiftUI view competing for space). It has NO
+effect once a real `.safeAreaInset` — a SwiftUI view actively reserving
+space, which is exactly what the stale banner is — is active above it:
+SwiftUI's own automatic safe-area avoidance places the ScrollView's content
+in that case, and never consults `\.v5TopInset` at all.
+
+**Verified four independent ways**, all pixel-identical: with the host's own
+ancestor `.animation(value:)` present and absent (ruling out the "animation
+swallows the relayout" hypothesis); with `\.v5TopInset` pinned to the OLD,
+banner-unaware value (62pt) instead of the "corrected" one (132.5pt) — same
+render either way; and with `.id(topInset)` forcing a full view-identity
+reset — still the same render, ruling out "stale cached geometry from an
+earlier render" as well. The panel always lands exactly at the banner's own
+real reserved safe-area footprint, regardless of `\.v5TopInset`.
+
+**The fix.** Deleted the `\.v5TopInset` republishing from
+`V5StaleBannerModifier` (the `V5BannerHeightKey` preference, the
+`GeometryReader` height measurement, the `@State bannerHeight`, and the
+`.environment(\.v5TopInset, ...)` write) — it is provably inert, and a
+comment asserting it is "how DayPanel always pulls up by the full amount
+actually consumed" is exactly the Rule 20 failure mode once disproven.
+`.safeAreaInset` alone already places the panel correctly; verified
+byte-for-byte identical rendering before and after removal (the pin test
+above already proved this).
+
+**What is still open.** The panel lands flush against the banner's full
+reserved footprint, which includes the banner's own trailing
+`.padding(.bottom, V5.S.s12)` — a small (~12pt), same-colour band that reads
+as slightly more black than a true zero-gap full-bleed would. One attempt to
+close it (deleting that padding outright) produced a much larger, harder
+regression — the panel overlapping the banner entirely, likely a timing
+interaction between the `GeometryReader`-based height preference and
+`.safeAreaInset`'s own reservation — that this session did not reach a
+verified explanation for, so it was reverted rather than shipped as a guess.
+Flagged as a follow-up rather than fixed blind, per Rule 13.
+
+**The ordinary (no banner) case was independently re-verified working**
+throughout — the panel reaches y=0 correctly with no banner ever shown, and
+correctly returns to that when a shown banner clears, confirmed by rendering
+across a repeated on/off/on toggle sequence, not just a single transition.
+
+---
+
 ## Standing constraints referenced above
 
 - Paces come from evidence. The goal stays visible and never distorts training.
