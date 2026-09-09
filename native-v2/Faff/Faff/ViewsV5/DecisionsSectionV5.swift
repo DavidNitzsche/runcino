@@ -30,6 +30,17 @@ struct DecisionsSectionV5: View {
     /// See `V5Today.proposalsRead`. `nil` reads as `"ok"`.
     let proposalsRead: String?
     let onDetails: (V5Proposal) -> Void
+    /// P0PROPOSALFETCH-1 · re-read after a failed load. Every other
+    /// section-level `ErrorNote` in this app passes `onRetry` (see
+    /// `HostsV5.swift`'s `OutageBodyV5`/`ErrorNote` call sites, all
+    /// `{ Task { await API.resetConnectionPool(); await surface.load() } }`
+    /// or the equivalent `reload()` this screen's own host already threads
+    /// through for its other failed-read rows). This one did not, even
+    /// though `ErrorNote` has carried `onRetry` since it was written — the
+    /// only DECISION surface in the app whose outage note offered no way
+    /// back in. Defaults to a no-op so a caller wiring only the read path
+    /// still compiles; every real host below supplies one.
+    var onRetry: () -> Void = {}
 
     @State private var answerRefusal: String? = nil
     @State private var answerFailed = false
@@ -53,8 +64,14 @@ struct DecisionsSectionV5: View {
                 // not, and each card says which it is.
                 V5SectionLabel(text: "DECISIONS", color: V5.textSecondary)
                 if readFailed {
+                    // The genuine-empty branch above (`proposals.isEmpty` with
+                    // `readFailed == false`) draws nothing at all and offers no
+                    // retry, correctly — there is nothing to retry. This is the
+                    // other branch: we do not know whether anything is pending,
+                    // and that is worth another try.
                     ErrorNote(text: "Any decision waiting on you did not load. "
-                              + "Nothing has been applied, we just cannot see it.")
+                              + "Nothing has been applied, we just cannot see it.",
+                              onRetry: onRetry)
                 }
                 if let refusal = answerRefusal {
                     Alert(text: refusal)

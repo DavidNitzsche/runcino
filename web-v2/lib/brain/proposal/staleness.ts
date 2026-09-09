@@ -192,6 +192,22 @@ export function upgradeLegacyPayload(
  * with nulls, and a percentage-style headline degrades to a plain one instead
  * of inventing a denominator.
  */
+/**
+ * P0PROPOSALFETCH-1 (2026-09-09) · THE FIVE WORDS THE LEGACY LANE CAN READ.
+ *
+ * Moved here, exported, so `app/api/plan/workout-proposals/[id]/accept/
+ * route.ts` (which gates on this to route into `applyAdaptations`) and
+ * `lib/faff/v5-proposals.ts` (which needs to know, for a row with no stored
+ * action, whether accepting it is a mutation `mutatePlan`'s ledger
+ * requirement can block) read ONE set rather than two that could drift
+ * (Rule 16) — a route.ts file cannot itself export an arbitrary named
+ * binding without tripping Next's route-export validation, so this is the
+ * shared home rather than the route.
+ */
+export const LEGACY_MUTATING_ACTION_KINDS: ReadonlySet<string> = new Set([
+  'downgrade', 'shave', 'reschedule', 'field_test', 'mark_upgrade',
+]);
+
 export function actionFromPending(p: {
   actionKind: string;
   planWorkoutId: string;

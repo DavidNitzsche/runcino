@@ -2318,7 +2318,8 @@ struct BlockHostV5: View {
                             // patched locally.
                             Task { await surface.load() }
                         },
-                        onOpenRunLog: { path.append(.runLog) })
+                        onOpenRunLog: { path.append(.runLog) },
+                        onRetryProposals: { Task { await API.resetConnectionPool(); await surface.load() } })
                     // Offline must not look like online. See StaleStateV5.swift.
                     .safeAreaInset(edge: .top, spacing: 0) {
                         if surface.stale {

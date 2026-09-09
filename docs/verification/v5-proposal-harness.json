@@ -20,11 +20,12 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-09",
-            "what": "intervals · 2.5 mi"
+            "what": "intervals \u00b7 2.5 mi"
           }
         ],
         "policyAssumptions": null
-      }
+      },
+      "applyBlockedBecause": null
     },
     {
       "id": "12",
@@ -49,7 +50,8 @@
           }
         ],
         "policyAssumptions": null
-      }
+      },
+      "applyBlockedBecause": null
     },
     {
       "id": "101",
@@ -78,13 +80,14 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-10",
-            "what": "long run · 8 mi"
+            "what": "long run \u00b7 8 mi"
           }
         ],
         "policyAssumptions": [
           "Three comparable sessions before this engine claims a capacity ceiling"
         ]
-      }
+      },
+      "applyBlockedBecause": null
     },
     {
       "id": "102",
@@ -104,11 +107,12 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-11",
-            "what": "long run · 18 mi"
+            "what": "long run \u00b7 18 mi"
           }
         ],
         "policyAssumptions": null
-      }
+      },
+      "applyBlockedBecause": null
     },
     {
       "id": "103",
@@ -126,11 +130,12 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-12",
-            "what": "intervals · 7 mi"
+            "what": "intervals \u00b7 7 mi"
           }
         ],
         "policyAssumptions": null
-      }
+      },
+      "applyBlockedBecause": null
     },
     {
       "id": "104",
@@ -148,7 +153,7 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-13",
-            "what": "tempo · 8 mi"
+            "what": "tempo \u00b7 8 mi"
           },
           {
             "dateISO": "2026-09-15",
@@ -156,7 +161,8 @@
           }
         ],
         "policyAssumptions": null
-      }
+      },
+      "applyBlockedBecause": null
     },
     {
       "id": "105",
@@ -177,11 +183,12 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-10-08",
-            "what": "long run · 18 mi"
+            "what": "long run \u00b7 18 mi"
           }
         ],
         "policyAssumptions": null
-      }
+      },
+      "applyBlockedBecause": null
     },
     {
       "id": "106",
@@ -199,11 +206,12 @@
         "affectedWorkouts": [
           {
             "dateISO": "2026-09-24",
-            "what": "threshold · 9 mi"
+            "what": "threshold \u00b7 9 mi"
           }
         ],
         "policyAssumptions": null
-      }
+      },
+      "applyBlockedBecause": null
     },
     {
       "id": "108",
@@ -228,7 +236,8 @@
           }
         ],
         "policyAssumptions": null
-      }
+      },
+      "applyBlockedBecause": null
     }
   ],
   "proposalsRead": "ok",
@@ -348,7 +357,7 @@
       "direction": "pull_back",
       "outcome": "expired",
       "headline": "Thursday becomes an easy run",
-      "why": "Readiness pullback · HRV below 5 days running."
+      "why": "Readiness pullback \u00b7 HRV below 5 days running."
     }
   ]
 }

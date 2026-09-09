@@ -190,15 +190,37 @@ struct ProposalCardV5: View {
                 .foregroundStyle(V5.textSecondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            /// P0PROPOSALFETCH-1 (2026-09-09) · THE HONEST STATE, NOT A GREYED
+            /// BUTTON.
+            ///
+            /// A disabled-looking "Do it" still promises "this works,
+            /// eventually" — the exact lie a card with a working-looking
+            /// control tells when the server is guaranteed to refuse it
+            /// (`applyBlockedBecause` is only ever non-nil for a `standing ==
+            /// "proposal"` card whose accept would hit `mutatePlan`'s
+            /// `ledger_unwritten` refusal today — see the wire field's own
+            /// doc comment on the server for why). So the control is not
+            /// dimmed, it is REPLACED with the reason, in the same voice as
+            /// `why` above it. "Leave it" is untouched below: a decline never
+            /// runs the mutation this note is about.
+            if standing.isAnswerable, let because = proposal.applyBlockedBecause {
+                Text(because)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             HStack(spacing: V5.S.s10) {
                 if standing.isAnswerable {
-                    Button { onAnswer(true) } label: {
-                        pill(answering ? "Sending" : "Do it", weight: .semibold,
-                             ink: V5.textPrimary,
-                             fill: direction.color.opacity(0.22))
+                    if proposal.applyBlockedBecause == nil {
+                        Button { onAnswer(true) } label: {
+                            pill(answering ? "Sending" : "Do it", weight: .semibold,
+                                 ink: V5.textPrimary,
+                                 fill: direction.color.opacity(0.22))
+                        }
+                        .buttonStyle(V5PressStyle())
+                        .disabled(answering)
                     }
-                    .buttonStyle(V5PressStyle())
-                    .disabled(answering)
 
                     Button { onAnswer(false) } label: {
                         pill("Leave it", ink: V5.textSecondary, fill: V5.materialControl)
@@ -227,7 +249,8 @@ struct ProposalCardV5: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
             "\(direction.word). \(standing.word). \(proposal.headline). "
-            + "\(ProposalCardV5.effectiveDate(proposal.dateISO)). \(proposal.why)")
+            + "\(ProposalCardV5.effectiveDate(proposal.dateISO)). \(proposal.why)"
+            + (standing.isAnswerable ? proposal.applyBlockedBecause.map { ". \($0)" } ?? "" : ""))
     }
 
     private func pill(_ text: String, weight: InstrumentWeight = .regular,
@@ -295,6 +318,25 @@ struct ProposalCardV5: View {
                 id: "3", dateISO: "2026-10-08", direction: "push", standing: "condition",
                 headline: "Week 9 opens at 55 mi",
                 why: "It rests on two 50 mile weeks you have not run yet."),
+            onAnswer: { _ in }, onDetails: {},
+        )
+        .padding(V5.S.gutter)
+    }
+}
+
+/// P0PROPOSALFETCH-1 · a live proposal whose accept is blocked by migration
+/// 166's absence. "Do it" is gone, not greyed; "Leave it" and "Details"
+/// still work.
+#Preview("proposal · apply blocked (migration 166 absent)") {
+    ZStack {
+        V5.surfacePage.ignoresSafeArea()
+        ProposalCardV5(
+            proposal: V5Proposal(
+                id: "12", dateISO: "2026-09-08", direction: "push",
+                applyBlockedBecause: "This decision can\u{2019}t be applied yet. The record it would "
+                    + "write to is not set up on this server. Leave it still works. Try Do it again later.",
+                headline: "Easy ceiling moves to 8:12 across the block",
+                why: "Your recent training puts your threshold at 7:10 per mile."),
             onAnswer: { _ in }, onDetails: {},
         )
         .padding(V5.S.gutter)
