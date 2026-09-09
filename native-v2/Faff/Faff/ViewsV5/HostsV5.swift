@@ -566,25 +566,22 @@ struct TodayHostV5: View {
                         // once, which is exactly the "no content printed
                         // twice on one screen" rule this file elsewhere
                         // enforces on everyone else.
-                        .safeAreaInset(edge: .top, spacing: 0) {
-                            // OFFLINE MUST NOT LOOK LIKE ONLINE. See
-                            // StaleStateV5.swift. This is the ONLY banner
-                            // reachable from the matched branch, and it names
-                            // exactly one fact — connectivity — because a day
-                            // mismatch can no longer coexist with rendered
-                            // content at all; it is a different `readiness`
-                            // case, rendered as a different screen, never
-                            // stacked as a second card beside this one.
-                            if surface.stale {
-                                StaleBannerV5(cachedAt: surface.cachedAt,
-                                              onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
-                                    .padding(.horizontal, V5.S.gutter)
-                                    .padding(.bottom, V5.S.s12)
-                                    .background(V5.surfacePage)
-                                    .transition(.opacity)
-                            }
-                        }
-                        .animation(V5.Motion.fill, value: surface.stale)
+                        //
+                        // OFFLINE MUST NOT LOOK LIKE ONLINE. See
+                        // StaleStateV5.swift. This is the ONLY banner
+                        // reachable from the matched branch, and it names
+                        // exactly one fact — connectivity — because a day
+                        // mismatch can no longer coexist with rendered
+                        // content at all; it is a different `readiness`
+                        // case, rendered as a different screen, never
+                        // stacked as a second card beside this one.
+                        //
+                        // `v5StaleBanner`, not a hand-rolled `.safeAreaInset`
+                        // — see FULLBLEED-1 in StaleStateV5.swift for why a
+                        // plain safeAreaInset here leaves a black gap between
+                        // this banner and the day panel's full-bleed colour.
+                        .v5StaleBanner(stale: surface.stale, cachedAt: surface.cachedAt,
+                                       onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                 case .loading(let date):
                     pendingCard(for: date, phase: .loading(summary: weekSummary(for: date)))
                 case .failed(let date):
@@ -2321,16 +2318,12 @@ struct BlockHostV5: View {
                         onOpenRunLog: { path.append(.runLog) },
                         onRetryProposals: { Task { await API.resetConnectionPool(); await surface.load() } })
                     // Offline must not look like online. See StaleStateV5.swift.
-                    .safeAreaInset(edge: .top, spacing: 0) {
-                        if surface.stale {
-                            StaleBannerV5(cachedAt: surface.cachedAt,
-                                          onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
-                                .padding(.horizontal, V5.S.gutter)
-                                .padding(.bottom, V5.S.s12)
-                                .background(V5.surfacePage)
-                                .transition(.opacity)
-                        }
-                    }
+                    // `v5StaleBanner`, not a hand-rolled `.safeAreaInset` —
+                    // see FULLBLEED-1 there for why a plain safeAreaInset
+                    // leaves a black gap between this banner and the day
+                    // panel's full-bleed colour.
+                    .v5StaleBanner(stale: surface.stale, cachedAt: surface.cachedAt,
+                                   onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -2396,16 +2389,15 @@ struct RacesHostV5: View {
                             onOpenRace: { row in path.append(.raceDetail(slug: row.slug)) },
                             onAddRace: { path.append(.addRace) })
                         // Offline must not look like online. See StaleStateV5.swift.
-                        .safeAreaInset(edge: .top, spacing: 0) {
-                            if surface.stale {
-                                StaleBannerV5(cachedAt: surface.cachedAt,
-                                              onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
-                                    .padding(.horizontal, V5.S.gutter)
-                                    .padding(.bottom, V5.S.s12)
-                                    .background(V5.surfacePage)
-                                    .transition(.opacity)
-                            }
-                        }
+                        // `v5StaleBanner`, not a hand-rolled `.safeAreaInset`
+                        // — see FULLBLEED-1 there for why a plain
+                        // safeAreaInset leaves a black gap between this
+                        // banner and the day panel's full-bleed colour (this
+                        // was the exact reported defect: the RACES screen's
+                        // gradient stopping short of the top with a black
+                        // strip above it).
+                        .v5StaleBanner(stale: surface.stale, cachedAt: surface.cachedAt,
+                                       onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
                 } else if let reason = surface.absentReason {
                     ScrollView {
                         Silence(reason: reason)
