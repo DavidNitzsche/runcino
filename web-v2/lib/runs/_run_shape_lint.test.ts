@@ -190,12 +190,17 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
       'Reads plan-side columns alongside run keys (hr_on_pace_delta_bpm, ' +
       'pace_target_s_per_mi are plan_workouts columns, not jsonb). Mixed query · migrate ' +
       'the run half only, carefully.',
-    'lib/plan/recompute-paces.ts': 'Day expression only · straightforward, next batch.',
     /* 2026-09-04 · SEALING-IDENTITY-1 removed `lib/plan/seal.ts`'s entry.
      * Every date-EXISTS predicate in that file now routes through
      * `lib/execution/day-resolver.ts` (`resolveDayExecutions` /
      * `resolveDateRangeExecutions`) instead of hand-rolling raw jsonb
      * access — nothing left there for this allowlist to excuse. */
+    /* 2026-09-09 · SEALEDBYPASS-1 removed `lib/plan/recompute-paces.ts`'s
+     * entry the same way. Its own ad-hoc `r.data->>'date'`/`r.data ? '
+     * mergedIntoId'` sealed-check subquery — the only raw jsonb access this
+     * file had — is deleted; the seal predicate now goes through
+     * `lib/plan/seal.ts`'s `sealedWorkoutIdsForRange`, which is itself built
+     * on `day-resolver.ts`, not on hand-rolled raw access. */
     'lib/plan/seed-from-onboarding.ts': 'Day + distance · straightforward, next batch.',
 
     /* ── coach surfaces · read-heavy, display-path ────────────────────── */
@@ -329,9 +334,11 @@ describe('RUN-SHAPE LINT · raw runs.data access', () => {
      * were the dead ones — the quality read is now `loadKeySessionExecutions`
      * and the long read uses `runNotMergedSql` / `runDistanceMiSql` /
      * `runDaySql`. Nothing there hand-rolls the canonical filter any more. */
-    'lib/plan/recompute-paces.ts': 'Next batch.',
     /* 2026-09-04 · SEALING-IDENTITY-1 removed `lib/plan/seal.ts` — see the
      * matching note above RAW_ACCESS_ALLOWED. */
+    /* 2026-09-09 · SEALEDBYPASS-1 removed `lib/plan/recompute-paces.ts` the
+     * same way — its hand-rolled sealed-check merge filter is gone, replaced
+     * by `sealedWorkoutIdsForRange` (lib/plan/seal.ts). */
     'lib/plan/seed-from-onboarding.ts': 'Next batch.',
 
     /* ── coach surfaces ────────────────────────────────────────────────── */

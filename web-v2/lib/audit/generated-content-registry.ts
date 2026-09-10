@@ -536,8 +536,6 @@ export const MODULE_ORPHANS: Record<string, string> = {
   // Adaptation Engine's PROMOTION to the live mutation path is still a
   // separate, held decision, but "is anything besides a test reaching this
   // file" is a different question, and the answer to that one changed.
-  'web-v2/lib/plan/core.ts':
-    'Stranded by block-preview. The shared id()/addDays()/mondayOf() primitives were extracted so the three plan builders stay drift-free; the extraction landed and the other builders never switched over. Dies or lives with block-preview.',
   'web-v2/lib/coach/strength-recommender.ts':
     'Deliberately dormant. Strength was removed as a SURFACE on 2026-08-17 (owner ruling: handled outside the app) with the data kept. The doctrine test is what stops the engine rotting while it is unmounted. Do not "fix" this by mounting it.',
   'web-v2/lib/coach/strength-status.ts':
@@ -552,6 +550,8 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'A GATE HELPER. Read only by lib/faff/_today_thesis.audit.test.ts and lib/faff/_voice_live.audit.test.ts, never at runtime. Both were pinned to a hard-coded week of the owner block; the owner moved that week by hand around travel on 2026-09-03 and both audits went red against correct engine behaviour, on every machine with DATABASE_URL_RO set and on none in CI. This resolves the roles those tests actually assert on — the quality days, the long run, one day per state — off the live plan, so a legitimate reschedule stops breaking them. Runtime code must never import it: it exists to describe a plan for an audit, not to decide anything.',
   'web-v2/lib/audit/execution-identity-exemptions.ts':
     'A GATE, same shape as active-plan-exemptions.ts: the argued exceptions to EXECID-SCAN-1 (completion is resolved through lib/execution/day-resolver.ts, never inferred from a calendar date), read only by lib/audit/_execution_identity_scan.test.ts. Runtime code must never import it — the whole point is that a surface either asks the resolver or is listed here, and nothing should be able to consult the list to decide whether a run completed a prescription. The list is a ratchet: an entry whose file no longer trips the scanner fails until it is deleted, and every reason is length-checked so a shrug cannot stand in for an argument.',
+  'web-v2/lib/audit/execution-identity-scan.ts':
+    'A GATE. Same shape as anchor-derivation-scan.ts: EXECID-SCAN-1\'s scanning logic (the day-key/quantity fingerprint, the NESTED-SUBQUERY-1 balanced-paren subquery extractor, and the walk), consulted only by lib/audit/_execution_identity_scan.test.ts, never at runtime. Split out of the test file specifically so the module can carry its own falsifiable unit tests (synthetic bypass fixtures, Rule 18) independent of the live-tree walk, and so a future gate reuses the same fingerprint rather than re-deriving it.',
   'web-v2/lib/audit/sentence-repetition-registry.ts':
     'A GATE, same shape as normal-window-registry.ts: the argued exceptions to RULE 17 (the runner reads a sentence once), read only by lib/plan/_sentence_repetition.test.ts and check-sentence-repetition.sh. Runtime code must never import it — the point is that a composer either says a repeated sentence once or the repetition is argued here, and nothing should be able to consult the list to decide what to author. The list is a ratchet: every entry must match a real finding in the corpus, so an exemption whose repetition has been fixed fails the gate until it is deleted.',
   'web-v2/lib/audit/normal-window-registry.ts':
