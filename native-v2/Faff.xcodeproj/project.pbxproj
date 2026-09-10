@@ -31,6 +31,7 @@
 		139194B23E9B0471DE018B7F /* _CapturePastPlanTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA1FEB2ECFDE3A3747C78B7C /* _CapturePastPlanTests.swift */; };
 		14640A3705B32648E88B7E91 /* ReadinessBriefSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */; };
 		14C9CA2FFD11F545E83DE1A9 /* ColdStartView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81938656B7079C01BB12693C /* ColdStartView.swift */; };
+		1532A1D07F8016A19544E638 /* WatchArbitrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2511482B4E1C08A4BD19038D /* WatchArbitrationTests.swift */; };
 		16105FF9F23FE470CECECD32 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 139264554EDD5A64F64E384F /* Assets.xcassets */; };
 		16676927C72B44D5C7D84EE5 /* FaffWidgetContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E20B32808244C5EC8C98C05 /* FaffWidgetContent.swift */; };
 		17A2B4F13337A989E66D9203 /* WireMutator.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6B2876CEA978E0B797BDFE /* WireMutator.swift */; };
@@ -51,7 +52,6 @@
 		27F43A4B6D6FA538F991A6DE /* RunShoePickerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0165EB077E98C01384F34584 /* RunShoePickerSheet.swift */; };
 		29B789653D987A0A4AF3B3B5 /* LifecycleSweepTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4253B212F7099ADDDE9C216A /* LifecycleSweepTests.swift */; };
 		2A5B31B43354B2F1699E2B56 /* PaceDriftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3676EBC48CB66235C0EE731 /* PaceDriftTests.swift */; };
-		6244B90A1B62453DB4C1087C /* PhoneSyncArbitrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BE3A41200914515ACCACC4D /* PhoneSyncArbitrationTests.swift */; };
 		2A991BF46A64BE16C8E3B6B0 /* RequestCoalescingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A242C88EB2882D83A0A0E7 /* RequestCoalescingTests.swift */; };
 		2C4B66907408D3B941C50726 /* WorkoutEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F91DFD1C7C031A3F6120FA29 /* WorkoutEngineTests.swift */; };
 		2CECC6E66207BE2B489E1660 /* SweepLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D5343ED9131EF5857DDCA4 /* SweepLedger.swift */; };
@@ -153,6 +153,7 @@
 		870C68D997241F93D1463F7A /* RunRecapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DCC89200E2D445651FD810 /* RunRecapView.swift */; };
 		87890ED4F2226911CA00FFD1 /* ComponentsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = CFC017C2FCF5BCEF864B8086 /* ComponentsV5.swift */; };
 		87BBC4C1C5A3A8FE69C0D763 /* FormatConformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62F85895A025330E8A570FEB /* FormatConformanceTests.swift */; };
+		88783A6D9FCC13763832DDDC /* PhoneSyncArbitrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 727E341795DB01A160A05F1D /* PhoneSyncArbitrationTests.swift */; };
 		89208AB9C17FEC1DBCC09F60 /* ReturnToRunningV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = E31F85E8B90F164EEBB50013 /* ReturnToRunningV5.swift */; };
 		8A6D45456669247805119032 /* OpenEndedSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8AFF6EE9836728CE662BA316 /* OpenEndedSessionTests.swift */; };
 		8CDFAB33DF64025E741E486C /* TodayRecoveryPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 081F3BDD4979D92FC6A19386 /* TodayRecoveryPanel.swift */; };
@@ -171,7 +172,6 @@
 		9A55E4A4D05E1B6F8E03515E /* AddRaceV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = C29FB6AFE3C447E23C510022 /* AddRaceV5.swift */; };
 		9AE98D4A316A6880817CB236 /* E_Nudges.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7483C37B55D5EABF86C7B744 /* E_Nudges.swift */; };
 		9B4E43AF15E093C4300838E2 /* RunLobbyV5Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5ECB1DD6BF684DF37A90CBBB /* RunLobbyV5Tests.swift */; };
-		D7614C635B834627AA798156 /* WatchArbitrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3E4254F0F2D468389CDF57F /* WatchArbitrationTests.swift */; };
 		9BECA13115FCEB33FE3453FB /* NotificationsV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6AC24C8E4CE9F0ADF56DB2CB /* NotificationsV5.swift */; };
 		9CFEBBFA3F3370E991138836 /* PhoneSync.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B2D7420891F1F0024E3D933 /* PhoneSync.swift */; };
 		9D4EFA11F803DC6352341222 /* NudgeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8A9245F66AE1A50C76E2FF3 /* NudgeSheet.swift */; };
@@ -406,6 +406,7 @@
 		2186E706CECB42A380295C3E /* TodayNavigationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayNavigationTests.swift; sourceTree = "<group>"; };
 		21C4E0103C48556262CA34E6 /* LiveRunTreadmillV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillV5.swift; sourceTree = "<group>"; };
 		232F9F14460F13DDC369F512 /* Brandmark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Brandmark.swift; sourceTree = "<group>"; };
+		2511482B4E1C08A4BD19038D /* WatchArbitrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchArbitrationTests.swift; sourceTree = "<group>"; };
 		2600BF38DD79CB8A08592B03 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		270299E44E94590D5B9B8501 /* OFL-InstrumentSans.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-InstrumentSans.txt"; sourceTree = "<group>"; };
 		270E206761D6C2E5F2A3E4F7 /* StaleStateV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaleStateV5.swift; sourceTree = "<group>"; };
@@ -471,7 +472,6 @@
 		5AD01DD17592B8872CD72B36 /* C_CoachTransparency.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = C_CoachTransparency.swift; sourceTree = "<group>"; };
 		5D371572E692F405659C13F0 /* TreadmillPhaseSets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillPhaseSets.swift; sourceTree = "<group>"; };
 		5ECB1DD6BF684DF37A90CBBB /* RunLobbyV5Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLobbyV5Tests.swift; sourceTree = "<group>"; };
-		E3E4254F0F2D468389CDF57F /* WatchArbitrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchArbitrationTests.swift; sourceTree = "<group>"; };
 		5F356ED0B3C5BA43AC3568B0 /* WatchSync.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchSync.swift; sourceTree = "<group>"; };
 		607A158397177D21CBC58EB8 /* TreadmillView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TreadmillView.swift; sourceTree = "<group>"; };
 		62F85895A025330E8A570FEB /* FormatConformanceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FormatConformanceTests.swift; sourceTree = "<group>"; };
@@ -487,6 +487,7 @@
 		6F6FF20A96440B706E0DF836 /* HostsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HostsV5.swift; sourceTree = "<group>"; };
 		71C4F2E6374884D975BBC496 /* FacesLobbyV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacesLobbyV5.swift; sourceTree = "<group>"; };
 		71E30ABB6FF60D42F77C164B /* SkipAndProjectionRenderUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkipAndProjectionRenderUITests.swift; sourceTree = "<group>"; };
+		727E341795DB01A160A05F1D /* PhoneSyncArbitrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSyncArbitrationTests.swift; sourceTree = "<group>"; };
 		743648B82E2A21410A13F000 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		7483C37B55D5EABF86C7B744 /* E_Nudges.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = E_Nudges.swift; sourceTree = "<group>"; };
 		75CB12F69B8E91BD1846A268 /* RaceDayView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RaceDayView.swift; sourceTree = "<group>"; };
@@ -590,7 +591,6 @@
 		C29FB6AFE3C447E23C510022 /* AddRaceV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddRaceV5.swift; sourceTree = "<group>"; };
 		C3518819A569ED4E7C4F1E8F /* LiveRunWatchCompanionV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunWatchCompanionV5.swift; sourceTree = "<group>"; };
 		C3676EBC48CB66235C0EE731 /* PaceDriftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PaceDriftTests.swift; sourceTree = "<group>"; };
-		1BE3A41200914515ACCACC4D /* PhoneSyncArbitrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneSyncArbitrationTests.swift; sourceTree = "<group>"; };
 		C44CBB9357A15E48DAFCBEEA /* CoachPayloads.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoachPayloads.swift; sourceTree = "<group>"; };
 		C55E4F4FBC346F8A31E8DE6D /* DayFetchCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DayFetchCoordinatorTests.swift; sourceTree = "<group>"; };
 		C62B9760D4B508FC2FF8DBD0 /* ValuesV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ValuesV5.swift; sourceTree = "<group>"; };
@@ -656,7 +656,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_AF3E0848-3DA5-4090-A823-8E41578E4203" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_2C1ED99A-7FFE-4ACF-9EF3-07C88854859F" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -718,7 +718,6 @@
 				7A5588DFAB05E7FC333B1F14 /* RPECaptureTests.swift */,
 				5ECB1DD6BF684DF37A90CBBB /* RunLobbyV5Tests.swift */,
 				0BF573E25421532FFE0349AD /* SettingsFailureStateTests.swift */,
-				E3E4254F0F2D468389CDF57F /* WatchArbitrationTests.swift */,
 				15FB44D69A865618A457AB74 /* SignInFlowTests.swift */,
 				2BFF8099E7BDD8737F90BDE0 /* StuckConnectionTests.swift */,
 				441313B970A5874985154189 /* SurfaceCancellationTests.swift */,
@@ -738,6 +737,7 @@
 				EE6DEE8E1E5A40B942A2E036 /* V5RaceStatsColumnsTests.swift */,
 				4B06CB04BB75562F9A1BC187 /* V5RaceWireTests.swift */,
 				34130E2348685DF2259472DC /* WalkBackCompletionLabelTests.swift */,
+				2511482B4E1C08A4BD19038D /* WatchArbitrationTests.swift */,
 				0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */,
 				861C565055555BF5D5275FE2 /* WatchWorkoutPhaseRestampTests.swift */,
 				2CED47C2665D8AD913FB6A8A /* WriteHonestyTests.swift */,
@@ -970,7 +970,7 @@
 				2BEFCA3A96093B6B587E8153 /* _WatchGraderTests.swift */,
 				C7DB675E54CD0F2EC9DFB306 /* FaffWatch_Watch_AppTests.swift */,
 				C3676EBC48CB66235C0EE731 /* PaceDriftTests.swift */,
-				1BE3A41200914515ACCACC4D /* PhoneSyncArbitrationTests.swift */,
+				727E341795DB01A160A05F1D /* PhoneSyncArbitrationTests.swift */,
 				F91DFD1C7C031A3F6120FA29 /* WorkoutEngineTests.swift */,
 			);
 			path = "FaffWatch Watch AppTests";
@@ -1113,10 +1113,10 @@
 			path = FaffUITests;
 			sourceTree = "<group>";
 		};
-		"TEMP_75C10219-96EC-469E-832A-763238CCFD17" /* native-v2 */ = {
+		"TEMP_4B4750C1-36B6-48B4-9D7D-4F8867F735E1" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_AF3E0848-3DA5-4090-A823-8E41578E4203" /* Secrets.xcconfig */,
+				"TEMP_2C1ED99A-7FFE-4ACF-9EF3-07C88854859F" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1351,7 +1351,7 @@
 			files = (
 				EE379DF35CECC61270A4AB0D /* FaffWatch_Watch_AppTests.swift in Sources */,
 				2A5B31B43354B2F1699E2B56 /* PaceDriftTests.swift in Sources */,
-				6244B90A1B62453DB4C1087C /* PhoneSyncArbitrationTests.swift in Sources */,
+				88783A6D9FCC13763832DDDC /* PhoneSyncArbitrationTests.swift in Sources */,
 				2C4B66907408D3B941C50726 /* WorkoutEngineTests.swift in Sources */,
 				F53F3625551185943AE4BACE /* _AutoPauseTests.swift in Sources */,
 				139194B23E9B0471DE018B7F /* _CapturePastPlanTests.swift in Sources */,
@@ -1433,7 +1433,6 @@
 				7772B8FFA13C514033773092 /* RequestDiagnosticsTests.swift in Sources */,
 				9B4E43AF15E093C4300838E2 /* RunLobbyV5Tests.swift in Sources */,
 				F474EE6E137971ABDB247394 /* SettingsFailureStateTests.swift in Sources */,
-				D7614C635B834627AA798156 /* WatchArbitrationTests.swift in Sources */,
 				6BE40F3E6AA911AD15D8C08E /* SignInFlowTests.swift in Sources */,
 				33EB8E8F5A063626EDDFEDBD /* StuckConnectionTests.swift in Sources */,
 				51674569B467B0092F1B5F1A /* SurfaceCancellationTests.swift in Sources */,
@@ -1455,6 +1454,7 @@
 				1E2A914A6F9494BD4D0F69E4 /* V5RaceStatsColumnsTests.swift in Sources */,
 				5F846D56101A279D2FD2D3F8 /* V5RaceWireTests.swift in Sources */,
 				CCB6508CB0BDB54845CA10AD /* WalkBackCompletionLabelTests.swift in Sources */,
+				1532A1D07F8016A19544E638 /* WatchArbitrationTests.swift in Sources */,
 				FCE849E5CE19B79865639C37 /* WatchRelayQueueTests.swift in Sources */,
 				A9E46F3AF38EF131C8396F71 /* WatchWorkoutPhaseRestampTests.swift in Sources */,
 				78379E4F50F43536FD9546E5 /* WireCorpus.swift in Sources */,
@@ -1689,7 +1689,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_AF3E0848-3DA5-4090-A823-8E41578E4203" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_2C1ED99A-7FFE-4ACF-9EF3-07C88854859F" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1918,7 +1918,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_AF3E0848-3DA5-4090-A823-8E41578E4203" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_2C1ED99A-7FFE-4ACF-9EF3-07C88854859F" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
