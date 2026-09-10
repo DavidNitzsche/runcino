@@ -84,5 +84,5 @@ requiring direct execution rather than another source read.
 |---|---|
 | Branch | `audit/brain-forensic-2026-09-10` (shared checkout, not created/switched by this audit) |
 | `origin/main` at completion | `9f082e33929c670c091920006b0602e85de5dc68` |
-| Final commit (this pass) | recorded in `audit-2026-09-09-coach-forensic-audit-v2.1.md` §5 and below, after `git commit` runs |
-| Working tree status at commit time | recorded below, from `git status --short` immediately before staging this pass's files |
+| Final commit (this pass) | `f11c77d698facbc7c74b9408f980ecd574ad1d2f` — local only, not pushed |
+| Working tree status, this audit's own files, immediately after that commit | clean (zero output from `git status --short` scoped to every file this audit has written) |

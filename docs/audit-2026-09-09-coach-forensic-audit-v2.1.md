@@ -179,8 +179,19 @@ Two remaining instances of language implying device confirmation were found in v
 | Branch | `audit/brain-forensic-2026-09-10` | shared checkout, not created or switched by this audit |
 | `origin/main` at this correction's completion | `9f082e33929c670c091920006b0602e85de5dc68` | |
 
-**Prior commits** (unchanged, already pushed to local history):
+**Prior commits** (unchanged, local, not pushed):
 - `d76b81f20d27a442847122ba918de115979ea308` — initial commit: v1 + four track files + v2 (first version) + v1-to-v2 correction log.
 - `871357524` — follow-up: recorded that commit's own SHA into v2's artifact manifest.
 
-**This pass's commit** (added after this document and the §3 wording fixes are staged) is recorded immediately below, computed and inserted after `git commit` runs — not a self-reference, and not left as "see repository history" alone:
+**This pass's commit**: `f11c77d698facbc7c74b9408f980ecd574ad1d2f`, on branch `audit/brain-forensic-2026-09-10`, containing v2's two wording fixes plus this v2.1 document, the v2→v2.1 correction log, and the preserved falsification test artifact. **Local only — not pushed.**
+
+**Working-tree status immediately after that commit**, scoped to every file this Coach audit owns (`git status --short` against all of: v1, v2, v2.1, both correction logs, and the `docs/reports/coach-audit-2026-09-09/` directory): **clean — zero output, no uncommitted changes in any file this audit has written.** (The wider shared checkout carries 16 other modified/untracked files belonging to the concurrent Brain-audit session — untouched by this pass, not part of this audit's scope, and not reflected in the "clean" claim above, which is scoped strictly to this audit's own artifacts.)
+
+**SHA-256 of the files this commit changed or added**:
+
+| File | SHA-256 |
+|---|---|
+| `docs/audit-2026-09-09-coach-forensic-audit-v2.md` (wording-fixed) | `ae8a31a13f4c0ca9a00c085047acad74a7c8083bb3b74621bd1525c71f8ae9b4` |
+| `docs/audit-2026-09-09-coach-forensic-audit-v2.1.md` (this file, pre-this-edit) | `18f8db5e3aaf2696d5a384676d1737af03f1625463a8df730add4ecbe0ddcd61` — will change again once this closing paragraph is added; not self-referential by design, see v2's §7 note on the same limitation |
+| `docs/audit-2026-09-09-coach-forensic-audit-v2-to-v2.1-correction-log.md` | `1a6510a7dd4bc64eba9cbd8d0f37ee333f0ccc0e4b619e6e6c3bf58796f62066` |
+| `docs/reports/coach-audit-2026-09-09/falsify-crace-freqcap.test.ts` | `ee31f37d7b1aa6d370c23c44885089b625140c8160c938c492b5ce1df5bf262c` |
