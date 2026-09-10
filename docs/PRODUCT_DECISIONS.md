@@ -1684,6 +1684,94 @@ is touched again and the gap question resurfaces.
 
 ---
 
+## 2026-09-09 · RACEPROT-VERIFY-1 — the targeted tune-up-window verification, answered
+
+Audit item §10a-12 (`docs/audit-2026-09-08-full-status-master-report.md`)
+flagged predicate 8 ("is this week race-protected") CONDITIONAL: five live,
+disagreeing implementations, `is_race_week` confirmed FALSE for 3 of the
+runner's 4 real race weeks, and a standing question of whether the runner's
+actual upcoming tune-up race is currently safe. Scoped explicitly as ONE
+targeted, read-only verification — not the five-implementation
+consolidation, which stays deferred architecture work.
+
+**The real window, found by querying `races` (read-only) against
+2026-09-09.** David's next tune-up is the Santa Monica 10k, 2026-09-13,
+priority B (`santa-monica-10k-2026-09-13`, `has_result=false`). His active
+plan is `pln_7636bcc0a201bf2d` (authored 2026-09-03, CIM goal unchanged).
+The week containing it, `wk_76b0f9f77292f000` (2026-09-07 through 2026-09-13):
+`is_race_week = FALSE`, `is_cutback = TRUE`, phase QUALITY — the exact shape
+`docs/plan/race-week.ts`'s own header predicted (the column holds the GOAL
+race's week only, by design; a B race never sets it).
+
+**What actually governs this week's pricing, read from live rows, not
+code alone.** `plan_workouts` for 2026-09-05..2026-09-16 shows a correctly
+shaped tune-up week: tempo on Tuesday 09-08 (5 days out — the last quality
+before the taper), easy 09-09/09-10 with 09-10's note reading "Inside the
+mini-taper for Santa Monica 10k · no quality this close," a shakeout 09-11,
+rest 09-12, the race itself 09-13 ("B race · race effort. Recovery days
+follow before quality resumes"), then easy recovery 09-14/09-15 explicitly
+labelled "Post-race recovery." **This did not come from the `is_race_week`
+column** — it came from the composer's own day-level race placement
+(`type: 'race'`/`'shakeout'` on the actual days) plus the week-level
+`is_cutback` flag, exactly the two things `race-week.ts`'s `weekContainsRace`
+and `is_cutback` check for, never the raw column alone.
+
+**Confirmed live and reachable: `progression-pass.ts`'s
+`weekRowNoStepReason` checks `is_cutback === true` BEFORE `is_race_week`**,
+so this specific week is correctly excluded from the weekly progression
+push regardless of the column's wrong value — the mechanism most likely to
+push volume or quality onto a taper week cannot touch it today.
+
+**The real gap, confirmed but currently dormant.** `adapt.ts`'s
+`volume_overshoot` shave-target query (case `'volume_overshoot'`, ~line
+5134) filters candidate rows by `pw.type NOT IN ('rest','strength','race',
+'race_week_tuneup','shakeout')` AND `COALESCE(wk.is_race_week, false) =
+false` — the raw column, not `weekContainsRace`, not `is_cutback`. An
+`'easy'`-typed day inside this exact taper (09-10) and the post-race
+recovery days the following week (09-14/15/16, also `is_race_week=false`)
+are NOT excluded by type and WOULD be eligible shave targets if a
+volume-overshoot trigger fired during this window. Same shape in
+`mutate.ts`'s weekly-mileage rollup (~line 411): it excludes a race day's
+distance from the week total only `when d.type === 'race' AND
+wk.is_race_week`, so this week's 6.2mi race counts toward `weeklyMi` instead
+of being excluded, on any mutation-time validation touching this week.
+
+**Whether it is firing right now: it is not.** `detectVolumeOvershoot`'s own
+trigger-level suppression (`raceSuppressesOvershoot`, proved in
+`_overshoot_race_recency.test.ts`) is POST-race only by design ("a scheduled
+race has inflated no completed volume and must not silence a finding about
+training already done") — it does not, and is not meant to, protect a
+PRE-race taper. But `coach_intents` shows no `volume_overshoot` (or any
+`plan_adapt_*`) trigger anywhere near today, and the prior week closed at
+45.8 of 46.5 planned miles (98.5%) — nowhere near the >25%-over-baseline
+threshold `overshootFires` requires. No pending mutation targets this week
+either. The gap is real and reachable, not hypothetical, but it needs an
+overshoot signal that does not currently exist to actually fire.
+
+**The answer to the conditional.** David's real upcoming tune-up week IS
+currently correctly protected — by the composer's day-level output and by
+`is_cutback`, not by `is_race_week`, which stays wrong exactly as the audit
+found. The specific live gap (`adapt.ts` volume-overshoot shave-target SQL,
+`mutate.ts` weekly-mileage rollup) is confirmed and disclosed here rather
+than fixed, per this task's own scope — spawned as follow-up work rather
+than folded into a same-session point patch, since both sites sit inside
+the same five-implementation tangle §10a-12 already deferred as
+architecture-sized. Fixing either in isolation would be exactly the
+"second answer to the same question" `BRAIN_CONSTITUTION.md` rejects; the
+fix belongs with the consolidation, reading `weekContainsRace` (or the
+composer's own tune-up set) everywhere `is_race_week` is currently read raw
+for a protection decision.
+
+**Also found and disclosed, not fixed here:** `docs/PRODUCT_DECISIONS.md`
+itself carries an unresolved git merge-conflict (`<<<<<<< HEAD` / `=======`
+/ `>>>>>>> origin/action-kinds-complete`, lines 9–194 as of this entry) —
+committed to `origin/main`, predates this session, and is out of scope for
+a read-only race-window verification. Flagged separately rather than
+resolved blind, since picking a side of a real merge conflict in a
+decisions log is not a call to make without reading both branches' intent.
+
+---
+
 ## Standing constraints referenced above
 
 - Paces come from evidence. The goal stays visible and never distorts training.
