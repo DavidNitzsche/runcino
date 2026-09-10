@@ -2,6 +2,7 @@
  * settings.ts — per-user preferences (profile.user_settings jsonb).
  */
 import { pool } from '@/lib/db/pool';
+import { logReadFailure } from '@/lib/db/read';
 
 export interface UserSettings {
   units_distance: 'mi' | 'km';
@@ -71,23 +72,45 @@ export { PHONE_RUN_SETTING_COPY } from './settings-copy';
 /** Memo key shared by the reader and the writer below. */
 const settingsKey = (userId: string) => `settings:${userId}`;
 
+/**
+ * SETTINGS-RULE11-1 (2026-09-09) · a genuine DB failure used to be swallowed
+ * into `DEFAULT_SETTINGS` here — byte-identical to a runner who has simply
+ * never customized anything. That is the exact Rule 11 shape ("don't know",
+ * "measured zero" and "the read failed" collapsed into one fact): every
+ * caller down the chain, and worse, `/api/settings`'s own GET/PATCH handlers
+ * (which already carry the `/api/profile`-proven try/catch → 500 pattern),
+ * could never see the failure because it never reached them as a failure.
+ *
+ * Genuine absence (no `profile` row, or a row with an empty/unset
+ * `user_settings`) is NOT this case — it resolves to `{}` inline below via
+ * `?? {}` and was never the thing wrapped in the old catch-all. Only a real
+ * read failure (query throw, pool down, the dynamic `memo` import failing)
+ * hit that catch. That failure now propagates — logged once here via the
+ * project's own read-failure primitive (`lib/db/read.ts`), then rethrown —
+ * so a caller that wants graceful degradation opts into it explicitly
+ * (several already do: `.catch(() => null)` / `.catch(() => DEFAULT_PREFS)`),
+ * rather than receiving a silent, indistinguishable default.
+ */
 export async function loadSettings(userId: string): Promise<UserSettings> {
-  try {
-    // 2026-08-21 perf · five identical reads of this row in one render.
-    // Only the RAW row is memoized; the spread below still runs per call, so
-    // every caller gets its own object and no caller can mutate another's
-    // settings. Request-scoped — see lib/runtime/request-memo.ts.
-    const { memo } = await import('@/lib/runtime/request-memo');
-    const r = await memo(settingsKey(userId), async () => (await pool.query(
-      `SELECT user_settings FROM profile
-        WHERE user_uuid = $1
-        ORDER BY (user_uuid = $1) DESC LIMIT 1`,
-      [userId]
-    )).rows[0]?.user_settings ?? {});
-    return { ...DEFAULT_SETTINGS, ...r };
-  } catch {
-    return DEFAULT_SETTINGS;
-  }
+  // 2026-08-21 perf · five identical reads of this row in one render.
+  // Only the RAW row is memoized; the spread below still runs per call, so
+  // every caller gets its own object and no caller can mutate another's
+  // settings. Request-scoped — see lib/runtime/request-memo.ts.
+  const { memo } = await import('@/lib/runtime/request-memo');
+  const r = await memo(settingsKey(userId), async () => {
+    try {
+      return (await pool.query(
+        `SELECT user_settings FROM profile
+          WHERE user_uuid = $1
+          ORDER BY (user_uuid = $1) DESC LIMIT 1`,
+        [userId]
+      )).rows[0]?.user_settings ?? {};
+    } catch (e) {
+      logReadFailure('coach/settings.loadSettings', e);
+      throw e;
+    }
+  });
+  return { ...DEFAULT_SETTINGS, ...r };
 }
 
 export async function patchSettings(userId: string, patch: Partial<UserSettings>): Promise<void> {

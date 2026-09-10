@@ -606,7 +606,18 @@ export const HANDED_BACK_FAILS = false;
 // that moved with the code is `recapPhaseReadings::workPhases.length`, and it
 // crossed into an engine module, so it is argued on LOAD_BEARING_KNOWN below
 // rather than counted here.
-export const PERIPHERAL_BASELINE = 171;
+// SETTINGS-RULE11-1 (2026-09-09) · 171 -> 170. `app/api/settings/route.ts`'s
+// PATCH carried its own `replanned = !!r.ok` collapse — the REBUILDTRUTH-1
+// sibling defect, coercing a rich `AutoRebuildResult` into a boolean that
+// could not tell a real replan from `unchanged` or a within-window dedupe.
+// Fixed by calling the same `resolveReplanOutcome` (`lib/plan/replan-
+// outcome.ts`) that `/api/profile/route.ts`'s already-fixed PATCH now also
+// calls, which branches on `newPlanId` — an honest discriminator already on
+// `AutoRebuildResult` — rather than coercing `ok`. One peripheral collapse
+// left the set; none was added, because the replacement is a real branch on
+// a real field, not a coercion relocated into an engine module. Taken from
+// the scanner's own count, not from arithmetic on the diff.
+export const PERIPHERAL_BASELINE = 170;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

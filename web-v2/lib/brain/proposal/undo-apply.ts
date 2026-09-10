@@ -59,6 +59,7 @@ import { readLiveRows } from './staleness';
 import { ledgerFacetsOf } from './ledger-facet';
 import type { PlannedWrite } from './execute';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { findLiveAcceptedLedgerRow } from '@/lib/brain/ledger/decision-ledger';
 import type { PoolClient } from 'pg';
 
 export type UndoOutcome =
@@ -135,6 +136,22 @@ export async function applyUndo(
     return { ok: false, error: 'stale', because: moved };
   }
 
+  /* UNDOTRACK-1 (2026-09-09) · this is the wiring that was missing. This call
+   * used to write the reversal's OWN ledger row (`runnerResponse: 'DECLINED'`,
+   * below) and stop there, never touching the ORIGINAL `ACCEPTED` row —
+   * `ledger.undoes` (which is exactly what `mutate.ts` needs to invoke
+   * `markUndoneInTransaction`) was never populated. `directionCensus()`
+   * (Rule 21's own push-count metric) kept counting that original accept as a
+   * live, standing push forever, and Decision History had no `undone_at` to
+   * read for this exact proposal's history.
+   *
+   * `undefined`/`null` from the lookup (no accepted ledger row for this
+   * proposal — pre-migration-166 accept, or the lookup itself failed) leaves
+   * `undoes` unset: the plan reversal below still proceeds exactly as it
+   * always has for that case, rather than blocking a reversal the runner
+   * asked for on a row this file cannot conjure. */
+  const acceptedRow = await findLiveAcceptedLedgerRow(ctx.userUuid, String(ctx.proposalId));
+
   const boundary = await mutatePlan<number>({
     authority: 'RUNNER_ACCEPTED',
     userUuid: ctx.userUuid,
@@ -153,6 +170,7 @@ export async function applyUndo(
        * together say "accepted, then reversed", which neither says alone. */
       runnerResponse: 'DECLINED',
       explanation: ctx.reason,
+      ...(acceptedRow ? { undoes: { id: acceptedRow.id, reason: ctx.reason } } : {}),
     },
     apply: async (tx, planId) => writeBack(tx, planId, plan.writes),
   });
