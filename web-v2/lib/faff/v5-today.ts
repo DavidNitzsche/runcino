@@ -580,6 +580,13 @@ export interface V5Today {
      *  existing silent/negative fallback in that case, never infer a choice
      *  from `completed === false` alone. */
     recoveryEndedEarly: { prescribedSec: number; actualSec: number } | null;
+    /** WALKBACK-SESSIONEND-1 (2026-09-09) · true only for the plan's LAST
+     *  recovery, ended because the SESSION itself ended there — resolved
+     *  server-side from `runs.data.sessionEnded` (see
+     *  `RunData.sessionEnded`). Mutually exclusive with `recoveryEndedEarly`
+     *  above by construction. See `docs/design/walkback-remaining-states-scope.md`
+     *  §4.6 for the defect this distinguishes from. */
+    sessionEnded: boolean;
   }>;
   /** The runner's own HR zone bands. Empty at cold start. */
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
@@ -1132,6 +1139,13 @@ export interface V5RecentRunCtx {
     speedMph: number | null; inclinePct: number | null;
     /** WALKBACK-2 · see `V5Today.workoutPhases`'s own doc comment. */
     recoveryEndedEarly: { prescribedSec: number; actualSec: number } | null;
+    /** WALKBACK-SESSIONEND-1 (2026-09-09) · true only for the plan's LAST
+     *  recovery, ended because the SESSION itself ended there — resolved
+     *  server-side from `runs.data.sessionEnded` (see
+     *  `RunData.sessionEnded`). Mutually exclusive with `recoveryEndedEarly`
+     *  above by construction. See `docs/design/walkback-remaining-states-scope.md`
+     *  §4.6 for the defect this distinguishes from. */
+    sessionEnded: boolean;
   }>;
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
   paceBand: { lo: number; hi: number } | null;

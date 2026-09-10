@@ -287,6 +287,31 @@ interface WatchCompletionBody {
     phaseLabel?: string | null;
     atSec?: number | null;
   }> | null;
+
+  /**
+   * WALKBACK-SESSIONEND-1 (2026-09-09) · the plan's LAST recovery, cut
+   * short because the SESSION ended there — not because the runner chose
+   * to advance to something else. Distinct from `recoveryEndedEarly` on
+   * purpose (Rule 16, one quantity one name): "ended early" says something
+   * came after; this names the phase nothing comes after. The regression
+   * this fixes: `endCurrentPhase()` used to write a `recoveryEndedEarly`
+   * entry for this exact case, unconditionally, and the phone rendered
+   * "0:43 of 1:00 · advanced early" for a runner who had simply finished
+   * his workout. See `docs/design/walkback-remaining-states-scope.md` §4.6.
+   *
+   * Singular, not an array — a session ends exactly once, by construction.
+   */
+  sessionEnded?: {
+    phaseIndex?: number | null;
+    phaseLabel?: string | null;
+    phaseType?: string | null;
+    /** How long the recovery actually ran before the session ended. */
+    elapsedSecInPhase?: number | null;
+    /** What the plan modelled for this recovery, seconds. */
+    prescribedSecInPhase?: number | null;
+    atSec?: number | null;
+    wasLastPrescribedPhase?: boolean | null;
+  } | null;
   // GPS polyline shipped directly by the watch app (build 172+). Eliminates
   // the separate iPhone HK import hop that was the sole GPS source.
   // 2026-06-08 · the watch's WatchCompletion (Encodable, no CodingKeys)
@@ -757,6 +782,7 @@ export async function POST(req: NextRequest) {
   const repSkips = normalizeRepSkips(body.repSkips);
   const recoveryExtensions = normalizeRecoveryExtensions(body.recoveryExtensions);
   const recoveryEndedEarly = normalizeRecoveryEndedEarly(body.recoveryEndedEarly);
+  const sessionEnded = normalizeSessionEnded(body.sessionEnded);
 
   const data: any = {
     id: effectiveWorkoutId,
@@ -839,6 +865,7 @@ export async function POST(req: NextRequest) {
     ...(repSkips.length > 0 ? { repSkips } : {}),
     ...(recoveryExtensions.length > 0 ? { recoveryExtensions } : {}),
     ...(recoveryEndedEarly.length > 0 ? { recoveryEndedEarly } : {}),
+    ...(sessionEnded ? { sessionEnded } : {}),
     // 2026-06-06 · derive genuine per-mile splits from the watch's
     // paceSamples stream.  Each phase ships ~5s-cadence samples with
     // cumulative distMi + tSec.  Walking those to find mile crossings
@@ -1347,6 +1374,37 @@ function normalizeRecoveryEndedEarly(
     out.push(e);
   }
   return out;
+}
+
+/** WALKBACK-SESSIONEND-1 · normalise the session-ended record. Mirrors
+ *  `normalizeRecoveryEndedEarly`'s refusal posture: an entry with no usable
+ *  `elapsedSecInPhase`/`prescribedSecInPhase` pair says nothing the phone
+ *  could render truthfully and is dropped, same as a claim
+ *  `normalizeCeilingLift` cannot back. Singular return (or null), not an
+ *  array — see `WatchCompletionBody.sessionEnded`'s doc comment. */
+function normalizeSessionEnded(
+  raw: WatchCompletionBody['sessionEnded'],
+): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const elapsedRaw = num(raw.elapsedSecInPhase);
+  const prescribedRaw = num(raw.prescribedSecInPhase);
+  if (prescribedRaw == null || prescribedRaw <= 0) return null;
+  if (elapsedRaw == null || elapsedRaw < 0) return null;
+  const e: Record<string, unknown> = {
+    elapsedSecInPhase: Math.round(elapsedRaw),
+    prescribedSecInPhase: Math.round(prescribedRaw),
+    // Coerced to a real boolean (never left `undefined`/absent) — this is
+    // the field a grading reader keys its exclusion on, and Rule 11 says an
+    // absent claim and a false one must not collapse into the same read.
+    wasLastPrescribedPhase: raw.wasLastPrescribedPhase === true,
+  };
+  const phaseIndex = num(raw.phaseIndex);
+  if (phaseIndex != null) e.phaseIndex = Math.round(phaseIndex);
+  if (typeof raw.phaseLabel === 'string' && raw.phaseLabel !== '') e.phaseLabel = raw.phaseLabel;
+  if (typeof raw.phaseType === 'string' && raw.phaseType !== '') e.phaseType = raw.phaseType;
+  const atSec = num(raw.atSec);
+  if (atSec != null && atSec >= 0) e.atSec = Math.round(atSec);
+  return e;
 }
 
 function formatMmSs(secs: number): string {

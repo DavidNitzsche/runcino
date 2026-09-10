@@ -163,4 +163,55 @@ final class WalkBackCompletionLabelTests: XCTestCase {
             TodayAfterV5.completionNote(type: "work", completed: false, endedEarly: record),
             "not completed")
     }
+
+    // MARK: - 5 · WALKBACK-SESSIONEND-1 · the last recovery ending the session
+
+    /// THE REGRESSION THIS CLOSES. The plan's final walk-back — the one
+    /// after the last stride, with nothing left to advance to — used to
+    /// arrive here carrying an ordinary `V5RecoveryEndedEarly` record and
+    /// read "0:43 of 1:00 · advanced early", which is false: the runner did
+    /// not advance to anything, the workout was over. `sessionEnded: true`
+    /// is the server's explicit signal that this is that case, and it must
+    /// win over `endedEarly` unconditionally — checked FIRST in
+    /// `completionNote`, before `endedEarly` is even read.
+    func testTheFinalWalkBackEndingTheSessionNeverReadsAdvancedEarly() {
+        // Server contract: the two fields are mutually exclusive for a given
+        // phase (the watch writes one or the other, never both) — but this
+        // is asserted with `endedEarly` ALSO populated, as the belt to that
+        // suspenders: even if some future bug sent both, `sessionEnded`
+        // still wins and the sentence is never said.
+        let record = V5RecoveryEndedEarly(prescribedSec: 60, actualSec: 8)
+        XCTAssertNil(
+            TodayAfterV5.completionNote(type: "recovery", completed: false,
+                                         endedEarly: record, sessionEnded: true),
+            "the workout ending is not a fact to render as 'advanced early'")
+    }
+
+    /// The ordinary (no `endedEarly` record either) shape of the same case —
+    /// the one the server will actually send, since `recoveryEndedEarly` is
+    /// never populated for this phase.
+    func testTheFinalWalkBackWithNoRecordAndSessionEndedStillReadsNothing() {
+        XCTAssertNil(
+            TodayAfterV5.completionNote(type: "recovery", completed: false, sessionEnded: true))
+    }
+
+    /// THE ASYMMETRY THIS MUST NOT CREATE. `sessionEnded` defaults `false`,
+    /// so every call site above this section — the entire pre-existing
+    /// suite — is unaffected: the ordinary "advanced early" case still
+    /// reads its positive label exactly as WALKBACK-2 shipped it.
+    func testSessionEndedDefaultsFalseAndDoesNotAffectTheOrdinaryCase() {
+        let record = V5RecoveryEndedEarly(prescribedSec: 60, actualSec: 43)
+        XCTAssertEqual(
+            TodayAfterV5.completionNote(type: "recovery", completed: false, endedEarly: record),
+            "0:43 of 1:00 \u{00B7} advanced early")
+    }
+
+    /// `sessionEnded` is consulted ONLY for `type == "recovery"` — a work
+    /// phase (which the server never marks `sessionEnded` on, by contract)
+    /// still reads its ordinary "not completed" state.
+    func testSessionEndedIsIgnoredOnAnyOtherPhaseType() {
+        XCTAssertEqual(
+            TodayAfterV5.completionNote(type: "work", completed: false, sessionEnded: true),
+            "not completed")
+    }
 }

@@ -719,7 +719,23 @@ final class WorkoutEngine: ObservableObject {
         // board already makes is the smaller, more honest surface: a caller
         // that forgets to also call a second method cannot lose the decision,
         // because there is no second method to forget.
-        recordRecoveryEndedEarlyIfApplicable()
+        //
+        // WALKBACK-SESSIONEND-1 (2026-09-09) · THIS MUST BE COMPUTED HERE,
+        // BEFORE `recordRecoveryEndedEarlyIfApplicable()`, not read inside it.
+        // `advance()` (below) is where `currentIndex + 1 >= workout.phases.count`
+        // has always been evaluated — one call later — to decide
+        // `planComplete = true` vs incrementing `currentIndex`. That ordering
+        // meant a recovery ending on the plan's LAST phase (the final
+        // walk-back after the last stride) got its `RecoveryEndedEarlyRecord`
+        // written before anything asked whether there was a next phase to
+        // advance to. The record travelled to the phone unconditionally, and
+        // `TodayAfterV5.completionNote` rendered it as "0:43 of 1:00 ·
+        // advanced early" for a runner who had simply finished his workout —
+        // David: "It must not be falsely described as a normal mid-session
+        // advance if the runner simply ended the completed workout." See
+        // `docs/design/walkback-remaining-states-scope.md` §4.6.
+        let endsSession = currentIndex + 1 >= workout.phases.count
+        recordRecoveryEndedEarlyIfApplicable(endsSession: endsSession)
         advance(completedCurrent: false)
     }
 
@@ -730,11 +746,33 @@ final class WorkoutEngine: ObservableObject {
     /// "+30 sec") and is ended a tick late is not an early end of anything,
     /// and a work/warmup/cooldown phase ending early is `recordRepSkip`'s
     /// territory or an ordinary incomplete bank, never this record.
-    private func recordRecoveryEndedEarlyIfApplicable() {
+    ///
+    /// WALKBACK-SESSIONEND-1 (2026-09-09) · `endsSession` is the caller's
+    /// own `currentIndex + 1 >= workout.phases.count` — the SAME predicate
+    /// `advance()` uses to decide `planComplete`, computed one line earlier
+    /// than `advance()` itself gets to it. When it's true, this recovery
+    /// isn't ending EARLY relative to anything: there is no next phase to
+    /// have advanced to sooner. `RecoveryEndedEarlyRecord`'s own name says
+    /// "early," and "early" is meaningless with nothing after it — so this
+    /// case records a `SessionEndedRecord` instead, never both, and never
+    /// the `RecoveryEndedEarlyRecord`. See that struct's header.
+    private func recordRecoveryEndedEarlyIfApplicable(endsSession: Bool) {
         guard let p = currentPhase, p.type == .recovery else { return }
         let prescribed = p.durationSec + phaseAddedSec
         let actual = phaseElapsedSec
         guard prescribed > 0, actual < prescribed else { return }
+        if endsSession {
+            sessionEndedRecord = SessionEndedRecord(
+                phaseIndex: p.index,
+                phaseLabel: p.label,
+                phaseType: "recovery",
+                elapsedSecInPhase: actual,
+                prescribedSecInPhase: prescribed,
+                atSec: totalElapsedSec,
+                wasLastPrescribedPhase: true
+            )
+            return
+        }
         recoveryEndedEarlyRecords.append(RecoveryEndedEarlyRecord(
             afterRepIndex: repIndexForDisplay > 0 ? repIndexForDisplay : nil,
             beforeRepIndex: nextWorkRepOrdinal,
@@ -2093,11 +2131,52 @@ final class WorkoutEngine: ObservableObject {
         let atSec: Int?
     }
 
+    /// Engine-side record of THE moment a `.recovery` phase ended not
+    /// because the runner chose to advance to something else, but because
+    /// it WAS the plan's last phase — the session simply ended there.
+    ///
+    /// WALKBACK-SESSIONEND-1 (2026-09-09) · the fix for a real, live defect
+    /// in `RecoveryEndedEarlyRecord`'s first shipped form (WALKBACK-2, same
+    /// day): `endCurrentPhase()` recorded that struct unconditionally for
+    /// ANY recovery ended before its modelled duration, including the
+    /// plan's final walk-back — which does not "advance early" to anything,
+    /// because nothing comes after it. `RecoveryEndedEarlyRecord`'s own name
+    /// is defined by the choice it names ("ended early, BY CHOICE, to move
+    /// on to what's next"), and that name is meaningless with no "what's
+    /// next." David: "It must not be falsely described as a normal
+    /// mid-session advance if the runner simply ended the completed
+    /// workout." See `docs/design/walkback-remaining-states-scope.md` §4.6,
+    /// which scoped this fix before it was implemented.
+    ///
+    /// At most one per run, by construction: `endCurrentPhase()` is the only
+    /// call site that creates one today, and a session has exactly one last
+    /// phase. `wasLastPrescribedPhase` is carried (always `true` from this
+    /// call site) rather than assumed, so a future `abandon()`-triggered
+    /// session-end — scoped in the same doc's §4.5 but not yet built, since
+    /// pressing "End Run" mid-session is a materially different, not-yet-a-
+    /// regression case — can populate this SAME field later with no wire
+    /// change, and a reader is never left inferring "last phase" from
+    /// context that isn't there.
+    struct SessionEndedRecord: Codable {
+        let phaseIndex: Int?
+        let phaseLabel: String?
+        let phaseType: String?
+        /// How long the recovery actually ran before the session ended.
+        let elapsedSecInPhase: Int?
+        /// What the plan modelled for this recovery, seconds — same
+        /// `durationSec + phaseAddedSec` convention as
+        /// `RecoveryEndedEarlyRecord.prescribedSec`.
+        let prescribedSecInPhase: Int?
+        let atSec: Int?
+        let wasLastPrescribedPhase: Bool
+    }
+
     private var bailOutcome: RuleOutcome?
     private var ceilingLiftRecord: CeilingLiftRecord?
     private var repSkipRecords: [RepSkipRecord] = []
     private var recoveryExtensionRecords: [RecoveryExtensionRecord] = []
     private var recoveryEndedEarlyRecords: [RecoveryEndedEarlyRecord] = []
+    private var sessionEndedRecord: SessionEndedRecord?
 
     /// Wipe every decision. Called from `start()` and `reset()` so a second
     /// run in the same app session can never inherit the first one's
@@ -2116,6 +2195,7 @@ final class WorkoutEngine: ObservableObject {
         repSkipRecords = []
         recoveryExtensionRecords = []
         recoveryEndedEarlyRecords = []
+        sessionEndedRecord = nil
         // Manual laps ride along here: same lifetime, same reason — they are
         // things this runner did on this run, and a second run in the same
         // app session must not inherit them.
@@ -2731,6 +2811,7 @@ final class WorkoutEngine: ObservableObject {
         repSkips: [RepSkipRecord],
         recoveryExtensions: [RecoveryExtensionRecord],
         recoveryEndedEarly: [RecoveryEndedEarlyRecord] = [],
+        sessionEnded: SessionEndedRecord? = nil,
         ruleOutcomes: [RuleOutcome]? = nil
     ) {
         // The bail, taken or declined. Both answers travel: a declined bail is
@@ -2784,6 +2865,20 @@ final class WorkoutEngine: ObservableObject {
                 phaseIndex: r.phaseIndex,
                 phaseLabel: r.phaseLabel,
                 atSec: r.atSec
+            ))
+        }
+        // WALKBACK-SESSIONEND-1 · the plan's last recovery cut short because
+        // the SESSION ended there, not because the runner chose to advance
+        // to something else. See `SessionEndedRecord`'s header.
+        if let s = sessionEnded {
+            completion.recordSessionEnded(WatchCompletion.SessionEnded(
+                phaseIndex: s.phaseIndex,
+                phaseLabel: s.phaseLabel,
+                phaseType: s.phaseType,
+                elapsedSecInPhase: s.elapsedSecInPhase,
+                prescribedSecInPhase: s.prescribedSecInPhase,
+                atSec: s.atSec,
+                wasLastPrescribedPhase: s.wasLastPrescribedPhase
             ))
         }
     }
@@ -2922,6 +3017,9 @@ final class WorkoutEngine: ObservableObject {
             /// every other field here: a snapshot written by a build that
             /// predates this key still restores.
             var recoveryEndedEarly: [RecoveryEndedEarlyRecord]? = nil
+            /// WALKBACK-SESSIONEND-1 · same leniency: a snapshot written
+            /// before this key shipped still restores, just without it.
+            var sessionEnded: SessionEndedRecord? = nil
             var bail: RuleOutcome? = nil
             /// Seconds added to the phase that was in flight, so a
             /// recovered recovery does not silently shed its extension.
@@ -2930,7 +3028,8 @@ final class WorkoutEngine: ObservableObject {
             var isEmpty: Bool {
                 ceilingLift == nil && (repSkips?.isEmpty ?? true)
                     && (recoveryExtensions?.isEmpty ?? true)
-                    && (recoveryEndedEarly?.isEmpty ?? true) && bail == nil
+                    && (recoveryEndedEarly?.isEmpty ?? true) && sessionEnded == nil
+                    && bail == nil
                     && (phaseAddedSec ?? 0) == 0
             }
         }
@@ -2949,6 +3048,7 @@ final class WorkoutEngine: ObservableObject {
             repSkips: repSkipRecords.isEmpty ? nil : repSkipRecords,
             recoveryExtensions: recoveryExtensionRecords.isEmpty ? nil : recoveryExtensionRecords,
             recoveryEndedEarly: recoveryEndedEarlyRecords.isEmpty ? nil : recoveryEndedEarlyRecords,
+            sessionEnded: sessionEndedRecord,
             bail: bailOutcome,
             phaseAddedSec: phaseAddedSec > 0 ? phaseAddedSec : nil
         )
@@ -2965,6 +3065,7 @@ final class WorkoutEngine: ObservableObject {
         skippedRepOrdinals = Set(repSkipRecords.map { $0.repIndex })
         recoveryExtensionRecords = d.recoveryExtensions ?? []
         recoveryEndedEarlyRecords = d.recoveryEndedEarly ?? []
+        sessionEndedRecord = d.sessionEnded
         bailOutcome = d.bail
         bailAnswered = d.bail != nil
         bailTaken = d.bail?.actionTaken ?? false
@@ -3239,6 +3340,7 @@ final class WorkoutEngine: ObservableObject {
                 repSkips: d.repSkips ?? [],
                 recoveryExtensions: d.recoveryExtensions ?? [],
                 recoveryEndedEarly: d.recoveryEndedEarly ?? [],
+                sessionEnded: d.sessionEnded,
                 // The snapshot carries the bail so a run that died at mile 9
                 // still reports a decision taken at mile 4. This is a static
                 // recovery path with no live engine, so it reads the answer
@@ -3474,6 +3576,7 @@ final class WorkoutEngine: ObservableObject {
             repSkips: repSkipRecords,
             recoveryExtensions: recoveryExtensionRecords,
             recoveryEndedEarly: recoveryEndedEarlyRecords,
+            sessionEnded: sessionEndedRecord,
             ruleOutcomes: ruleOutcomesForWire
         )
         return out

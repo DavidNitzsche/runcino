@@ -1549,6 +1549,22 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                 if (!Number.isFinite(actualSec) || actualSec < 0) return null;
                 return { prescribedSec: Math.round(prescribedSec), actualSec: Math.round(actualSec) };
               })();
+              // WALKBACK-SESSIONEND-1 (2026-09-09) · the SAME phase this
+              // recovery already is, but ended because the session itself
+              // ended here rather than by the runner's choice to advance —
+              // see `RunData.sessionEnded`'s doc comment for why this is a
+              // distinct field from `recoveryEndedEarly` above rather than a
+              // shape inside it (Rule 16). `data.sessionEnded` is singular
+              // (a session ends once), so this is a match, not a find over
+              // an array.
+              const sessionEnded = ((): boolean => {
+                if (ph.type !== 'recovery') return false;
+                const se = data.sessionEnded as Record<string, unknown> | undefined;
+                if (!se || typeof se !== 'object') return false;
+                const phaseIdx = Number.isFinite(Number(ph.index))
+                  ? Math.round(Number(ph.index)) : phaseArrayPos;
+                return Number(se.phaseIndex) === phaseIdx && se.wasLastPrescribedPhase === true;
+              })();
               // WORKOUTPHASES-2 (2026-09-04) · `avgHr`/`maxHr` are absent on
               // several phases in THIS account's own stored rows (every
               // "work" phase in a 2026-09-03 hill session, confirmed
@@ -1593,6 +1609,12 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                 // WALKBACK-2 · nil unless this recovery carries an explicit
                 // "ended early, by choice" record. See the resolver above.
                 recoveryEndedEarly,
+                // WALKBACK-SESSIONEND-1 · true only for the plan's LAST
+                // recovery, ended because the session itself ended there.
+                // Mutually exclusive with `recoveryEndedEarly` above by
+                // construction — the watch writes one or the other for a
+                // given phase, never both. See the resolver above.
+                sessionEnded,
               };
             })
           : [],

@@ -271,6 +271,19 @@ export interface GradeOptions {
    * array behaves exactly as before this field existed.
    */
   recoveryEndedEarly?: readonly { phaseIndex?: number | null }[] | null;
+  /**
+   * WALKBACK-SESSIONEND-1 (2026-09-09) · `runs.data.sessionEnded` (or its
+   * `RunData` typed form) — the plan's LAST recovery, cut short because the
+   * SESSION ended there rather than the runner choosing to advance to
+   * something else. See `RunData.sessionEnded`'s doc comment for why this is
+   * a distinct field from `recoveryEndedEarly` rather than a member of it.
+   * Matched onto a recovery phase by `phaseIndex`, the identical mechanism
+   * `recoveryEndedEarly` already uses. Excluded from the honesty vote the
+   * SAME way a chosen early end is (§4.6 of the scoping doc): this is
+   * neither a lapse nor a choice to move on, because nothing else was left
+   * to move on to. Absent behaves exactly as before this field existed.
+   */
+  sessionEnded?: { phaseIndex?: number | null; phaseType?: string | null } | null;
 }
 
 /**
@@ -477,11 +490,22 @@ export function gradeStoredPhases(
   // WALKBACK-2 · which recovery PHASE INDICES carry an explicit "ended
   // early, by choice" record — matched the same way `repSkips`/
   // `recoveryExtensions` already match onto a phase, by `phaseIndex`.
+  //
+  // WALKBACK-SESSIONEND-1 · `opts.sessionEnded`'s phase index joins the SAME
+  // set. `recoveriesHonestOf` excludes a recovery from the honesty vote
+  // exactly the same way for either reason — it is not, in either case, a
+  // lapse to hold the session back on. Only unioned when the record actually
+  // names a recovery phase; the field exists so a future non-recovery
+  // session-end (§4.5, not yet built) does not silently start excluding a
+  // work phase from a check that was never asking about it.
   const earlyEndPhaseIndices = new Set(
     (opts.recoveryEndedEarly ?? [])
       .map((r) => (typeof r?.phaseIndex === 'number' ? r.phaseIndex : null))
       .filter((i): i is number => i != null),
   );
+  if (opts.sessionEnded?.phaseType === 'recovery' && typeof opts.sessionEnded.phaseIndex === 'number') {
+    earlyEndPhaseIndices.add(opts.sessionEnded.phaseIndex);
+  }
   const recoveries = phases
     .filter((p) => p.type === 'recovery')
     .map((p) => ({
@@ -547,6 +571,10 @@ export interface ResolveWorkoutVerdictArgs {
    *  no run row (a synthetic phase array, a test) passes nothing and grades
    *  exactly as it did before this field existed. */
   recoveryEndedEarly?: unknown;
+  /** WALKBACK-SESSIONEND-1 · `runs.data.sessionEnded` (see
+   *  `RunData.sessionEnded`'s doc comment). Same optionality posture as
+   *  `recoveryEndedEarly` above. */
+  sessionEnded?: unknown;
 }
 
 /**
@@ -562,10 +590,14 @@ export function resolveWorkoutVerdict(args: ResolveWorkoutVerdictArgs): WorkoutV
   const recoveryEndedEarly = Array.isArray(args.recoveryEndedEarly)
     ? (args.recoveryEndedEarly as Array<{ phaseIndex?: number | null }>)
     : null;
+  const sessionEnded = args.sessionEnded && typeof args.sessionEnded === 'object'
+    ? (args.sessionEnded as { phaseIndex?: number | null; phaseType?: string | null })
+    : null;
   return gradeStoredPhases(args.phases, sessionClass, {
     prescribedRecoverySec: restS,
     stridesPrescribed: strides,
     recoveryEndedEarly,
+    sessionEnded,
   });
 }
 
