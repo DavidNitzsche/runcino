@@ -732,8 +732,7 @@ final class WorkoutEngine: ObservableObject {
         // `TodayAfterV5.completionNote` rendered it as "0:43 of 1:00 ·
         // advanced early" for a runner who had simply finished his workout —
         // David: "It must not be falsely described as a normal mid-session
-        // advance if the runner simply ended the completed workout." See
-        // `docs/design/walkback-remaining-states-scope.md` §4.6.
+        // advance if the runner simply ended the completed workout."
         let endsSession = currentIndex + 1 >= workout.phases.count
         recordRecoveryEndedEarlyIfApplicable(endsSession: endsSession)
         advance(completedCurrent: false)
@@ -2145,18 +2144,16 @@ final class WorkoutEngine: ObservableObject {
     /// on to what's next"), and that name is meaningless with no "what's
     /// next." David: "It must not be falsely described as a normal
     /// mid-session advance if the runner simply ended the completed
-    /// workout." See `docs/design/walkback-remaining-states-scope.md` §4.6,
-    /// which scoped this fix before it was implemented.
+    /// workout."
     ///
     /// At most one per run, by construction: `endCurrentPhase()` is the only
     /// call site that creates one today, and a session has exactly one last
     /// phase. `wasLastPrescribedPhase` is carried (always `true` from this
     /// call site) rather than assumed, so a future `abandon()`-triggered
-    /// session-end — scoped in the same doc's §4.5 but not yet built, since
-    /// pressing "End Run" mid-session is a materially different, not-yet-a-
-    /// regression case — can populate this SAME field later with no wire
-    /// change, and a reader is never left inferring "last phase" from
-    /// context that isn't there.
+    /// session-end — pressing "End Run" mid-session, a materially different,
+    /// not-yet-a-regression case that is scoped but not yet built — can
+    /// populate this SAME field later with no wire change, and a reader is
+    /// never left inferring "last phase" from context that isn't there.
     struct SessionEndedRecord: Codable {
         let phaseIndex: Int?
         let phaseLabel: String?

@@ -584,8 +584,9 @@ export interface V5Today {
      *  recovery, ended because the SESSION itself ended there — resolved
      *  server-side from `runs.data.sessionEnded` (see
      *  `RunData.sessionEnded`). Mutually exclusive with `recoveryEndedEarly`
-     *  above by construction. See `docs/design/walkback-remaining-states-scope.md`
-     *  §4.6 for the defect this distinguishes from. */
+     *  above by construction: `recoveryEndedEarly` used to also cover this
+     *  case, which read as "advanced early" for a runner who had simply
+     *  finished his workout — this field distinguishes the two. */
     sessionEnded: boolean;
   }>;
   /** The runner's own HR zone bands. Empty at cold start. */
@@ -1143,8 +1144,9 @@ export interface V5RecentRunCtx {
      *  recovery, ended because the SESSION itself ended there — resolved
      *  server-side from `runs.data.sessionEnded` (see
      *  `RunData.sessionEnded`). Mutually exclusive with `recoveryEndedEarly`
-     *  above by construction. See `docs/design/walkback-remaining-states-scope.md`
-     *  §4.6 for the defect this distinguishes from. */
+     *  above by construction: `recoveryEndedEarly` used to also cover this
+     *  case, which read as "advanced early" for a runner who had simply
+     *  finished his workout — this field distinguishes the two. */
     sessionEnded: boolean;
   }>;
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;

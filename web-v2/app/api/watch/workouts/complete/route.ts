@@ -297,7 +297,7 @@ interface WatchCompletionBody {
    * this fixes: `endCurrentPhase()` used to write a `recoveryEndedEarly`
    * entry for this exact case, unconditionally, and the phone rendered
    * "0:43 of 1:00 · advanced early" for a runner who had simply finished
-   * his workout. See `docs/design/walkback-remaining-states-scope.md` §4.6.
+   * his workout.
    *
    * Singular, not an array — a session ends exactly once, by construction.
    */

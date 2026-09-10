@@ -237,8 +237,7 @@ struct RecoveryEndedEarlyTests {
     // "0:43 of 1:00 · advanced early" for a runner who had simply finished
     // his workout. David: "Specifically test the final recovery after the
     // last stride. It must not be falsely described as a normal mid-session
-    // advance if the runner simply ended the completed workout." See
-    // `docs/design/walkback-remaining-states-scope.md` §4.6.
+    // advance if the runner simply ended the completed workout."
 
     /// Fixture: work(180s) → recovery(60s) — the recovery IS the plan's
     /// LAST phase. Exactly David's "final walk-back after the last stride."
