@@ -63,10 +63,25 @@
  *   than granting one. That is the conservative direction and it means this
  *   loader can under-report evidence and never over-report it.
  * · It cannot fail on the seam being shut. It returns a read.
- * · It cannot tell TRAVEL_OR_LIFE from MISSED_TRAINING. Nothing in this schema
- *   records why a week was short, so `declaredCause` is always ABSENT and
- *   `classifyLowWeek` answers MISSED_TRAINING, which withholds rather than
- *   grants.
+ * · It cannot tell ILLNESS_OR_INJURY from MISSED_TRAINING. Nothing in this
+ *   schema records that a week was short because the runner was sick or
+ *   hurt, so `declaredCause` never resolves to ILLNESS_OR_INJURY here and
+ *   `classifyLowWeek` answers MISSED_TRAINING for one, which withholds
+ *   rather than grants — the safe direction.
+ *
+ * TRAVELWINDOW-1 (2026-09-09) · TRAVEL_OR_LIFE IS NO LONGER ONE OF THOSE
+ * BLIND SPOTS. `travel_windows` (the runner's own declared away-dates,
+ * `lib/plan/travel-store.ts`) is joined into this read the same way Rule 8's
+ * race windows already are two lines below: read once for the whole
+ * historical range, then asked per week. A week any of whose days falls
+ * inside a travel window now stamps `declaredCause: measured('TRAVEL_OR_LIFE')`
+ * BEFORE `classifyLowWeek` ever sees it, so three or more consecutive travel
+ * weeks can no longer fall through to `GENUINE_CAPACITY_LOSS` and lower a
+ * belief that was never about capacity at all (the exact shape Rule 8's
+ * corollary warns about, and the gap this file's own header used to name).
+ * Catch-guarded with an empty-array fallback per `travel-store.ts`'s own
+ * convention (the table may not exist, or the read may fail) — a runner with
+ * no declared travel reads byte-identically to before this landed.
  */
 import { pool } from '@/lib/db/pool';
 import { roundTo } from '@/lib/format/run';
@@ -78,6 +93,12 @@ import {
   type RanRace,
 } from '@/lib/training/normal-window';
 import { distanceMiOfMeta } from '@/lib/race/distance';
+// TRAVELWINDOW-1 · the runner's own declared travel dates, read through the
+// SAME accessor `generate.ts`'s authoring pass and `adapt.ts`'s reschedule
+// search already use (`travel-store.ts`'s own header names both). No second
+// reader of `travel_windows` invented for this file.
+import { travelWindowsOverlapping } from '@/lib/plan/travel-store';
+import { isTravelDay, type TravelWindow } from '@/lib/plan/travel-windows';
 /* RUN-SHAPE LINT · the sanctioned fragments, never a hand-rolled literal.
  * Nothing checks that a hand-typed jsonb key names a real one, and there is
  * exactly one correct answer to "which run is the merge loser" (Rule 14). */
@@ -400,6 +421,22 @@ export async function loadVolumeEvidence(
   }
   const windows = prescribedWindowsFrom(ranRaces);
 
+  /* ── 5b · travel windows, for `declaredCause` (TRAVELWINDOW-1) ──────────
+   *
+   * Read once for the whole historical range (`grid[0]` through `asOfISO`,
+   * the same span the week loop below walks), not per week — one query,
+   * asked per week the same way Rule 8's `windows` above already is.
+   * Catch-guarded with an empty fallback: the table may not exist yet
+   * (migration 159 is applied manually, per `travel-store.ts`'s own header),
+   * and a runner with no declared travel must read byte-identically to
+   * before this existed, never as a refusal of the whole evidence window. */
+  let travelWindows: TravelWindow[] = [];
+  try {
+    travelWindows = await travelWindowsOverlapping(userUuid, grid[0], asOfISO);
+  } catch {
+    travelWindows = [];
+  }
+
   /* ── 6 · one CompletedWeek per grid week ────────────────────────────── */
 
   const weeks: CompletedWeek[] = [];
@@ -522,7 +559,16 @@ export async function loadVolumeEvidence(
         unplannedRecoveryTaken: absent('unplanned recovery is not recorded on this account'),
         absorptionCompletionBar: VOLUME_WEEK_COMPLETION_MIN_FRAC,
       },
-      declaredCause: absent('nothing on this account records why a week came in short'),
+      /* TRAVELWINDOW-1 · a declared travel window is Rule 11's "somebody told
+       * us" — measured, not absent — and it is checked here, at the one
+       * place `declaredCause` is produced, so `classifyLowWeek` (which
+       * already has a TRAVEL_OR_LIFE branch above ILLNESS_OR_INJURY and
+       * above the consecutive-capacity-loss check) sees it before any low
+       * week from this window could otherwise fall through to
+       * GENUINE_CAPACITY_LOSS. Illness has no source in this schema and
+       * stays absent, per this file's own header.
+       */
+      declaredCause: declaredCauseForWeek(ws, weekEnd, travelWindows),
     });
   }
 
@@ -772,6 +818,34 @@ export function deteriorationOf(
     environmentalContextOf(run, subLabel),
   ));
   return measured(deteriorationPattern(results));
+}
+
+/**
+ * TRAVELWINDOW-1 · what `declaredCause` becomes for one grid week, given the
+ * runner's own declared travel windows. Pure — no DB, no clock — so it is
+ * directly testable the same way `raceSuppressesOvershoot`
+ * (`adapt.ts`/`_overshoot_race_recency.test.ts`) already is, without needing
+ * to stand up the whole `loadVolumeEvidence` query chain.
+ *
+ * `weekEndISO` is EXCLUSIVE, matching every other week-boundary walk in this
+ * file (the grid's own `weekEnd`). A week where ANY day falls inside ANY
+ * travel window declares TRAVEL_OR_LIFE for the whole week — see the call
+ * site for why a partial-week travel day is not treated as a partial cause.
+ *
+ * Illness has no source in this schema (this file's own header says so), so
+ * this function can only ever answer TRAVEL_OR_LIFE or ABSENT — never
+ * ILLNESS_OR_INJURY, which stays a real, distinct, currently-unreachable
+ * branch of `classifyLowWeek` until something declares it.
+ */
+export function declaredCauseForWeek(
+  weekStartISO: string,
+  weekEndISO: string,
+  travelWindows: readonly TravelWindow[],
+): Measured<'TRAVEL_OR_LIFE' | 'ILLNESS_OR_INJURY'> {
+  for (let d = weekStartISO; d < weekEndISO; d = addDays(d, 1)) {
+    if (isTravelDay(d, travelWindows)) return measured('TRAVEL_OR_LIFE');
+  }
+  return absent('nothing on this account records why a week came in short');
 }
 
 /** The phase label as the week's AUTHORING INTENT, which is Rule 8's first filter. */

@@ -1684,6 +1684,65 @@ is touched again and the gap question resurfaces.
 
 ---
 
+## 2026-09-09 · TRAVELWINDOW-1 — travel is no longer read as missed training in the volume-evidence loader
+
+Item §10a-10 (`docs/audit-2026-09-08-full-status-master-report.md`): "A real
+capability can be wrongly discounted" — `volume-evidence-loader.ts` never
+joined `travel_windows`, so a runner traveling for three or more consecutive
+weeks would have that time read as `GENUINE_CAPACITY_LOSS`, the one cause of
+`classifyLowWeek`'s six that lowers a demonstrated-volume belief.
+
+**Confirmed genuinely missing before fixing.** The file's own header said so
+in as many words: "It cannot tell TRAVEL_OR_LIFE from MISSED_TRAINING.
+Nothing in this schema records why a week was short, so `declaredCause` is
+always ABSENT." Grepped for `travel_windows`/`travel-store`/`travel-windows`
+anywhere in the file — zero hits, confirming the audit's claim rather than
+assuming it.
+
+**The fix extends the existing Rule-8 pattern, not a second one.** The file
+already asks this exact shape of question for race windows two lines apart:
+read `prescribedWindowsFrom` once for the whole historical range, then walk
+each grid week asking `isPrescribedNonNormal` per day. Travel windows now
+follow the identical shape: `travelWindowsOverlapping` (`lib/plan/travel-
+store.ts`, the SAME accessor `generate.ts`'s authoring pass and `adapt.ts`'s
+reschedule search already use — no second reader of `travel_windows`
+invented) is read once for `[grid[0], asOfISO]`, catch-guarded with an empty
+fallback per that file's own convention, and a new pure function,
+`declaredCauseForWeek(weekStartISO, weekEndISO, travelWindows)`, answers
+`measured('TRAVEL_OR_LIFE')` when any day of the week falls inside a window,
+else the same `absent(...)` as before. `classifyLowWeek` already had a
+`TRAVEL_OR_LIFE` branch sitting above the consecutive-capacity-loss check
+(`lib/adaptation/volume-evidence/admit.ts`) — it had simply never been fed
+anything but absence from this loader. Illness stays absent; nothing in this
+schema declares it, and this fix does not invent a source for one.
+
+**Extracted as a pure, directly testable function** rather than left inline
+in the query loop, matching the house pattern `raceSuppressesOvershoot`
+(`adapt.ts`) already set for the sibling race-recency fix: no DB, no clock,
+callable straight from a test.
+
+**Falsified before landing, per Rule 18.** `_travel_window_evidence.test.ts`
+(`web-v2/lib/plan/`) exercises `declaredCauseForWeek` directly and then feeds
+its real output into the REAL `classifyLowWeek` — proving the two compose,
+not just that each unit looks right in isolation. Temporarily forced the
+function to always return `absent(...)` (the literal pre-fix behaviour) and
+confirmed 5 of 10 tests failed, including the exact three-consecutive-
+travel-week scenario reproducing `GENUINE_CAPACITY_LOSS`/`mayLowerBelief:
+true` — then restored and confirmed all 10 pass. `tsc --noEmit` clean;
+`_travel_invariants.test.ts`, `_overshoot_race_recency.test.ts`, and the
+`lib/adaptation/volume-evidence/` suite (195 tests total across the touched
+neighbourhood) all still pass.
+
+**What this does not do.** It does not add an illness/injury declaration
+path — that data does not exist on this account and inventing one is a
+separate, larger product decision. It does not touch `normal-window.ts`
+itself, per the task's own instruction to extend the existing mechanism
+rather than build a second one: `travel_windows` is joined at the one call
+site that needed it, using the identical per-day-walk shape `normal-window
+.ts`'s own race-window reader already established in this exact file.
+
+---
+
 ## Standing constraints referenced above
 
 - Paces come from evidence. The goal stays visible and never distorts training.
