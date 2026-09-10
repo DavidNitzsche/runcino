@@ -346,8 +346,8 @@ resolvable from code inspection alone]`.**
 | Track 2 — corpus truthfulness | `docs/reports/coach-audit-2026-09-09/track-2-corpus-truthfulness.md` | `f6c9a0fe2b5ed42ec8bfc2036d5972d0bf6f1e451816147f6b011cb558c616e0` |
 | Track 3 — cross-surface | `docs/reports/coach-audit-2026-09-09/track-3-cross-surface.md` | `5531f5fd6113b052cd8b01a5091ba333eb05c8a281da0085e41844129223d370` |
 | Track 4 — voice/usability | `docs/reports/coach-audit-2026-09-09/track-4-voice-usability.md` | `90493de840584a7a794f5ba1e528768e920d30dc89e8290711f7de89540fec43` |
-| v2 (this document) | `docs/audit-2026-09-09-coach-forensic-audit-v2.md` | computed post-write, see commit below |
-| Correction log | `docs/audit-2026-09-09-coach-forensic-audit-v1-to-v2-correction-log.md` | computed post-write, see commit below |
+| v2 (this document) | `docs/audit-2026-09-09-coach-forensic-audit-v2.md` | not self-hashed (a hash embedded in the file would invalidate itself on write) — integrity is via the git commit SHA below instead |
+| Correction log | `docs/audit-2026-09-09-coach-forensic-audit-v1-to-v2-correction-log.md` | `a19d7c0e7e25de305aa3687fce2902d6a1f51db63a23285c884930d305778206` (unchanged since first written) |
 
 All four track reports are preserved exactly as originally written —
 **not edited** as part of this correction, including their own `[RENDER]`
@@ -361,4 +361,5 @@ be read.
 - Branch: `audit/brain-forensic-2026-09-10` (shared checkout; not switched, not created by this audit)
 - `origin/main` at completion: `99757c1204f27a1fa86504efd580842bc81c72b2`
 - This audit's own changes to the shared checkout were strictly additive and scoped to new files (`docs/audit-2026-09-09-coach-forensic-audit*.md`, `docs/reports/coach-audit-2026-09-09/**`) — no existing tracked file was modified by this Coach audit. The shared checkout separately carries uncommitted modifications from the concurrent Brain audit session (`docs/audit-2026-09-09-historical-data-forensic-audit.md` and its domain reports) — those are untouched and not staged by this commit.
-- Final report commit SHA: recorded in the correction log after commit (this document commits its own files only — `git add` scoped by explicit path, per this project's shared-checkout discipline).
+- Initial commit (v1 report + all four track files + this v2 + the correction log, added via explicit-path `git add`, no other tracked file touched): `d76b81f20d27a442847122ba918de115979ea308`, on branch `audit/brain-forensic-2026-09-10`. **Local commit only — not pushed.** Per this project's audit-doc convention, pushing/relocating this commit (e.g. onto `main`) is a decision for the programme lead, not taken unilaterally here.
+- A follow-up commit adds this closing paragraph itself (see repository history immediately after the SHA above) — an unavoidable one-line chase since a commit's own SHA cannot be known before it exists.
