@@ -137,7 +137,17 @@ jobs:
           # narrower assertion on the same number (it required the ", with"
           # clause), so a summary-line format change could fail here while the
           # real floor passed, and the failure would name no threshold at all.
-          grep -E 'Executed [0-9]+ tests' /tmp/iphone.log | tail -1 || true
+          #
+          # NATIVE-CHECK-2 (2026-09-09) · this scheme now runs TWO xctest
+          # bundles in one invocation (FaffTests, then FaffUITests, added to
+          # the same scheme's Test action so the UI suite is no longer dead —
+          # see project.yml's `schemes:` block), and each bundle prints its
+          # own "Executed N tests" line. A bare `tail -1` over the whole log
+          # grabs whichever bundle happened to run LAST, not FaffTests — see
+          # the next step's own NATIVE-CHECK-2 comment for what that broke.
+          # `-A1` on the bundle's own "passed" line is unambiguous regardless
+          # of run order or how many bundles this scheme ever grows to.
+          grep -A1 "Test Suite 'FaffTests.xctest' passed" /tmp/iphone.log | grep -oE 'Executed [0-9]+ tests' || true
 
       # LIVENESS (Rule 18 guard 2). `** TEST SUCCEEDED **` is also what a run
       # that executed ZERO tests prints. The iPhone suite was 346 tests when
@@ -156,6 +166,22 @@ jobs:
       #   · WHICH tests ran. 250 renamed placeholders satisfy it.
       #   · a test that is present, compiled, and `XCTSkip`-ed at run time —
       #     xcodebuild counts a skipped case in `Executed N tests`.
+      #
+      # NATIVE-CHECK-2 (2026-09-09) · REAL FAILURE FOUND AND FIXED HERE. The
+      # `Faff` scheme's Test action now runs FaffTests AND FaffUITests (see
+      # project.yml's `schemes:` block — FaffUITests was previously wired
+      # into no tested scheme at all and had never once run automatically,
+      # Rule 21's "wired, tested and inert" shape one target over). Each
+      # xctest bundle prints its own "Test Suite '<bundle>.xctest' passed" /
+      # "Executed N tests" pair, and FaffUITests's 10 (all `XCTSkipUnless`,
+      # by design — see project.yml's SETTINGSCANCEL-1 comment) runs SECOND.
+      # `tail -1` over the whole log therefore read FaffUITests's 10 instead
+      # of FaffTests's 492 the first time this ran with both bundles wired,
+      # and failed the floor on a suite that had not shrunk at all — caught
+      # by watching this exact workflow run on GitHub Actions rather than
+      # assumed clean from a local pass. Anchoring on the FaffTests.xctest
+      # bundle boundary makes the extraction independent of run order and of
+      # how many further bundles this scheme ever grows to carry.
       - name: iPhone suite ran a real number of tests
         run: |
           FLOOR=250
@@ -164,7 +190,7 @@ jobs:
           # assignment before anything is echoed. Falsification row A2 was
           # exit 1 with completely empty output before this changed, which is
           # the "reports a failure and not why" shape.
-          N=$(grep -oE 'Executed [0-9]+ tests' /tmp/iphone.log | tail -1 | grep -oE '[0-9]+' || true)
+          N=$(grep -A1 "Test Suite 'FaffTests.xctest' passed" /tmp/iphone.log | grep -oE 'Executed [0-9]+ tests' | grep -oE '[0-9]+' || true)
           echo "iPhone tests executed: ${N:-<no summary line in the log>} (floor ${FLOOR})"
           if [ "${N:-0}" -lt "$FLOOR" ]; then
             echo "::error title=iPhone suite did not really run::Executed ${N:-0} tests, floor is ${FLOOR}."
