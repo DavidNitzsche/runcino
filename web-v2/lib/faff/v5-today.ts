@@ -347,6 +347,25 @@ export interface V5ProposalWire {
   dateISO: string;
   direction: V5ProposalDirection;
   standing: V5ProposalStanding;
+  /**
+   * P0PROPOSALFETCH-1 (2026-09-09) · NOT THE SAME QUESTION AS `standing`.
+   *
+   * `standing === 'proposal'` says this is a live question the runner owes an
+   * answer to — a coaching fact. This says whether tapping "Do it" on that
+   * question can currently SUCCEED — an infrastructure fact, entirely
+   * orthogonal, and the two must not be collapsed into one signal (Rule 16).
+   * A `reprice`/pipeline/direct-write accept goes through `mutatePlan`, which
+   * refuses (`ledger_unwritten`) when `plan_decision_ledger` (migration 166)
+   * is absent — `lib/plan/mutate.ts`'s `LEDGERREQUIRED-1`. Null when the
+   * mutation this proposal would run is not ledger-gated at all (a
+   * RECORD_ONLY kind — HOLD, notice, a condition) or when the ledger is
+   * available; non-null names why "Do it" would fail right now. "Leave it"
+   * is unaffected either way — dismiss never calls `mutatePlan` (see
+   * `app/api/plan/workout-proposals/[id]/dismiss/route.ts`'s own header) —
+   * so this must never disable or hide the decline control, only the accept
+   * one.
+   */
+  applyBlockedBecause: string | null;
   /** Six to ten words. What would change. */
   headline: string;
   /** One sentence. Why, in evidence terms. Never a disposition. */
@@ -553,6 +572,14 @@ export interface V5Today {
      *  smoothed to the nominal target. */
     speedMph: number | null;
     inclinePct: number | null;
+    /** WALKBACK-2 (2026-09-09) · non-null only for a `type: 'recovery'`
+     *  phase the runner explicitly ended before this figure's own
+     *  `prescribedSec` — resolved server-side from `runs.data.recoveryEndedEarly`
+     *  (see `RunData.recoveryEndedEarly`). Null means either this is not a
+     *  recovery phase, or no such record exists — the phone must render its
+     *  existing silent/negative fallback in that case, never infer a choice
+     *  from `completed === false` alone. */
+    recoveryEndedEarly: { prescribedSec: number; actualSec: number } | null;
   }>;
   /** The runner's own HR zone bands. Empty at cold start. */
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
@@ -1103,6 +1130,8 @@ export interface V5RecentRunCtx {
     type: string | null; label: string | null; durationSec: number | null;
     avgHr: number | null; maxHr: number | null; completed: boolean | null;
     speedMph: number | null; inclinePct: number | null;
+    /** WALKBACK-2 · see `V5Today.workoutPhases`'s own doc comment. */
+    recoveryEndedEarly: { prescribedSec: number; actualSec: number } | null;
   }>;
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
   paceBand: { lo: number; hi: number } | null;

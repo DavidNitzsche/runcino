@@ -32,7 +32,7 @@
 //     through to signal orange (its own fastest), normalised across the run's
 //     OWN range rather than against any prescription. Baseline signal underlay
 //     drawn first so the line shows even if the gradient walk degenerates.
-//   · Endpoints · start = green ring, finish = coral dot.
+//   · Endpoints · start = white dot, finish = coral dot.
 //   · Non-interactive · reads as a still image embedded in the card.
 //
 
@@ -443,8 +443,8 @@ struct RouteMapView: UIViewRepresentable {
 
     // MARK: - Drawing
 
-    private static let faffSourceIDs = ["faff-baseline", "faff-gradient", "faff-endpoints"]
-    private static let faffLayerIDs = ["faff-baseline-line", "faff-gradient-line", "faff-endpoints-circle"]
+    private static let faffSourceIDs = ["faff-baseline", "faff-gradient", "faff-start", "faff-finish"]
+    private static let faffLayerIDs = ["faff-baseline-line", "faff-gradient-line", "faff-start-circle", "faff-finish-circle"]
 
     /// Re-drawing on every SwiftUI update means every source/layer id must be
     /// unique-or-absent before re-adding — MLNStyle.addSource/addLayer throws
@@ -525,24 +525,65 @@ struct RouteMapView: UIViewRepresentable {
             style.addLayer(gradientLayer)
         }
 
-        // Endpoints last · one circle layer, data-driven per-feature color
-        // (same UIColor-attribute trick as the gradient line) so start/finish
-        // share a single source and layer.
+        // Endpoints last · two single-feature circle layers, ONE PER MARKER,
+        // each painted with `NSExpression(forConstantValue:)` — the same
+        // constant-color idiom `baselineLayer` above already uses.
+        //
+        // 2026-09-09 · WAS one shared source + a data-driven
+        // `NSExpression(forKeyPath: "circleColor")` reading a raw `UIColor`
+        // stashed in each `MLNPointFeature.attributes` dictionary (the same
+        // trick the gradient line above uses, where it demonstrably works —
+        // see that layer's 2026-08-30 note). Verified NOT to hold for a
+        // CIRCLE layer's `circleColor` on this exact pinned SDK
+        // (MapLibre Native 6.29.0): pixel-sampled on a real build of the
+        // white-marker fix (commit `12355ae06`), the start marker rendered
+        // (61, 189, 65) — the retired `0x3EBD41` green to within 1 unit per
+        // channel — instead of the requested white (255, 255, 255), on a
+        // freshly-erased simulator's very first launch (`xcrun simctl erase`
+        // then install then launch, so no prior install, no ambient cache,
+        // no SplashBoard snapshot could have carried it over). Reproduced
+        // 2/2 via the `-faffRunDetail` harness (see `FaffApp.swift`) against
+        // a real production run payload. Two features sharing one
+        // keyPath-driven attribute is exactly the shape the file's own
+        // 2026-08-30 gradient-line note already flagged as worth
+        // re-verifying independently rather than assuming the same trick
+        // "just works" for a different style-layer type — it does not here.
+        // There are only ever two fixed, statically-known colors (never
+        // per-run data), so the data-driven indirection bought nothing;
+        // removing it removes the bug along with it.
         let start = MLNPointFeature()
         start.coordinate = coords.first!
-        start.attributes = ["circleColor": UIColor(Color(hex: 0x3EBD41))]   // start · Success green (palette)
+        let startSource = MLNShapeSource(identifier: "faff-start", features: [start], options: nil)
+        style.addSource(startSource)
+        let startLayer = MLNCircleStyleLayer(identifier: "faff-start-circle", source: startSource)
+        startLayer.circleRadius = NSExpression(forConstantValue: 7)
+        // PALETTE-NEUTRAL, NOT GREEN. This used to be #3EBD41 — byte-identical
+        // to the "Easy" day-state gradient — despite the pace-ramp note above
+        // already arguing "there is no green in the palette on purpose" and
+        // that this map "asserts nothing about pace here"; that ruling was
+        // applied to the line and missed this endpoint. The start marker has
+        // no grade to assert, so it takes `V5.textPrimary` (pure white) — the
+        // same neutral ink the rest of the app uses for "the value, read
+        // plainly", not a day-state hex and not a verdict. Still clearly
+        // distinguishable from the finish marker's coral #FC4D64 by hue, and
+        // reads at full contrast against CartoDB Dark Matter.
+        startLayer.circleColor = NSExpression(forConstantValue: UIColor(V5.textPrimary))
+        startLayer.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
+        startLayer.circleStrokeWidth = NSExpression(forConstantValue: 1.5)
+        startLayer.circleOpacity = NSExpression(forConstantValue: 1)
+        style.addLayer(startLayer)
+
         let finish = MLNPointFeature()
         finish.coordinate = coords.last!
-        finish.attributes = ["circleColor": UIColor(Color(hex: 0xFC4D64))]  // finish · Warning red (palette)
-        let endpointsSource = MLNShapeSource(identifier: "faff-endpoints", features: [start, finish], options: nil)
-        style.addSource(endpointsSource)
-        let endpointsLayer = MLNCircleStyleLayer(identifier: "faff-endpoints-circle", source: endpointsSource)
-        endpointsLayer.circleRadius = NSExpression(forConstantValue: 7)
-        endpointsLayer.circleColor = NSExpression(forKeyPath: "circleColor")
-        endpointsLayer.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
-        endpointsLayer.circleStrokeWidth = NSExpression(forConstantValue: 1.5)
-        endpointsLayer.circleOpacity = NSExpression(forConstantValue: 1)
-        style.addLayer(endpointsLayer)
+        let finishSource = MLNShapeSource(identifier: "faff-finish", features: [finish], options: nil)
+        style.addSource(finishSource)
+        let finishLayer = MLNCircleStyleLayer(identifier: "faff-finish-circle", source: finishSource)
+        finishLayer.circleRadius = NSExpression(forConstantValue: 7)
+        finishLayer.circleColor = NSExpression(forConstantValue: UIColor(Color(hex: 0xFC4D64)))  // finish · Warning red (palette)
+        finishLayer.circleStrokeColor = NSExpression(forConstantValue: UIColor.white)
+        finishLayer.circleStrokeWidth = NSExpression(forConstantValue: 1.5)
+        finishLayer.circleOpacity = NSExpression(forConstantValue: 1)
+        style.addLayer(finishLayer)
 
         var minLat = coords[0].latitude, maxLat = coords[0].latitude
         var minLng = coords[0].longitude, maxLng = coords[0].longitude

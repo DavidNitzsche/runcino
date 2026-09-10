@@ -481,6 +481,9 @@ export async function loadPostRunExperience(
     type: planRow?.type ?? (data.workoutType as string | null) ?? null,
     spec: planRow?.workout_spec ?? null,
     phases,
+    // WALKBACK-2 · so `recoveriesHonestOf` can tell a chosen early end from
+    // a genuinely short, unrecorded recovery. See `RunData.recoveryEndedEarly`.
+    recoveryEndedEarly: data.recoveryEndedEarly,
   });
 
   // ── the Evidence Engine ──────────────────────────────────────────────────

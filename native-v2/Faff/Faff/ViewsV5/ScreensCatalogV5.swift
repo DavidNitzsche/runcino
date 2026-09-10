@@ -428,26 +428,41 @@ struct ScreensCatalogV5: View {
         }
         .fullScreenCover(item: Binding(get: { showing.map(Showing.init) },
                                        set: { showing = $0?.id })) { s in
-            ZStack(alignment: .topTrailing) {
-                if s.id == "system" {
-                    GalleryV5()
-                } else if let e = entries.first(where: { $0.id == s.id }) {
-                    e.make()
+            // FULLBLEED-1 · this `fullScreenCover` is its own view tree, never
+            // nested beneath `RootV5`'s `GeometryReader` (`ShellV5.swift`),
+            // so without this every full-bleed `DayPanel` shown through the
+            // catalog fell back to `\.v5TopInset`'s design-default 44pt
+            // instead of the real device inset — a Dynamic Island device
+            // under-measures by ~15pt and shows exactly the "gradient stops
+            // short of the top" defect the catalog exists to catch, on every
+            // entry, regardless of whether the screen itself is correct.
+            // Publish the real inset here too, the same way `RootV5` does,
+            // so a catalog render is trustworthy evidence about the SCREEN,
+            // not an artifact of how the catalog happens to present it.
+            GeometryReader { root in
+                ZStack(alignment: .topTrailing) {
+                    if s.id == "system" {
+                        GalleryV5()
+                    } else if let e = entries.first(where: { $0.id == s.id }) {
+                        e.make()
+                    }
+                    // Bottom-left: the top-right of every screen in this
+                    // design is a real control (calendar, avatar), and a
+                    // catalog chrome button sitting on top of one hides the
+                    // thing being reviewed.
+                    Button("Close") { showing = nil }
+                        .font(.faffText(TypeScaleV5.label13, weight: .semibold))
+                        .foregroundStyle(V5.actionPrimaryText)
+                        .padding(.horizontal, V5.S.s12)
+                        .frame(height: 30)
+                        .background(V5.materialAction, in: Capsule())
+                        .padding(.leading, V5.S.gutter)
+                        .padding(.bottom, V5.S.s24)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
                 }
-                // Bottom-left: the top-right of every screen in this design
-                // is a real control (calendar, avatar), and a catalog chrome
-                // button sitting on top of one hides the thing being reviewed.
-                Button("Close") { showing = nil }
-                    .font(.faffText(TypeScaleV5.label13, weight: .semibold))
-                    .foregroundStyle(V5.actionPrimaryText)
-                    .padding(.horizontal, V5.S.s12)
-                    .frame(height: 30)
-                    .background(V5.materialAction, in: Capsule())
-                    .padding(.leading, V5.S.gutter)
-                    .padding(.bottom, V5.S.s24)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+                .background(V5.surfacePage)
+                .environment(\.v5TopInset, max(root.safeAreaInsets.top, 0))
             }
-            .background(V5.surfacePage)
         }
         .preferredColorScheme(.dark)
     }

@@ -203,6 +203,32 @@ export function _resetLedgerTableProbeForTests(): void {
   absentUntilMs = 0;
 }
 
+/**
+ * P0PROPOSALFETCH-1 (2026-09-09) · CAN A MUTATING ACCEPT ACTUALLY LAND.
+ *
+ * A cheap, read-side wrapper over the SAME cached probe `mutatePlan`'s own
+ * `landDecisionInTransaction` uses (`ledgerTableExists`, above) — no new
+ * query, no new cache, no new cooldown. It exists so a GET route can ask
+ * "would an accept through this door work right now" without importing
+ * `mutate.ts`'s transactional machinery for a read.
+ *
+ * `null` (the probe itself failed — Rule 11's third state, not the same fact
+ * as the table being absent) reads as AVAILABLE, deliberately optimistic in
+ * this one direction: this function only ever feeds an advisory UI hint, and
+ * `mutatePlan`'s own live, transactional check is what actually decides
+ * whether an accept lands — this can never be the thing that lets an
+ * unrecorded mutation through, and it can never be the thing that blocks a
+ * legitimate one either. Claiming "this cannot be applied" from a probe that
+ * did not actually answer would be a false claim in its own right, not a
+ * safe default: the honest state on a failed probe is "we do not know",
+ * and the accept endpoint below will say so correctly for itself if the
+ * runner taps through. See `loadV5PendingProposals` in
+ * `lib/faff/v5-proposals.ts` for the one caller.
+ */
+export async function isLedgerAvailable(): Promise<boolean> {
+  return (await ledgerTableExists()) !== 'absent';
+}
+
 const PROBE_FAILED_WHY =
   'the check for plan_decision_ledger could not be completed, so whether this decision was recorded is '
   + 'UNKNOWN. That is not the same as the migration not having been applied, and it is not a '

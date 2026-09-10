@@ -339,11 +339,25 @@ fi
 # previous render has left a plain app build — no test bundle inside it — under
 # run.faff.app.watchkitapp. See the TEST_SIM comment at the top; separating the
 # two devices is the real fix, this is the seatbelt for when it cannot.
+#
+# NATIVE-CHECK-1 (2026-09-09) · the scheme is "FaffWatch Watch App", not
+# "FaffWatch Watch AppTests". No xcodegen-generated project — with or without
+# an explicit `schemes:` block in project.yml — has ever produced a scheme
+# with the latter name; `xcodebuild -list` names exactly Faff, FaffWatch Watch
+# App and FaffWatch Widgets, on every project.yml revision checked. Guard 2
+# has therefore always failed with "does not contain a scheme named ...", and
+# this pre-push hook is the only automated caller of `xcodebuild test` against
+# the watch target that existed before native-check.yml — so this was a gate
+# that had never once actually run guard 2, exactly the failure mode Rule 18
+# names. `-only-testing` scopes the run to the real test target explicitly,
+# so this stays correct even if the scheme's test action ever grows a second
+# testable.
 run_tests() {
   xcrun simctl uninstall "$TEST_SIM" run.faff.app.watchkitapp >/dev/null 2>&1
   (cd "$PROJ" && xcodebuild test \
       -project Faff.xcodeproj \
-      -scheme "FaffWatch Watch AppTests" \
+      -scheme "FaffWatch Watch App" \
+      -only-testing:"FaffWatch Watch AppTests" \
       -destination "id=$TEST_SIM" \
       -derivedDataPath "$DD" \
       -parallel-testing-enabled NO) > "$LOG" 2>&1

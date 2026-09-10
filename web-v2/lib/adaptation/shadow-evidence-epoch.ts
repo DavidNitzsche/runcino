@@ -148,7 +148,7 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/race/race-outlook.ts',
-    digest: '79bc095d2f7ceb3b',
+    digest: '18f75b129d5d3ae8',
     why: 'Re-pinned ALONE at epoch 3, branch (b), 2026-09-02 · CEFFORT-1 made `race.priority` load-bearing, so a C race is now priced as a controlled effort (Research/00b §"Recovery by Effort") instead of identically to an A race. What moved is `execution` — the target, the strategy label and the HR band for a C-effort DAY. What did NOT move is every belief a shadow record compares against: `capacity`, `currentProjection`, `expectedRaceDay` and `trainingPrescription` resolve byte-identically for the same activities, and an A or B race is untouched end to end (`_controlled_c_effort.test.ts` asserts that limb explicitly, as the control). A prescription for one day is not a belief about the runner, so no record written under epoch 3 compares against a number this changed, and bumping the epoch would discard the whole shadow corpus for a change that cannot move a single comparison. Stated rather than assumed, per this file\'s own instruction that the decision be made by someone who knows what they changed. '
       + 'Re-pinned ALONE again the same day (ROW-CONTRACT-1, also branch b): `coachSet` was DELETED. It was a '
       + 'second A/B/C ladder over `expectedRaceDay.likelyRangeSec`, 40 s from the one `lib/race/coach-goal.ts` '
@@ -177,7 +177,20 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
       + '`conditionalUpside` explaining why `edge >= targetSec` is a defensive refusal rather than a reached '
       + 'branch under any fixture tried. No code line changed — `git diff` on the two revisions touches only '
       + 'comment text. `capacity`, `currentProjection`, `expectedRaceDay` and `trainingPrescription` resolve '
-      + 'identically, and `conditionalUpside` itself is untouched in behavior; only its explanation grew.',
+      + 'identically, and `conditionalUpside` itself is untouched in behavior; only its explanation grew. '
+      + 'Re-pinned a sixth time, branch (b), 2026-09-07 (PLANSNAPSHOT-LATENCY-1 / READS-DEDUP-1, commit '
+      + 'ce2742b28): `loadRaceOutlookReads` was split into a race-independent `loadRaceOutlookUserReads(userUuid, '
+      + 'today)` — single-flighted per key so N races in one block no longer recompute the identical bundle N '
+      + 'times — and a thin per-race wrapper that reconstructs `equivalenceAt` from the shared result. Every read '
+      + 'this pulls apart (`resolvePrescribedPaceAnchors`, `resolveThresholdCapacity`, `resolveRaceExponent`, '
+      + '`loadEffectiveMaxHr`, `loadLthr`, `loadRaceHrEvidence`, `loadPlannedLastRehearsalPace`, '
+      + '`resolveExecutionSignal`) is called with the same arguments as before, in the same order relative to its '
+      + 'own dependencies, and the single-flight map only coalesces concurrent callers within one request burst — '
+      + 'it never serves one request\'s data to another or holds a value past the moment every waiter has read '
+      + 'it. The commit\'s own verification is a JSON diff of the full `/api/v5/today` payload before/after over '
+      + 'David\'s real account (4 race dates), byte-identical except `synced_at`. `capacity`, `currentProjection`, '
+      + '`expectedRaceDay` and `trainingPrescription` are that payload\'s belief fields, so this is a caching and '
+      + 'concurrency refactor of I/O plumbing around the resolvers, not a change to what any of them resolve.',
   },
   {
     file: 'lib/training/pace-corpus.ts',

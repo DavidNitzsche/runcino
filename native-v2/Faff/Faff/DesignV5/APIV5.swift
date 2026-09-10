@@ -322,6 +322,22 @@ struct V5WorkoutPhase: Decodable, Equatable {
     /// is deliberately NOT smoothed toward the nominal target.
     let speedMph: Double?
     let inclinePct: Double?
+    /// WALKBACK-2 (2026-09-09) · non-nil only for a `type == "recovery"`
+    /// phase the runner explicitly ended before `prescribedSec` ran out —
+    /// resolved server-side (`route.ts` matches `runs.data.recoveryEndedEarly`
+    /// onto this phase by index) so this model just reads the answer. Nil
+    /// means either this is not a recovery phase, or no such record exists;
+    /// `TodayAfterV5.completionNote` falls back to its existing silent
+    /// behaviour in that case rather than inferring a choice from
+    /// `completed == false` alone.
+    let recoveryEndedEarly: V5RecoveryEndedEarly?
+}
+
+/// See `V5WorkoutPhase.recoveryEndedEarly`. Two absolute figures, never a
+/// delta — same posture as the watch's `RecoveryEndedEarlyRecord`.
+struct V5RecoveryEndedEarly: Decodable, Equatable {
+    let prescribedSec: Int
+    let actualSec: Int
 }
 
 /// The pace window the session asked for, seconds per mile. When present the
@@ -795,6 +811,18 @@ struct V5Proposal: Decodable, Equatable, Identifiable {
     /// "proposal" · "condition" · "deferral" · "applied". WHAT KIND OF THING
     /// this is, which is a different question from which way it points.
     let standing: String
+    /// P0PROPOSALFETCH-1 (2026-09-09) · NOT the same question as `standing`.
+    ///
+    /// `standing == "proposal"` says the engine is asking a live question.
+    /// This says whether ANSWERING IT (tapping "Do it") can currently
+    /// succeed — an infrastructure fact, not a coaching one (Rule 16, and
+    /// see `V5ProposalWire.applyBlockedBecause`'s own doc comment on the
+    /// server for the full reasoning). `nil` on an older server, and that
+    /// reads as "not blocked" rather than a guess: a server that predates
+    /// this field predates the migration-166 gate the field exists to
+    /// report, so there was nothing for it to withhold. Never touches
+    /// "Leave it" — a decline never runs the mutation this is about.
+    let applyBlockedBecause: String?
     /// Six to ten words. What would change.
     let headline: String
     /// One sentence. Why, in evidence terms.
@@ -804,14 +832,16 @@ struct V5Proposal: Decodable, Equatable, Identifiable {
     let detail: V5ProposalDetail?
 
     init(id: String, dateISO: String, direction: String, standing: String = "proposal",
+         applyBlockedBecause: String? = nil,
          headline: String, why: String, detail: V5ProposalDetail? = nil) {
         self.id = id; self.dateISO = dateISO; self.direction = direction
-        self.standing = standing; self.headline = headline; self.why = why
+        self.standing = standing; self.applyBlockedBecause = applyBlockedBecause
+        self.headline = headline; self.why = why
         self.detail = detail
     }
 
     enum K: String, CodingKey {
-        case id, dateISO, direction, standing, headline, why, detail
+        case id, dateISO, direction, standing, applyBlockedBecause, headline, why, detail
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -821,6 +851,7 @@ struct V5Proposal: Decodable, Equatable, Identifiable {
         // A server that predates `standing` only ever wrote open questions, so
         // "proposal" is correct by construction there rather than a guess.
         standing = c.text(.standing, default: "proposal")
+        applyBlockedBecause = c.opt(.applyBlockedBecause)
         headline = c.text(.headline)
         why = c.text(.why)
         detail = c.opt(.detail)

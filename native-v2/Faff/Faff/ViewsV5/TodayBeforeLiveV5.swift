@@ -148,6 +148,7 @@ struct TodayBeforeLiveV5: View {
             canPageBackward: canPageBackward,
             canPageForward: canPageForward,
             onOpenPacesMoved: onOpenPacesMoved,
+            onRetryProposals: { Task { await reload() } },
             onOpenRace: onOpenRace,
             onReportSick: onReportSick
         )
