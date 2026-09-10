@@ -66,7 +66,10 @@
 #   bash scripts/check-watch.sh --fast     # guards 1-2 only, no simulator
 #
 # Env overrides: WATCH_SIM (render), WATCH_TEST_SIM (tests), WATCH_TEST_DD,
-# WATCH_FACES_OUT.
+# WATCH_FACES_OUT, WATCH_GATE_LOG (default /tmp/faff-watch-gate.log — override
+# this when running concurrent invocations from different worktrees, since the
+# default path is a single shared file and two simultaneous runs will clobber
+# each other's log).
 #
 # ─────────────────────────────────────────────────────────────────────────────
 # THE VERDICT, AND WHY IT IS THREE WORDS AND NOT TWO  (2026-09-03)
@@ -162,7 +165,7 @@ TEST_SIM="$(resolve_test_sim)"
 # the hook fires should not fail the push.
 DD="${WATCH_TEST_DD:-/tmp/faff-wtest}"
 OUT="${WATCH_FACES_OUT:-/tmp/faff-gate-faces}"
-LOG="/tmp/faff-watch-gate.log"
+LOG="${WATCH_GATE_LOG:-/tmp/faff-watch-gate.log}"
 
 FAST=0
 for arg in "$@"; do

@@ -6,88 +6,6 @@ so that changing it is a choice rather than an accident.
 
 ---
 
-<<<<<<< HEAD
-## 2026-09-05 · OWNER-AGREEMENT-1 · twelve quantities, one owner each, and a gate
-that RESOLVES two owners and compares the numbers
-
-### Why a resolver and not another scan
-
-Every ownership check this repository had was a text scan, and both said in
-their own headers that a text scan cannot tell wiring from decoration.
-`_runner_state.test.ts` put it plainly: "the registry names an owner and a
-submission carries a number; nothing syntactic joins them. A loader that calls
-the legacy cascade and submits the result produces a belief this suite cannot
-distinguish from a correct one." A caller that INVOKES the canonical resolver,
-DISCARDS its result and answers with its own arithmetic passes every scan and
-every allowlist in them.
-
-`lib/runner-state/_owner_agreement.test.ts` calls each registered producer
-against six synthetic runners and compares. `lib/runner-state/quantity-owners.ts`
-is its registry; `scripts/check-belief-owners.sh` is in `web-v2` prebuild.
-
-### The three consolidations taken here, all zero-behaviour-change
-
-- **`lib/plan/core.ts#parseGoalSeconds` DELETED.** A second goal parser, strict
-  `^H:MM:SS`, which returned NULL for every MM:SS goal — a 25:30 five-kilometre
-  goal read as 1530 seconds through `parseRaceTime` and as "no goal at all"
-  through this one. No production caller, no test (the bench that appears to
-  test it imports the `generate.ts` delegation).
-- **`app/api/prescription/route.ts`'s local `parseGoalSeconds` DELETED.** A
-  third copy of the same regex, never called from the route that declared it.
-- **`lib/training/elevation-model.ts#GRADE_COST_PER_PCT` re-exported** from
-  `lib/terrain/grade-adjust.ts` instead of being declared a second time, in a
-  file that already imported `DESCENT_GIVEBACK_FRACTION` from that owner four
-  lines below.
-
-Both parsers are registered as REMOVED so a reintroduction fails by name; that
-guard was falsified by putting one back.
-
-### Corrected, because it had gone stale
-
-`ownership.ts`'s `RUN_FREQUENCY_TOLERANCE` read "NOTHING MEASURES THIS ... the
-derivation it describes no longer exists anywhere in the tree."
-`derivedTrainingDaysPerWeek` landed 2026-08-30 and is on the authoring path.
-The entry now names it canonical and states the narrower, worse thing that is
-actually open: four sites read `profile.weekly_frequency` and only the
-generator falls back to the measurement. On the owner's account today the
-measurement says 6 and `injury-builder` answers 5 from a private constant.
-
-### Three decisions NOT taken here, and why
-
-Each is a real divergence this gate measured, and each one closes by changing
-a number the runner is prescribed — which is plan composition, not wiring.
-Recorded with its measured size rather than settled inside an ownership pass:
-
-1. **The marathon-pace percentage half is dropped on a handoff.**
-   `sessionDoseCeilingMi`'s own comment says the percentage half of "the lesser
-   of 18 mi or 20% of weekly mi" is "the caller's, via the budget above", and
-   `weeklyDoseBudgetMi` returns **Infinity** for M because doctrine gives
-   marathon pace no weekly SHARE. So the handoff is to nothing. On the owner's
-   47.3 mi/wk: the ladder caps a marathon-pace session at 9.46 mi and
-   `slotDoseBudgetMi` at 18. Closing it lowers a prescribed dose for every
-   sub-90 mi/wk runner.
-2. **Two priority scales and two granularities for post-race recovery.**
-   `RECOVERY_EFFORT_SCALE {A 1.0, B 0.65, C 0.35}` against
-   `POST_RACE_PRIORITY_SCALE {A 1.0, B 0.70, C 0.50}`, both scaling
-   `POST_RACE_RECOVERY_WEEKS`, both citing `Research/00b` "Recovery by Effort".
-   Equalising the scales does not close it — falsified: at a common 0.65 a
-   B-priority half is still 7 days against 9, because one rounds to whole WEEKS
-   before multiplying and the other to DAYS after. They agree on every A race,
-   which is why it was invisible.
-3. **Three constants named "the long run's share of the week."** 0.35 in the
-   adaptation engine, 0.30 in the workout selector, 0.30 in the cold-start
-   allowance. Five miles apart at 100 mi/wk. One exported constant closes it;
-   picking WHICH value moves composition.
-
-### What stays contested
-
-Eleven of the twelve quantities still carry at least one second answer, every
-one with a measured delta and a named migration. The widest, on the owner's own
-account: 18 days on post-race recovery for a marathon, 24 s/mi on marathon
-pace, 11 s/mi on interval pace, 8.5 mi on the marathon-pace session ceiling.
-The gate does not fix them; it stops them growing and fails the moment one
-closes and its exemption is left standing.
-=======
 ## 2026-09-05 · ACTIONCOMPLETE-2 · the propose lane can carry a JUDGEMENT, the
 runner can take a session's shape back, and "complete" now means fourteen things
 rather than eleven.
@@ -191,7 +109,89 @@ And one in the new shell gate: emptying `ALL_ACTION_KINDS` made it exit 1 saying
 NOTHING, because `set -euo pipefail` killed the script before its own liveness
 message could print. A gate that fails without naming the defect is barely
 better than one that passes.
->>>>>>> origin/action-kinds-complete
+
+---
+
+## 2026-09-05 · OWNER-AGREEMENT-1 · twelve quantities, one owner each, and a gate
+that RESOLVES two owners and compares the numbers
+
+### Why a resolver and not another scan
+
+Every ownership check this repository had was a text scan, and both said in
+their own headers that a text scan cannot tell wiring from decoration.
+`_runner_state.test.ts` put it plainly: "the registry names an owner and a
+submission carries a number; nothing syntactic joins them. A loader that calls
+the legacy cascade and submits the result produces a belief this suite cannot
+distinguish from a correct one." A caller that INVOKES the canonical resolver,
+DISCARDS its result and answers with its own arithmetic passes every scan and
+every allowlist in them.
+
+`lib/runner-state/_owner_agreement.test.ts` calls each registered producer
+against six synthetic runners and compares. `lib/runner-state/quantity-owners.ts`
+is its registry; `scripts/check-belief-owners.sh` is in `web-v2` prebuild.
+
+### The three consolidations taken here, all zero-behaviour-change
+
+- **`lib/plan/core.ts#parseGoalSeconds` DELETED.** A second goal parser, strict
+  `^H:MM:SS`, which returned NULL for every MM:SS goal — a 25:30 five-kilometre
+  goal read as 1530 seconds through `parseRaceTime` and as "no goal at all"
+  through this one. No production caller, no test (the bench that appears to
+  test it imports the `generate.ts` delegation).
+- **`app/api/prescription/route.ts`'s local `parseGoalSeconds` DELETED.** A
+  third copy of the same regex, never called from the route that declared it.
+- **`lib/training/elevation-model.ts#GRADE_COST_PER_PCT` re-exported** from
+  `lib/terrain/grade-adjust.ts` instead of being declared a second time, in a
+  file that already imported `DESCENT_GIVEBACK_FRACTION` from that owner four
+  lines below.
+
+Both parsers are registered as REMOVED so a reintroduction fails by name; that
+guard was falsified by putting one back.
+
+### Corrected, because it had gone stale
+
+`ownership.ts`'s `RUN_FREQUENCY_TOLERANCE` read "NOTHING MEASURES THIS ... the
+derivation it describes no longer exists anywhere in the tree."
+`derivedTrainingDaysPerWeek` landed 2026-08-30 and is on the authoring path.
+The entry now names it canonical and states the narrower, worse thing that is
+actually open: four sites read `profile.weekly_frequency` and only the
+generator falls back to the measurement. On the owner's account today the
+measurement says 6 and `injury-builder` answers 5 from a private constant.
+
+### Three decisions NOT taken here, and why
+
+Each is a real divergence this gate measured, and each one closes by changing
+a number the runner is prescribed — which is plan composition, not wiring.
+Recorded with its measured size rather than settled inside an ownership pass:
+
+1. **The marathon-pace percentage half is dropped on a handoff.**
+   `sessionDoseCeilingMi`'s own comment says the percentage half of "the lesser
+   of 18 mi or 20% of weekly mi" is "the caller's, via the budget above", and
+   `weeklyDoseBudgetMi` returns **Infinity** for M because doctrine gives
+   marathon pace no weekly SHARE. So the handoff is to nothing. On the owner's
+   47.3 mi/wk: the ladder caps a marathon-pace session at 9.46 mi and
+   `slotDoseBudgetMi` at 18. Closing it lowers a prescribed dose for every
+   sub-90 mi/wk runner.
+2. **Two priority scales and two granularities for post-race recovery.**
+   `RECOVERY_EFFORT_SCALE {A 1.0, B 0.65, C 0.35}` against
+   `POST_RACE_PRIORITY_SCALE {A 1.0, B 0.70, C 0.50}`, both scaling
+   `POST_RACE_RECOVERY_WEEKS`, both citing `Research/00b` "Recovery by Effort".
+   Equalising the scales does not close it — falsified: at a common 0.65 a
+   B-priority half is still 7 days against 9, because one rounds to whole WEEKS
+   before multiplying and the other to DAYS after. They agree on every A race,
+   which is why it was invisible.
+3. **Three constants named "the long run's share of the week."** 0.35 in the
+   adaptation engine, 0.30 in the workout selector, 0.30 in the cold-start
+   allowance. Five miles apart at 100 mi/wk. One exported constant closes it;
+   picking WHICH value moves composition.
+
+### What stays contested
+
+Eleven of the twelve quantities still carry at least one second answer, every
+one with a measured delta and a named migration. The widest, on the owner's own
+account: 18 days on post-race recovery for a marathon, 24 s/mi on marathon
+pace, 11 s/mi on interval pace, 8.5 mi on the marathon-pace session ceiling.
+The gate does not fix them; it stops them growing and fails the moment one
+closes and its exemption is left standing.
 
 ---
 

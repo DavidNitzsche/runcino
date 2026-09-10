@@ -100,6 +100,14 @@ SIM="${SIM:-DC794E30-23E7-475B-AECD-05DC44E39A75}"   # Series 11 46mm
 OUT="${OUT:-/tmp/faces}"
 FACE="${1:?usage: shoot.sh <face-name> [more names...]}"
 
+# Same shared-/tmp-file collision as check-watch.sh's LOG (WATCH_GATE_LOG):
+# two concurrent shoot.sh invocations — from different worktrees, or a human
+# run overlapping a hook run — write BUILD_LOG and APP_PATH_FILE to the same
+# fixed path by default, so one run can read back the other's build log or
+# app path. Overridable per-invocation; default unchanged for backward compat.
+BUILD_LOG="${WATCH_SHOOT_BUILD_LOG:-/tmp/faff-watch-build.log}"
+APP_PATH_FILE="${WATCH_SHOOT_APP_PATH_FILE:-/tmp/faff-watch-app-path}"
+
 mkdir -p "$OUT"
 
 if [ "${SKIP_BUILD:-0}" != "1" ]; then
@@ -111,8 +119,8 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
     -destination "id=$SIM" \
     -derivedDataPath "$DD" \
     -configuration Debug \
-    build > /tmp/faff-watch-build.log 2>&1 || {
-      echo "BUILD FAILED"; grep -E "error:" /tmp/faff-watch-build.log | head -20; exit 1; }
+    build > "$BUILD_LOG" 2>&1 || {
+      echo "BUILD FAILED"; grep -E "error:" "$BUILD_LOG" | head -20; exit 1; }
 
   APP=$(find "$DD/Build/Products" -name "FaffWatch Watch App.app" -maxdepth 3 | head -1)
   [ -n "$APP" ] || { echo "no .app in $DD"; exit 1; }
@@ -124,10 +132,10 @@ if [ "${SKIP_BUILD:-0}" != "1" ]; then
     echo "STALE BINARY — these are newer than the built product:"; echo "$NEWEST_SRC"; exit 1
   fi
   echo "app: $APP  (binary $(date -r "$BIN" '+%H:%M:%S'))"
-  echo "$APP" > /tmp/faff-watch-app-path
+  echo "$APP" > "$APP_PATH_FILE"
 fi
 
-APP=$(cat /tmp/faff-watch-app-path)
+APP=$(cat "$APP_PATH_FILE")
 xcrun simctl install "$SIM" "$APP" >/dev/null
 
 for f in "$@"; do
