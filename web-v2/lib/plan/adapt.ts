@@ -122,6 +122,9 @@ import { runDaySql, runDistanceMiSql } from '@/lib/runs/run-shape';
 // premise check live in the leaf that owns the decision; this file reads them.
 import { reassessDesignedWeekend } from './designed-race-weekend';
 import { returnToLongDays, longRunFactorAfterRace, type PlacementRecord } from './combined-stress';
+// RACEPROT-VERIFY-1 (2026-09-09) · the day-level race detector, not the raw
+// `is_race_week` column — see the volume_overshoot case in actionsForTrigger.
+import { weekContainsRace } from './race-week';
 
 /**
  * 2026-06-03 · Rule 15 · seal guard for adapter writes.
@@ -1287,6 +1290,38 @@ export function raceSuppressesOvershoot(
   const elapsed = isoDaysApart(raceDateIso, todayIso);
   if (!Number.isFinite(elapsed) || elapsed < 0) return false;
   return elapsed <= overshootRaceRecencyDays(distanceMi);
+}
+
+/** A `volume_overshoot` shave candidate, plus enough of its week to answer
+ *  whether the race-week machinery already owns it. */
+export interface OvershootShaveCandidate {
+  id: string;
+  weekIsRaceWeek: boolean | null;
+  /** Every day's `type` in this row's training week (its own row included). */
+  weekDayTypes: ReadonlyArray<string | null>;
+}
+
+/**
+ * RACEPROT-VERIFY-1 (2026-09-09) · is this row eligible for the
+ * `volume_overshoot` 17% shave, or does a race in its week already own it?
+ *
+ * The query this backs used to read `wk.is_race_week` directly alongside a
+ * type exclusion list (`rest`, `strength`, `race`, `race_week_tuneup`,
+ * `shakeout`). `is_race_week` holds ONLY the goal race's week
+ * (`race-week.ts`'s own header) — a B/C tune-up's taper and post-race
+ * recovery days are typed `easy`, not one of the excluded types, and their
+ * week's column reads false. Neither guard caught them, so an
+ * `easy`-typed day inside a tune-up window was eligible for the shave.
+ *
+ * `weekContainsRace` (race-week.ts) is the same day-level detector
+ * `dose-guard.ts` already uses for this exact gap — reused here rather than
+ * re-typed, per Rule 16.
+ */
+export function overshootShaveEligible(row: OvershootShaveCandidate): boolean {
+  return !weekContainsRace({
+    isRaceWeek: row.weekIsRaceWeek,
+    days: row.weekDayTypes.map((type) => ({ type })),
+  });
 }
 
 /**
@@ -5135,16 +5170,49 @@ async function actionsForTrigger(userId: string, t: AdaptationTrigger): Promise<
       // 2026-07-06 · race-protected rows excluded (per-finding context
       // filter): race execution, tune-ups, shakeouts, and race-week rows
       // belong to the race machinery, never to a volume shave.
-      const next7 = (await pool.query(
-        `SELECT pw.id FROM plan_workouts pw
+      //
+      // RACEPROT-VERIFY-1 (2026-09-09) · the type exclusion list and
+      // `COALESCE(wk.is_race_week, false)` both miss a B/C tune-up's taper
+      // and post-race recovery days — see `overshootShaveEligible`'s own
+      // header. Fetch each candidate's week's day types too, and let that
+      // (day-level, not column-only) detector decide.
+      const candidateRows = (await pool.query<{
+        id: string; week_id: string | null; is_race_week: boolean | null;
+      }>(
+        `SELECT pw.id, pw.week_id, wk.is_race_week
+            FROM plan_workouts pw
             JOIN training_plans tp ON tp.id = pw.plan_id
             LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
            WHERE tp.user_uuid = $1 AND tp.archived_iso IS NULL
              AND pw.date_iso::date BETWEEN $2::date AND $2::date + 7
-             AND pw.type NOT IN ('rest', 'strength', 'race', 'race_week_tuneup', 'shakeout')
-             AND COALESCE(wk.is_race_week, false) = false`,
+             AND pw.type NOT IN ('rest', 'strength', 'race', 'race_week_tuneup', 'shakeout')`,
         [userId, today]
       )).rows;
+      if (candidateRows.length === 0) return [];
+
+      // One extra read for every distinct week touched, not one per row —
+      // a week's own days decide `weekContainsRace` for every candidate in it.
+      const weekIds = [...new Set(
+        candidateRows.map((r) => r.week_id).filter((id): id is string => id != null),
+      )];
+      const weekDayTypes = new Map<string, string[]>();
+      if (weekIds.length > 0) {
+        const dayRows = (await pool.query<{ week_id: string; type: string | null }>(
+          `SELECT week_id, type FROM plan_workouts WHERE week_id = ANY($1::uuid[])`,
+          [weekIds]
+        )).rows;
+        for (const d of dayRows) {
+          const bucket = weekDayTypes.get(d.week_id) ?? [];
+          bucket.push(d.type ?? '');
+          weekDayTypes.set(d.week_id, bucket);
+        }
+      }
+
+      const next7 = candidateRows.filter((r) => overshootShaveEligible({
+        id: r.id,
+        weekIsRaceWeek: r.is_race_week,
+        weekDayTypes: r.week_id != null ? (weekDayTypes.get(r.week_id) ?? []) : [],
+      }));
       if (next7.length === 0) return [];
       // 2026-08-24 · name whichever quantity actually set the bar. When the
       // chronic floor is what the week cleared, "exceeded 17mi scheduled" is
