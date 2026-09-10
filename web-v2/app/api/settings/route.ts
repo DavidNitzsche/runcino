@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { loadSettings, patchSettings } from '@/lib/coach/settings';
 import { requireUserId } from '@/lib/auth/session';
 import { rebuildActivePlanForPrefs } from '@/lib/plan/auto-rebuild';
+import { resolveReplanOutcome, REPLAN_NOT_ATTEMPTED } from '@/lib/plan/replan-outcome';
 
 // A plan-shaping day change re-runs generatePlan inline. Give it headroom.
 export const maxDuration = 120;
@@ -73,13 +74,27 @@ export async function PATCH(req: NextRequest) {
     // rebuild the active race-prep OR goal-mode plan inline (2026-07-06 ·
     // P1-16; isolated — the save still succeeds if no plan exists or the
     // rebuild fails).
+    //
+    /* REBUILDTRUTH-1 sibling (2026-09-09) · this PATCH carried the identical
+     * defect already fixed in `/api/profile`'s PATCH: `replanned = !!r.ok`
+     * read TRUE for `deduped_within_30s` (nothing ran) and `unchanged` (ran,
+     * rolled back — `auto-rebuild.ts` itself distinguishes this precisely)
+     * exactly as much as for a real replan, and the old `.catch(() => ({ ok:
+     * false }))` discarded WHY a thrown rebuild failed. Same fix as the
+     * sibling, and now the SAME resolver (`resolveReplanOutcome`, Rule 16 —
+     * one quantity, one name) so the two routes cannot drift back apart. */
     const changedShaping = Object.keys(patch).filter((k) => PLAN_SHAPING.has(k));
-    let replanned = false;
-    if (changedShaping.length > 0) {
-      const r = await rebuildActivePlanForPrefs(userId, changedShaping).catch(() => ({ ok: false }));
-      replanned = !!r.ok;
-    }
-    return NextResponse.json({ ok: true, patch, replanned });
+    const outcome = changedShaping.length > 0
+      ? resolveReplanOutcome(
+          await rebuildActivePlanForPrefs(userId, changedShaping)
+            .catch((e: unknown) => ({
+              ok: false,
+              // Rule 11 · a swallowed throw is not "the rebuild declined".
+              reason: `the rebuild threw: ${e instanceof Error ? e.message : String(e)}`,
+            } as Awaited<ReturnType<typeof rebuildActivePlanForPrefs>>)),
+        )
+      : REPLAN_NOT_ATTEMPTED;
+    return NextResponse.json({ ok: true, patch, ...outcome });
   } catch (e: any) {
     return NextResponse.json({ error: e.message ?? String(e) }, { status: 500 });
   }

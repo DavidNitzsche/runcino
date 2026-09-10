@@ -13,6 +13,7 @@ import { requireUserId } from '@/lib/auth/session';
 import { setBiologicalSex, normalizeSex } from '@/lib/coach/biological-sex';
 import { setRunnerTimezone } from '@/lib/runtime/runner-tz';
 import { rebuildActivePlanForPrefs } from '@/lib/plan/auto-rebuild';
+import { resolveReplanOutcome, REPLAN_NOT_ATTEMPTED } from '@/lib/plan/replan-outcome';
 
 // A plan-shaping edit re-runs generatePlan inline (same path as the race
 // hooks), which can take a few seconds. Give the route headroom.
@@ -299,26 +300,22 @@ export async function PATCH(req: NextRequest) {
      *
      * `newPlanId` is the honest discriminator and it is already on the return
      * type — absent on both of those, present on a real replan. Reading it
-     * here rather than re-deriving the distinction keeps one owner (Rule 16). */
-    let replanned = false;
-    let replanStatus: 'replanned' | 'no_change' | 'not_replanned' | 'not_attempted' = 'not_attempted';
-    let replanReason: string | null = null;
-    if (changedPlanShaping.length > 0) {
-      const r = await rebuildActivePlanForPrefs(userId, changedPlanShaping)
-        .catch((e: unknown) => ({
-          ok: false,
-          // Rule 11 · a swallowed throw is not "the rebuild declined".
-          reason: `the rebuild threw: ${e instanceof Error ? e.message : String(e)}`,
-        } as Awaited<ReturnType<typeof rebuildActivePlanForPrefs>>));
-      const newPlanId = r.newPlanId ?? null;
-      replanned = Boolean(r.ok && newPlanId);
-      replanStatus = replanned
-        ? 'replanned'
-        : r.ok ? 'no_change' : 'not_replanned';
-      replanReason = replanned ? null : (r.reason ?? 'the rebuild produced no new plan');
-    }
+     * via `resolveReplanOutcome` rather than re-deriving the distinction
+     * keeps one owner (Rule 16) — `/api/settings/route.ts`'s PATCH carried
+     * the identical bug (2026-09-09 sibling fix) and now calls the same
+     * resolver rather than a second copy of this logic. */
+    const outcome = changedPlanShaping.length > 0
+      ? resolveReplanOutcome(
+          await rebuildActivePlanForPrefs(userId, changedPlanShaping)
+            .catch((e: unknown) => ({
+              ok: false,
+              // Rule 11 · a swallowed throw is not "the rebuild declined".
+              reason: `the rebuild threw: ${e instanceof Error ? e.message : String(e)}`,
+            } as Awaited<ReturnType<typeof rebuildActivePlanForPrefs>>)),
+        )
+      : REPLAN_NOT_ATTEMPTED;
 
-    return NextResponse.json({ ok: true, updated: acked, replanned, replanStatus, replanReason });
+    return NextResponse.json({ ok: true, updated: acked, ...outcome });
   } catch (err: any) {
     return NextResponse.json({ error: 'profile update failed', detail: err.message }, { status: 500 });
   }

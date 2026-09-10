@@ -68,7 +68,32 @@ describe('REBUILDTRUTH-1 · no route claims a rebuild it did not observe', () =>
     const src = readWeb('app/api/profile/route.ts');
     expect(src.length).toBeGreaterThan(2000);
     expect(src).not.toContain('replanned = !!r.ok;');
-    expect(src).toContain('replanned = Boolean(r.ok && newPlanId);');
+    // SETTINGS-RULE11-1 (2026-09-09) · the inline `Boolean(r.ok && newPlanId)`
+    // this test used to assert literally in THIS file moved to the shared
+    // `resolveReplanOutcome` (R2c below), so `/api/settings/route.ts`'s
+    // identical sibling defect (R2b) could call the same resolver instead of
+    // a second hand-copy — Rule 16, one quantity one name. Asserted here as
+    // "calls the shared resolver", not as the formula's own literal text.
+    expect(src).toContain("from '@/lib/plan/replan-outcome'");
+    expect(src).toContain('resolveReplanOutcome(');
+  });
+
+  it('R2b · app/api/settings/route.ts carried the identical sibling defect, fixed the same way', () => {
+    // Found 2026-09-08 (audit §10a item 8): `replanned = !!r.ok` reads TRUE
+    // for `deduped_within_30s` and `unchanged` exactly as it did in R2's
+    // route before that one was fixed 2026-09-05 — a missed sibling, not a
+    // regression, since REBUILDTRUTH-1 had zero mentions outside a code
+    // comment. Fixed 2026-09-09 by calling the SAME resolver as R2.
+    const src = readWeb('app/api/settings/route.ts');
+    expect(src.length).toBeGreaterThan(1500);
+    expect(src).not.toContain('replanned = !!r.ok;');
+    expect(src).toContain("from '@/lib/plan/replan-outcome'");
+    expect(src).toContain('resolveReplanOutcome(');
+  });
+
+  it('R2c · resolveReplanOutcome is the ONE place that reads newPlanId to decide replanned (Rule 16)', () => {
+    const src = readWeb('lib/plan/replan-outcome.ts');
+    expect(src).toContain('const replanned = Boolean(r.ok && newPlanId);');
     expect(src).toContain('replanStatus');
   });
 
