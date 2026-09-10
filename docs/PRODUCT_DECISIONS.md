@@ -1684,6 +1684,70 @@ is touched again and the gap question resurfaces.
 
 ---
 
+## 2026-09-09 · MARKER-RESTORE-1 — the amber tilde returns, reconciling two of David's own rulings
+
+**The gap this closes.** `ValuesV5.swift`'s `FaffValueText` stopped drawing
+`Theme.V5.modelledMark` on 2026-08-21 (commit `89bab20d7`), on David's own
+ruling at the time: *"we dont need the tilde. its obvious and implied the
+number is calculated."* That decision lived only as a code comment — it was
+never logged here, which is itself the gap Rule 20 names: a decision with
+no written record outside the code that enacts it is a decision the next
+session has no way to find except by reading that one file.
+
+**The conflict.** The locked, canonical iPhone v5 design handoff
+(`design_handoff_faff_iphone_app v5/README.md`, 2026-08-19, and restated in
+`docs/faff-iphone-design-contract.md` §1) states, unconditionally: *"A
+modelled/projected number (not a hard read) carries a small amber `~`
+(tilde) immediately before its value — the app's one mark for 'this number
+is estimated'... used on... any training-derived (not race-confirmed) pace
+read"* — and separately, *"This is... now a system rule rather than one
+screen's fix. Apply it everywhere a number is estimated."* `check-modelled-
+mark.sh`'s own header already quoted that same contract line and its Guard 2
+already assumed the glyph lives inside `FaffValueText` — the gate's
+documented expectation and the actual rendering code had quietly drifted
+apart since 08-21, with nothing catching it (Guard 2 only checks for a
+HAND-drawn tilde elsewhere, never that `FaffValueText` draws its own).
+
+**David's ruling this round, explicit:** *"Treat the current brief as
+authoritative: modelled numbers must visibly carry the amber `~` marker. An
+older August ruling does not override the current explicit design-system
+requirement. Do not close this as 'VoiceOver carries estimated.' VoiceOver
+is complementary, not a replacement for visible provenance."*
+
+**The fix.** `FaffValueText`'s `.modelled` case draws `Theme.V5.modelledMark`
+again — a straight revert of `89bab20d7`'s Swift half (`HStack`, `markScale`,
+`mark` colour, VoiceOver combined into `value.voiceOverLabel`). VoiceOver is
+unchanged — still "estimated `<value>`" — per David's explicit framing that
+the spoken label is complementary, not a substitute.
+
+**Scope, stated plainly.** `FaffValueText` is the one canonical render site
+by design (its own header: "a type that cannot render a number without
+first being told where the number came from... it lives here instead" of
+eighteen screens' worth of hand-drawn tildes), so this fix is app-wide by
+construction — every existing `.modelled` value (Races poster, projected
+finishes, HR-zone model reads, stride pace, etc.) now shows the tilde again,
+not only the stride-pace case the triggering branch touches. That is the
+correct scope per both the old and current doctrine's own framing of this
+as a system rule, and it is flagged here explicitly so it is not mistaken
+for a narrower change than it is.
+
+**Verification.** `check-modelled-mark.sh` OK (54 v5 source files + 44
+composers + 115 web files clean). Rendered on-device and pixel-inspected: a
+visible amber `~` immediately before a stride's modelled pace (e.g.
+"~6:40/mi"), in `Theme.V5.modelledMark`'s own ink, distinct from the
+measured HR/duration text beside it. `FaffTests`: 496/496 green — the two
+existing tests that touch this area (`RegisterSweepTests`,
+`V5ContrastTests`) assert only `voiceOverLabel` content, which this change
+does not alter.
+
+**Standing instruction going forward.** When a design-system ruling reverses
+a prior one, log it here at the time, in addition to (never instead of) the
+code comment that enacts it — this entry exists because the 08-21 ruling's
+absence from this file is exactly what let "an older August ruling" be
+cited as still-settled when it no longer was.
+
+---
+
 ## Standing constraints referenced above
 
 - Paces come from evidence. The goal stays visible and never distorts training.
