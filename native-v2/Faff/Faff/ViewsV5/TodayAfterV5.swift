@@ -379,11 +379,11 @@ struct TodayAfterV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
-        // SCROLLCLOCK-1 (PanelV5.swift) · caps the status-bar band with the
-        // same slice of `panel`'s own gradient that shows there at rest, so
-        // no section below it can ever collide with the clock once the
-        // panel itself has scrolled away.
-        .v5ScrollSafeTop(fill: panelFill)
+        // SCROLLCLOCK-2 (2026-09-09) · `.v5ScrollSafeTop` moved OUT of this
+        // screen's own body — `TodayHostV5` now applies it once, for every
+        // `model.state` branch, AFTER (outside) `.v5StaleBanner`. See that
+        // call site's comment (`HostsV5.swift`) for why. This screen's own
+        // `.v5MeasureFullBleedPanel()` below is unchanged.
     }
 
     // MARK: - Strava push

@@ -79,6 +79,27 @@ final class ScrollHeaderStatusBarCollisionUITests: XCTestCase {
         add(a)
     }
 
+    /// Samples one pixel from a screenshot at a FRACTIONAL position (0...1 of
+    /// the image's own width/height), so the sample point tracks whatever
+    /// device actually ran the test rather than a hard-coded point size.
+    /// Deliberately loose about channel order (RGBA vs BGRA don't agree
+    /// across OS versions) — SCROLLCLOCK-2's defect is plain BLACK, which
+    /// reads the same regardless of which slot each channel lands in, so the
+    /// "near black on every channel" test below is robust to that ambiguity
+    /// rather than fragile to it.
+    private func pixelColor(_ screenshot: XCUIScreenshot, xFraction: CGFloat, yFraction: CGFloat) -> (r: UInt8, g: UInt8, b: UInt8)? {
+        guard let cgImage = screenshot.image.cgImage,
+              let data = cgImage.dataProvider?.data,
+              let ptr = CFDataGetBytePtr(data) else { return nil }
+        let width = cgImage.width, height = cgImage.height
+        let x = min(max(Int(CGFloat(width) * xFraction), 0), width - 1)
+        let y = min(max(Int(CGFloat(height) * yFraction), 0), height - 1)
+        let bytesPerPixel = max(cgImage.bitsPerPixel / 8, 1)
+        let offset = y * cgImage.bytesPerRow + x * bytesPerPixel
+        guard offset + 2 < CFDataGetLength(data) else { return nil }
+        return (ptr[offset], ptr[offset + 1], ptr[offset + 2])
+    }
+
     private func launchToToday() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["-faffHost", host, "-faffToken", token]
@@ -214,5 +235,93 @@ final class ScrollHeaderStatusBarCollisionUITests: XCTestCase {
         XCTAssertTrue(title.waitForExistence(timeout: 15), "Settings screen never arrived")
         shot(app, "settings-00-rest")
         scrollAndPhotographSteps(app, namePrefix: "settings", steps: 6)
+    }
+
+    // MARK: - 4 · Stale banner composes correctly against the status-bar cap (SCROLLCLOCK-2)
+
+    /// The review defect this covers: `.v5ScrollSafeTop`'s status-bar cap
+    /// (`PanelV5.swift`) and `.v5StaleBanner`'s `.safeAreaInset`
+    /// (`StaleStateV5.swift`) used to compose in the wrong order — the cap
+    /// lived INSIDE each screen's own body, an ancestor of the banner's own
+    /// reserved space, rather than being applied after it from the host.
+    /// That left a PERSISTENT black gap between the status-bar clock and the
+    /// top of the banner the whole time the banner was on screen — not a
+    /// one-frame flicker, reproduced by rendering and held at rest. Falsified
+    /// against the pre-fix composition order (`RacesV5`/`BlockV5` calling
+    /// `.v5ScrollSafeTop` from their own body instead of `RacesHostV5`/
+    /// `BlockHostV5`/`TodayHostV5` calling it after `.v5StaleBanner`): the
+    /// pixel assertion below failed there and passes once the cap is
+    /// composed after the banner in the same chain.
+    ///
+    /// Forces the stale-with-cache state the way a real outage produces it,
+    /// never by touching app code: seed `V5Surface`'s on-disk cache
+    /// (`AppCache`, plain `UserDefaults` — see `SurfaceStoreV5.swift`'s own
+    /// header) with one real, working launch, then relaunch the SAME
+    /// install pointed at a port nothing listens on. The cache renders
+    /// instantly (`model != nil`, "seeded synchronously from the last good
+    /// payload at init"); the refresh against the dead port fails, and once
+    /// STALEDEBOUNCE-1's ~1.2s debounce elapses `stale` flips true — exactly
+    /// the "old, not wrong" state the banner exists to announce.
+    func testStaleBannerNeverLeavesABlackGapBehindTheStatusBarClock() throws {
+        // Seed the cache with a real, working launch and pick Races — the
+        // reviewer's own screenshot of this defect was on Races.
+        let seed = launchToToday()
+        Thread.sleep(forTimeInterval: 2.0)
+        let seedRaces = seed.buttons.matching(NSPredicate(format: "label == 'Races'")).element(boundBy: 0)
+        if seedRaces.waitForExistence(timeout: 15) { seedRaces.tap() }
+        Thread.sleep(forTimeInterval: 2.0)
+        seed.terminate()
+
+        // Relaunch the SAME install against a port nothing listens on, so
+        // the refresh fails while the seeded cache still renders.
+        let app = XCUIApplication()
+        app.launchArguments = ["-faffHost", "http://127.0.0.1:1", "-faffToken", token]
+        app.launch()
+
+        let today = app.staticTexts.containing(NSPredicate(format: "label ==[c] 'Today'")).firstMatch
+        guard today.waitForExistence(timeout: 30) else {
+            print("[hierarchy] \(app.debugDescription)")
+            XCTFail("never reached Today on the offline relaunch")
+            return
+        }
+        let races = app.buttons.matching(NSPredicate(format: "label == 'Races'")).element(boundBy: 0)
+        guard races.waitForExistence(timeout: 15) else {
+            XCTFail("no Races tab on the offline relaunch")
+            return
+        }
+        races.tap()
+
+        // STALEDEBOUNCE-1's debounce (~1.2s) plus slack, so the banner has
+        // definitely had its chance to appear.
+        Thread.sleep(forTimeInterval: 3.0)
+
+        let retry = app.buttons["Retry"]
+        guard retry.waitForExistence(timeout: 10) else {
+            let a = XCTAttachment(string: app.debugDescription)
+            a.name = "hierarchy-no-stale-banner"
+            a.lifetime = .keepAlways
+            add(a)
+            XCTFail("stale banner never appeared — this test cannot exercise the composition it targets " +
+                    "without it (cache seeded but refresh may not have failed as expected)")
+            return
+        }
+
+        let screenshot = app.screenshot()
+        let a = XCTAttachment(screenshot: screenshot)
+        a.name = "races-offline-stale-cap"
+        a.lifetime = .keepAlways
+        add(a)
+
+        // Sample behind the status-bar clock, left of the Dynamic Island's
+        // own black pill (which sits horizontally centred) — the exact spot
+        // the reviewer's screenshot showed plain black instead of the
+        // panel's gradient or the banner's own background reaching y=0.
+        guard let (r, g, b) = pixelColor(screenshot, xFraction: 0.15, yFraction: 0.02) else {
+            XCTFail("could not read screenshot pixel data")
+            return
+        }
+        XCTAssertFalse(r < 12 && g < 12 && b < 12,
+                        "Black gap behind the status-bar clock: sampled (\(r), \(g), \(b)). The cap " +
+                        "should show the panel's gradient or the banner's own background here, never plain black.")
     }
 }

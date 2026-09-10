@@ -632,6 +632,30 @@ struct PanelShape: Shape {
 // `ScrollView` so the ScrollView's frame never reaches y=0 in the first
 // place, which is the simpler fix available when there is a real pinned
 // header to make responsible for that boundary.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// SCROLLCLOCK-2 (2026-09-09) · TWO DEFECTS FOUND IN REVIEW, BOTH FIXED HERE
+//
+// Defect 1 — COMPOSITION ORDER, not this file alone. A host that also draws
+// `V5StaleBannerModifier`'s `.v5StaleBanner(...)` (`StaleStateV5.swift`) MUST
+// attach `.v5ScrollSafeTop(fill:)` AFTER it, in the same modifier chain —
+// never inside the screen the banner wraps. `Races`/`Block`/`Today` used to
+// call this from their OWN body, which put it as an ANCESTOR of the banner's
+// `.safeAreaInset` — the wrong side. `.safeAreaInset` reserves its own space
+// as a real ancestor constraint, and a cap composed on the inside of that
+// reservation can lose the fight for the sliver behind the status-bar clock
+// to it, reproduced as a PERSISTENT black gap between the clock and the
+// banner (not a one-frame flicker — falsified by rendering, held for
+// multiple seconds at rest). Composing the cap as the OUTERMOST layer — after
+// the banner, not before it — means it always owns that exact sliver
+// unconditionally, so the two can never contest the same pixels. See
+// `HostsV5.swift`'s `RacesHostV5`/`BlockHostV5`/`TodayHostV5` bodies for the
+// corrected order; `.v5MeasureFullBleedPanel()` does not move — its
+// `PreferenceKey` bubbles up through `.safeAreaInset`, `.id()` and
+// `.transition()` unaffected by any of this.
+//
+// Defect 2 — the crossfade, fixed in `V5ScrollSafeTopModifier` below. See its
+// own header comment.
 
 private struct V5FullBleedPanelHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
@@ -653,6 +677,11 @@ extension View {
     /// `ZStack`/body is fine — preferences bubble up through the whole tree).
     /// `fill` is the SAME `PanelFill` the screen's own `DayPanel` was given —
     /// see this section's header for what this draws and why.
+    ///
+    /// SCROLLCLOCK-2 · if the host ALSO draws `.v5StaleBanner(...)`
+    /// (`StaleStateV5.swift`), this must be attached AFTER it in the same
+    /// chain, never inside the screen the banner wraps — see this section's
+    /// "SCROLLCLOCK-2" header note for the defect that ordering fixes.
     func v5ScrollSafeTop(fill: PanelFill) -> some View {
         modifier(V5ScrollSafeTopModifier(fill: fill))
     }
@@ -689,6 +718,25 @@ private struct V5ScrollSafeTopModifier: ViewModifier {
     @Environment(\.v5TopInset) private var topInset
     @State private var panelHeight: CGFloat = 0
 
+    // SCROLLCLOCK-2 (2026-09-09) · defect 2. The cap used to draw straight
+    // from `fill` with no transition of its own, so a day-state change (the
+    // model refreshing to a new `PanelFill`) SNAPPED the cap to the new
+    // colour on the very next render pass while `DayPanel`'s own two-slot
+    // cross-dissolve (`PanelV5.swift`, `DayPanel.body`) was still 200ms into
+    // fading the real panel underneath — the two disagreed for the whole
+    // fade, not just at rest and at the end. `DayPanel` doesn't rely on the
+    // CALLER wrapping its `fill` in `withAnimation` (it never is —
+    // `SurfaceStoreV5.swift`'s `load()` sets `model` as a plain `@Published`
+    // update), so the cap can't either; it needs the identical internal
+    // mechanism. This is that mechanism, copied slot-for-slot: two
+    // ALWAYS-PRESENT cap layers, only their opacity ever animates, and the
+    // flip runs under the SAME `V5.Motion.fill` duration DayPanel uses, so
+    // the two stay in sync through the whole crossfade rather than only
+    // matching at the two ends of it.
+    @State private var slotA: PanelFill?
+    @State private var slotB: PanelFill?
+    @State private var showingA = true
+
     func body(content: Content) -> some View {
         content
             .onPreferenceChange(V5FullBleedPanelHeightKey.self) { height in
@@ -700,12 +748,35 @@ private struct V5ScrollSafeTopModifier: ViewModifier {
                 // is not a zero height, so this draws nothing rather than a
                 // wrongly-sized cap for that one frame.
                 if panelHeight > 0 {
-                    V5FullBleedCap(fill: fill, panelHeight: panelHeight, topInset: topInset)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: topInset)
-                        .ignoresSafeArea(edges: .top)
-                        .allowsHitTesting(false)
-                        .accessibilityHidden(true)
+                    ZStack {
+                        V5FullBleedCap(fill: slotA ?? fill, panelHeight: panelHeight, topInset: topInset)
+                            .opacity(showingA ? 1 : 0)
+                        V5FullBleedCap(fill: slotB ?? fill, panelHeight: panelHeight, topInset: topInset)
+                            .opacity(showingA ? 0 : 1)
+                    }
+                    .onChange(of: fill, initial: true) { oldValue, newValue in
+                        guard slotA != nil || slotB != nil else {
+                            // First appearance — nothing to fade FROM, no flip needed.
+                            slotA = newValue
+                            return
+                        }
+                        guard newValue != oldValue else { return }
+                        // Paint the invisible slot with the new fill, UNANIMATED,
+                        // before the flip starts — same ordering `DayPanel` uses
+                        // and for the same reason: the flip needs something
+                        // already-correct to fade in TO.
+                        var t = Transaction()
+                        t.disablesAnimations = true
+                        withTransaction(t) {
+                            if showingA { slotB = newValue } else { slotA = newValue }
+                        }
+                        withAnimation(V5.Motion.fill) { showingA.toggle() }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: topInset)
+                    .ignoresSafeArea(edges: .top)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
                 }
             }
     }

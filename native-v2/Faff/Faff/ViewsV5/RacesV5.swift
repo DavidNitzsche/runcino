@@ -199,12 +199,13 @@ struct RacesV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
-        // SCROLLCLOCK-1 (PanelV5.swift) · caps the status-bar band with the
-        // same slice of `heroPanel`'s own gradient that shows there at rest,
-        // so no section header below it (the evidence list, the log) can
-        // ever collide with the clock once the panel itself has scrolled
-        // away.
-        .v5ScrollSafeTop(fill: model.panel.fill)
+        // SCROLLCLOCK-2 (2026-09-09) · `.v5ScrollSafeTop` moved OUT of this
+        // screen's own body and up to `RacesHostV5`, composed AFTER (outside)
+        // `.v5StaleBanner` there. See that call site's comment for why: the
+        // cap has to sit at a composition point the banner's own
+        // `.safeAreaInset` cannot cut off. `.v5MeasureFullBleedPanel()` below
+        // on `heroPanel` is unchanged — its `PreferenceKey` bubbles up through
+        // the host's modifiers exactly the same either way.
     }
 
     // MARK: Hero
