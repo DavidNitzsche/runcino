@@ -90,11 +90,38 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     /// shown and hidden so quickly it reads as the whole screen "jumping
     /// around". A genuine, sustained outage should still show the banner
     /// promptly; a one-request blip that resolves itself within about a
-    /// second should never have been visible at all. This generation counter
-    /// is what lets a delayed "show" be cancelled by a load that already
-    /// succeeded before the delay elapsed, without touching `stale`'s own
-    /// meaning or `SurfaceReadiness`'s three-state contract above it.
-    private var staleAttemptGeneration = 0
+    /// second should never have been visible at all.
+    ///
+    /// LATEFAILURE-1 (2026-09-08) · THE SAME COUNTER NOW ALSO GUARDS THE
+    /// OPPOSITE ORDERING, WHICH IT NEVER DID BEFORE.
+    ///
+    /// This used to be bumped only when an attempt COMPLETED (a success, an
+    /// absence, or the moment a failure entered its debounce wait) — never
+    /// when one STARTED. That is exactly backwards for what David hit live:
+    /// a real 502/timeout storm across several endpoints, then a real
+    /// recovery (`/api/v5/today` itself came back 200), and the outage
+    /// banner never cleared — while his own Request Log showed `sync
+    /// generation` advancing and a recent `last successful sync` (that log
+    /// reads `PlanSnapshotStore`, an entirely separate sync machine from
+    /// this one; see its own header — this surface's `stale` flag is what
+    /// the banner actually reads, and nothing kept the two in step).
+    ///
+    /// `SurfaceCancellationTests` named this exact gap the day CANCELBANNER-2
+    /// landed: "a genuinely-failed load that lands after a healthy one still
+    /// raises the banner over current content, indefinitely, until the next
+    /// success." The old scheme's guard only asked "did anything else finish
+    /// WHILE I was in my own 1.2s debounce wait" — a slow, already-superseded
+    /// request that FAILS after a newer request has already SUCCEEDED looks,
+    /// under that question, like "the newest event", because nothing recorded
+    /// which attempt was actually the latest one asked for.
+    ///
+    /// Bumping this at the START of an attempt (`load()`'s very first line,
+    /// and `presentSync`'s) fixes that: a completion — success, absence, OR
+    /// failure — may only touch `model`/`stale`/`absentReason` if it is still
+    /// the attempt this counter currently names. A straggling failure from an
+    /// older attempt is dropped the instant it is caught, before it can even
+    /// schedule a debounced "show" — see `markStaleAfterDebounce` below.
+    private var loadAttempt = 0
 
     /// Point this surface at a different read — the same Today surface serving
     /// a different date, for instance.
@@ -194,11 +221,14 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     /// 200ms fade a network-driven `rebind` already uses, so a cached day and
     /// a freshly fetched one move exactly the same way.
     func presentSync(_ known: Model) {
-        // STALEDEBOUNCE-1 · cancels any pending delayed-stale task from an
-        // earlier failed load — without this, a debounce timer scheduled
-        // before this cache hit could still fire afterward and flip `stale`
-        // back to true over content that just proved itself current.
-        staleAttemptGeneration += 1
+        // STALEDEBOUNCE-1 / LATEFAILURE-1 · this is itself a new "attempt" —
+        // it both cancels any pending delayed-stale task from an earlier
+        // failed load (without this, a debounce timer scheduled before this
+        // cache hit could still fire afterward and flip `stale` back to true
+        // over content that just proved itself current) AND becomes the new
+        // "latest" attempt, so a still-in-flight older `load()` that later
+        // fails cannot override what this just put on screen either.
+        loadAttempt += 1
         model = known
         stale = false
         absentReason = nil
@@ -283,12 +313,26 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     var isColdStart: Bool { model == nil && !stale && absentReason == nil }
 
     func load() async {
+        // LATEFAILURE-1 (2026-09-08) · claim an attempt number BEFORE the
+        // first `await`, not after. This is the whole fix: every completion
+        // below — success, absence, or failure — checks it still belongs to
+        // the newest attempt this surface has asked for, so an older,
+        // slower request can never speak for the surface once a newer one
+        // has already answered. See `loadAttempt`'s own doc comment for the
+        // incident this closes.
+        loadAttempt += 1
+        let myAttempt = loadAttempt
         refreshing = true
         defer { refreshing = false }
         do {
             switch try await fetch() {
             case .ok(let fresh):
-                staleAttemptGeneration += 1
+                // Superseded by a newer attempt (started after this one, and
+                // either still in flight or already answered) — this result
+                // is stale data arriving late and must not overwrite
+                // whatever that newer attempt already decided, success or
+                // failure alike.
+                guard myAttempt == loadAttempt else { return }
                 model = fresh
                 stale = false
                 absentReason = nil
@@ -299,14 +343,14 @@ final class V5Surface<Model: Decodable>: ObservableObject {
                 // would tell us that we do not already know.
                 cachedAt = Date()
             case .absent(let reason):
+                guard myAttempt == loadAttempt else { return }
                 // The engine decided. Not an outage, and not something to
                 // paper over with a cached payload from when it did apply.
-                staleAttemptGeneration += 1
                 absentReason = reason
                 model = nil
                 stale = false
             case .failed:
-                markStaleAfterDebounce()
+                markStaleAfterDebounce(attempt: myAttempt)
             }
         } catch {
             // CANCELBANNER-2 (2026-09-08 review) · A SCREEN GOING AWAY IS NOT
@@ -335,7 +379,7 @@ final class V5Surface<Model: Decodable>: ObservableObject {
             // that superseded this one is what decides the screen; this one
             // says nothing, because it never got an answer to report.
             if API.isCancellation(error) { return }
-            markStaleAfterDebounce()
+            markStaleAfterDebounce(attempt: myAttempt)
         }
     }
 
@@ -346,12 +390,20 @@ final class V5Surface<Model: Decodable>: ObservableObject {
     /// during a container swap, short enough that a GENUINE outage still
     /// shows the banner well within what would read as "instant" to a
     /// runner glancing at the screen.
-    private func markStaleAfterDebounce() {
-        staleAttemptGeneration += 1
-        let myGeneration = staleAttemptGeneration
+    ///
+    /// LATEFAILURE-1 · `attempt` is `load()`'s OWN attempt number, captured
+    /// before its `await`, not a fresh generation minted here. That is the
+    /// fix: the old version bumped the counter itself at this point, which
+    /// made every failure look like "the newest event" regardless of when it
+    /// actually started. Checked TWICE now — once immediately, so an already-
+    /// superseded failure cannot even schedule a delayed "show", and once
+    /// after the wait, for a newer attempt that starts (or lands) DURING the
+    /// debounce window.
+    private func markStaleAfterDebounce(attempt: Int) {
+        guard attempt == loadAttempt else { return }
         Task {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
-            guard myGeneration == staleAttemptGeneration else { return }
+            guard attempt == loadAttempt else { return }
             stale = true
         }
     }
