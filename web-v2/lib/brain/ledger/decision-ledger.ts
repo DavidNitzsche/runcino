@@ -673,6 +673,54 @@ export async function markUndoneInTransaction(
 }
 
 /**
+ * UNDOTRACK-1 (2026-09-09) · the row a per-workout undo must stamp.
+ *
+ * `markUndoneInTransaction` was fully built, unit-tested, and wired through
+ * `mutate.ts`'s `ledger.undoes` option since migration 166 — and had exactly
+ * one caller anywhere in the codebase before this: `mutate.ts` itself,
+ * defining the plumbing. No production write site ever populated
+ * `ledger.undoes`, `lib/brain/proposal/undo-apply.ts` (the ONLY production
+ * per-workout undo path — confirmed by tracing `POST
+ * /api/plan/workout-proposals/[id]/undo` end to end) included. Every
+ * accept-then-undo round trip left the original `ACCEPTED` row live forever,
+ * which is what let `directionCensus()` (Rule 21's own push-count metric)
+ * keep counting a reversed decision as a standing push.
+ *
+ * This is the lookup `applyUndo` needs before it can populate `undoes`: the
+ * live (`undone_at IS NULL`) `ACCEPTED` row `accept.ts` wrote for this exact
+ * proposal. `rowOrNull` keeps the three Rule 11 facts apart for the caller —
+ * a row (undo it), `undefined` (genuinely no accepted ledger row for this
+ * proposal — e.g. it was accepted before migration 166 landed, or the ledger
+ * was down at accept time; the undo still proceeds, just without a ledger
+ * row to stamp, exactly as it always has for that case), and `null` (the
+ * lookup itself failed — already logged by `rowOrNull`, and `applyUndo`
+ * proceeds the same as the `undefined` case rather than blocking a reversal
+ * the runner asked for on a read this file cannot make more reliable than
+ * the write it precedes).
+ */
+export async function findLiveAcceptedLedgerRow(
+  userUuid: string,
+  proposalId: string,
+): Promise<{ id: string } | null | undefined> {
+  const probe = await ledgerTableExists();
+  // 'absent' is genuine absence (no table → no accepted row can exist);
+  // `null` (the probe itself failed) is a genuine failure, not the same fact.
+  if (probe === 'absent') return undefined;
+  if (probe === null) return null;
+  return rowOrNull<{ id: string }>(
+    'brain/ledger.findLiveAcceptedLedgerRow',
+    pool.query<{ id: string }>(
+      `SELECT id::text AS id
+         FROM plan_decision_ledger
+        WHERE user_uuid = $1::uuid AND proposal_id = $2
+          AND runner_response = 'ACCEPTED' AND undone_at IS NULL
+        ORDER BY at DESC LIMIT 1`,
+      [userUuid, proposalId],
+    ),
+  );
+}
+
+/**
  * The runner's answer to a proposal.
  *
  * Guarded on `runner_response = 'PENDING'`, so an accept cannot overwrite a
