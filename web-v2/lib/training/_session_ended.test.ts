@@ -95,9 +95,10 @@ describe('gradeStoredPhases · sessionEnded excludes the last recovery from the 
   });
 
   it('sessionEnded on a phase that is NOT type recovery is never unioned in — the field only ever excludes a recovery phase', () => {
-    // Defensive: a hypothetical future non-recovery session-end (§4.5, not
-    // yet built) must not silently start excluding a WORK phase from a
-    // check that only ever asked about recoveries.
+    // Defensive: a hypothetical future non-recovery session-end (an
+    // `abandon()`-triggered mid-session end, not yet built) must not
+    // silently start excluding a WORK phase from a check that only ever
+    // asked about recoveries.
     const phases = finalWalkBackSessionPhases();
     const graded = gradeStoredPhases(phases, 'other', {
       sessionEnded: { phaseIndex: 3, phaseType: 'work' },
