@@ -1122,7 +1122,7 @@ struct TodayAfterV5: View {
     /// THE SHAPE OF THIS SESSION, which decides what the screen may claim.
     /// One rule, in `PostRunShapeV5`, shared with run detail — the two screens
     /// may not answer one run differently.
-    private var shape: RunShapeV5 {
+    var shape: RunShapeV5 {
         RunShapeV5.of(workoutType: model.workoutType,
                       indoor: model.onTheBelt != nil)
     }
@@ -1324,7 +1324,7 @@ struct TodayAfterV5: View {
         }
     }
 
-    private var milePieces: [MilePiece] {
+    var milePieces: [MilePiece] {
         // No run total on this payload, so a trailing piece is sized only if
         // the wire told us its length. Unknown is not "a whole mile".
         MileBreakdownV5.pieces(from: model.routeSplits)
@@ -1367,7 +1367,7 @@ struct TodayAfterV5: View {
     /// A PHASE WITH NO `type` (a payload from before 2026-09-01, or a future
     /// era this screen does not recognise) still gets a row — it just falls
     /// back to a numbered, unnamed one rather than guessing what it was.
-    private var sectionPieces: [RepPiece] {
+    var sectionPieces: [RepPiece] {
         let usable = model.routePhases.filter { $0.mi > 0 && $0.sec > 0 }
         // A SINGLE PHASE IS THE RUN, and the poster at the top of this screen
         // already carries its distance, its time and its pace. Restating them
@@ -1540,7 +1540,7 @@ struct TodayAfterV5: View {
      *
      * Used ONLY as the fallback: whenever `routePhases` has real pieces they
      * win, because they carry the pace, the target and the verdict too. */
-    private var workoutPhasePieces: [RepPiece] {
+    var workoutPhasePieces: [RepPiece] {
         let usable = model.workoutPhases.filter { ($0.durationSec ?? 0) > 0 }
         // A LIST OF ONE IS THE RUN, and the poster already states it — the
         // same refusal `sectionPieces` makes directly above.
@@ -1572,10 +1572,35 @@ struct TodayAfterV5: View {
     }
 
     /// The pieces this screen actually draws: the GPS-keyed phases when the
-    /// run has them, the authored phase list when it does not (indoors).
-    /// ONE list, so there is exactly one "Piece by piece" on this screen.
-    private var breakdownPieces: [RepPiece] {
-        sectionPieces.isEmpty ? workoutPhasePieces : sectionPieces
+    /// run has them, the authored phase list when it does not AND the run is
+    /// indoor. ONE list, so there is exactly one "Piece by piece" on this
+    /// screen.
+    ///
+    /// ROUTING-1 (2026-09-09) · `workoutPhasePieces`'s own header calls it
+    /// "the treadmill lane", built for the one case a GPS-keyed `routePhases`
+    /// structurally cannot cover — indoors, where there is no route to key it
+    /// by. This used to fall back to it whenever `sectionPieces` came back
+    /// empty FOR ANY REASON, with no check that the run was actually indoor.
+    ///
+    /// Proven on the owner's own 2026-09-09 5-mile-easy-plus-6-strides run: a
+    /// `runs` row can carry `phases` from one completion POST and its mile
+    /// `splits` from a LATER one (`fetched_at` 14:17:04, the row's own
+    /// `data.ingestedAt` 14:36:46 — nineteen minutes apart, same row). In that
+    /// window `hasMiles` is false and `sectionPieces` — built off the server's
+    /// GRADED `routePhases`, a heavier derivation than the raw completion
+    /// payload — can be empty too, for an outdoor run. The old fallback then
+    /// read `data.phases` DIRECTLY (unconditionally, never indoor-gated, per
+    /// its own header) and rendered all fourteen raw phases — the 5-mile body,
+    /// six strides and six walk-backs, undeduplicated, `actualPace: nil` on
+    /// every row — which is the exact defect reported: no pace on the 5-mile
+    /// phase, and the raw pairs instead of `PostRunLearnedV5(.strides)`'s
+    /// clean treatment.
+    ///
+    /// An outdoor run with neither miles nor sections now draws nothing —
+    /// Rule 11's refusal, not a lane that was never built to describe it.
+    var breakdownPieces: [RepPiece] {
+        guard sectionPieces.isEmpty else { return sectionPieces }
+        return shape == .indoor ? workoutPhasePieces : []
     }
 
     /// PARITY-1, 2026-09-04 · `RunDetailV5.marathonPacePhase`'s twin, off

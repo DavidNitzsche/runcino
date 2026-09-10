@@ -134,7 +134,7 @@ enum RunShapeV5: Equatable {
 
     // MARK: - How the run breaks down
 
-    enum Decomposition {
+    enum Decomposition: Equatable {
         /// Mile by mile.
         case miles
         /// The pieces the session was actually made of.

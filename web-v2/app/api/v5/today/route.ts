@@ -1228,7 +1228,10 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // Coverage decides, then richness. Never a blend of two arrays: they are
       // separate instruments observing the same run, and interleaving them
       // would invent miles nothing recorded.
-      const splitChoice = resolveSplits(canonicalFigures, elevTwins);
+      const splitChoice = resolveSplits(
+        canonicalFigures, elevTwins,
+        Array.isArray(data.phases) ? data.phases : null,
+      );
 
       // The runner's own zone bands, from their threshold heart rate. Null
       // at true cold start — never fabricated, and an absent band simply

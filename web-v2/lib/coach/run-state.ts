@@ -858,7 +858,7 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     source: (r.source as string | null) ?? null,
     splits: Array.isArray(r.splits) ? (r.splits as any[]) : null,
     distanceMi,
-  }, twins);
+  }, twins, Array.isArray(r.phases) ? r.phases : null);
   const rawSplits: any[] = (splitChoice?.splits as any[]) ?? [];
 
   /* ── does this array decompose THIS run? ──────────────────────────────
