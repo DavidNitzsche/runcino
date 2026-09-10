@@ -454,6 +454,26 @@ export interface RunData {
     atSec?: number;
   }>;
 
+  /**
+   * WALKBACK-SESSIONEND-1 (2026-09-09) · the plan's LAST recovery, cut short
+   * because the SESSION ended there — not because the runner chose to
+   * advance to something else. Written by
+   * `app/api/watch/workouts/complete/route.ts`'s `normalizeSessionEnded`.
+   * Deliberately NOT a member of `recoveryEndedEarly` above (Rule 16, one
+   * quantity one name): that field's own name says something came after;
+   * this is the phase nothing comes after. This fixes the defect where
+   * `endCurrentPhase()` used to write this exact case into
+   * `recoveryEndedEarly`, and the phone rendered "advanced early" for a
+   * runner who had simply finished his workout. ABSENT ON EVERY ROW BEFORE
+   * THIS FIELD SHIPPED, same posture as `recoveryEndedEarly`. Singular, not
+   * an array — a session ends exactly once, by construction.
+   */
+  sessionEnded?: {
+    phaseIndex?: number; phaseLabel?: string; phaseType?: string;
+    elapsedSecInPhase?: number; prescribedSecInPhase?: number;
+    atSec?: number; wasLastPrescribedPhase?: boolean;
+  };
+
   /** The watch's own id for the completion this row came from. 28% / 42%.
    *  Also the `coach_intents.field` value the full payload is filed under. */
   watchCompletionRef?: string;

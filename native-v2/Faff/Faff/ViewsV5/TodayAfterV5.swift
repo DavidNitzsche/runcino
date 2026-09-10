@@ -1600,9 +1600,31 @@ struct TodayAfterV5: View {
     /// populates it there (`V5WorkoutPhase.recoveryEndedEarly`'s own doc
     /// comment), so a work/warmup/cooldown phase is untouched by this arm
     /// and keeps exactly the behaviour the tests below already pin.
+    /// WALKBACK-SESSIONEND-1 (2026-09-09) · `sessionEnded` is a hard veto on
+    /// the "advanced early" sentence, checked FIRST and unconditionally —
+    /// before `endedEarly` is even consulted. The regression this closes:
+    /// the watch used to record the plan's LAST recovery (the final
+    /// walk-back after the last stride, with nothing left to advance to) as
+    /// an ordinary `RecoveryEndedEarlyRecord`, and this function rendered it
+    /// as "0:43 of 1:00 · advanced early" for a runner who had simply
+    /// finished his workout. David: "It must not be falsely described as a
+    /// normal mid-session advance if the runner simply ended the completed
+    /// workout." The server now writes these as two DIFFERENT facts
+    /// (`RunData.recoveryEndedEarly` vs `RunData.sessionEnded`) and never
+    /// both for the same phase, so `endedEarly` alone should already be nil
+    /// whenever `sessionEnded` is true — this check is the explicit,
+    /// testable belt to that suspenders, so a future bug that accidentally
+    /// populated both could never regress this sentence again. No note is
+    /// the correct rendering, not a placeholder for a better one: the
+    /// runner already sees the run ended here, and per the UX-simplification
+    /// doctrine ("only surface information that changes what the runner
+    /// should understand or do next"), stating that the workout ended
+    /// because the workout ended tells him nothing new.
     static func completionNote(
-        type: String?, completed: Bool?, endedEarly: V5RecoveryEndedEarly? = nil
+        type: String?, completed: Bool?, endedEarly: V5RecoveryEndedEarly? = nil,
+        sessionEnded: Bool = false
     ) -> String? {
+        if type == "recovery", sessionEnded { return nil }
         if type == "recovery", let e = endedEarly, e.prescribedSec > 0, e.actualSec >= 0 {
             let actual = FaffFmt.clock(sec: Double(e.actualSec)) ?? "0:00"
             let prescribed = FaffFmt.clock(sec: Double(e.prescribedSec)) ?? "0:00"
@@ -1625,7 +1647,7 @@ struct TodayAfterV5: View {
                 let incline = p.inclinePct.map { String(format: "%.1f%%", $0) } ?? ""
                 parts.append(String(format: "%.1fmph", speed) + (incline.isEmpty ? "" : "\u{00B7}\(incline)"))
             }
-            if let note = Self.completionNote(type: p.type, completed: p.completed, endedEarly: p.recoveryEndedEarly) {
+            if let note = Self.completionNote(type: p.type, completed: p.completed, endedEarly: p.recoveryEndedEarly, sessionEnded: p.sessionEnded) {
                 parts.append(note)
             }
             return RepPiece(

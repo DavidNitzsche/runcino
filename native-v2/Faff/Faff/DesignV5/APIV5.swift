@@ -331,6 +331,60 @@ struct V5WorkoutPhase: Decodable, Equatable {
     /// behaviour in that case rather than inferring a choice from
     /// `completed == false` alone.
     let recoveryEndedEarly: V5RecoveryEndedEarly?
+    /// WALKBACK-SESSIONEND-1 (2026-09-09) · true only for the plan's LAST
+    /// recovery, ended because the SESSION itself ended there rather than
+    /// the runner choosing to advance to something else. Resolved
+    /// server-side (`route.ts` matches `runs.data.sessionEnded` onto this
+    /// phase by index, the same way `recoveryEndedEarly` is matched) —
+    /// mutually exclusive with `recoveryEndedEarly` above by construction,
+    /// the watch writes one or the other for a given phase, never both.
+    /// Defaults `false` via `CodingKeys`-free `decodeIfPresent` semantics —
+    /// an older payload that predates this field decodes exactly as it
+    /// always did. See `TodayAfterV5.completionNote`'s doc comment for why
+    /// this is a distinct fact from `recoveryEndedEarly`, never a variant
+    /// reading of it (Rule 16, one quantity one name — "ended early" and
+    /// "the session ended here" are different facts about the same
+    /// recovery).
+    let sessionEnded: Bool
+
+    init(type: String?, label: String?, durationSec: Int?, avgHr: Int?, maxHr: Int?,
+         completed: Bool?, speedMph: Double?, inclinePct: Double?,
+         recoveryEndedEarly: V5RecoveryEndedEarly?, sessionEnded: Bool = false) {
+        self.type = type
+        self.label = label
+        self.durationSec = durationSec
+        self.avgHr = avgHr
+        self.maxHr = maxHr
+        self.completed = completed
+        self.speedMph = speedMph
+        self.inclinePct = inclinePct
+        self.recoveryEndedEarly = recoveryEndedEarly
+        self.sessionEnded = sessionEnded
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case type, label, durationSec, avgHr, maxHr, completed, speedMph, inclinePct
+        case recoveryEndedEarly, sessionEnded
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        type = try c.decodeIfPresent(String.self, forKey: .type)
+        label = try c.decodeIfPresent(String.self, forKey: .label)
+        durationSec = try c.decodeIfPresent(Int.self, forKey: .durationSec)
+        avgHr = try c.decodeIfPresent(Int.self, forKey: .avgHr)
+        maxHr = try c.decodeIfPresent(Int.self, forKey: .maxHr)
+        completed = try c.decodeIfPresent(Bool.self, forKey: .completed)
+        speedMph = try c.decodeIfPresent(Double.self, forKey: .speedMph)
+        inclinePct = try c.decodeIfPresent(Double.self, forKey: .inclinePct)
+        recoveryEndedEarly = try c.decodeIfPresent(V5RecoveryEndedEarly.self, forKey: .recoveryEndedEarly)
+        // Absent on any payload that predates this field — false, never a
+        // decode failure (Rule 11: "this run predates the field" and "the
+        // session did not end here" both read as absent on the wire, and
+        // the safe default for a note that only ever SUPPRESSES text is the
+        // one that suppresses nothing extra).
+        sessionEnded = try c.decodeIfPresent(Bool.self, forKey: .sessionEnded) ?? false
+    }
 }
 
 /// See `V5WorkoutPhase.recoveryEndedEarly`. Two absolute figures, never a

@@ -484,6 +484,10 @@ export async function loadPostRunExperience(
     // WALKBACK-2 · so `recoveriesHonestOf` can tell a chosen early end from
     // a genuinely short, unrecorded recovery. See `RunData.recoveryEndedEarly`.
     recoveryEndedEarly: data.recoveryEndedEarly,
+    // WALKBACK-SESSIONEND-1 · same reasoning, for the plan's last recovery
+    // ending because the session itself ended there. See
+    // `RunData.sessionEnded`.
+    sessionEnded: data.sessionEnded,
   });
 
   // ── the Evidence Engine ──────────────────────────────────────────────────

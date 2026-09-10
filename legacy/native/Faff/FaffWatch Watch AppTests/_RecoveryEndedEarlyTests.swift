@@ -223,4 +223,144 @@ struct RecoveryEndedEarlyTests {
         )
         #expect(decisions.isEmpty == false)
     }
+
+    // MARK: - 6 · WALKBACK-SESSIONEND-1 (2026-09-09) · the last recovery,
+    // ended because the SESSION ended, not because the runner chose to
+    // advance to something else.
+    //
+    // THE REGRESSION. `endCurrentPhase()` recorded `recordRecoveryEndedEarlyIfApplicable()`
+    // BEFORE `advance()` ever checked `currentIndex + 1 >= workout.phases.count`
+    // — the exact predicate that decides whether the plan is complete. So the
+    // plan's FINAL recovery (the walk-back after the last stride, with
+    // nothing left to advance to) got a `RecoveryEndedEarlyRecord` exactly
+    // like any genuine mid-session early end, and the phone rendered
+    // "0:43 of 1:00 · advanced early" for a runner who had simply finished
+    // his workout. David: "Specifically test the final recovery after the
+    // last stride. It must not be falsely described as a normal mid-session
+    // advance if the runner simply ended the completed workout."
+
+    /// Fixture: work(180s) → recovery(60s) — the recovery IS the plan's
+    /// LAST phase. Exactly David's "final walk-back after the last stride."
+    private func lastRecoveryWorkout() -> WatchWorkout {
+        let phases = [
+            WatchPhase(index: 0, type: .work, label: "Stride 6", durationSec: 180,
+                       targetPaceSPerMi: 391, tolerancePaceSPerMi: 10, haptic: .transitionWork),
+            WatchPhase(index: 1, type: .recovery, label: "Walk back", durationSec: 60,
+                       targetPaceSPerMi: nil, tolerancePaceSPerMi: nil, haptic: .transitionRecovery),
+        ]
+        return WatchWorkout(workoutId: "session-end-fixture", name: "R", summary: "r",
+                            totalEstimatedMinutes: 4, phases: phases,
+                            completionEndpoint: "/x", expiresAt: "2099-01-01T00:00:00Z")
+    }
+
+    /// THE EXACT CASE DAVID ASKED FOR. Ending the final walk-back early must
+    /// record a `SessionEndedRecord`, never a `RecoveryEndedEarlyRecord` —
+    /// this is the fail-before/pass-after case: reverting
+    /// `endCurrentPhase()`'s `endsSession` computation back to the
+    /// unconditional `recordRecoveryEndedEarlyIfApplicable()` call this
+    /// replaced makes this test fail with a populated `recoveryEndedEarly`
+    /// and a nil `sessionEnded` — confirmed by hand against the pre-fix
+    /// code per Rule 18 before this test was written to pass.
+    @Test func endingTheFinalWalkBackEarlyRecordsSessionEndedNotAdvancedEarly() throws {
+        let (engine, tracker) = newRig(lastRecoveryWorkout())
+        engine.start()
+        tracker.setFixture(pace: 391, hr: 165, cadence: 182, distanceMi: 0)
+
+        simulate(engine, seconds: 181)   // finish the last stride, enter the final walk-back
+        #expect(engine.currentPhase?.type == .recovery)
+
+        simulate(engine, seconds: 8)     // 8 of the modelled 60 seconds
+        engine.endCurrentPhase()         // "Go now" — with nothing left to advance to
+        #expect(engine.planComplete, "the plan's last phase just ended — nothing left to run")
+
+        engine.abandon()
+        let c = try #require(engine.completion)
+
+        // THE FIX: no `RecoveryEndedEarlyRecord` for this phase — "early"
+        // relative to nothing is not a fact this record may state.
+        #expect(c.recoveryEndedEarly == nil,
+                "the last recovery ending because the session is over is not an 'ended early, by choice' fact")
+
+        // Instead, an explicit `SessionEnded` record naming this as the
+        // plan's last phase.
+        let s = try #require(c.sessionEnded)
+        #expect(s.wasLastPrescribedPhase == true)
+        #expect(s.phaseType == "recovery")
+        #expect(s.phaseIndex == 1)
+        #expect(s.phaseLabel == "Walk back")
+        #expect(s.elapsedSecInPhase == 8)
+        #expect(s.prescribedSecInPhase == 60)
+        engine.reset()
+    }
+
+    /// THE ASYMMETRY THIS MUST NOT CREATE. The ORDINARY mid-session case —
+    /// a walk-back ended early with a rep still to come — is untouched:
+    /// still a `RecoveryEndedEarlyRecord`, never a `SessionEndedRecord`.
+    @Test func ordinaryMidSessionEarlyAdvanceCarriesNoSessionEndedRecord() throws {
+        let (engine, tracker) = newRig(recoveryWorkout())   // work → recovery → work
+        engine.start()
+        tracker.setFixture(pace: 391, hr: 165, cadence: 182, distanceMi: 0)
+        simulate(engine, seconds: 181)
+        simulate(engine, seconds: 43)
+        engine.endCurrentPhase()
+        #expect(engine.currentPhase?.type == .work, "advanced into rep 2 — something genuinely WAS next")
+        #expect(!engine.planComplete)
+
+        engine.abandon()
+        let c = try #require(engine.completion)
+        let recs = try #require(c.recoveryEndedEarly)
+        #expect(recs.count == 1, "the ordinary case is unaffected by this fix")
+        #expect(c.sessionEnded == nil, "there was a next phase to advance to — this was not a session end")
+        engine.reset()
+    }
+
+    /// The record survives a crash, same discipline as every other wrist
+    /// decision (RunSnapshot round trip).
+    @Test func sessionEndedSurvivesACrash() throws {
+        let w = lastRecoveryWorkout()
+        let decisions = WorkoutEngine.RunSnapshot.Decisions(
+            sessionEnded: WorkoutEngine.SessionEndedRecord(
+                phaseIndex: 1, phaseLabel: "Walk back", phaseType: "recovery",
+                elapsedSecInPhase: 8, prescribedSecInPhase: 60, atSec: 188,
+                wasLastPrescribedPhase: true
+            )
+        )
+        let snap = WorkoutEngine.RunSnapshot(
+            workoutId: w.workoutId,
+            workoutJSON: (try? JSONEncoder().encode(w)) ?? Data(),
+            startedAtEpoch: Date().timeIntervalSince1970 - 300,
+            currentIndex: 1,
+            planComplete: true,
+            bankedSec: 180,
+            phaseElapsedSec: 8,
+            phaseStartMi: 0,
+            results: [],
+            mileSplits: nil,
+            totalDistanceMi: nil,
+            savedAtEpoch: Date().timeIntervalSince1970,
+            decisions: decisions
+        )
+        let noStats = WorkoutTracker.RecoveredStats(
+            distanceMi: nil, avgHr: nil, maxHr: nil, kcal: nil, elapsedSec: 0, startDate: nil)
+        let c = WorkoutEngine.completionFromRecovery(snapshot: snap, stats: noStats)
+        let s = try #require(c.sessionEnded)
+        #expect(s.wasLastPrescribedPhase == true)
+        #expect(s.elapsedSecInPhase == 8)
+        #expect(s.prescribedSecInPhase == 60)
+        #expect(c.recoveryEndedEarly == nil)
+    }
+
+    /// The `Decisions.isEmpty` gate must count this new field too — a run
+    /// whose ONLY decision was the session ending on a short last recovery
+    /// must not snapshot as "nothing happened" and lose it to a crash.
+    @Test func decisionsCarryingOnlyASessionEndedRecordAreNotEmpty() {
+        let decisions = WorkoutEngine.RunSnapshot.Decisions(
+            sessionEnded: WorkoutEngine.SessionEndedRecord(
+                phaseIndex: 1, phaseLabel: "Walk back", phaseType: "recovery",
+                elapsedSecInPhase: 8, prescribedSecInPhase: 60, atSec: 188,
+                wasLastPrescribedPhase: true
+            )
+        )
+        #expect(decisions.isEmpty == false)
+    }
 }

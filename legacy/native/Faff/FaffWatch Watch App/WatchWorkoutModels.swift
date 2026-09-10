@@ -1511,6 +1511,36 @@ struct WatchCompletion: Encodable {
         }
     }
 
+    /// The plan's last recovery, cut short because the SESSION ended there —
+    /// not because the runner chose to advance to something else.
+    /// WALKBACK-SESSIONEND-1 (2026-09-09) · see
+    /// `WorkoutEngine.SessionEndedRecord`'s header for why this is a
+    /// distinct fact from `RecoveryEndedEarly` rather than a variant of it
+    /// (Rule 16: one quantity, one name — "ended early" and "the session
+    /// ended here" are different facts about the same recovery, and
+    /// collapsing them said the wrong one to the runner).
+    struct SessionEnded: Encodable {
+        let phaseIndex: Int?
+        let phaseLabel: String?
+        let phaseType: String?
+        let elapsedSecInPhase: Int?
+        let prescribedSecInPhase: Int?
+        let atSec: Int?
+        let wasLastPrescribedPhase: Bool
+
+        init(phaseIndex: Int? = nil, phaseLabel: String? = nil, phaseType: String? = nil,
+             elapsedSecInPhase: Int? = nil, prescribedSecInPhase: Int? = nil,
+             atSec: Int? = nil, wasLastPrescribedPhase: Bool = false) {
+            self.phaseIndex = phaseIndex
+            self.phaseLabel = phaseLabel
+            self.phaseType = phaseType
+            self.elapsedSecInPhase = elapsedSecInPhase
+            self.prescribedSecInPhase = prescribedSecInPhase
+            self.atSec = atSec
+            self.wasLastPrescribedPhase = wasLastPrescribedPhase
+        }
+    }
+
     /// nil unless the runner lifted the ceiling. Omitted from the wire when nil.
     var ceilingLift: CeilingLift? = nil
     /// nil unless at least one rep was skipped BY CHOICE. Never `[]` — see
@@ -1520,8 +1550,13 @@ struct WatchCompletion: Encodable {
     /// recordRecoveryExtension.
     var recoveryExtensions: [RecoveryExtension]? = nil
     /// nil unless at least one recovery was ended early BY CHOICE. Never
-    /// `[]` — see recordRecoveryEndedEarly.
+    /// `[]` — see recordRecoveryEndedEarly. Never populated for the plan's
+    /// LAST recovery when it ends the session — see `sessionEnded` below.
     var recoveryEndedEarly: [RecoveryEndedEarly]? = nil
+    /// nil unless the session ended on a recovery cut short by the WORKOUT
+    /// ending, not by choice. Singular, not an array — a session ends
+    /// exactly once, by construction. See `SessionEnded`'s header.
+    var sessionEnded: SessionEnded? = nil
 
     /// Append one skip, holding the wire contract: the field is either
     /// absent or a non-empty array. Assigning `[]` by hand would clobber a
@@ -1582,6 +1617,15 @@ struct WatchCompletion: Encodable {
     /// recordRepSkip: creates the array only by putting something in it.
     mutating func recordRecoveryEndedEarly(_ r: RecoveryEndedEarly) {
         recoveryEndedEarly = (recoveryEndedEarly ?? []) + [r]
+    }
+
+    /// Set the session-ended record. Not append-based like its siblings
+    /// above — `sessionEnded` is singular by construction, a session ends
+    /// exactly once — but still a dedicated setter, so a call site never
+    /// assigns the property directly and the "one per run" contract stays
+    /// visible at the call site.
+    mutating func recordSessionEnded(_ s: SessionEnded) {
+        sessionEnded = s
     }
 }
 
