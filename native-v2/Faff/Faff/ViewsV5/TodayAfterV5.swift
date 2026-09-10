@@ -1184,6 +1184,7 @@ struct TodayAfterV5: View {
                                 ? RouteMapView.paceColumnCaption(splits: model.routeSplits,
                                                                  phases: routePhaseSamples)
                                 : nil,
+                            coverageLine: milesCoverageLine,
                             paceColor: MileBreakdownV5.paceRamp(splits: model.routeSplits,
                                                                 phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,
@@ -1201,6 +1202,7 @@ struct TodayAfterV5: View {
                                 ? RouteMapView.paceColumnCaption(splits: model.routeSplits,
                                                                  phases: routePhaseSamples)
                                 : nil,
+                            coverageLine: milesCoverageLine,
                             paceColor: MileBreakdownV5.paceRamp(splits: model.routeSplits,
                                                                 phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,
@@ -1328,6 +1330,23 @@ struct TodayAfterV5: View {
         // No run total on this payload, so a trailing piece is sized only if
         // the wire told us its length. Unknown is not "a whole mile".
         MileBreakdownV5.pieces(from: model.routeSplits)
+    }
+
+    /// MILEFALLBACK-LABEL-1 (2026-09-09) · the caption drawn above the mile
+    /// table when its own numeral already gave up the claim
+    /// (`MilePiece.columnLabel` prints "Whole run", never a bare "1", for
+    /// exactly this row) — belt AND braces, because a runner skimming past
+    /// the numeral should still meet the sentence above the table, not just
+    /// the honest label inside it.
+    ///
+    /// Reuses `MileBreakdownV5.coverageLine`'s existing slot rather than
+    /// inventing a second caption mechanism: that slot's own header already
+    /// says its job is "what these rows cover, when they do not cover the
+    /// run [the way a mile table normally does]" — a single averaged row
+    /// standing in for every mile is exactly that case.
+    private var milesCoverageLine: String? {
+        guard milePieces.count == 1, milePieces[0].isWholeRunAverage else { return nil }
+        return "One row — the whole run's own measured pace, not a mile-cut split."
     }
 
     /// The samples the route map normalises its pace ramp across, built the
@@ -2547,7 +2566,8 @@ enum TodayAfterV5Samples {
             of: "\"routeSplits\": [],",
             with: """
             "routeSplits": [
-              { "mile": 1, "pace": "8:41", "hr": 133, "cadence": null, "elev_change_ft": null, "distanceMi": 5.01 }
+              { "mile": 1, "pace": "8:41", "hr": 133, "cadence": null, "elev_change_ft": null, "distanceMi": 5.01,
+                "source": "phase-fallback" }
             ],
             """))
 
@@ -2575,6 +2595,36 @@ enum TodayAfterV5Samples {
       "offSeason": null, "notOnPhoneYet": null,
       "routeSplits": [],
       "routePhases": [],
+      "postRun": {
+        "version": "1", "runId": "-218380344929823", "decisionVersion": "1",
+        "headline": "Easy done, strides sharp",
+        "summary": "5.0 mi easy at 8:41/mi, then six strides.",
+        "targetProvenanceNote": null, "noPrescribedStructure": false,
+        "cost": null,
+        "learned": "Threshold and durability both held; an easy day adds no new evidence.",
+        "change": "No change", "changeState": "UNCHANGED", "changes": [],
+        "next": null, "why": [],
+        "accessibilitySummary": "Easy run with six strides. No plan change.",
+        "capture": null, "coverage": null,
+        "strides": {
+          "summary": "6 of 6 strides completed. Six walk-backs between them, 0.27 mi.",
+          "recoveryCount": 6, "recoveryDistanceMi": 0.27,
+          "rows": [
+            { "ordinal": 1, "label": "Stride 1 of 6", "duration": "0:20",
+              "pace": { "text": "6:40/mi", "modelled": true }, "hr": 135, "distanceMi": 0.05 },
+            { "ordinal": 2, "label": "Stride 2 of 6", "duration": "0:22",
+              "pace": { "text": "7:20/mi", "modelled": true }, "hr": 137, "distanceMi": 0.05 },
+            { "ordinal": 3, "label": "Stride 3 of 6", "duration": "0:21",
+              "pace": { "text": "7:00/mi", "modelled": true }, "hr": 126, "distanceMi": 0.05 },
+            { "ordinal": 4, "label": "Stride 4 of 6", "duration": "0:20",
+              "pace": { "text": "6:40/mi", "modelled": true }, "hr": 109, "distanceMi": 0.05 },
+            { "ordinal": 5, "label": "Stride 5 of 6", "duration": "0:22",
+              "pace": { "text": "Pace unavailable", "modelled": true }, "hr": 131, "distanceMi": null },
+            { "ordinal": 6, "label": "Stride 6 of 6", "duration": "0:21",
+              "pace": { "text": "7:00/mi", "modelled": true }, "hr": 135, "distanceMi": 0.05 }
+          ]
+        }
+      },
       "workoutPhases": [
         { "type": "work", "label": "5.0 mi easy", "durationSec": 2607, "avgHr": 133, "maxHr": 144, "completed": true, "speedMph": null, "inclinePct": null },
         { "type": "work", "label": "Stride 1 of 6", "durationSec": 20, "avgHr": 135, "maxHr": 137, "completed": true, "speedMph": null, "inclinePct": null },

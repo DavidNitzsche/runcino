@@ -862,6 +862,14 @@ struct RunSplit: Decodable, Identifiable, Equatable {
     /// breakdown may then treat it as a whole mile only if it says so. A 4.02
     /// mile run is four miles and a 0.11 that the runner actually ran.
     let distanceMi: Double?
+    /// MILEFALLBACK-LABEL-1 (2026-09-09) · which instrument produced this
+    /// row — `'canonical'`, a twin's own ingest name, or `'phase-fallback'`
+    /// for the one averaged row `phaseFallbackSplits` derives when nothing
+    /// else cut the run into miles at all. Nil on any payload from before
+    /// this field existed, which `MilePiece.isWholeRunAverage` reads as "not
+    /// a fallback" — the only new claim this field can make is the honest
+    /// one, never a false positive on an old row.
+    let source: String?
 }
 
 // MARK: - Averaging a split array
