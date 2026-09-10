@@ -256,7 +256,22 @@ All six from v1 §13 stand, unchanged. Two new ones:
 - **v1 checkpoint commit (handback + 4 domain reports, verbatim):** `5b41b0d99706bb5440f6d3a9a0e2a2aad2b73710`
 - **v1 final-report commit:** `c99d924ea` *(full: run `git log --oneline audit/brain-forensic-2026-09-10` for the complete hash)*
 - **This v2 correction is written to:** `docs/audit-2026-09-10-brain-adaptation-forensic-audit-v2-CORRECTED.md` — commit SHA and file hash to be recorded immediately after this file is committed (see the commit that follows this document).
-- **Current `origin/main` at completion:** unchanged from this branch's base — `origin/main` was not re-fetched during this correction pass; the last confirmed value (start of this session) was `80fca013f94b99ee5af3f84e79590591d42141da`, identical to this branch's base, meaning no new commits landed on `main` during this pass that this report is unaware of, **but this was not re-verified with a fresh `git fetch` at the moment of writing this section** — treat as `[INF]`, not `[PROD-RO]`-equivalent certainty.
+- **Current `origin/main` at completion (freshly fetched):** `99757c1204f27a1fa86504efd580842bc81c72b2` — has moved ahead of this branch's base (`80fca013f`) during this session, as expected given other work continues on `main` concurrently. This audit branch was never rebased onto the new tip and nothing here depends on doing so; `[SRC]`/`[PROD-RO]` citations throughout this report remain pinned to the base commit stated above unless a specific claim says otherwise.
+- **Final report commit SHA (this v2 document):** `6b5f565041c50c4afd426ea7a05375ddf993b683`
+- **v2 report file hash:** `d5344a820abd3fd8b12175b95f74e302f7cebbd3` (`git hash-object`)
+- **Final `git status` at completion (unrelated concurrent-session files, confirmed untouched):**
+  ```
+   M docs/audit-2026-09-09-historical-data-forensic-audit.md
+   M docs/reports/historical-data-audit-2026-09-09/domain-{A,B,C,D}-*.md
+  ?? AGENTS.md
+  ?? docs/audit-2026-09-09-coach-forensic-audit.md
+  ?? docs/audit-2026-09-09-historical-data-forensic-audit-v1-to-v2-delta-log.md
+  ?? docs/audit-2026-09-09-historical-data-forensic-audit-v2*.md  (v2 and v2.1, plus a v2-to-v2.1 delta log)
+  ?? docs/reports/coach-audit-2026-09-09/
+  ?? docs/reports/historical-data-audit-2026-09-09/domain-B-cohort-completion.md
+  ?? docs/reports/historical-data-audit-2026-09-09/v2-correction-*.md  (4 files)
+  ```
+  All of the above belong to a separate concurrent session working directly in this shared checkout, confirmed still growing in number and still entirely uncommitted at the time this report's commit landed. None of it was read, incorporated, or touched.
 - **Concurrent uncommitted work exclusion, confirmed:** throughout this entire session, a separate concurrent process was found working directly and uncommitted in this same shared checkout (modifying the original v1 handback/domain-report files in place, and adding its own untracked "v1-to-v2-delta" and "coach-forensic-audit" files). None of that work was read, incorporated, merged, or committed by this pass at any point. Every commit this pass made staged and committed **only its own newly-created files, by explicit path** — `git add -A` was never used. This will be re-confirmed with a final `git status` immediately after this document is committed.
 
 *No code changes, migrations, or production writes were made in the production of this correction. Every new factual claim above traces to a freshly-dispatched, independent investigation completed after v1 shipped.*
