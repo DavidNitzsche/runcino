@@ -895,6 +895,11 @@ struct TodayHostV5: View {
                     )
                     hero()
                 }
+                // SCROLLCLOCK-1 (PanelV5.swift) · lets the ScrollView's own
+                // cap below know when the panel above has scrolled fully
+                // off screen, so nothing in `content()` can collide with the
+                // status-bar clock.
+                .v5MeasureFullBleedPanel()
                 content()
             }
             .padding(.horizontal, V5.S.gutter)
@@ -902,6 +907,7 @@ struct TodayHostV5: View {
             .v5PageWidth()
         }
         .background(V5.surfacePage)
+        .v5ScrollSafeTop(fill: fill)
         }
     }
 
@@ -2971,28 +2977,34 @@ struct SettingsHostV5: View {
                     // the same treatment `TodayHostV5.pendingCard`'s `.failed`
                     // case already uses (HostsV5.swift ~338) — reused rather
                     // than invented, per this fix's own brief.
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-                            AppBar(title: "Settings", onBack: { dismiss() })
-                            ErrorNote(text: loadFailure.message, onRetry: { requestLoad() })
-                            // SETTINGSDIAG-1 (2026-09-07 review) · THE DOOR
-                            // HAS TO EXIST ON THE SCREEN THAT NEEDS IT.
-                            //
-                            // Settings is the only way into the request
-                            // diagnostics sheet, and the hidden seven-tap
-                            // gesture lived on the version footer of the
-                            // LOADED screen only. So a runner looking at
-                            // "Can't reach faff" — the exact moment the
-                            // request log is worth reading, and the exact
-                            // moment a support conversation needs the build
-                            // number — had no way to reach either. The same
-                            // footer, on the failure state.
-                            SettingsDiagnosticsFooter()
+                    // SCROLLCLOCK-1 (2026-09-09) · `AppBar` pinned OUTSIDE
+                    // the `ScrollView`, same fix as `SettingsV5.swift`'s own
+                    // loaded state — this failure state had the identical
+                    // bug, just less often seen.
+                    VStack(spacing: 0) {
+                        AppBar(title: "Settings", onBack: { dismiss() })
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                                ErrorNote(text: loadFailure.message, onRetry: { requestLoad() })
+                                // SETTINGSDIAG-1 (2026-09-07 review) · THE DOOR
+                                // HAS TO EXIST ON THE SCREEN THAT NEEDS IT.
+                                //
+                                // Settings is the only way into the request
+                                // diagnostics sheet, and the hidden seven-tap
+                                // gesture lived on the version footer of the
+                                // LOADED screen only. So a runner looking at
+                                // "Can't reach faff" — the exact moment the
+                                // request log is worth reading, and the exact
+                                // moment a support conversation needs the build
+                                // number — had no way to reach either. The same
+                                // footer, on the failure state.
+                                SettingsDiagnosticsFooter()
+                            }
+                            .padding(.horizontal, V5.S.gutter)
+                            .v5PageWidth()
                         }
-                        .padding(.horizontal, V5.S.gutter)
-                        .v5PageWidth()
+                        .background(V5.surfacePage)
                     }
-                    .background(V5.surfacePage)
                 } else {
                     ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
                         .background(V5.surfacePage)

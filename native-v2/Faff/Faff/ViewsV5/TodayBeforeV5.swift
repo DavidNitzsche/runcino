@@ -396,6 +396,11 @@ struct TodayBeforeV5: View {
             }
             .zIndex(7)
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift. Caps the status-bar band with the
+        // same slice of `panel`'s own gradient that shows there at rest, so no
+        // section eyebrow below it can ever collide with the clock once the
+        // panel itself has scrolled away.
+        .v5ScrollSafeTop(fill: panelFill)
     }
 
     // MARK: - Panel
@@ -455,6 +460,9 @@ struct TodayBeforeV5: View {
                 }
             )
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift. Lets `.v5ScrollSafeTop()` below
+        // know when this panel has scrolled fully off the top of the screen.
+        .v5MeasureFullBleedPanel()
     }
 
     private var avatarInitials: String {

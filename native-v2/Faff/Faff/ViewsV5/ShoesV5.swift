@@ -112,10 +112,15 @@ struct ShoesV5: View {
     private var retired: [Shoe] { shoes.filter { $0.retired == true } }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                AppBar(title: "Shoes", onBack: onBack)
-
+        // SCROLLCLOCK-1 (2026-09-09) · `AppBar` pinned OUTSIDE the
+        // `ScrollView` — see `SettingsV5.swift`'s identical fix for the full
+        // reasoning. A `ScrollView`'s content clips to the ScrollView's OWN
+        // frame, and that frame now starts below `AppBar` rather than at the
+        // very top of the screen, so nothing scrolled inside it can ever
+        // reach the status bar.
+        VStack(spacing: 0) {
+            AppBar(title: "Shoes", onBack: onBack)
+            ScrollView {
                 // The prototype's content band specified `gap:24px` here; unified
                 // onto the app's one "between top-level sections" rhythm instead —
                 // see `betweenGroups`'s own doc comment.

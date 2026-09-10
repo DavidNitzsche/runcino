@@ -199,6 +199,12 @@ struct RacesV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
+        // SCROLLCLOCK-1 (PanelV5.swift) · caps the status-bar band with the
+        // same slice of `heroPanel`'s own gradient that shows there at rest,
+        // so no section header below it (the evidence list, the log) can
+        // ever collide with the clock once the panel itself has scrolled
+        // away.
+        .v5ScrollSafeTop(fill: model.panel.fill)
     }
 
     // MARK: Hero
@@ -278,6 +284,8 @@ struct RacesV5: View {
                 PanelStat(s.label, s.value.value, ink: s.toneValue.inkOverride)
             })
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift.
+        .v5MeasureFullBleedPanel()
     }
 }
 

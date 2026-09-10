@@ -522,6 +522,195 @@ struct PanelShape: Shape {
     }
 }
 
+// MARK: - SCROLLCLOCK-1 (2026-09-09) · the status-bar clock stays legible
+// once the hero has scrolled past
+//
+// ─────────────────────────────────────────────────────────────────────────
+// THE DEFECT
+//
+// Every screen that opens with a `DayPanel` (Today, Block, Races, and the
+// `StateScreenScaffold` states — rest day, injury flare, no-plan, off-season)
+// puts that panel as the FIRST row of one continuous `ScrollView`. The panel
+// reaches behind the status bar on purpose (see `DayPanel`'s own header
+// comment, and FULLBLEED-1→3 in `StaleStateV5.swift`, which pixel-verified
+// that exact bleed). For that bleed to be paintable at all, the ENCLOSING
+// `ScrollView`'s own frame has to run edge-to-edge from y=0 — confirmed
+// directly against a real device build (`Find the ScrollView at {{0.0, 0.0},
+// {402.0, 778.0}}`), not inferred from reading the modifiers.
+//
+// Nothing else in the chain narrows that back down once the panel is no
+// longer the topmost thing. A ScrollView's content is free to occupy any
+// point within its own frame, so as the runner scrolls, WHATEVER comes after
+// the panel — a section eyebrow, a coach paragraph, a table header — passes
+// through y=0 exactly like the panel's gradient did, except it is plain body
+// text on `V5.surfacePage` with nothing behind it. Confirmed by rendering
+// against real production data on two independent screens: Settings' own
+// "Decisions" row title sat directly under the clock digits, and Block's
+// "long run is what proves you can race it" paragraph did the same one
+// scroll-page later, and its "Change the plan" row header the scroll-page
+// after that. Today shares the identical construction.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// WHY NOT A SCRIM, AND WHY NOT SCROLL-POSITION TRACKING
+//
+// `ComponentsV5.swift`'s `AppBar` and `ShellV5.swift`'s shell both carry the
+// same standing note: "VW-1 (a status-bar scrim over every AppBar screen)
+// was tried and explicitly rejected by David — 'the status bar skrim and
+// fade is WRONG and should not be there.'" That was a decorative, translucent
+// gradient painted OVER whatever content was there, all the time. This is
+// not that.
+//
+// The natural design — show a cap ONLY once the panel has scrolled fully out
+// of view — needs to know where the ScrollView's content currently sits.
+// Two independent, standard techniques were built and FALSIFIED against a
+// real simulator build of exactly this screen (screenshots kept, not
+// asserted from reading the code):
+//
+//   1. `GeometryReader` + `PreferenceKey`, the idiom `NonShrinkingSlot`
+//      already uses safely for a ONE-TIME height read. The published offset
+//      stayed frozen at zero through six full scroll steps, against both a
+//      named coordinate space anchored on the ScrollView and `.global`.
+//   2. KVO directly on `UIScrollView.contentOffset`, reached by walking a
+//      `UIViewRepresentable`'s own `superview` chain, then — when that came
+//      back empty — by a breadth-first search of the whole key window. Both
+//      came back `found=N` for the same six-step scroll. `ShellV5.swift`
+//      keeps every tab's `NavigationStack` mounted with `.compositingGroup()`
+//      + `.opacity(...)` toggling so the launch gate can wait on all three;
+//      the most likely explanation is that this flattens the hidden-vs-shown
+//      tabs into a rendering path a `UIViewRepresentable` cannot walk out of
+//      by ordinary view-hierarchy traversal.
+//
+// Both are one-shot-measurement techniques asked to do a continuous-tracking
+// job, which is exactly the mismatch `V5ScrollOffsetStore`'s own doc comment
+// (deleted along with the rest of that attempt) called out before either was
+// falsified: `NonShrinkingSlot` and the panel-height read below are ONE-TIME
+// reads, which is what `GeometryReader`/KVO-on-mount are good for; a value
+// that has to update every scroll frame is a different job, and neither
+// mechanism reached it on this screen.
+//
+// So this does not track scroll position AT ALL. It draws a cap in the exact
+// slice of the panel's own gradient that would otherwise be visible there —
+// same colours, same crop, computed from the ONE measurement that DOES work
+// (the panel's rendered height, a one-shot read) — and leaves it up always,
+// not gated on scroll. At rest it is pixel-for-pixel what the panel already
+// paints in that band, so there is no visible change; once the panel scrolls
+// away, the same swatch simply keeps sitting there instead of anything
+// scrolling in behind it. `\.v5TopInset` and `DayPanel`'s own trick are read,
+// never written, by anything below — FULLBLEED-3's pixel-identical crossfade
+// is untouched.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// THE CROP MATH
+//
+// `DayPanel.body` (above in this file): the content gets `.padding(.top,
+// topInset)` BEFORE `.background{gradient}`, so the gradient's own rendered
+// frame is `panelHeight + topInset` tall, where `panelHeight` is what
+// `.v5MeasureFullBleedPanel()` reports (the panel's OUTER size, which — because
+// the later `.padding(.top, -topInset)` gives back exactly what the first
+// padding added — equals the panel's natural, un-bled height). The whole
+// gradient+background is then shifted up by `topInset` (that second,
+// negative padding), so on screen it spans y ∈ [-topInset, panelHeight]
+// relative to wherever the panel sits. The visible sliver behind the status
+// bar is screen y ∈ [0, topInset], which in the gradient's OWN local
+// coordinates (measuring from ITS top) is y ∈ [topInset, 2×topInset] — i.e.
+// crop a `topInset`-tall window starting `topInset` down from the top of a
+// gradient rendered at `panelHeight + topInset` tall. `V5FullBleedCap` does
+// exactly that with `.offset` + `.frame(alignment: .top).clipped()`.
+//
+// ─────────────────────────────────────────────────────────────────────────
+// HOW TO USE IT
+//
+// 1. `.v5MeasureFullBleedPanel()` on the `DayPanel` call publishes its own
+//    rendered height — a one-shot measurement, the case `GeometryReader` +
+//    `PreferenceKey` actually suits.
+// 2. `.v5ScrollSafeTop(fill:)`, attached anywhere above the ScrollView (the
+//    same `PanelFill` the screen's own `DayPanel` was given), draws the crop
+//    described above, always on, once the height lands.
+//
+// A screen with no `DayPanel` (an `AppBar` screen) does not need any of this
+// — see those screens' own fix instead: `AppBar` moved OUTSIDE the
+// `ScrollView` so the ScrollView's frame never reaches y=0 in the first
+// place, which is the simpler fix available when there is a real pinned
+// header to make responsible for that boundary.
+
+private struct V5FullBleedPanelHeightKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+}
+
+extension View {
+    /// Tag the `DayPanel` call directly: `DayPanel(fill: …) { … }
+    /// .v5MeasureFullBleedPanel()`.
+    func v5MeasureFullBleedPanel() -> some View {
+        background(
+            GeometryReader { g in
+                Color.clear.preference(key: V5FullBleedPanelHeightKey.self, value: g.size.height)
+            }
+        )
+    }
+
+    /// Attach anywhere above the tagged `ScrollView` (the screen's outermost
+    /// `ZStack`/body is fine — preferences bubble up through the whole tree).
+    /// `fill` is the SAME `PanelFill` the screen's own `DayPanel` was given —
+    /// see this section's header for what this draws and why.
+    func v5ScrollSafeTop(fill: PanelFill) -> some View {
+        modifier(V5ScrollSafeTopModifier(fill: fill))
+    }
+}
+
+/// The exact slice of a `DayPanel`'s own gradient that shows behind the
+/// status bar — see "THE CROP MATH" above. `.quiet` panels have no gradient
+/// to crop; `V5.surfacePage` there is not a fallback guess, it is what
+/// `DayPanel`'s own `gradientLayer(.quiet)` paints, so this is still the
+/// exact same pixels, not an approximation.
+private struct V5FullBleedCap: View {
+    let fill: PanelFill
+    let panelHeight: CGFloat
+    let topInset: CGFloat
+
+    var body: some View {
+        switch fill {
+        case .quiet:
+            V5.surfacePage
+        case .state(let s):
+            V5Ramp.gradient(s)
+                .frame(height: panelHeight + topInset)
+                .offset(y: -topInset)
+                .frame(height: topInset, alignment: .top)
+                .clipped()
+        }
+    }
+}
+
+private struct V5ScrollSafeTopModifier: ViewModifier {
+    let fill: PanelFill
+    /// The real device inset — the exact same source `DayPanel` reads, so the
+    /// crop is always the same height the panel's own bleed occupies.
+    @Environment(\.v5TopInset) private var topInset
+    @State private var panelHeight: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            .onPreferenceChange(V5FullBleedPanelHeightKey.self) { height in
+                if height > 0 { panelHeight = height }
+            }
+            .overlay(alignment: .top) {
+                // `panelHeight > 0` guards the window before the first layout
+                // pass has reported anything — Rule 11: an unmeasured height
+                // is not a zero height, so this draws nothing rather than a
+                // wrongly-sized cap for that one frame.
+                if panelHeight > 0 {
+                    V5FullBleedCap(fill: fill, panelHeight: panelHeight, topInset: topInset)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: topInset)
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+                        .accessibilityHidden(true)
+                }
+            }
+    }
+}
+
 // MARK: - The hero content block (HEROPANEL-1, 2026-09-04)
 
 /// The kicker/type/dose/stats block every day-state panel draws, extracted

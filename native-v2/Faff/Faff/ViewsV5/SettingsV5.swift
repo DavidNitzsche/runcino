@@ -234,10 +234,21 @@ struct SettingsV5: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                AppBar(title: "Settings", onBack: onBack)
-
+        // SCROLLCLOCK-1 (2026-09-09) · `AppBar` used to be the FIRST row
+        // inside the `ScrollView` below, so it scrolled away like everything
+        // else — confirmed by rendering against real production data: past
+        // a few rows of scroll, plain body text ("Decisions", further down
+        // "RUN sits in the bottom bar") sat directly under the status-bar
+        // clock, illegible. Pinning `AppBar` OUTSIDE the `ScrollView`, as a
+        // real sibling above it, fixes this structurally rather than by
+        // adding any kind of scrim: a `ScrollView`'s content is clipped to
+        // the ScrollView's OWN frame, and that frame now starts below
+        // `AppBar` instead of at the very top of the screen, so nothing
+        // scrolled inside it can ever reach the status bar. Same fix as
+        // `RequestDiagnosticsView`, which had this right already.
+        VStack(spacing: 0) {
+            AppBar(title: "Settings", onBack: onBack)
+            ScrollView {
                 // The prototype's content band specified `gap:24px` here; unified
                 // onto the app's one "between top-level sections" rhythm instead —
                 // see `betweenGroups`'s own doc comment.

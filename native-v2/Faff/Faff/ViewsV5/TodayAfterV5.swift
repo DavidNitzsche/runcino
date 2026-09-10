@@ -379,6 +379,11 @@ struct TodayAfterV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
+        // SCROLLCLOCK-1 (PanelV5.swift) · caps the status-bar band with the
+        // same slice of `panel`'s own gradient that shows there at rest, so
+        // no section below it can ever collide with the clock once the
+        // panel itself has scrolled away.
+        .v5ScrollSafeTop(fill: panelFill)
     }
 
     // MARK: - Strava push
@@ -554,6 +559,8 @@ struct TodayAfterV5: View {
 
             posterStatsRow
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift.
+        .v5MeasureFullBleedPanel()
     }
 
     /// Distance / time / pace, read positionally off `panel.stats` (falling

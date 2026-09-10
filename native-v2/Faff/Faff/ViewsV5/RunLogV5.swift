@@ -43,13 +43,18 @@ struct RunLogV5: View {
     var onBack: (() -> Void)? = nil
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                // 22a's drawn AppBar title. "Runs" was the Block row's label
-                // leaking into the screen it opens; the screen is a history,
-                // and the drawn title says so.
-                AppBar(title: "Past runs", eyebrow: eyebrow, onBack: onBack)
-
+        // SCROLLCLOCK-1 (2026-09-09) · `AppBar` pinned OUTSIDE the
+        // `ScrollView` — see `SettingsV5.swift`'s identical fix for the full
+        // reasoning. A `ScrollView`'s content clips to the ScrollView's OWN
+        // frame, and that frame now starts below `AppBar` rather than at the
+        // very top of the screen, so nothing scrolled inside it can ever
+        // reach the status bar.
+        VStack(spacing: 0) {
+            // 22a's drawn AppBar title. "Runs" was the Block row's label
+            // leaking into the screen it opens; the screen is a history,
+            // and the drawn title says so.
+            AppBar(title: "Past runs", eyebrow: eyebrow, onBack: onBack)
+            ScrollView {
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
                     if log.weeks.isEmpty {
                         // RULE THREE: a runner with nothing logged yet is not

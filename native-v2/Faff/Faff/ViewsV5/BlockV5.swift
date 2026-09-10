@@ -248,6 +248,12 @@ struct BlockV5: View {
                 if let p = openProposalDetail { ProposalDetailV5(proposal: p) }
             }
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift. Caps the status-bar band with the
+        // same slice of `panel`'s own gradient that shows there at rest, so no
+        // section header below it (soFar, the arc, the answers, the weeks
+        // table) can ever collide with the clock once the panel itself has
+        // scrolled away.
+        .v5ScrollSafeTop(fill: model.panel.fill)
     }
 
     // MARK: Panel
@@ -335,6 +341,8 @@ struct BlockV5: View {
                 })
             }
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift.
+        .v5MeasureFullBleedPanel()
     }
 
     // MARK: The arc
