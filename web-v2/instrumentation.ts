@@ -147,3 +147,121 @@ export async function register(): Promise<void> {
 
   console.log(`[cron-tick] heartbeat armed · every ${TICK_INTERVAL_MS / 60000}m against ${base}`);
 }
+
+/**
+ * onRequestError · Next.js's own global error hook (stable since Next 15;
+ * this app is on 15.1.6 — no `experimental.instrumentationHook` flag needed).
+ * Next calls this for every error that escapes a Server Component, Route
+ * Handler, Server Action or Middleware, BEFORE it renders that error's own
+ * response — which makes it the correct EXTENSION point for CLAUDE.md's
+ * instruction to extend an existing shared error mechanism rather than build
+ * a second, parallel one. It requires editing ZERO of the 154 existing
+ * `app/api/**` route files: every unhandled exception any of them already
+ * throws is caught here automatically.
+ *
+ * 2026-09-09 · bounded, non-destructive production-observability work for the
+ * real, unresolved 502/~13-second-timeout incident (David's authorization:
+ * "distinguish edge, application, database/pool, upstream and client-timeout
+ * failure classes and provide a durable correlation ID"). This is the
+ * APPLICATION-class backbone of that work; `lib/observability/with-
+ * observability.ts` is the opt-in per-route companion for the two things
+ * this hook structurally cannot see (a route that returns an explicit 5xx
+ * JSON body without throwing, and the incoming request's own abort signal —
+ * see that file's header for why both need a separate mechanism).
+ *
+ * The `request`/`context` shapes below are Next.js's documented
+ * `onRequestError` contract (nextjs.org/docs/app/api-reference/file-
+ * conventions/instrumentation#onrequesterror-optional). Typed narrowly and
+ * accessed defensively (optional chaining throughout) rather than importing
+ * a Next-internal type, because this worktree has no `node_modules` to
+ * typecheck against (see CLAUDE.md's "verify by self-audit" doctrine) — if
+ * a future Next version reshapes this contract, defensive access degrades to
+ * "correlation id defaults to a fresh one, class defaults from the error
+ * alone" rather than throwing inside an error handler, which would be the
+ * worst possible failure mode for this specific file.
+ *
+ * RULE 19, CAUGHT THIS TIME BY THE GATE IT ADDED: the first version of this
+ * hook imported `lib/observability/record.ts` directly, which reaches
+ * `@/lib/db/pool` → `pg`. `next build`'s pre-push check (the exact check
+ * Rule 19 added after `lthr-reanchor.ts`'s dynamic import did the same thing
+ * to `main` for a full day) failed immediately: this file is bundled for
+ * BOTH the Node and Edge runtimes, and the `fs`/`path`/`stream` `pg` needs do
+ * not exist in the edge bundle — a `NEXT_RUNTIME` check at RUN time does not
+ * stop webpack needing to resolve the import graph at BUILD time. Fixed the
+ * way `register()` above already solves the identical problem for the cron
+ * tick: this hook imports only the PURE, dependency-free `classify.ts`/
+ * `constants.ts` directly, and relays the actual database write to
+ * `POST /api/internal/observability/record` — an ordinary Node-runtime route
+ * (routes are never edge-bundled by default; 154 of them already import
+ * `@/lib/db/pool` directly with no issue) — over the same loopback base URL
+ * `register()` already resolves, with the same `CRON_SECRET` bearer auth
+ * `/api/cron/tick` already uses. See that route's header for the full story.
+ */
+export async function onRequestError(
+  error: unknown,
+  request: {
+    path?: string;
+    method?: string;
+    headers?: Record<string, string | string[] | undefined>;
+  },
+  context: {
+    routerKind?: string;
+    routePath?: string;
+    routeType?: string;
+  },
+): Promise<void> {
+  // Same Node-only guard as register() — this file is also evaluated for the
+  // Edge runtime, which cannot run the Node-only fetch-with-secret call below
+  // (the secret should never be reachable from an edge-bundled code path).
+  if (process.env.NEXT_RUNTIME !== 'nodejs') return;
+
+  const secret = process.env.CRON_SECRET;
+  if (!secret) return; // same silent-skip posture as register() when unset
+
+  try {
+    const { classifyFailure } = await import('./lib/observability/classify');
+    const { CORRELATION_ID_HEADER } = await import('./lib/observability/constants');
+
+    const headerBag = request?.headers ?? {};
+    const rawHeaderVal = headerBag[CORRELATION_ID_HEADER] ?? headerBag[CORRELATION_ID_HEADER.toUpperCase()];
+    const headerVal = Array.isArray(rawHeaderVal) ? rawHeaderVal[0] : rawHeaderVal;
+    // middleware.ts mints/forwards this id for every /api/* request before
+    // the route handler ever runs, so it should normally be present here.
+    // Falling back to a fresh id rather than throwing keeps this hook alive
+    // for the one case it exists to cover even if that assumption is wrong.
+    const correlationId = headerVal && headerVal.trim().length > 0 ? headerVal.trim().slice(0, 128) : `no-header-${Date.now()}`;
+
+    const classified = classifyFailure(error);
+    const base = process.env.CRON_TICK_BASE_URL?.replace(/\/+$/, '')
+      ?? `http://127.0.0.1:${process.env.PORT ?? '3000'}`;
+
+    await fetch(`${base}/api/internal/observability/record`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${secret}` },
+      body: JSON.stringify({
+        correlationId,
+        routePath: context?.routePath || request?.path || 'unknown',
+        httpMethod: request?.method || 'UNKNOWN',
+        failureClass: classified.failureClass,
+        // Next.js is about to render its own 500 for a Route Handler whose
+        // error escaped this far — an approximation stated as one, not a
+        // fact this hook independently confirmed (it never sees the response
+        // Next.js goes on to send).
+        httpStatus: 500,
+        errorMessage: error instanceof Error ? error.message : String(error),
+        errorStack: error instanceof Error ? error.stack : undefined,
+        upstreamService: classified.upstreamService,
+        metadata: { detail: classified.detail, routerKind: context?.routerKind, routeType: context?.routeType },
+        source: 'instrumentation.onRequestError',
+      }),
+      // Bounded, same order of magnitude as ops/sentry.ts's own outbound
+      // timeouts — this hook must never itself become a hang.
+      signal: AbortSignal.timeout(3000),
+    });
+  } catch (hookError) {
+    // This IS the error-reporting path; it must not become the thing that
+    // throws (Rule 18 — `lib/ops/sentry.ts`'s own header makes the same
+    // promise: "error reporting can't error itself").
+    console.error('[instrumentation] onRequestError observability hook failed:', hookError);
+  }
+}

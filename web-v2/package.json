@@ -14,6 +14,7 @@
     "test:watch": "vitest",
     "harness:adapt": "bash scripts/adapt-harness.sh",
     "harness:adapt:refresh": "bash scripts/adapt-harness.sh --refresh",
+    "harness:observability": "bash scripts/observability-falsifier.sh",
     "test:doctrine": "bash ../scripts/check-doctrine.sh",
     "test:falsify": "vitest run --config vitest.falsify.config.ts",
     "test:wire": "bash ../scripts/check-wire-keys.sh",

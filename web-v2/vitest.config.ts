@@ -31,9 +31,19 @@ export default defineConfig({
     //
     // They run through `npm run harness:adapt` (scripts/adapt-harness.sh), which
     // points DATABASE_URL at a local scratch database first.
+    //
+    // lib/observability/harness/* is EXCLUDED for the identical reason
+    // (2026-09-09 · bounded 502-incident observability work): its falsifier
+    // writes real rows to `request_failures` to prove `recordRequestFailure`/
+    // `classifyFailure` actually catch what they claim to (Rule 18). It runs
+    // through `npm run harness:observability` (scripts/observability-
+    // falsifier.sh), which points DATABASE_URL at its own local scratch
+    // database (`faff_observability_scratch`) before vitest starts, and never
+    // loads `.env.local`.
     exclude: [
       '**/node_modules/**', '**/dist/**', '**/._*',
       'lib/adaptation-harness/**',
+      'lib/observability/harness/**',
     ],
     passWithNoTests: false,
   },
