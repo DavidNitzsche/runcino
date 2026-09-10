@@ -2442,4 +2442,77 @@ enum TodayAfterV5Samples {
       "notOnPhoneYet": null
     }
     """
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ROUTING-1, 2026-09-09 · the owner's real 5-mile-easy-plus-6-strides run
+    // (`runs.id -218380344929823`), read read-only at `faff_readonly`.
+    //
+    // `phases` below is verbatim off `data.phases`. `routeSplits`/`routePhases`
+    // are forced empty to reproduce the window the investigation proved real:
+    // the row's own `fetched_at` (14:17:04) sits nineteen minutes before its
+    // own `data.ingestedAt` (14:36:46) — the same canonical row written more
+    // than once, `phases` landing before `splits`.
+    //
+    // BEFORE the fix this rendered `workoutPhasePieces` raw — fourteen rows,
+    // the 5.0 mi body and six strides indistinguishable from their six
+    // walk-backs, every `actualPace` nil. AFTER the fix (this entry) the
+    // screen draws nothing extra rather than the wrong lane — Rule 11's
+    // refusal — because the run is not indoor.
+    static let routing1MidWrite: V5Today = decode(routing1MidWriteJSON)
+
+    /// The same run, with the server-side fix's one honest row on
+    /// `routeSplits` (`phaseFallbackSplits`, `lib/runs/splits-pick.ts`) — the
+    /// 5.0 mi work phase's own measured distance and pace, restoring the
+    /// `.milesAndSections` lane.
+    static let routing1PhaseFallback: V5Today = decode(
+        routing1MidWriteJSON.replacingOccurrences(
+            of: "\"routeSplits\": [],",
+            with: """
+            "routeSplits": [
+              { "mile": 1, "pace": "8:41", "hr": 133, "cadence": null, "elev_change_ft": null, "distanceMi": 5.01 }
+            ],
+            """))
+
+    private static let routing1MidWriteJSON = """
+    {
+      "dateISO": "2026-09-09",
+      "state": "after_run",
+      "workoutType": "easy",
+      "panel": {
+        "dayState": "easy", "quiet": false, "place": "Today",
+        "dateLine": "Wednesday 9 Sep", "weekLine": "Logged 49:07",
+        "kicker": null, "type": "Easy", "dose": null,
+        "stats": [
+          { "label": "Distance", "value": { "text": "5.58", "modelled": false }, "tone": null },
+          { "label": "Time", "value": { "text": "49:07", "modelled": false }, "tone": null },
+          { "label": "Pace", "value": { "text": "8:48", "modelled": false }, "tone": null }
+        ]
+      },
+      "weekStrip": [], "groups": [], "why": null,
+      "whereYouAre": [], "beforeYouGo": [], "askedVsRan": [],
+      "verdict": null, "facts": [], "win": null, "conditionsNote": null, "coachTip": null,
+      "zoneShares": null, "zoneTarget": null, "zoneTargets": null, "elevation": null,
+      "onTheBelt": null, "shoesWorn": null, "whatThisDidToTheWeek": [],
+      "runId": "-218380344929823", "changed": null, "injury": null, "weekOff": null,
+      "offSeason": null, "notOnPhoneYet": null,
+      "routeSplits": [],
+      "routePhases": [],
+      "workoutPhases": [
+        { "type": "work", "label": "5.0 mi easy", "durationSec": 2607, "avgHr": 133, "maxHr": 144, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 1 of 6", "durationSec": 20, "avgHr": 135, "maxHr": 137, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 30, "avgHr": 144, "maxHr": 148, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 2 of 6", "durationSec": 22, "avgHr": 137, "maxHr": 140, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 43, "avgHr": 141, "maxHr": 147, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 3 of 6", "durationSec": 21, "avgHr": 126, "maxHr": 132, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 61, "avgHr": 135, "maxHr": 146, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 4 of 6", "durationSec": 20, "avgHr": 109, "maxHr": 115, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 24, "avgHr": 132, "maxHr": 138, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 5 of 6", "durationSec": 22, "avgHr": 131, "maxHr": 136, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 38, "avgHr": 144, "maxHr": 149, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 6 of 6", "durationSec": 21, "avgHr": 135, "maxHr": 142, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 8, "avgHr": 139, "maxHr": 139, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "overtime", "label": "After the session", "durationSec": 10, "avgHr": null, "maxHr": null, "completed": true, "speedMph": null, "inclinePct": null }
+      ]
+    }
+    """
 }

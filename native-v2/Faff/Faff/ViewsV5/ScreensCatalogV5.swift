@@ -144,6 +144,19 @@ struct ScreensCatalogV5: View {
             Entry(id: "5b-belt", title: "Today · treadmill", sub: "No route, no climb, no weather") {
                 AnyView(TodayAfterV5(model: BreakdownV5Samples.treadmill))
             },
+            // ROUTING-1, 2026-09-09 · the owner's real 5-mile-easy-plus-6-
+            // strides run, reproduced from the exact conditions that broke
+            // it: `data.phases` on the row with `data.splits` not yet
+            // written (a real ~19-minute two-write gap on this row, proven
+            // read-only). Before the fix this rendered the treadmill-only
+            // lane raw — no pace on the 5-mile phase, six strides
+            // indistinguishable from their six walk-backs.
+            Entry(id: "5b-routing1-before", title: "Today · mid-write (before fix)", sub: "phases landed, splits have not yet") {
+                AnyView(TodayAfterV5(model: TodayAfterV5Samples.routing1MidWrite))
+            },
+            Entry(id: "5b-routing1-after", title: "Today · mid-write (after fix)", sub: "the one honest row, and the wrong lane gone") {
+                AnyView(TodayAfterV5(model: TodayAfterV5Samples.routing1PhaseFallback))
+            },
             Entry(id: "5c", title: "Today · after a treadmill run", sub: "On the belt, no route card") {
                 AnyView(TodayAfterV5(model: TodayAfterV5Samples.treadmill,
                                      onOpenAccount: {},
