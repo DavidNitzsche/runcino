@@ -30,7 +30,13 @@
 import { describe, it, expect } from 'vitest';
 import { declaredCauseForWeek } from './volume-evidence-loader';
 import { classifyLowWeek } from '@/lib/adaptation/volume-evidence/admit';
-import { measured } from '@/lib/adaptation/canonical/input';
+// ONE DOOR (contract.ts's own header): `measured` reaches the canonical
+// engine's vocabulary through `@/lib/adaptation/volume-evidence/contract`,
+// the same door `volume-evidence-loader.ts` itself already uses — never
+// straight from `@/lib/adaptation/canonical/input`, which
+// `_cannot_mutate.test.ts` guard 4 correctly refuses from outside the
+// enumerated grants.
+import { measured } from '@/lib/adaptation/volume-evidence/contract';
 import type { TravelWindow } from './travel-windows';
 
 const NO_TRAVEL: TravelWindow[] = [];
