@@ -114,7 +114,28 @@ jobs:
           # count that has grown a long way past the 62 observed on 2026-09-01
           # means tests are being switched off, which is not the same as tests
           # being unnecessary.
-          if skipped > 120: bad.append(f'{skipped} tests skipped (ceiling 120) — tests are being disabled')
+          #
+          # CEILING-1 (2026-09-09) · raised 120 -> 230 after this job's own
+          # "Vitest · every file" step could, for the first time, actually
+          # complete cleanly (`_belief_source_pins.test.ts` and
+          # `_format_lint.test.ts` were failing outright, so this liveness
+          # step never ran at all — it was skipped every time, not passing).
+          # With a real green vitest run to inspect, the true count was 205,
+          # already past the old ceiling, and categorized by hand rather than
+          # assumed safe: 93 tests (33 files) gated on DATABASE_URL_RO (live
+          # production-account audits), 91 tests (13 files) gated on
+          # DATABASE_URL / a local scratch database (round-trip and ledger
+          # tests), 21 tests (18 files) gated on one-off opt-in probe flags
+          # (FAFF_*_PROBE, BRAIN_PROBE, etc. — write findings to /tmp, never
+          # meant to run unattended). 93+91+21 = 205 exactly; nothing left
+          # over unaccounted for. All three are the credential/opt-in shape
+          # this check exists to allow, none read as a test switched off, so
+          # the ceiling moves to reflect the now-verified baseline rather
+          # than staying at a number this job could never actually reach
+          # before. Headroom (230 vs. 205) is deliberate, same as the floors'
+          # own "held well under observed" logic in reverse — raise again
+          # only with the same kind of accounting, never by assumption.
+          if skipped > 230: bad.append(f'{skipped} tests skipped (ceiling 230) — tests are being disabled')
           if bad:
               print('LIVENESS FAIL · ' + '; '.join(bad))
               print('  A suite that runs nothing and passes is the failure this job exists to prevent.')
