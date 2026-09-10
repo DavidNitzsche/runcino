@@ -279,9 +279,9 @@ export interface GradeOptions {
    * a distinct field from `recoveryEndedEarly` rather than a member of it.
    * Matched onto a recovery phase by `phaseIndex`, the identical mechanism
    * `recoveryEndedEarly` already uses. Excluded from the honesty vote the
-   * SAME way a chosen early end is (§4.6 of the scoping doc): this is
-   * neither a lapse nor a choice to move on, because nothing else was left
-   * to move on to. Absent behaves exactly as before this field existed.
+   * SAME way a chosen early end is: this is neither a lapse nor a choice to
+   * move on, because nothing else was left to move on to. Absent behaves
+   * exactly as before this field existed.
    */
   sessionEnded?: { phaseIndex?: number | null; phaseType?: string | null } | null;
 }
@@ -496,8 +496,9 @@ export function gradeStoredPhases(
   // exactly the same way for either reason — it is not, in either case, a
   // lapse to hold the session back on. Only unioned when the record actually
   // names a recovery phase; the field exists so a future non-recovery
-  // session-end (§4.5, not yet built) does not silently start excluding a
-  // work phase from a check that was never asking about it.
+  // session-end — an `abandon()`-triggered mid-session end, not yet built —
+  // does not silently start excluding a work phase from a check that was
+  // never asking about it.
   const earlyEndPhaseIndices = new Set(
     (opts.recoveryEndedEarly ?? [])
       .map((r) => (typeof r?.phaseIndex === 'number' ? r.phaseIndex : null))
