@@ -36,6 +36,40 @@
  *
  * ── DIGEST MOVES ────────────────────────────────────────────────────────────
  *
+ *   · 2026-09-09 · TIEFIX-1 / PRIMER-SPECIFIC-1. Two fixes inside
+ *     `applyRunnerVoice`, landed together because the second was found while
+ *     fixing the first. TIEFIX-1: the week's-longest-easy-run comparison used
+ *     a bare `>` with no tie check, so a genuinely tied week still named the
+ *     chronologically-first day as uniquely "the week's longest" — measured
+ *     firing on 63% of weeks in this corpus. PRIMER-SPECIFIC-1: fixing that
+ *     let two easy days in one week both fall through to the `primer` role,
+ *     which used to write the byte-identical generic line on both — now each
+ *     names its own actual next-day session type (`runner-instruction.ts`'s
+ *     `PRIMER_SESSION_LINE`), and a genuine collision (same next-day type, or
+ *     an unresolvable one) steps down a deterministic, non-blank, non-
+ *     repeating fallback ladder instead of repeating. `composed` (8781),
+ *     `days` (699860) and `raceWeeks` (3969) are ALL unchanged — no plan
+ *     gained or lost a day and no race week moved. The pass still touches
+ *     only `notes`, on exactly the rows Rule 17 already governs. Falsified in
+ *     `_sentence_repetition.test.ts` (TIEFIX-1 alone turns this corpus's 0
+ *     findings into 8; both fixes together return it to 0) and
+ *     `_primer_specific.test.ts` (12 hand-built fixtures, 6 of which fail
+ *     against the pre-fix composer when the new API surface exists but its
+ *     underlying fix does not — bringing the test file forward onto a
+ *     reconstructed pre-fix `generate.ts` beside the post-fix
+ *     `runner-instruction.ts` so every case reaches its real assertion,
+ *     independently re-verified twice, 2026-09-09. A naive full revert (the
+ *     new test file dropped onto fully pre-fix `generate.ts` AND
+ *     `runner-instruction.ts`) additionally reports 10 failures, not 6 — but
+ *     7 of those 10 are `TypeError`s from the new API not existing at all
+ *     (`resolvePrimerLines is not a function`, `Cannot read properties of
+ *     undefined`), three of which mask three of the same 6 real bugs and
+ *     four of which are pure artifacts of the missing API with no real bug
+ *     behind them; only 3 survive as genuine assertion failures there. A test
+ *     that crashes before reaching its own assertion isn't falsifying
+ *     behavior, per Rule 18's "fail for the right reason" standard, so the
+ *     naive-revert count is not the falsification count).
+ *
  *   · 2026-09-03 · SENTENCEREP-1 / RUNNERLANG-2. `applyRunnerVoice` is a new
  *     final pass in `finalizeComposedPlan`: a sentence true of every row of its
  *     kind is said once per block, and a generic easy row says instead what

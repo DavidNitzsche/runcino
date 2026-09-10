@@ -106,6 +106,7 @@ import {
   BLOCK_STANDING_SENTENCES,
   EASY_DAY_ROLE_LINES,
   easyDayRole,
+  resolvePrimerLines, // PRIMER-SPECIFIC-1 · a week's primer days settled together
 } from './runner-instruction';
 // PROGRESSION-1 (2026-08-17) · the authored default overload trajectory.
 // `Design/adaptive-progression-engine.md` §3's "calendar proposes" half: the
@@ -16298,21 +16299,44 @@ export function applyRunnerVoice(composed: ComposePlanResult): void {
   });
   flat.sort((a, b) => (a.iso < b.iso ? -1 : a.iso > b.iso ? 1 : 0));
 
-  // The week's longest easy row, resolved once per week. Ties go to the
-  // EARLIEST day, so the answer does not depend on array order.
+  // TIEFIX-1 (2026-09-09) · the week's longest easy row, resolved once per
+  // week — and only when there IS one. The comparison below used to be a bare
+  // `>` with no tie check, so a genuinely tied week (two easy days at the
+  // identical distance) still named the chronologically-first one as "the
+  // week's longest easy run" — false, since a second day tied it. Measured
+  // firing on 63% of weeks in this project's own 8,781-archetype corpus.
+  // A tie means NO day is uniquely the longest, so neither gets the `volume`
+  // role; both fall through `easyDayRole`'s own priority ladder to the next
+  // true fact instead (recovery / primer / between / plain).
   const longestEasyISO = new Map<number, string>();
   {
-    const best = new Map<number, { mi: number; iso: string }>();
+    const EPS = 1e-6; // float distances, e.g. 5.4999999999996 vs 5.5
+    const best = new Map<number, { mi: number; iso: string; tied: boolean }>();
     for (const e of flat) {
       if (e.day.type !== 'easy' || e.day.distanceMi <= 0) continue;
       const cur = best.get(e.weekIdx);
-      if (!cur || e.day.distanceMi > cur.mi) best.set(e.weekIdx, { mi: e.day.distanceMi, iso: e.iso });
+      if (!cur || e.day.distanceMi > cur.mi + EPS) {
+        best.set(e.weekIdx, { mi: e.day.distanceMi, iso: e.iso, tied: false });
+      } else if (Math.abs(e.day.distanceMi - cur.mi) <= EPS) {
+        cur.tied = true;
+      }
     }
-    for (const [k, v] of best) longestEasyISO.set(k, v.iso);
+    for (const [k, v] of best) if (!v.tied) longestEasyISO.set(k, v.iso);
   }
 
   const isHard = (d: DayPlan | undefined): boolean =>
     !!d && (d.isQuality || d.isLong || d.type === 'race' || d.type === 'race_week_tuneup');
+
+  // PRIMER-SPECIFIC-1 (2026-09-09) · a `primer` day's text is not decided
+  // until its whole week has been walked. TIEFIX-1 above means two easy days
+  // can both legitimately resolve to `primer` in one week, and whether that
+  // is two DIFFERENT true facts (each names its own next-day session) or one
+  // fact said twice is a question about the WEEK, not about either day in
+  // isolation — so every `primer` day in this loop is recorded here instead
+  // of writing its line immediately, and `resolvePrimerLines` settles all of
+  // a week's candidates together, once the loop below has seen the whole
+  // week. See `runner-instruction.ts`'s PRIMER-SPECIFIC-1 header.
+  const pendingPrimersByWeek = new Map<number, { day: DayPlan; iso: string; afterLastStanding: number; nextType: string | null | undefined }[]>();
 
   for (let i = 0; i < flat.length; i++) {
     const { day, iso, weekIdx } = flat[i];
@@ -16362,6 +16386,16 @@ export function applyRunnerVoice(composed: ComposePlanResult): void {
       prevWasLong: !!prev?.isLong,
       prevWasQuality: !!prev?.isQuality,
     });
+
+    // `primer` is resolved per-week below, once every candidate for this
+    // week has been seen — see the comment on `pendingPrimersByWeek` above.
+    if (role === 'primer') {
+      const list = pendingPrimersByWeek.get(weekIdx) ?? [];
+      list.push({ day, iso, afterLastStanding, nextType: next?.type });
+      pendingPrimersByWeek.set(weekIdx, list);
+      continue;
+    }
+
     const line = EASY_DAY_ROLE_LINES[role];
     if (!line) continue;
     // The role line is the fact about THIS day, so it leads — except on the
@@ -16370,6 +16404,21 @@ export function applyRunnerVoice(composed: ComposePlanResult): void {
     const parts = day.notes.split(/(?<=\.)\s+/).filter((s) => s.trim().length > 0);
     parts.splice(afterLastStanding, 0, line);
     day.notes = parts.join(' ').replace(/[ \t]{2,}/g, ' ').trim();
+  }
+
+  // PRIMER-SPECIFIC-1 · settle every week's primer candidates together. The
+  // list per week is already in chronological order (it was built by the
+  // chronological loop above), which is what `resolvePrimerLines`'s
+  // earliest-wins tie-break depends on.
+  for (const list of pendingPrimersByWeek.values()) {
+    const resolved = resolvePrimerLines(list.map((p) => ({ key: p.iso, nextType: p.nextType })));
+    for (const p of list) {
+      const line = resolved.get(p.iso);
+      if (!line) continue;
+      const parts = p.day.notes.split(/(?<=\.)\s+/).filter((s) => s.trim().length > 0);
+      parts.splice(p.afterLastStanding, 0, line);
+      p.day.notes = parts.join(' ').replace(/[ \t]{2,}/g, ' ').trim();
+    }
   }
 }
 
