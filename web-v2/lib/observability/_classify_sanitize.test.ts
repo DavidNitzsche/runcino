@@ -79,6 +79,16 @@ describe('classifyFailure · heuristic tier (no tag present)', () => {
     expect(classifyFailure(abortErr).failureClass).toBe('UPSTREAM');
   });
 
+  it('UPSTREAM: an untagged TimeoutError also defaults to UPSTREAM — the real name AbortSignal.timeout() '
+    + 'produces on a hung fetch (see the REAL, non-mocked confirmation of this name in '
+    + 'lib/observability/harness/_falsification.harness.test.ts, per Rule 18). Before this fix, only '
+    + '\'AbortError\' was checked, so a real timed-out upstream call — the literal shape of the '
+    + '502/~13s incident this module exists to diagnose — misclassified as APPLICATION.', () => {
+    const timeoutErr = new Error('The operation was aborted due to timeout');
+    timeoutErr.name = 'TimeoutError';
+    expect(classifyFailure(timeoutErr).failureClass).toBe('UPSTREAM');
+  });
+
   it('CLIENT_TIMEOUT: the incoming request signal firing always wins, regardless of the caught error', () => {
     expect(classifyFailure(new Error('anything at all'), { clientAborted: true }).failureClass).toBe('CLIENT_TIMEOUT');
     expect(classifyFailure(null, { clientAborted: true }).failureClass).toBe('CLIENT_TIMEOUT');
@@ -152,6 +162,40 @@ describe('sanitize · what never reaches the database', () => {
     const msg = sanitizeErrorMessage('lookup failed for david@example.com');
     expect(msg).not.toContain('david@example.com');
     expect(msg).toContain('[redacted-email]');
+  });
+
+  it('redacts a client_secret embedded in a URL query string, keeping the parameter name and the rest of the URL — '
+    + 'lib/strava/webhook.ts builds outbound URLs exactly this way (url.searchParams.set(\'client_secret\', ...))', () => {
+    const msg = sanitizeErrorMessage(
+      'upstream call failed: fetch failed for https://api.strava.com/oauth/token?client_secret=abc123&code=xyz',
+    );
+    expect(msg).not.toContain('abc123');
+    expect(msg).toContain('client_secret=[REDACTED]');
+    // The rest of the URL, including the non-credential `code` param, stays
+    // legible — this is a targeted redaction, not a blanket URL scrub.
+    expect(msg).toContain('https://api.strava.com/oauth/token');
+    expect(msg).toContain('code=xyz');
+  });
+
+  it('redacts other common credential-bearing query params, case-insensitively, value only', () => {
+    const cases: Array<[string, string]> = [
+      ['?access_token=SECRETVALUE1&user=42', 'SECRETVALUE1'],
+      ['?Api-Key=SECRETVALUE2&region=us', 'SECRETVALUE2'],
+      ['?PASSWORD=SECRETVALUE3', 'SECRETVALUE3'],
+      ['?refresh_token=SECRETVALUE4', 'SECRETVALUE4'],
+    ];
+    for (const [qs, secret] of cases) {
+      const msg = sanitizeErrorMessage(`request to https://example.com/x${qs} failed`)!;
+      expect(msg, qs).not.toContain(secret);
+      expect(msg, qs).toContain('[REDACTED]');
+    }
+  });
+
+  it('does NOT redact a non-credential query param (e.g. client_id, code, user_id)', () => {
+    const msg = sanitizeErrorMessage('failed https://example.com/x?client_id=abc&user_id=42&count=3')!;
+    expect(msg).toContain('client_id=abc');
+    expect(msg).toContain('user_id=42');
+    expect(msg).toContain('count=3');
   });
 
   it('does NOT redact a UUID (36 chars, hyphenated) — it is a structured id, not a secret', () => {

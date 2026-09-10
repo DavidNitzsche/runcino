@@ -41,7 +41,14 @@ export function correlationIdFromHeaders(
   try {
     const v = headers?.get(CORRELATION_ID_HEADER);
     const trimmed = v?.trim();
-    return trimmed && trimmed.length > 0 ? trimmed.slice(0, 128) : null;
+    // `trimmed` is a string, so an empty string is already falsy here — the
+    // `.length > 0` half of the old `trimmed && trimmed.length > 0` guard was
+    // redundant with the truthiness check, and its exact shape (`X.length > 0
+    // ? f(X) : null`) is the pattern COERCION-1 flags as a possible measured-
+    // zero erasure. There is no zero being erased here (a correlation id has
+    // no length-0 case worth distinguishing from absent), but the guard is
+    // simplified to its true logic rather than argued in the registry.
+    return trimmed ? trimmed.slice(0, 128) : null;
   } catch {
     return null;
   }

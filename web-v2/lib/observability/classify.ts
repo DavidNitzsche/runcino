@@ -15,14 +15,30 @@
  *      `pg-pool`'s own checkout-timeout and idle-client-death errors carry
  *      no `.code` but a fixed, grep-able message text; Node's `fetch`
  *      (undici) throws `TypeError: fetch failed` with a `.cause`; an
- *      `AbortError` from `AbortSignal.timeout(...)` is, in this codebase,
- *      only ever used to bound an OUTBOUND fetch (`lib/ops/sentry.ts`,
- *      `lib/ops/alerts.ts`, `instrumentation.ts`'s cron tick) — never to
- *      bound inbound request handling — so an untagged AbortError defaults
- *      to UPSTREAM rather than CLIENT_TIMEOUT, which is reserved for the
- *      INCOMING request's own `NextRequest.signal` firing (passed in
- *      explicitly as `opts.clientAborted` by `with-observability.ts`,
- *      because that is observed directly and never needs a guess).
+ *      OUTBOUND fetch bounded by `AbortSignal.timeout(...)` is, in this
+ *      codebase, only ever used to bound an OUTBOUND call (`lib/ops/
+ *      sentry.ts`, `lib/ops/alerts.ts`, `instrumentation.ts`'s cron tick) —
+ *      never to bound inbound request handling — so an untagged timeout-
+ *      shaped abort defaults to UPSTREAM rather than CLIENT_TIMEOUT, which is
+ *      reserved for the INCOMING request's own `NextRequest.signal` firing
+ *      (passed in explicitly as `opts.clientAborted` by `with-
+ *      observability.ts`, because that is observed directly and never needs
+ *      a guess).
+ *
+ *      WHAT "TIMEOUT-SHAPED" MEANS, verified rather than assumed (Rule 18):
+ *      firing a REAL `fetch(...)` with a real `AbortSignal.timeout(...)`
+ *      against a socket that never responds throws a `DOMException` with
+ *      `name === 'TimeoutError'` on this codebase's Node runtime (v22) — NOT
+ *      `'AbortError'`, which is what `AbortController.abort()` (a caller-
+ *      initiated cancellation, never used for a bound in this codebase)
+ *      produces instead. The two names are easy to conflate because both
+ *      trace back to the same `AbortSignal` machinery, and conflating them
+ *      was a real bug here: a genuine timed-out upstream call — the literal
+ *      shape of the 502/~13s incident this module exists to diagnose — was
+ *      misclassified as APPLICATION because only `'AbortError'` was checked.
+ *      Both names are recognized below; `_timeout_shape.harness.test.ts`
+ *      proves the real API surface produces `'TimeoutError'` rather than
+ *      mocking the name and asserting the mock.
  *
  * WHAT THIS CANNOT DO (Rule 18's header discipline): it cannot see a true
  * EDGE failure at all — by definition nothing in this process runs when the
@@ -158,8 +174,16 @@ export function classifyFailure(
     if (code === 'ECONNREFUSED' || code === 'ETIMEDOUT' || code === 'EHOSTUNREACH' || code === 'ENOTFOUND') {
       return { failureClass: 'UNKNOWN', detail: `low-level network error (${code}) with no tag identifying DB vs upstream target` };
     }
-    if (/fetch failed/i.test(message) || name === 'AbortError') {
-      return { failureClass: 'UPSTREAM', detail: name === 'AbortError' ? 'untagged AbortError — only used to bound outbound fetches in this codebase' : 'undici "fetch failed" with no tag; defaulting to the only known fetch caller shape' };
+    if (name === 'AbortError' || name === 'TimeoutError') {
+      return {
+        failureClass: 'UPSTREAM',
+        detail: name === 'TimeoutError'
+          ? 'untagged TimeoutError — the real name AbortSignal.timeout() produces on a hung outbound fetch, only used to bound outbound calls in this codebase'
+          : 'untagged AbortError — only used to bound outbound fetches in this codebase',
+      };
+    }
+    if (/fetch failed/i.test(message)) {
+      return { failureClass: 'UPSTREAM', detail: 'undici "fetch failed" with no tag; defaulting to the only known fetch caller shape' };
     }
 
     return { failureClass: 'APPLICATION', detail: 'ordinary thrown error with no recognized DB/upstream/timeout signature' };

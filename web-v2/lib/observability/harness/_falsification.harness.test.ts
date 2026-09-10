@@ -24,6 +24,7 @@
  * approval.
  */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import http from 'node:http';
 import { assertObservabilityScratchDatabase } from './fence';
 
 // The fence MUST run before `@/lib/db/pool` (or anything importing it) is
@@ -209,6 +210,79 @@ describe('UPSTREAM · triggered through a real fetchUpstream() call against a re
     const row = await rowFor(correlationId);
     expect(row!.failure_class).toBe('UPSTREAM');
     expect(row!.upstream_service).toBe('strava');
+  });
+});
+
+describe('UPSTREAM · a REAL AbortSignal.timeout() firing on a real hung socket, per Rule 18', () => {
+  // The classification bug this suite exists to catch: `classify.ts` used to
+  // check ONLY `err.name === 'AbortError'`. That is what a CALLER-INITIATED
+  // `AbortController.abort()` produces — never used to bound a call in this
+  // codebase — but `AbortSignal.timeout(...)`, which `lib/ops/sentry.ts` and
+  // `lib/ops/alerts.ts` actually use, throws a DIFFERENT name. Rule 18: prove
+  // it against the real API surface, not a mock of the error name — a mock
+  // would only ever prove the classifier agrees with itself.
+  let server: http.Server;
+  let port: number;
+
+  beforeAll(async () => {
+    // Accepts the TCP connection and then never responds, so the client's
+    // own AbortSignal.timeout() is what fires — not a connection refusal,
+    // which would take the ECONNREFUSED branch instead.
+    server = http.createServer(() => { /* never respond */ });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    port = (server.address() as { port: number }).port;
+  });
+
+  afterAll(async () => {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  });
+
+  it('a real fetch bounded by a real AbortSignal.timeout() throws name === "TimeoutError", not "AbortError"', async () => {
+    let caught: unknown;
+    try {
+      await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(200) });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    // This is the falsifiable claim: if a future Node/undici version changes
+    // this name back to AbortError, this assertion — not classify.ts's own
+    // heuristic — is the one that fails first and says so.
+    expect((caught as Error).name).toBe('TimeoutError');
+  });
+
+  it('classifyFailure() classifies a real timed-out fetchUpstream() call as UPSTREAM, and records it', async () => {
+    const correlationId = `falsify-upstream-realtimeout-${Date.now()}`;
+    let caught: unknown;
+    try {
+      await fetchUpstream('faff-harness-hung-socket', `http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(200) });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeDefined();
+    // Confirms fetchUpstream's explicit tag wins even over the (correctly
+    // fixed) heuristic — both paths must agree, so this is checked with the
+    // tag intact rather than stripped, per the file's own tag-wins-over-
+    // heuristic ordering.
+    const classified = classifyFailure(caught);
+    expect(classified.failureClass).toBe('UPSTREAM');
+    expect(classified.upstreamService).toBe('faff-harness-hung-socket');
+
+    // And independently, WITHOUT the tag — proving the heuristic tier itself
+    // (not just the explicit tag) now recognizes the real TimeoutError shape.
+    // This is the exact case that regresses if `name === 'TimeoutError'` is
+    // ever removed from classify.ts again.
+    const untagged = { name: (caught as Error).name, message: (caught as Error).message };
+    expect(classifyFailure(untagged).failureClass).toBe('UPSTREAM');
+
+    await recordRequestFailure({
+      correlationId, routePath: '/api/harness/hung-upstream', httpMethod: 'GET',
+      failureClass: classified.failureClass, httpStatus: 504, durationMs: 200,
+      error: caught, upstreamService: classified.upstreamService, source: 'harness-falsifier',
+    });
+    const row = await rowFor(correlationId);
+    expect(row!.failure_class).toBe('UPSTREAM');
+    expect(row!.upstream_service).toBe('faff-harness-hung-socket');
   });
 });
 

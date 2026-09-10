@@ -634,6 +634,31 @@ export const MODULE_ORPHANS: Record<string, string> = {
     'The /redesign tree. That direction was shipped and reverted on 2026-08-18 and is not the plan; its orphans are expected and are not this gate\'s business.',
   'web-v2/lib/audit/plan-weeks-scope-exemptions.ts':
     'PLANWEEKS-1 (2026-09-05). A gate\'s ratchet, same posture as active-plan-exemptions.ts and normal-window-registry.ts beside it: it is DATA FOR A CHECK (_plan_weeks_scope_scan.test.ts) and its only importer is that suite by design. It names statements that legitimately read plan_weeks\'s own user_uuid/user_id column directly rather than scoping through training_plans — currently empty, because the two live instances found in the 2026-09-05 sweep (lib/plan/volume-evidence-loader.ts, lib/adaptation/volume-evidence/_replay_real_history.script.ts) and the write-path instance (lib/adaptation-harness/substrate.ts, a scratch-DB date-shift, not a scanned read) were all fixed rather than exempted. Runtime code must never import it.',
+  // ── OBSERVABILITY-1 (2026-09-08/09), the 502/~13s-incident diagnostics ──────
+  //
+  // Five modules, all opt-in by explicit design stated in their own headers,
+  // not retrofitted across the codebase's ~150 existing route/pool/fetch call
+  // sites in this first pass (each file's own comment says so — a full
+  // retrofit would touch far more than the observability mechanism itself).
+  // `instrumentation.ts`'s `onRequestError` is the PRIMARY, zero-per-route
+  // mechanism that actually runs today; these five are the SECONDARY,
+  // per-call-site upgrade path for future adoption. Their only current
+  // caller is `lib/observability/harness/_falsification.harness.test.ts`
+  // (via `npm run harness:observability`, which is NOT part of the default
+  // `npm test` — vitest.config.ts excludes `*.harness.test.ts` so the scratch-
+  // DB-only suite never runs against a clean checkout), which is exactly the
+  // "a gate or a fixture set is a fine reason" case this list's own header
+  // names.
+  'web-v2/lib/observability/with-observability.ts':
+    'OBSERVABILITY-1. The opt-in per-route wrapper — see its own header for the two things it catches that `onRequestError` structurally cannot (a route that returns an explicit 5xx without rethrowing, and CLIENT_TIMEOUT via the incoming request\'s own abort signal). Not wired into any of the ~150 existing route handlers in this pass; that is a per-route migration, not part of standing up the mechanism. Exercised by `lib/observability/harness/_falsification.harness.test.ts` (CLIENT_TIMEOUT and explicit-5xx cases), which is its only caller today. THIS ENTRY EXPIRES the moment a real route imports it — at that point note here (or delete the entry) which route adopted it first.',
+  'web-v2/lib/observability/db-query.ts':
+    'OBSERVABILITY-1. `observedQuery()` — see its own header: most `pool.query` call sites need it NOT at all, because `classify.ts`\'s heuristic tier already recognizes real Postgres SQLSTATEs and pg-pool\'s own fixed timeout/idle-death messages with zero call-site changes. This wrapper exists for the narrower case of a route that re-catches a DB error itself and wants DATABASE_POOL to survive that re-wrap with certainty instead of heuristic. Not retrofitted across existing `pool.query` sites in this pass. Exercised by `lib/observability/harness/_falsification.harness.test.ts`\'s DATABASE_POOL case, its only caller today.',
+  'web-v2/lib/observability/upstream-fetch.ts':
+    'OBSERVABILITY-1. `fetchUpstream()` — see its own header: an untagged outbound `fetch()` failure already classifies UPSTREAM via `classify.ts`\'s heuristic tier; this wrapper only adds the SERVICE NAME by tagging explicitly. Deliberately not retrofitted across the existing Strava/weather/Apple outbound calls in this pass — the file\'s own header names that as future work, not an oversight. Exercised by `lib/observability/harness/_falsification.harness.test.ts`\'s UPSTREAM case, its only caller today.',
+  'web-v2/lib/observability/context.ts':
+    'OBSERVABILITY-1. The Node-only `AsyncLocalStorage` request context `with-observability.ts` threads the correlation id through. It has no caller of its own outside that wrapper (`runWithRequestContext`, `getCorrelationId`), so it is exactly as orphaned as `with-observability.ts` is and for the same reason — see that entry. Reachable today only through the harness test\'s CLIENT_TIMEOUT case, which drives `withObservability` end to end.',
+  'web-v2/lib/observability/harness/fence.ts':
+    'OBSERVABILITY-1. Same shape as `lib/adaptation-harness/fence.ts` elsewhere in this list: a write-safety fence for a falsifier that touches a real (scratch) database, checked at run time before the first query rather than trusted from an env var alone. Its only caller is `_falsification.harness.test.ts` in the same directory, and `_fence.test.ts` falsifies the predicate itself with no database at all (a production-shaped URL must throw, the harness\'s own URL must not) — both are the gate posture this list\'s header calls a fine reason on their own. Runtime code must never import it.',
 };
 
 /**

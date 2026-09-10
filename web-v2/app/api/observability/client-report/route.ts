@@ -83,7 +83,14 @@ export async function POST(req: NextRequest) {
   }
 
   // Best-effort — a broken session must not stop this report from landing.
-  const userUuid = await userIdFromRequest(req).catch(() => null);
+  // The handler names and references its error (rather than swallowing it
+  // blind) precisely because this route's whole job is recording failures:
+  // a session-resolution failure on the failure-reporting endpoint itself is
+  // exactly the kind of thing worth a log line, not a silent null.
+  const userUuid = await userIdFromRequest(req).catch((sessionErr) => {
+    console.warn('[observability/client-report] session lookup failed; recording without user_uuid', sessionErr);
+    return null;
+  });
 
   const failureClass = classifyClientReportKind(kind as 'no_response' | 'network_error' | 'client_gave_up');
 
