@@ -103,10 +103,37 @@ final class PhoneSync: NSObject, ObservableObject {
     /// block a wrist start forever.
     private static let activeWorkoutStaleAfter: TimeInterval = 6 * 60 * 60
 
+    /// Pure staleness check, isolated from `WCSession`/`Date()` so the
+    /// arbitration decision is directly testable without a live device pair
+    /// (ARB-1, 2026-09-09 — this mechanism shipped 2026-09-03 with zero test
+    /// coverage; see `PhoneSyncArbitrationTests`). Mirrors `WatchSync
+    /// .isActiveWorkoutCurrent` on the phone side key-for-key.
+    /// `phoneActiveWorkoutIsCurrent` below is the only caller in production
+    /// and must keep calling this rather than re-implementing the comparison.
+    static func isActiveWorkoutCurrent(id: String?, stampedAt: Date?,
+                                        now: Date = Date(),
+                                        staleAfter: TimeInterval = activeWorkoutStaleAfter) -> Bool {
+        guard id != nil, let stampedAt else { return false }
+        return now.timeIntervalSince(stampedAt) <= staleAfter
+    }
+
     /// What `WatchRootModel.launch` reads before committing to a fresh start.
     var phoneActiveWorkoutIsCurrent: Bool {
-        guard phoneActiveWorkoutId != nil, let stampedAt = phoneActiveWorkoutStampedAt else { return false }
-        return Date().timeIntervalSince(stampedAt) <= Self.activeWorkoutStaleAfter
+        Self.isActiveWorkoutCurrent(id: phoneActiveWorkoutId, stampedAt: phoneActiveWorkoutStampedAt)
+    }
+
+    /// Pure parse of the arbitration keys out of a raw phone payload — the
+    /// part of `apply` with no WatchConnectivity/self dependency, so a test
+    /// can hand it a plain dictionary (ARB-1). Mirrors `WatchSync
+    /// .parseActiveWorkout` on the phone side
+    /// (`native-v2/Faff/Faff/WatchSync.swift`) key-for-key. A missing
+    /// `phoneActiveWorkoutId` reads as "absent" (Rule 11) — the caller is
+    /// what maps that to "not active."
+    static func parsePhoneActiveWorkout(from payload: [String: Any]) -> (id: String?, stampedAt: Date?) {
+        let id = payload["phoneActiveWorkoutId"] as? String
+        let stampedAt = (payload["phoneActiveWorkoutStartedAt"] as? TimeInterval)
+            .map { Date(timeIntervalSinceReferenceDate: $0) }
+        return (id, stampedAt)
     }
 
     // MARK: - DUPLICATE-1 (2026-09-03) · publish this watch's own active session
@@ -521,9 +548,7 @@ final class PhoneSync: NSObject, ObservableObject {
         // rebooted mid-run finds out the phone is (or is not) still
         // recording from the very first frame, not just from the next live
         // push.
-        let phoneId = payload["phoneActiveWorkoutId"] as? String
-        let phoneStampedAt = (payload["phoneActiveWorkoutStartedAt"] as? TimeInterval)
-            .map { Date(timeIntervalSinceReferenceDate: $0) }
+        let (phoneId, phoneStampedAt) = Self.parsePhoneActiveWorkout(from: payload)
         phoneActiveWorkoutId = phoneId
         phoneActiveWorkoutStampedAt = phoneId != nil ? (phoneStampedAt ?? Date()) : nil
         // Sign-out. The phone has no key for this today (its `logout()` clears

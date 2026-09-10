@@ -65,12 +65,24 @@ final class WatchSync: NSObject, ObservableObject {
     /// one of them should still gate a start hours later.
     private static let activeWorkoutStaleAfter: TimeInterval = 6 * 60 * 60
 
+    /// Pure staleness check, isolated from `WCSession`/`Date()` so the
+    /// arbitration decision is directly testable without a live device pair
+    /// (ARB-1, 2026-09-09 — this mechanism shipped 2026-09-03 with zero test
+    /// coverage; see `WatchArbitrationTests`). `watchActiveWorkoutIsCurrent`
+    /// below is the only caller in production and must keep calling this
+    /// rather than re-implementing the comparison inline.
+    static func isActiveWorkoutCurrent(id: String?, stampedAt: Date?,
+                                        now: Date = Date(),
+                                        staleAfter: TimeInterval = activeWorkoutStaleAfter) -> Bool {
+        guard id != nil, let stampedAt else { return false }
+        return now.timeIntervalSince(stampedAt) <= staleAfter
+    }
+
     /// What `LiveRunHostV5` actually reads before starting the phone
     /// tracker for `.outdoor` — the raw id alone does not answer "is this
     /// still true right now."
     var watchActiveWorkoutIsCurrent: Bool {
-        guard watchActiveWorkoutId != nil, let stampedAt = watchActiveWorkoutStampedAt else { return false }
-        return Date().timeIntervalSince(stampedAt) <= Self.activeWorkoutStaleAfter
+        Self.isActiveWorkoutCurrent(id: watchActiveWorkoutId, stampedAt: watchActiveWorkoutStampedAt)
     }
 
     /// The phone's own half of the same handshake — published so the watch
@@ -788,13 +800,25 @@ extension WatchSync: WCSessionDelegate {
     /// the watch's own launch path — this is the missing mirror image.
     nonisolated private static func applyWatchActiveWorkout(from applicationContext: [String: Any],
                                                              into sync: WatchSync) {
-        let id = applicationContext["activeWorkoutId"] as? String
-        let stampedAt = (applicationContext["activeWorkoutStartedAt"] as? TimeInterval)
-            .map { Date(timeIntervalSinceReferenceDate: $0) }
+        let (id, stampedAt) = parseActiveWorkout(from: applicationContext)
         Task { @MainActor in
             sync.watchActiveWorkoutId = id
             sync.watchActiveWorkoutStampedAt = id != nil ? (stampedAt ?? Date()) : nil
         }
+    }
+
+    /// Pure parse of the arbitration keys out of a raw `applicationContext`
+    /// payload — the part of `applyWatchActiveWorkout` with no
+    /// WatchConnectivity/MainActor dependency, so a test can hand it a plain
+    /// dictionary (ARB-1). Mirrors `PhoneSync.parsePhoneActiveWorkout` on the
+    /// watch side (`legacy/native/Faff/FaffWatch Watch App/PhoneSync.swift`)
+    /// key-for-key. A missing `activeWorkoutId` reads as "absent" (Rule 11) —
+    /// the caller is what maps that to "not active."
+    nonisolated static func parseActiveWorkout(from context: [String: Any]) -> (id: String?, stampedAt: Date?) {
+        let id = context["activeWorkoutId"] as? String
+        let stampedAt = (context["activeWorkoutStartedAt"] as? TimeInterval)
+            .map { Date(timeIntervalSinceReferenceDate: $0) }
+        return (id, stampedAt)
     }
 
     /// Watch sent a large completion via transferFile (audit RK-2 fallback: payloads
