@@ -325,3 +325,98 @@ final class ScrollHeaderStatusBarCollisionUITests: XCTestCase {
                         "should show the panel's gradient or the banner's own background here, never plain black.")
     }
 }
+
+// MARK: - 5 · SCROLLCLOCK-3 · `StateScreenScaffold`'s OWN stale-banner composition
+//
+// A SEPARATE case, deliberately not a method on the class above: that class's
+// `setUpWithError` skips without `FAFF_UI_HOST`/`FAFF_UI_TOKEN`, because tests
+// 1-4 drive the real app against real (or seeded) network data. This one
+// needs neither — `ScreensCatalogV5` is sample-only by its own header, the
+// same reason `DataOutageV5`/`RaceJustFinishedV5` are reachable there with no
+// server at all — so it must never be gated behind the network harness the
+// other four require, or it inherits their skip and stops being a gate.
+//
+// WHAT THIS COVERS THAT TEST 4 DOES NOT. Test 4 (above) proves
+// `RacesHostV5`/`BlockHostV5`/`TodayHostV5`'s OWN composition — banner then
+// cap, applied at the host, outside the screen. It says nothing about
+// `ViewsV5/StateScreensV5.swift`'s private `StateScreenScaffold`
+// (`InjuryFlareV5`/`WeekOffV5`/`OffSeasonV5`/`DataOutageV5`/
+// `RaceJustFinishedV5`), which composes independently and, until SCROLLCLOCK-3,
+// called `.v5ScrollSafeTop` directly inside its own body — the identical
+// wrong-side ordering, just never exercised by a real host (Rule 15: a
+// mechanism no case can reach is untested). `ScrollClock3RegressionV5`
+// (`StateScreensV5.swift`) exercises that scaffold's `staleBanner` parameter
+// directly so this file can watch it without wiring a real host to prove the
+// point.
+//
+// FALSIFIED before landing: reverting SCROLLCLOCK-3's fix (restoring
+// `StateScreenScaffold`'s old body, which called `.v5ScrollSafeTop` on its own
+// `ScrollView` with no `staleBanner` composition at all) and wrapping
+// `DataOutageV5` externally with `.v5StaleBanner(stale: true, ...)` — the
+// shape a future host would reach for by analogy with
+// `RacesHostV5`/`BlockHostV5`/`TodayHostV5` — reproduced the same persistent
+// black gap test 4 catches, sampled at the same fractional position below.
+final class StateScreenScaffoldStaleBannerCompositionUITests: XCTestCase {
+
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func pixelColor(_ screenshot: XCUIScreenshot, xFraction: CGFloat, yFraction: CGFloat) -> (r: UInt8, g: UInt8, b: UInt8)? {
+        guard let cgImage = screenshot.image.cgImage,
+              let data = cgImage.dataProvider?.data,
+              let ptr = CFDataGetBytePtr(data) else { return nil }
+        let width = cgImage.width, height = cgImage.height
+        let x = min(max(Int(CGFloat(width) * xFraction), 0), width - 1)
+        let y = min(max(Int(CGFloat(height) * yFraction), 0), height - 1)
+        let bytesPerPixel = max(cgImage.bitsPerPixel / 8, 1)
+        let offset = y * cgImage.bytesPerRow + x * bytesPerPixel
+        guard offset + 2 < CFDataGetLength(data) else { return nil }
+        return (ptr[offset], ptr[offset + 1], ptr[offset + 2])
+    }
+
+    func testStateScreenScaffoldStaleBannerNeverLeavesABlackGapBehindTheStatusBarClock() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-faffV5Screens", "scrollclock3-regression"]
+        app.launch()
+
+        // The harness's own body text, so we know the right fixture painted
+        // before trusting a screenshot of it.
+        let marker = app.staticTexts.containing(
+            NSPredicate(format: "label CONTAINS[c] 'SCROLLCLOCK-3 regression harness'")).firstMatch
+        guard marker.waitForExistence(timeout: 15) else {
+            print("[hierarchy] \(app.debugDescription)")
+            XCTFail("ScrollClock3RegressionV5 never rendered — is the \"scrollclock3-regression\" catalog entry still wired in ScreensCatalogV5.swift?")
+            return
+        }
+
+        // The banner takes a beat to appear — `StateScreenScaffold` composes
+        // it with `V5.Motion.fill`, same as every other `.v5StaleBanner` site.
+        let retry = app.buttons["Retry"]
+        guard retry.waitForExistence(timeout: 10) else {
+            let a = XCTAttachment(string: app.debugDescription)
+            a.name = "hierarchy-no-stale-banner-in-harness"
+            a.lifetime = .keepAlways
+            add(a)
+            XCTFail("stale banner never appeared in ScrollClock3RegressionV5 — this test cannot exercise the composition it targets without it")
+            return
+        }
+
+        let screenshot = app.screenshot()
+        let a = XCTAttachment(screenshot: screenshot)
+        a.name = "statescreenscaffold-stale-cap"
+        a.lifetime = .keepAlways
+        add(a)
+
+        // Same fractional sample point test 4 uses: behind the status-bar
+        // clock, left of the Dynamic Island's own black pill.
+        guard let (r, g, b) = pixelColor(screenshot, xFraction: 0.15, yFraction: 0.02) else {
+            XCTFail("could not read screenshot pixel data")
+            return
+        }
+        XCTAssertFalse(r < 12 && g < 12 && b < 12,
+                        "Black gap behind the status-bar clock: sampled (\(r), \(g), \(b)). " +
+                        "StateScreenScaffold's own `.v5StaleBanner` + `.v5ScrollSafeTop` composition " +
+                        "should show the panel's gradient here, never plain black — see SCROLLCLOCK-3.")
+    }
+}
