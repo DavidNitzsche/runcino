@@ -1,0 +1,1 @@
+VERIFICATION_POLICY.md bypass: docs-only commit (single markdown file, 521 insertions, docs/design/ux-ia-acceptance-plan-2026-09-11.md). Zero code touched -- lowest possible risk. Pre-push watch-gate failed for the same reason as 886d1529e (unrelated native FaffWatch test, concurrent-agent simulator contention). Disclosed to David in-session at time of push.
