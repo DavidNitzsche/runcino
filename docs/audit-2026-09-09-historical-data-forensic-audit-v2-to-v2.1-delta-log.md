@@ -40,3 +40,7 @@ New §15. Base SHA `8559245496bf498d3d4b0479e1117ae416988c4a`; current `origin/m
 
 - `docs/audit-2026-09-09-historical-data-forensic-audit-v2.1.md`: *(reported in the chat response, alongside this file's own hash and the final `git status`, to avoid a stale hash recorded before the last edit)*
 - This delta log: *(same)*
+
+---
+
+**Provenance receipt, added by a later, separate custodial pass (2026-09-11).** Not a re-run of the audit; no finding above is touched. This packet (v1 through v2.1, both delta logs, all four v1 domain track files, and all six v2/v2.1 correction-pass track files) was committed to a dedicated branch, `audit/runner-data-v2.1-provenance-receipt`, off a freshly-fetched `origin/main` (`72ae3831ff841f87f1a76f143ed1b92f4b19feeb`). Content commit: `4e31a3a9c0dff6a6c249e9d53ed8d93a4ee873a6` (David Nitzsche, 2026-09-11 12:57:13 -0700). This file's SHA-256 as it stood in that commit — i.e. before this paragraph and the mirrored one in v2.1 §15 were appended — was `9245ac6599277fd6ca8f8b26d96aa678ef57a4229c207a80d3793f9030930035`; v2.1's own hash at the same point was `01c13bd91fd0a93ea9503dda396ac7dabff28d1beff65dcc2be9a4f9ae186725`. `git status --short` immediately after that commit was empty. The follow-up edit making this paragraph true is itself recorded in a second, immediately-following "chase" commit on the same branch — the same one-commit-can't-hash-itself limitation noted above. This receipt is custodial only; it is not Main's endorsement or interpretation of any finding in this packet.

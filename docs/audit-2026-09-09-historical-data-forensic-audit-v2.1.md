@@ -554,10 +554,23 @@ Severity unchanged from v1 (**P0** corrupts identity/grading/fitness belief/adap
 | `origin/main` at v2.1 completion (re-fetched live) | `99757c1204f27a1fa86504efd580842bc81c72b2` |
 | Audit branch used to PRODUCE this content | None — every edit in v2.1 was made directly to working-tree files via Read/Edit, no branch was created or switched for this pass |
 | **Shared-checkout finding, disclosed rather than acted on:** | This repository's working tree is currently checked out on `audit/brain-forensic-2026-09-10` — a branch this session did not create, carrying 2 unpushed commits (`5b41b0d99`, `c99d924ea`) authored by a **different, concurrent session** doing unrelated work (a "Brain/adaptation forensic report" — see `docs/audit-2026-09-09-coach-forensic-audit.md`, which appeared mid-session and was left untouched). That branch was created off `origin/main` at `80fca013f`, itself now behind the current tip. Because this is a shared checkout (per `CLAUDE.md`'s own standing warning that a second agent is frequently committing concurrently), this session did not check out a different branch or commit anything — doing either would move HEAD out from under the other session's in-progress work. |
-| Final report commit SHA | **Not committed.** See the branch finding above — committing requires deciding which branch these files belong on, and that decision is not this session's to make unilaterally on a checkout another session is actively using. Flagged in the delta log and the chat response as a decision for you. |
+| Final report commit SHA | **Not committed by this pass.** See the branch finding above — committing requires deciding which branch these files belong on, and that decision was not this session's to make unilaterally on a checkout another session was actively using. Flagged in the delta log and the chat response as a decision for you. |
 | v2.1 file hash (SHA-256) | *(computed and reported in the chat response after this file's content was finalized, to avoid a hash that goes stale mid-edit)* |
 | Delta-log file hash (SHA-256) | *(same — reported alongside the v2.1 hash)* |
 | Final `git status --short` (docs/ only, at hand-back) | *(captured and reported in the chat response, alongside the hashes, as the true final state)* |
+
+**Provenance receipt, added by a later, separate custodial pass (2026-09-11) — not a re-run of the audit, not a change to any finding above.** The row above ("Final report commit SHA: Not committed by this pass") describes this document's own authoring session, and stands unchanged as history. Per instruction, a follow-up formalization pass — mirroring the same "record the packet's own commit SHA and clean/dirty status" pattern already used for the Brain packet (`docs/audit-2026-09-10-brain-adaptation-forensic-audit-v2-CORRECTED.md`'s provenance block, chase commit `b23bcd664`) and the Coach packet (`docs/audit-2026-09-09-coach-forensic-audit-v2.1.md`'s §15, chase commit `c9598a408`) — committed this entire packet (v1 through v2.1, all four original domain track files, both delta logs, and all six correction/completion-pass track files) to a dedicated branch:
+
+| Field | Value |
+|---|---|
+| Dedicated branch | `audit/runner-data-v2.1-provenance-receipt`, created off a freshly-fetched `origin/main` (`72ae3831ff841f87f1a76f143ed1b92f4b19feeb`) |
+| Content commit (this file and 14 siblings, as they stood in the shared working tree, byte-for-byte, no findings altered) | `4e31a3a9c0dff6a6c249e9d53ed8d93a4ee873a6` |
+| Content commit author/date | David Nitzsche, 2026-09-11 12:57:13 -0700 |
+| Working-tree status immediately after the content commit, scoped to every file this Runner Data packet owns | Clean — `git status --short` returned no output in the receipt worktree |
+| This file's hash (SHA-256), as it stood in the content commit — i.e. *before* this provenance-receipt paragraph was appended (self-reference is impossible for the same reason v2's own §7 and Coach's c9598a408 both note: a file's hash cannot describe an edit still being made to it) | `01c13bd91fd0a93ea9503dda396ac7dabff28d1beff65dcc2be9a4f9ae186725` |
+| v2-to-v2.1 delta log's hash (SHA-256), as it stood in the content commit | `9245ac6599277fd6ca8f8b26d96aa678ef57a4229c207a80d3793f9030930035` |
+| This provenance-receipt paragraph's own commit | Recorded in a second, immediately-following "chase" commit on the same branch, per the same limitation — a commit's SHA cannot be embedded in the files it commits |
+| Scope note | This receipt formalizes the packet for provenance purposes only. It is a custodial/notary act, not Main's endorsement or interpretation of any finding above, which remain Runner Data's own content, unaltered. |
 
 ---
 
