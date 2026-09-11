@@ -1346,7 +1346,7 @@ struct TodayAfterV5: View {
     /// standing in for every mile is exactly that case.
     private var milesCoverageLine: String? {
         guard milePieces.count == 1, milePieces[0].isWholeRunAverage else { return nil }
-        return "One row — the whole run's own measured pace, not a mile-cut split."
+        return "One row · the whole run's own measured pace, not a mile-cut split."
     }
 
     /// The samples the route map normalises its pace ramp across, built the
