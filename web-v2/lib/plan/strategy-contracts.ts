@@ -530,10 +530,24 @@ function weekAnswers(args: {
   const sharePct = blockPeakMi > 0 ? Math.round((vol / blockPeakMi) * 100) : 0;
   const out = weeksOut == null ? null : weeksOut;
 
+  // CUTBACKCOPY-1 · `role === 'CUTBACK'` comes from the persisted `is_cutback`
+  // flag (`>15% drop off the week before AT AUTHORING TIME`, non-building-
+  // week.ts), not from these numbers. A reschedule or adaptation can land
+  // extra mileage in a week authored to be lighter WITHOUT clearing the flag
+  // — `lib/plan/reschedule.ts`'s own load-cost model prices exactly this case
+  // (`w.afterMi > w.beforeMi` on an `isCutback` week, "protected import") and
+  // its recommendation prose says so plainly ("mi lands in a week authored to
+  // be lighter") rather than claiming a reduction that is not there. `vol` and
+  // `prevVol` above are this same composed week's own numbers — already
+  // resolved by the Plan engine, not recomputed here — so the honest question
+  // is just whether they actually show what the role claims before saying so.
+  const cutbackIsActualReduction = prev != null && vol < prevVol;
+
   const whyMileage =
     role === 'RACE' ? `Race week. ${mi(vol)} mi, and almost all of it is the race.`
     : role === 'TAPER' ? `${mi(vol)} mi, ${sharePct}% of this block's biggest week. Volume comes down so the work already done can surface.`
-    : role === 'CUTBACK' ? `${mi(vol)} mi against ${mi(prevVol)} mi last week. The reduction is deliberate and is what lets the next step land.`
+    : role === 'CUTBACK' && cutbackIsActualReduction ? `${mi(vol)} mi against ${mi(prevVol)} mi last week. The reduction is deliberate and is what lets the next step land.`
+    : role === 'CUTBACK' ? `${mi(vol)} mi against ${mi(prevVol)} mi last week. This week was authored lighter, but the total did not come down. The recovery this week is doing has to come from effort and spacing, not from the mileage.`
     : prev == null ? `${mi(vol)} mi. This is the load you are already holding, not a step up.`
     : vol > prevVol ? `${mi(vol)} mi, up from ${mi(prevVol)}. The step is the week's main work.`
     : `${mi(vol)} mi, the same as last week. Repeating a load is how it gets absorbed.`;
@@ -562,7 +576,8 @@ function weekAnswers(args: {
       : `${qCount} structured session${qCount === 1 ? '' : 's'}. They sit either side of the long run so neither compromises the other.`;
 
   const whyCutback =
-    role === 'CUTBACK' ? `Down from ${mi(prevVol)} mi. Fatigue clears on the weeks you run less, not on the weeks you run more.`
+    role === 'CUTBACK' && cutbackIsActualReduction ? `Down from ${mi(prevVol)} mi. Fatigue clears on the weeks you run less, not on the weeks you run more.`
+    : role === 'CUTBACK' ? `Authored lighter than ${mi(prevVol)} mi, but the total sits at ${mi(vol)} mi, not down. Something landed here after the week was built; the mileage is not what is doing the recovery work this week.`
     : role === 'RECOVERY' ? 'Recovery week. Easy running only, until the legs are ready to be asked again.'
     : null;
 
@@ -666,7 +681,12 @@ export function deriveBlockStrategy(inputs: BlockStrategyInputs): BlockStrategy 
       rationale:
         role === 'RACE' ? 'Race week. Everything before it has already happened.'
         : role === 'TAPER' ? 'Taper. Volume comes down, intensity holds.'
-        : role === 'CUTBACK' ? 'Planned cutback. The reduction is the work.'
+        // CUTBACKCOPY-1 · same guard as `weekAnswers`'s `whyMileage` / `whyCutback`
+        // — `role === 'CUTBACK'` is the persisted flag, not this week's actual
+        // numbers, and a reschedule can land mileage back into a week authored
+        // to be lighter without clearing it (see that comment for the citation).
+        : role === 'CUTBACK' && prev != null && w.weeklyMi < prev.weeklyMi ? 'Planned cutback. The reduction is the work.'
+        : role === 'CUTBACK' ? 'Authored as a cutback, but the total did not come down. The recovery purpose still governs the week even though the mileage does not show it.'
         : role === 'RECOVERY' ? 'Recovery. Easy running only.'
         : advancing && primary
           ? `Build week. Primary stressor: ${primary.replace(/_/g, ' ')}.`
