@@ -240,7 +240,12 @@ export function phasesFromCompletion(value: unknown): unknown[] {
 
 export interface GradeOptions {
   /** The recovery the plan prescribed, seconds, for every recovery phase that
-   *  does not carry its own `targetDurationSec`. From `workout_spec.rep_rest_s`. */
+   *  does not carry its own `targetDurationSec`. From `workout_spec.rep_rest_s`
+   *  (rep/threshold/intervals sessions) OR `workout_spec.strides_recovery_s`
+   *  (easy/shakeout/strides sessions carrying strides — see
+   *  RECOVERY-HONESTY-STRIDES-1 on `resolveWorkoutVerdict`, the one caller
+   *  that resolves which field applies). A caller assembling this directly
+   *  (a test, a synthetic phase array) picks the right source itself. */
   prescribedRecoverySec?: number | null;
   /**
    * STRIDE-ROUNDTRIP-1 (2026-09-02) · `workout_spec.strides_reps`.
@@ -587,6 +592,40 @@ export function resolveWorkoutVerdict(args: ResolveWorkoutVerdictArgs): WorkoutV
   const spec = args.spec && typeof args.spec === 'object' ? args.spec : null;
   const sessionClass = classifySession(String(args.type ?? ''), spec);
   const restS = spec ? num(spec.rep_rest_s) : null;
+  /*
+   * RECOVERY-HONESTY-STRIDES-1 (2026-09-11) · `workout_spec.strides_recovery_s`
+   * — the walk-back duration a strides-carrying spec (`kind: 'easy'` /
+   * `'shakeout'` / `'strides'`; `appendStrides` in `lib/training/expand-spec.ts`)
+   * prescribes between strides.
+   *
+   * Before this, `prescribedRecoverySec` read ONLY `rep_rest_s`, which a
+   * strides spec never carries — that field belongs to `kind: 'threshold'` /
+   * `'intervals'` rows. And the wire's `WatchCompletionPhase` (the watch's
+   * outgoing completion struct) carries no `targetDurationSec` at all, so the
+   * per-phase fallback in `gradeStoredPhases` (`p.targetDurationSec ??
+   * opts.prescribedRecoverySec`) always lands on `opts.prescribedRecoverySec`
+   * for real completion data. With `strides_recovery_s` unread, that was
+   * always `null` for a strides workout, and `recoveriesHonestOf` refuses to
+   * grade a recovery with a null `prescribedSec` (Rule 11: absence is not a
+   * verdict). So a strides session's recovery-honesty vote was ALWAYS `null`
+   * — "no signal" — never `true` or `false`, however honest or dishonest the
+   * walk-backs actually were. Silently blind, exactly as scoped.
+   *
+   * PRECEDENCE · `rep_rest_s` wins when both are present. Investigated
+   * (2026-09-11): the two fields are mutually exclusive by spec `kind` in
+   * every authoring path (`lib/plan/spec-builder.ts`) — `rep_rest_s` is
+   * written only on `kind: 'threshold'`/`'intervals'` rows,
+   * `strides_recovery_s` only on `kind: 'easy'`/`'shakeout'`/`'strides'` rows
+   * (`strideFields()`'s two call sites, both spread onto `kind: 'easy'`), and
+   * `expandSpecToPhases` dispatches on `kind` to exactly one expander — so no
+   * authored spec has ever carried both. This precedence is a documented
+   * default for a case that cannot currently occur, not a rule this app
+   * depends on; if a future spec kind ever legitimately carries both (e.g. a
+   * quality session with strides appended, per Research/04 §7.2's "mid-warmup
+   * before a workout" placement), revisit here.
+   */
+  const stridesRecoverySec = spec ? num(spec.strides_recovery_s) : null;
+  const prescribedRecoverySec = restS ?? stridesRecoverySec;
   const strides = spec ? num(spec.strides_reps) : null;
   const recoveryEndedEarly = Array.isArray(args.recoveryEndedEarly)
     ? (args.recoveryEndedEarly as Array<{ phaseIndex?: number | null }>)
@@ -595,7 +634,7 @@ export function resolveWorkoutVerdict(args: ResolveWorkoutVerdictArgs): WorkoutV
     ? (args.sessionEnded as { phaseIndex?: number | null; phaseType?: string | null })
     : null;
   return gradeStoredPhases(args.phases, sessionClass, {
-    prescribedRecoverySec: restS,
+    prescribedRecoverySec,
     stridesPrescribed: strides,
     recoveryEndedEarly,
     sessionEnded,
