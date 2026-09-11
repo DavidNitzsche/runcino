@@ -943,6 +943,63 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
         };
       }
     }
+    /* RECOVERY-HONESTY-TEXT-1 (2026-09-11) · `sessionLadder` returns `uneven`
+     * whenever `recoveriesHonest === false`, even when EVERY graded work
+     * phase landed — `landed === graded && !lateCollapse && recoveriesHonest
+     * !== false` is the whole gate on `executed`, so a session that hit
+     * every rep still falls through to this branch on recovery timing
+     * alone. Below this comment, the generic fallback ("Some of the {noun}
+     * {insideBound} and some did not.") used to run unconditionally, which
+     * is FALSE for this shape: `s.hits + s.fasts === s.graded`, so nothing
+     * in the graded WORK failed to land. Rule 16 — a sentence asserting a
+     * fact about a measurement is gated on that measurement — and "some did
+     * not [land]" was gated on recovery duration, not on any landing
+     * measurement, and worded as though it were one.
+     *
+     * This is RECOVERY-HONESTY-STRIDES-1's own real-world case. Before that
+     * fix, `recoveriesHonest` was always `null` for a strides day (the
+     * field `prescribedRecoverySec` needed was never read), so THIS branch
+     * was unreachable for a strides session — the mechanism is sound, the
+     * fix is correct, but nothing updated the wording for the case it newly
+     * unlocked, and the generic text is wrong for it.
+     *
+     * The account this was found on, 2026-09-09 (six 20s strides,
+     * `strides_recovery_s: 60`, walk-backs of 30/43/61/24/38/8s): the 5.0 mi
+     * easy block graded `hit` — 1 of 1 graded work phases landed — and
+     * `recoveriesHonest` is `false` only because two of six walk-backs
+     * (24s, 8s) sat outside `RECOVERY_DURATION_TOLERANCE` of the 60s model.
+     * `runs.data.recoveryEndedEarly` carries no record for this run, so the
+     * wire does not say whether the runner advanced on purpose or the
+     * recovery came apart some other way — Rule 11: that is a THIRD state,
+     * distinct from both "chosen" and "lapse", and this composer must not
+     * guess which it was. "Some of the block landed... and some did not"
+     * would have told him his easy run was inconsistent, which never
+     * happened, and reads exactly like the "not completed" framing already
+     * flagged as wrong on the per-walk-back label
+     * (`TodayAfterV5.completionNote`'s WALKBACK-1/2, native side). This
+     * branch states the one fact the data actually supports — recovery
+     * duration sat outside the modelled band — without asserting a lapse OR
+     * a choice, and without touching the work verdict at all.
+     *
+     * Deliberately narrower than `recoveriesHonest === false` alone:
+     * `!s.lateCollapse` keeps this branch from also claiming "recovery" for
+     * a session whose `uneven` grade actually came from a late fade — a
+     * different, unrelated fact this branch must not paper over. */
+    if (!s.lateCollapse && s.recoveriesHonest === false && s.graded > 0 && s.hits + s.fasts === s.graded) {
+      reasons.push('RECOVERY_DURATION_OFF_MODEL_WORK_LANDED');
+      const recoveryWord = strides ? 'Walk-backs' : 'Recovery between reps';
+      return {
+        status: 'PARTIAL_PRODUCTIVE',
+        headline: strides ? 'Walk-backs ran short' : 'Recovery ran short',
+        summary: `${cap1(reps)} ${insideBound}. ${recoveryWord} came in short of what was modelled — logged as run, not judged.${strideClause}`,
+        intendedStimulus: stimulus,
+        stimulusDelivered: 'PARTIAL',
+        confidence: 'MODERATE',
+        targetProvenance: input.targetProvenance,
+        targetProvenanceNote,
+        reasons,
+      };
+    }
     return {
       status: 'PARTIAL_PRODUCTIVE',
       headline: 'Mixed set',
