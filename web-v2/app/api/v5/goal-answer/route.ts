@@ -27,7 +27,33 @@
  *                   uses for a priority edit (meta.priority + auto-rebuild
  *                   kind `a_race_removed`). Requires `raceSlug` — the race
  *                   that stays the goal.
+ *   use_measured_elevation
+ *                 · course-changed CHOICE only (low-confidence conflict —
+ *                   see `lib/training/race-card.ts#courseChangedChoiceCard`
+ *                   and `docs/design/cim-elevation-semantic-trace-2026-09-11.md`).
+ *                   Re-resolves the race's elevation server-side (never
+ *                   trusts a client-supplied number) and writes the GPS
+ *                   track's own reading into `course_library` — the same
+ *                   curated-value correction mechanism
+ *                   `lib/race/course-elevation.ts`'s own header already
+ *                   documents for AFC and Big Sur. This is the ONE action
+ *                   in this route that changes what every other consumer of
+ *                   `resolveCourseElevation()` sees, going forward.
+ *   keep_curated_elevation
+ *                 · course-changed CHOICE only. Suppresses the trigger;
+ *                   writes nothing to `course_library`. Genuinely the
+ *                   opposite outcome of `use_measured_elevation` — this is
+ *                   what the old Acknowledge/Not-now pair never had.
  *
+ * 2026-09-11 · CIM elevation-integrity fix. `acknowledge` for the
+ * course-changed FACT (informational — high/medium confidence, the resolver
+ * has already adopted the measured value; see `courseChangedFactCard`) is
+ * now the only answer that card offers, since there is nothing left to
+ * decide. The CHOICE variant (`courseChangedChoiceCard`, low confidence)
+ * never uses `acknowledge`/`not_now` at all — it uses the two actions above,
+ * specifically so two buttons never again trace to the same outcome.
+ *
+
  * `take` (re-state the goal to a server-computed number on one tap) and
  * `hold` (keep the goal — only meaningful as the answer to a `take` it could
  * have refused) are both gone, removed 2026-08-26 per David's ruling (see
@@ -45,6 +71,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
+import { rowOrNull } from '@/lib/db/read';
 import { requireUserId } from '@/lib/auth/session';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadRacesState } from '@/lib/coach/races-state';
@@ -52,11 +79,16 @@ import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { manualResultPatch, runPostResultChain } from '@/lib/race/result-chain';
 import type { FactChoiceTriggerId } from '@/lib/training/race-card';
+import { resolveCourseElevation, type ResolveCourseElevationInput } from '@/lib/race/course-elevation';
+import { decideCourseElevationChoice } from '@/lib/race/course-elevation-choice';
 import { outage } from '@/lib/route/failure';
 
 export const dynamic = 'force-dynamic';
 
-const ACTIONS = ['not_now', 'acknowledge', 'repace', 'confirm', 'leave', 'choose_race'] as const;
+const ACTIONS = [
+  'not_now', 'acknowledge', 'repace', 'confirm', 'leave', 'choose_race',
+  'use_measured_elevation', 'keep_curated_elevation',
+] as const;
 type Action = (typeof ACTIONS)[number];
 
 /**
@@ -79,6 +111,16 @@ type Action = (typeof ACTIONS)[number];
  * prefix, and nothing downstream ever read the name they chose.
  */
 const GOAL_ANSWER_RECEIPT = 'goal_answer_receipt';
+
+/** `course_library.elevation_gain_ft`/`net_elevation_ft` are INTEGER, but
+ *  read defensively as `number | string | null` the same way
+ *  `lib/race/course-elevation.ts`'s own `lib` input does — coerced here
+ *  before it becomes the undo receipt's "previous" value. */
+const toNumOrNull = (v: number | string | null | undefined): number | null => {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
 
 async function writeIntent(userId: string, reason: string, field: string | null, value: Record<string, unknown>): Promise<void> {
   await pool.query(
@@ -212,6 +254,89 @@ export async function POST(req: NextRequest) {
         await suppressTrigger(userId, 'two_a_races');
         await bustBriefingCacheForEvent(userId, 'race_crud').catch(() => {});
         return NextResponse.json({ ok: true, action, chosen: raceSlug, demoted: others.map(o => o.slug) });
+      }
+
+      // ── course-changed CHOICE (low-confidence conflict) · 2026-09-11 ────
+      // See `lib/training/race-card.ts#courseChangedChoiceCard` and
+      // `docs/design/cim-elevation-semantic-trace-2026-09-11.md`. Only
+      // reached when `resolveCourseElevation()`'s confidence is genuinely
+      // low — the informational (high/medium) path never offers these two
+      // actions at all, it only offers `acknowledge`.
+      case 'use_measured_elevation': {
+        const slug = raceSlug ?? nextA?.slug ?? null;
+        if (!slug) return NextResponse.json({ ok: false, error: 'no_race', reason: 'No race to correct.' }, { status: 404 });
+        // `rowOrNull` distinguishes "no such row" (undefined) from "the read
+        // FAILED" (null) — a genuine failure here must reach the outer catch
+        // as an outage, not be silently reinterpreted as "no GPS track on
+        // file" (lib/audit/swallowed-failure-registry.ts's ratchet is what
+        // catches exactly this collapse).
+        const raceRow = await rowOrNull<{ course_geometry: unknown; distance_mi: number | null }>(
+          'v5/goal-answer use_measured_elevation · race row',
+          pool.query(`SELECT course_geometry, distance_mi FROM races WHERE slug = $1 AND user_uuid = $2`, [slug, userId]),
+        );
+        if (raceRow === null) throw new Error('race row read failed');
+        if (!raceRow?.course_geometry) {
+          return NextResponse.json({ ok: false, error: 'no_geometry', reason: 'No GPS track on file for this race.' }, { status: 400 });
+        }
+        const libRow = await rowOrNull<{ elevation_gain_ft: number | string | null; net_elevation_ft: number | string | null }>(
+          'v5/goal-answer use_measured_elevation · course_library row',
+          pool.query(`SELECT elevation_gain_ft, net_elevation_ft FROM course_library WHERE slug = $1`, [slug]),
+        );
+        if (libRow === null) throw new Error('course_library read failed');
+        // Re-derive server-side — a client-supplied number is never trusted.
+        // Read straight off the track (elevationProfileFromGeometry via the
+        // resolver's own low-confidence rung), not off whatever the resolver
+        // would AUTO-pick, since the runner's own confirmation is what earns
+        // the measured value its precedence here.
+        const input: ResolveCourseElevationInput = {
+          lib: libRow,
+          geometry: raceRow.course_geometry as ResolveCourseElevationInput['geometry'],
+          nominalDistanceMi: raceRow.distance_mi,
+        };
+        const resolved = resolveCourseElevation(input);
+        const conflict = resolved.conflict;
+        const measuredGainFt = conflict?.measuredGainFt ?? (resolved.provenance === 'measured' ? resolved.elevationGainFt : null);
+        const measuredNetFt = conflict?.measuredNetFt ?? (resolved.provenance === 'measured' ? resolved.netElevationFt : null);
+
+        // The actual divergence from `keep_curated_elevation` is decided
+        // HERE, in a pure function with its own falsification tests
+        // (`lib/race/course-elevation-choice.test.ts`) — this route only
+        // executes what it returns.
+        const outcome = decideCourseElevationChoice({
+          action: 'use_measured_elevation', slug,
+          measuredGainFt, measuredNetFt,
+          previousGainFt: toNumOrNull(libRow?.elevation_gain_ft),
+          previousNetFt: toNumOrNull(libRow?.net_elevation_ft),
+          confidence: resolved.confidence,
+        });
+        if (!outcome.ok) {
+          return NextResponse.json({ ok: false, error: 'no_measurement', reason: outcome.error }, { status: 400 });
+        }
+        // outcome.courseLibraryUpdate is non-null whenever outcome.ok is
+        // true for this action — the guard above is what makes that so.
+        const update = outcome.courseLibraryUpdate!;
+        await pool.query(
+          `UPDATE course_library SET elevation_gain_ft = $2, net_elevation_ft = $3, updated_ts = NOW() WHERE slug = $1`,
+          [update.slug, update.elevationGainFt, update.netElevationFt],
+        );
+        await suppressTrigger(userId, outcome.suppressTrigger!);
+        // Carries the prior curated values so this can be manually reversed.
+        // The receipt IS the undo record, per the product requirement that a
+        // material data change keep a path back.
+        await writeIntent(userId, GOAL_ANSWER_RECEIPT, slug, outcome.receipt!);
+        await bustBriefingCacheForEvent(userId, 'race_crud').catch(() => {});
+        return NextResponse.json({ ok: true, action, slug, previous: outcome.previous, applied: { elevationGainFt: update.elevationGainFt, netElevationFt: update.netElevationFt } });
+      }
+
+      case 'keep_curated_elevation': {
+        const slug = raceSlug ?? nextA?.slug ?? null;
+        const outcome = decideCourseElevationChoice({
+          action: 'keep_curated_elevation', slug: slug ?? '',
+          measuredGainFt: null, measuredNetFt: null, previousGainFt: null, previousNetFt: null, confidence: 'unknown',
+        });
+        await suppressTrigger(userId, outcome.suppressTrigger!);
+        await writeIntent(userId, GOAL_ANSWER_RECEIPT, slug, outcome.receipt!);
+        return NextResponse.json({ ok: true, action, slug });
       }
 
       default:

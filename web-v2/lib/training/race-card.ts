@@ -39,7 +39,8 @@ export type V5CardShape = 'decision' | 'fact' | 'choice';
 
 export type V5CardAnswerAction =
   | 'not_now' | 'acknowledge' | 'repace'
-  | 'confirm' | 'leave' | 'choose_race';
+  | 'confirm' | 'leave' | 'choose_race'
+  | 'use_measured_elevation' | 'keep_curated_elevation';
 
 export interface V5CardAnswerOut {
   id: string;
@@ -53,6 +54,40 @@ export interface V5NumberOut {
   modelled: boolean;
 }
 
+/**
+ * `course_changed`'s payload — 2026-09-11 fix
+ * (`docs/design/cim-elevation-semantic-trace-2026-09-11.md`). Threaded
+ * straight from `resolveCourseElevation()`/`computeCourseImpact()`'s own
+ * output; nothing here is recomputed in this file or in presentation code.
+ *
+ * `oldNetFt`/`oldGainFt` are always the curated `course_library` scalars —
+ * `detectCourseChanged` only builds a card when a curated row exists to
+ * conflict with. `newNetFt`/`newGainFt` are always the measured candidate
+ * from `resolved.conflict` (the GPS track's own reading), REGARDLESS of
+ * whether the resolver has adopted it yet — `resolved` says whether it has.
+ *
+ * One shape for both the informational and choice cards (Rule 16 — one
+ * quantity, one name): a field means the same thing in both, only the copy
+ * and the answer set differ.
+ */
+export interface V5CourseElevationDetailOut {
+  oldNetFt: number | null;
+  oldGainFt: number | null;
+  oldSecondsImpact: number | null;
+  newNetFt: number | null;
+  newGainFt: number | null;
+  newSecondsImpact: number | null;
+  /** `resolveCourseElevation()`'s own confidence in the measured candidate. */
+  confidence: 'high' | 'medium' | 'low' | 'reject' | 'unknown';
+  /** True when the resolver has already adopted the measured value (high/
+   *  medium confidence) — the informational path. False means neither
+   *  source cleared the trust bar and the runner is being asked to choose. */
+  resolved: boolean;
+  /** `assessGeometryConfidence()`'s own plain-language reasons — grounds the
+   *  copy in what the resolver actually found, never an invented rationale. */
+  reasons: string[];
+}
+
 export interface V5DecisionCardOut {
   shape: V5CardShape;
   verdict: GoalFeasibility;
@@ -62,6 +97,8 @@ export interface V5DecisionCardOut {
   stretchTarget: V5NumberOut | null;
   cautions: string[];
   answers: V5CardAnswerOut[];
+  /** Non-null only for `trigger === 'course_changed'`. */
+  courseElevationDetail: V5CourseElevationDetailOut | null;
 }
 
 /**
@@ -76,6 +113,8 @@ export interface FactChoiceSpec {
   trigger: FactChoiceTriggerId;
   question: string;
   answers: V5CardAnswerOut[];
+  /** Only `course_changed` populates this. */
+  courseElevationDetail?: V5CourseElevationDetailOut | null;
 }
 
 // ─── the four FACT / CHOICE cards ───────────────────────────────────────────
@@ -103,16 +142,110 @@ export function heatFactCard(raceName: string, tempF: number | null): FactChoice
   };
 }
 
-/** The course's measured elevation disagrees with what the projection was
- *  built on. Gated in the route on `resolveCourseElevation`'s `conflict`
- *  field — never asserted from a hunch. */
-export function courseChangedFactCard(raceName: string): FactChoiceSpec {
+/**
+ * The course's curated elevation record disagrees with the runner's own GPS
+ * track. Gated in the route on `resolveCourseElevation()`'s `conflict` field
+ * — never asserted from a hunch.
+ *
+ * 2026-09-11 · course-elevation integrity fix
+ * (`docs/design/cim-elevation-semantic-trace-2026-09-11.md`). The prior
+ * version of this card discarded everything `resolveCourseElevation()` and
+ * `computeCourseImpact()` already compute and shipped a bare race-name
+ * sentence with two buttons ("Acknowledge" / "Not now") that traced to the
+ * IDENTICAL outcome — a 14-day suppression, zero data correction. Per the
+ * product ruling: **a high/medium-confidence conflict the canonical resolver
+ * has already resolved is not a runner decision.** `resolveCourseElevation()`
+ * has already picked the measured value in this branch — this card explains
+ * the correction in plain language and offers exactly one acknowledgment,
+ * because there is nothing left to decide. It never says "the projection
+ * changed" — course elevation has zero input into the trajectory-based
+ * "Projected" figure (see the trace doc §6); it only ever moves the Targets
+ * goal-gap Course chunk, which is what `secondsImpact` names.
+ */
+export function courseChangedFactCard(raceName: string, detail: V5CourseElevationDetailOut): FactChoiceSpec {
   return {
     kind: 'fact',
     trigger: 'course_changed',
-    question: `The course elevation for ${raceName} reads differently than what this projection was built on. We can't know which course you'll actually race.`,
-    answers: [ackAnswer('course_ack'), notNowAnswer('course_not_now')],
+    question: courseChangedInformationalCopy(raceName, detail),
+    answers: [ackAnswer('course_ack')],
+    courseElevationDetail: detail,
   };
+}
+
+/**
+ * The choice twin of `courseChangedFactCard` — reached only when
+ * `resolveCourseElevation()`'s confidence is genuinely `low` (neither source
+ * clears the trust bar; see `elevationIsTrustedForAdjustment`). Per the
+ * product ruling, this is the ONE case a runner is asked to adjudicate, and
+ * the two answers must be distinct and named by their actual effect — never
+ * the old generic Acknowledge/Not-now pair that did the same thing either
+ * way. `use_measured_elevation` / `keep_curated_elevation`
+ * (`app/api/v5/goal-answer/route.ts`) genuinely diverge: the first re-derives
+ * the GPS reading server-side and writes it into `course_library` (the same
+ * correction mechanism this file's own header already uses for AFC and Big
+ * Sur); the second leaves the curated row untouched. Both suppress the
+ * trigger; only one changes data.
+ */
+export function courseChangedChoiceCard(raceName: string, detail: V5CourseElevationDetailOut): FactChoiceSpec {
+  return {
+    kind: 'choice',
+    trigger: 'course_changed',
+    question: courseChangedChoiceCopy(raceName, detail),
+    answers: [
+      {
+        id: 'course_use_measured',
+        label: `Use my GPS track · ${describeElevation(detail.newGainFt, detail.newNetFt)}`,
+        action: 'use_measured_elevation',
+        targetSec: null,
+      },
+      {
+        id: 'course_keep_curated',
+        label: `Keep the course record · ${describeElevation(detail.oldGainFt, detail.oldNetFt)}`,
+        action: 'keep_curated_elevation',
+        targetSec: null,
+      },
+    ],
+    courseElevationDetail: detail,
+  };
+}
+
+/** "723 ft gain, 304 ft net drop" / "no elevation data" — grounded numbers,
+ *  no adjectives, coach voice. Shared so the two cards' copy and the two
+ *  answer labels above never describe the same numbers two different ways
+ *  (Rule 16). */
+function describeElevation(gainFt: number | null, netFt: number | null): string {
+  if (gainFt == null && netFt == null) return 'no elevation data';
+  const parts: string[] = [];
+  if (gainFt != null) parts.push(`${Math.round(gainFt)} ft gain`);
+  if (netFt != null) {
+    const dir = netFt < 0 ? 'net drop' : netFt > 0 ? 'net climb' : 'net flat';
+    parts.push(`${Math.abs(Math.round(netFt))} ft ${dir}`);
+  }
+  return parts.join(', ');
+}
+
+/** "adds about 54 seconds at your goal pace" / "" — only stated when both
+ *  the old and new figures are known, so a race with no stated goal (no
+ *  `goalSec` to price the impact against) gets an honest, silent omission
+ *  rather than a fabricated number (Rule 11). */
+function describeImpactDelta(detail: V5CourseElevationDetailOut): string {
+  if (detail.oldSecondsImpact == null || detail.newSecondsImpact == null) return '';
+  const delta = detail.newSecondsImpact - detail.oldSecondsImpact;
+  if (delta === 0) return ' No change to your projected course cost.';
+  const abs = Math.abs(delta);
+  const dir = delta > 0 ? 'adds about' : 'saves about';
+  return ` The corrected reading ${dir} ${abs} second${abs === 1 ? '' : 's'} at your goal pace, in the course chunk of your goal gap. Not your projected finish.`;
+}
+
+const NO_VERIFICATION_DATE_NOTE = ' No verification date is on record for either source.';
+
+function courseChangedInformationalCopy(raceName: string, detail: V5CourseElevationDetailOut): string {
+  return `${raceName}'s course record on file did not match your own GPS upload. Your upload is dense enough to trust, so we've corrected it. See the numbers below.${describeImpactDelta(detail)}${NO_VERIFICATION_DATE_NOTE}`;
+}
+
+function courseChangedChoiceCopy(raceName: string, detail: V5CourseElevationDetailOut): string {
+  const reason = detail.reasons[0] ? ` (${detail.reasons[0]})` : '';
+  return `${raceName}'s course record on file and your own GPS upload disagree, and the upload isn't dense enough for us to trust it over the record${reason}. Your call.${NO_VERIFICATION_DATE_NOTE}`;
 }
 
 /** The race happened, but its finish time is a Strava/watch match, not a
@@ -271,6 +404,7 @@ export function composeRaceCard(args: {
     stretchTarget: null,
     cautions: [],
     answers: factOrChoice.answers,
+    courseElevationDetail: factOrChoice.courseElevationDetail ?? null,
   };
 }
 

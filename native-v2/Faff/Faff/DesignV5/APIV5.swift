@@ -1558,13 +1558,37 @@ struct V5DecisionCard: Decodable, Equatable {
     /// The answers. The row wraps rather than clipping, so a longer label like
     /// "Wait for Saturday" drops to its own line.
     let answers: [V5CardAnswer]
+    /// Non-nil only for `trigger == "course_changed"`. 2026-09-11 CIM
+    /// elevation-integrity fix — see `RaceDecisionCardV5`'s rendering of it
+    /// and `docs/design/cim-elevation-semantic-trace-2026-09-11.md`. Threaded
+    /// verbatim from the server's `resolveCourseElevation()`/
+    /// `computeCourseImpact()` output; this view never recomputes it.
+    let courseElevationDetail: V5CourseElevationDetail?
+}
+
+/// Mirrors `web-v2/lib/training/race-card.ts#V5CourseElevationDetailOut`
+/// field-for-field. One shape for both the informational (`resolved: true`)
+/// and choice (`resolved: false`) course-changed cards — a field means the
+/// same quantity in both.
+struct V5CourseElevationDetail: Decodable, Equatable {
+    let oldNetFt: Double?
+    let oldGainFt: Double?
+    let oldSecondsImpact: Double?
+    let newNetFt: Double?
+    let newGainFt: Double?
+    let newSecondsImpact: Double?
+    /// `high | medium | low | reject | unknown`
+    let confidence: String
+    /// True when the resolver already adopted the measured value.
+    let resolved: Bool
+    let reasons: [String]
 }
 
 struct V5CardAnswer: Decodable, Equatable, Hashable, Identifiable {
     let id: String
     let label: String
     /// `hold | take | not_now | acknowledge | repace | confirm | leave |
-    ///  choose_race`
+    ///  choose_race | use_measured_elevation | keep_curated_elevation`
     let action: String
     /// For `take`, the target being accepted, so the client never re-derives a
     /// time from a label.

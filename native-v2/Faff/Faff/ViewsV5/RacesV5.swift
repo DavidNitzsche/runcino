@@ -379,6 +379,20 @@ struct RaceDecisionCardV5: View {
                     }
                 }
             case .fact, .choice:
+                // 2026-09-11 · CIM elevation-integrity fix. The informational
+                // course-changed card (resolved == true — the resolver has
+                // already adopted the measured value) states the numbers HERE,
+                // once, as a tile pair — the question text above deliberately
+                // does not restate them (Rule 17). The choice variant
+                // (resolved == false) has no tile: its two numbers already
+                // live on their own answer rows below, which is the one place
+                // they need to be for a decision the runner is actually making.
+                if let detail = card.courseElevationDetail, card.trigger == "course_changed", detail.resolved {
+                    HStack(spacing: V5.S.s10) {
+                        elevationTile(label: "Course record", gainFt: detail.oldGainFt, netFt: detail.oldNetFt)
+                        elevationTile(label: "Your GPS track", gainFt: detail.newGainFt, netFt: detail.newNetFt)
+                    }
+                }
                 // No safe/stretch pair, no target-naming buttons — just the
                 // question (already shown above) and its own answers.
                 VStack(alignment: .leading, spacing: V5.S.s8) {
@@ -390,6 +404,37 @@ struct RaceDecisionCardV5: View {
         }
         .padding(V5.S.tilePad)
         .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
+    }
+
+    /// "723 ft gain, 304 ft net drop" — bare numbers, no adjectives, mirrors
+    /// `web-v2/lib/training/race-card.ts#describeElevation` exactly so the
+    /// tile and the answer-row labels (choice variant) never phrase the same
+    /// quantity two different ways.
+    private func elevationTile(label: String, gainFt: Double?, netFt: Double?) -> some View {
+        let text: String = {
+            guard gainFt != nil || netFt != nil else { return "no elevation data" }
+            var parts: [String] = []
+            if let gainFt { parts.append("\(Int(gainFt.rounded())) ft gain") }
+            if let netFt {
+                let dir = netFt < 0 ? "net drop" : (netFt > 0 ? "net climb" : "net flat")
+                parts.append("\(Int(abs(netFt).rounded())) ft \(dir)")
+            }
+            return parts.joined(separator: ", ")
+        }()
+        return VStack(alignment: .leading, spacing: V5.S.s4) {
+            Text(label)
+                .font(.faffText(TypeScaleV5.label12))
+                .foregroundStyle(V5.textQuiet)
+            Text(text)
+                .font(.faffText(TypeScaleV5.label14, weight: .semibold))
+                .foregroundStyle(V5.textPrimary)
+                .lineLimit(2)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, V5.S.s14)
+        .padding(.vertical, V5.S.s12)
+        .background(V5.materialTileRaised, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
     }
 
     private func targetTile(label: String, value: FaffValue) -> some View {
