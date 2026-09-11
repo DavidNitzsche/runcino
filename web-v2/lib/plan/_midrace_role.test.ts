@@ -179,7 +179,12 @@ describe('unanswered · byte-identical to the pre-RACEROLE composition', () => {
     expect(JSON.stringify(nulled.weeks)).toBe(JSON.stringify(absent.weeks));
     const race = dayAt(absent, MALIBU.date)!;
     expect(race.day.subLabel).toBe('RACE');
-    expect(race.day.notes).toContain('B race · race effort');
+    // RACEDAYCOPY-1 (2026-09-11) · the unanswered-role default was rewritten
+    // to drop internal classification language ("B race", doubled "race
+    // effort") a runner should never have to parse. This still asserts the
+    // SAME execution the old string named (full race effort), just in words
+    // a coach would actually say on race day.
+    expect(race.day.notes).toContain('Race it, full effort');
     expect(embeddedOf(absent).find((e) => e.slug === 'malibu')?.plannedRole ?? null).toBeNull();
   });
 });

@@ -39,7 +39,21 @@ import { fmtPaceSlash } from '@/lib/format/run';
 export type RaceTargetVoice = 'runner' | 'coach';
 
 /** The two shapes, and there are only two. Kept as one expression so a change
- *  to either lands on the authoring path and the refresh path together. */
+ *  to either lands on the authoring path and the refresh path together.
+ *
+ * RACEDAYCOPY-1 (2026-09-11) · the coach-voice sentence used to read "Coach
+ * target 6:55/mi, set from your current fitness. Yours to change." — a
+ * physical-device screenshot of the Santa Monica 10k race day found this
+ * unclear next to the two OTHER numbers the same screen draws from the same
+ * outlook: the pace band (a range to run inside) and the projected finish (a
+ * time this pace predicts, drawn from `race-projection.ts`, never composed
+ * here). Nothing in the old sentence said which of the three this was — a
+ * runner could read "target" as a prediction rather than an instruction.
+ * "the pace to run today" says plainly that this is an execution instruction,
+ * not the projected finish, and not the band. "Coach target" and "Yours to
+ * change" stay: the first names the author in words (the only provenance
+ * carrier a bare `notes` string has, per the file header), the second is the
+ * literal fact that a coach-set number is editable, same as before. */
 export function raceTargetSentence(
   paceSecPerMi: number | null | undefined,
   voice: RaceTargetVoice,
@@ -47,7 +61,7 @@ export function raceTargetSentence(
   const paceStr = fmtPaceSlash(paceSecPerMi);
   if (paceStr == null) return null;
   return voice === 'coach'
-    ? `Coach target ${paceStr}, set from your current fitness. Yours to change.`
+    ? `Coach target ${paceStr}, the pace to run today. Set from your fitness. Yours to change.`
     : `Target ${paceStr}.`;
 }
 
@@ -61,7 +75,7 @@ export function raceTargetSentence(
  * text moves.
  */
 const TARGET_SENTENCE_SOURCE =
-  '\\s*(?:Coach target \\d+:\\d{2}\\/mi, set from your current fitness\\. Yours to change\\.|Target \\d+:\\d{2}\\/mi\\.)';
+  '\\s*(?:Coach target \\d+:\\d{2}\\/mi, the pace to run today\\. Set from your fitness\\. Yours to change\\.|Target \\d+:\\d{2}\\/mi\\.)';
 
 /** A fresh regex per call. A module-scoped /g regex carries `lastIndex`
  *  between calls, which is how a shared matcher starts skipping every second

@@ -8911,12 +8911,21 @@ export function embedMidBlockRaces(
         ? `${race.name}. B effort. Hard, not all out. It feeds your goal pacing and leaves the build intact.`
         : role === 'race'
           ? `${race.name}. Race it honestly. Full effort; full recovery follows before quality resumes.`
-          : `${race.name}. B race · race effort. Recovery days follow before quality resumes.`
+          // RACEDAYCOPY-1 (2026-09-11) · this default fires when the
+          // runner has not answered the race-role card, so it is the copy
+          // most runners on a B race actually see. It used to read "B race
+          // · race effort. Recovery days follow before quality resumes."
+          // — internal classification language ("B race", "quality") a
+          // runner should never have to parse, and it says "race effort"
+          // twice over. Same execution as the 'race' branch above (full
+          // effort, embedded as the day's quality); the words now say so
+          // in plain terms instead of naming the internal category.
+          : `${race.name}. Race it, full effort. Recovery follows, then harder training returns.`
       : `${race.name}. C race · this is the week's quality session. Run it as the workout.`;
     // MIDGOAL-1 (2026-08-30) · STATE THE TARGET, AND SAY WHOSE IT IS.
     //
     // The row carried `raceGoalPaceSec` since MIDRACE-1 and the prose never
-    // said it, so a runner reading the plan saw "B race · race effort" and no
+    // said it, so a runner reading the plan saw the race-day sentence and no
     // number for a day the watch was already going to pace. State it.
     //
     // Provenance is in the WORDS, not a mark. Rule one ("a modelled number
