@@ -56,6 +56,21 @@
 #
 # WHAT RUNS, AND WHY HERE
 #
+#   main-push-guard      · only when the push targets refs/heads/main (any
+#                          remote — see Section 0 below). Machine-wide mkdir
+#                          lock serializes concurrent integrations, and the
+#                          push is refused outright unless a matching,
+#                          unexpired, single-use authorization record already
+#                          exists for the exact commit being pushed. Added
+#                          2026-09-11 after an agent self-merged and pushed to
+#                          production while its own review was still in
+#                          progress — nothing before this made that
+#                          structurally hard. `scripts/main-push-lock.sh` is
+#                          the CLI; `scripts/lib/main-push-guard.sh` has the
+#                          full design writeup (what this can and cannot
+#                          protect against — read it before assuming more
+#                          coverage than it claims).
+#
 #   check-web-build.sh   · always. Typechecks web-v2 so a missing import is
 #                          caught here rather than by the sixteenth failed
 #                          Railway deploy in a row — and since 2026-08-30 also
@@ -76,11 +91,20 @@
 #                          with a simulator.
 #
 # Set FAFF_WATCH_FAST=1 to skip the board rendering half (tests only).
+#
+# NOTE ON --no-verify: it now also skips the main-push lock and authorization
+# gate below, same as it already skips everything else here. The disclosure
+# obligation at the top of this file ("say so — in the handback, in the
+# commit message") applies with extra weight to a bypassed push to main —
+# say WHO authorized it and where, since the structural check that would
+# normally carry that record did not run.
 # ─────────────────────────────────────────────────────────────────────────────
 set -uo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 ZERO=0000000000000000000000000000000000000000
+REMOTE_NAME="${1:-}"
+REMOTE_URL="${2:-}"
 
 # ── which paths is this push actually carrying? ──────────────────────────────
 # git feeds a pre-push hook one line per ref on stdin:
@@ -91,9 +115,36 @@ ZERO=0000000000000000000000000000000000000000
 # ambiguous case is a gate that opts itself out.
 changed=""
 scoped=1
-while read -r _lref lsha _rref rsha; do
+MAIN_PUSH_SHAS=""
+while read -r _lref lsha rref rsha; do
   [ -z "${lsha:-}" ] && continue
-  [ "$lsha" = "$ZERO" ] && continue            # branch deletion, nothing to check
+  # Captured alongside the existing loop rather than in a second stdin read —
+  # stdin is a pipe and can only be consumed once. Guarded on the REMOTE ref
+  # (what the push updates), not the local branch name, so `git push origin
+  # some-local-name:main` is caught the same as pushing an actual local `main`.
+  #
+  # THIS CHECK RUNS BEFORE THE DELETION SHORT-CIRCUIT BELOW, DELIBERATELY.
+  # Until this fix, `[ "$lsha" = "$ZERO" ] && continue` (a branch deletion)
+  # ran FIRST, so `git push origin :main` never reached this `if` at all —
+  # MAIN_PUSH_SHAS stayed empty, Section 0 below never ran, and a deletion of
+  # main sailed through with no lock and no authorization check whatsoever
+  # (reproduced live: `git push origin :main` with zero authorization on file
+  # went straight through, stopped only by the remote's own unrelated
+  # `receive.denyDeleteCurrent`, which is not guaranteed to be set the same
+  # way everywhere). Deleting main is at least as destructive as an
+  # unauthorized content push, so it must clear the exact same gate. When
+  # `lsha` is `$ZERO` here, `MAIN_PUSH_SHAS` is populated with `$ZERO` itself —
+  # `mpg_check_authorization`/`mpg_authorize` both resolve a SHA through
+  # `mpg_canonical_sha` (`git rev-parse --verify <sha>^{commit}`), and the
+  # all-zero SHA never resolves to a real commit, so a deletion of main can
+  # never be authorized through the normal flow — it fails closed
+  # unconditionally, same as any other push nobody has signed off on. The
+  # only way past that is the documented `git push --no-verify` escape hatch,
+  # which already carries its own disclosure obligation.
+  if [ "${rref:-}" = "refs/heads/main" ]; then
+    MAIN_PUSH_SHAS="$MAIN_PUSH_SHAS$lsha"$'\n'
+  fi
+  [ "$lsha" = "$ZERO" ] && continue            # branch deletion — nothing else to diff
   if [ "${rsha:-$ZERO}" != "$ZERO" ] && git cat-file -e "$rsha" 2>/dev/null; then
     changed="$changed$(git diff --name-only "$rsha" "$lsha")"$'\n'
   else
@@ -111,6 +162,37 @@ touches_watch() {
     '^(legacy/native/Faff/FaffWatch|native-v2/project\.yml|native-v2/Faff\.xcodeproj/|scripts/watch/|scripts/check-watch\.sh)'
 }
 
+# ── 0 · main-push lock + authorization ───────────────────────────────────────
+# Feature-branch pushes never reach this block (MAIN_PUSH_SHAS stays empty) —
+# they are exactly as unrestricted as before this change. Runs BEFORE the
+# (slower) build/watch checks below so an unauthorized attempt fails fast
+# rather than burning a typecheck+build first.
+if [ -n "$MAIN_PUSH_SHAS" ] && [ -f "$ROOT/scripts/lib/main-push-guard.sh" ]; then
+  # shellcheck disable=SC1091
+  source "$ROOT/scripts/lib/main-push-guard.sh"
+  main_sha="$(printf '%s' "$MAIN_PUSH_SHAS" | tail -n1)"
+
+  if ! mpg_acquire_lock "$main_sha" "$REMOTE_NAME" "$REMOTE_URL"; then
+    exit 1
+  fi
+  mpg_install_release_trap   # releases on every exit path from here on
+
+  if ! mpg_check_authorization "$main_sha"; then
+    {
+      echo ""
+      echo "✗ Push to main REFUSED: no valid authorization for $main_sha."
+      echo "  This is intentional — pushes to origin/main require an explicit,"
+      echo "  single-use authorization bound to this exact commit. Once David"
+      echo "  has given the go-ahead for THIS integration, run:"
+      echo "    scripts/main-push-lock.sh authorize $main_sha \"<reason — cite the approval>\""
+      echo "  Then re-run this push (authorization expires in 30 min, single-use)."
+      echo "  Emergency bypass: git push --no-verify — disclose it if you do."
+    } >&2
+    exit 1
+  fi
+  MAIN_PUSH_AUTHORIZED_SHA="$main_sha"
+fi
+
 # ── 1 · web typecheck (unchanged behaviour) ──────────────────────────────────
 if ! bash "$ROOT/scripts/check-web-build.sh"; then
   exit 1
@@ -127,6 +209,15 @@ if touches_watch; then
     echo "  Standard: docs/design/watch-0821/FACE-QC.md"
     exit 1
   fi
+fi
+
+# Consume the authorization only now — right before the hook hands control
+# back to git for the actual push. A build or watch-gate failure above exits
+# non-zero WITHOUT reaching this line, so the authorization survives for a
+# retry of the same commit. Only a full, successful pass burns it, which is
+# what prevents it being replayed for a later, different push.
+if [ -n "${MAIN_PUSH_AUTHORIZED_SHA:-}" ]; then
+  mpg_consume_authorization "$MAIN_PUSH_AUTHORIZED_SHA" || true
 fi
 
 exit 0
