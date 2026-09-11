@@ -82,7 +82,28 @@ export async function GET(req: NextRequest) {
   // the query was throwing and the silent .catch below was returning
   // [] (so the WhatChangedExpander + CoachActivityTimeline showed
   // empty for runners who actually had adapter activity).
-  let where = `COALESCE(user_uuid::text, user_id::text) = $1 AND ts >= $2`;
+  // 2026-09-11 · WATCHMATCH-1 follow-up (independent review of
+  // fix/execution-identity-watch-matcher). `plan_match_ambiguous`
+  // (lib/runs/plan-match-ambiguity.ts) is written pre-acknowledged
+  // specifically so state-loader.ts's pending-intents query never sees
+  // it — that file's own doc comment: "this reason is NEVER meant to
+  // reach [the pending-intents path] ... an ambiguous-match refusal is
+  // an engineering signal about identity, not something the coach voice
+  // should ever try to phrase to the runner." This route has no
+  // unacked_only guard by default (timeline/history surfaces keep it
+  // false on purpose, to stay a complete audit log), so that row was
+  // still reaching CoachActivityTimeline unfiltered and rendering raw
+  // JSON via the generic fallback below (no `summarize()` case exists
+  // for it, nor should one: `PlanDayMatchRefusal.message` is doc-commented
+  // "Coach-log/audit safe, never shown to the runner verbatim"). Excluded
+  // outright rather than narrated — this event has no manual-resolution
+  // UI yet and is meant to stay engineering-only, the same posture this
+  // codebase already gives other admin-only diagnostics (see
+  // lib/audit/generated-content-registry.ts's "internal, not surfaced"
+  // entries) rather than inventing a runner-facing sentence nobody asked
+  // for. Per-statement, not file-wide: every other coach_intents reason
+  // is untouched.
+  let where = `COALESCE(user_uuid::text, user_id::text) = $1 AND ts >= $2 AND reason != 'plan_match_ambiguous'`;
   if (reasonPrefix) {
     params.push(`${reasonPrefix}%`);
     where += ` AND reason LIKE $${params.length}`;
