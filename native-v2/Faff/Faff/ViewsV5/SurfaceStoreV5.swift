@@ -33,6 +33,21 @@
 //  stored on-device". So `stale` is its own state and it does NOT blank the
 //  screen.
 //
+//  COLDOPEN-1 (2026-09-11) · THAT THIRD CASE USED TO BE UNREACHABLE PAST
+//  `AppCache.maxAgeSec`, WHICH IS THE BUG THIS DATE MARKS.
+//
+//  `AppCache.read` used to return nil the instant a decodable, on-disk
+//  payload turned 12h01m old — collapsing "there is something honest to
+//  show" and "this is recent enough to trust without saying so" into one
+//  nil, so a cached payload just past that line and a cold install with
+//  nothing ever cached were indistinguishable to this file. Both fell
+//  through to the outage screen the moment a refresh failed, even though one
+//  of them had a perfectly legible day sitting on disk. `AppCache.read` no
+//  longer gates on age at all; `AppCache.withinIdentityWindow` is the
+//  narrower question `init` (below) still asks, to decide whether an old
+//  seed needs to disclose itself before any refresh has even had a chance to
+//  answer. See `docs/audit-2026-09-11-session-handback.md` §5 Finding 1.
+//
 
 import Foundation
 import SwiftUI
@@ -255,6 +270,44 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         self.model = cache.flatMap { AppCache.read($0, as: Model.self) }
         self.cachedAt = cache.flatMap { AppCache.writtenAt($0) }
 
+        // COLDOPEN-1 (2026-09-11) · A SEEDED CACHE PAST THE IDENTITY WINDOW
+        // DISCLOSES ITSELF, EAGERLY — IT DOES NOT WAIT FOR A FAILURE.
+        //
+        // `AppCache.read` used to return nil the instant a payload turned
+        // `maxAgeSec` old, so this class never had to think about "old but
+        // decodable" as a seed state — it simply never saw one. Now it does,
+        // and rendering it silently (`stale` starting `false`, same as a
+        // warm cache) would resurrect the exact bug `maxAgeSec` was written
+        // to close: a phone that has been offline since yesterday would show
+        // yesterday's plan as today's with nothing on screen saying so, right
+        // up until a refresh either confirms it (silently) or fails (after
+        // STALEDEBOUNCE-1's own 1.2s). See
+        // `docs/audit-2026-09-11-session-handback.md` §5 Finding 1.
+        //
+        // So a seed outside `AppCache.withinIdentityWindow` schedules the
+        // SAME disclosure a failed refresh would, from the moment this
+        // surface exists — deliberately NOT keyed on `loadAttempt`, which
+        // answers a different question ("which REQUEST is newest") than the
+        // one here ("has ANY confirmed answer landed since this surface was
+        // seeded"). `loadAttempt` is bumped at the START of every `load()`
+        // call, success or failure alike, so a debounce keyed on it would be
+        // superseded the instant `.task` calls `load()` — before that load
+        // has actually answered anything — and would never fire at all.
+        // `discloseAgeIfStillUnconfirmed` instead watches `cachedAt` itself,
+        // which only moves on a CONFIRMED fresh read (`load()`'s `.ok` case,
+        // or `presentSync`), so it can tell "a live answer arrived" from "a
+        // request merely started."
+        //
+        // The debounce is what keeps this SILENT in the common case: a
+        // stale-but-decodable cache with a healthy network refreshes well
+        // inside 1.2s and this never becomes visible at all. Only a refresh
+        // that is slow, or fails outright, is disclosed — same threshold
+        // STALEDEBOUNCE-1 already uses for a failure, applied here to a seed
+        // this class already knows it cannot vouch for.
+        if let cache, self.model != nil, !AppCache.withinIdentityWindow(cache) {
+            discloseAgeIfStillUnconfirmed(since: self.cachedAt)
+        }
+
         // FOREGROUND IS A READ.
         //
         // Every legacy screen listened for this; none of the v5 screens did,
@@ -404,6 +457,27 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         Task {
             try? await Task.sleep(nanoseconds: 1_200_000_000)
             guard attempt == loadAttempt else { return }
+            stale = true
+        }
+    }
+
+    /// COLDOPEN-1 · the init-time twin of `markStaleAfterDebounce`, for a
+    /// seed this surface already knows is outside `AppCache`'s identity
+    /// window rather than for a request that failed.
+    ///
+    /// `seededAt` is the disk timestamp `cachedAt` held at the moment this
+    /// was scheduled. After the same 1.2s STALEDEBOUNCE-1 already uses, the
+    /// only question is whether `cachedAt` still holds THAT SAME value: if
+    /// it does, nothing has confirmed this content since, and the age is
+    /// disclosed; if it has moved on, a `load()` (or a `presentSync`) landed
+    /// a real answer in the meantime and there is nothing to say. This is
+    /// deliberately not the `loadAttempt` machinery `markStaleAfterDebounce`
+    /// uses — see the call site in `init` for why that counter answers the
+    /// wrong question here.
+    private func discloseAgeIfStillUnconfirmed(since seededAt: Date?) {
+        Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            guard cachedAt == seededAt else { return }
             stale = true
         }
     }
@@ -768,9 +842,34 @@ struct V5OutageCopy {
     /// The quiet line underneath. What is still true while we cannot see.
     let reassurance: String
 
+    /// COLDOPEN-1 (2026-09-11) · BOTH LINES CORRECTED — SEE THE FINDING.
+    ///
+    /// This copy is reached only by `isOutage` (`model == nil && stale`),
+    /// and `/api/v5/today` is ONE monolithic fetch — there is no separate
+    /// readiness sub-fetch, and `V5Today` carries no readiness-score field
+    /// at all (`ContentReadiness` elsewhere in this app is an unrelated
+    /// concept — whether a payload matches the date on screen, not a
+    /// coaching score). So the old `note` named a specific part that failed
+    /// when the truth is the WHOLE model never arrived; that is Rule 16's
+    /// failure mode pointed at an error message rather than a metric.
+    ///
+    /// The old `reassurance` had the opposite problem: it asserted "today's
+    /// session is on the phone already" unconditionally, but this branch is
+    /// reached ONLY when nothing decodable exists on disk AND the refresh
+    /// failed (per COLDOPEN-1, any decodable cache — however old — now seeds
+    /// `model` and renders through the stale-banner path instead, never
+    /// this one). In the one state that reaches this copy, the session is
+    /// specifically NOT already known on the phone, so claiming it is would
+    /// be exactly the unverified reassurance Rule 20/Finding 1 flags. What
+    /// IS true in that state, traced against `LiveRunHostV5`'s `.task`
+    /// (HostsV5.swift): starting and recording a run never depends on this
+    /// fetch — `PendingRunPlanV5`/`API.fetchWatchWorkout()` are a separate
+    /// read, and failing that too still leaves both live-run consoles their
+    /// documented no-target layout rather than blocking Start. That is the
+    /// claim this reassurance is narrowed to.
     static let today = V5OutageCopy(
-        note: "Readiness did not load. Your score is fine, we just cannot see it.",
-        reassurance: "Today's session is on the phone already, so it runs whether or not we can reach the server. The rest catches up when the connection does."
+        note: "Today did not load. Your plan is intact, we just cannot see it.",
+        reassurance: "You can still start and record a run from the Run tab without this. Today's session shows again the moment the connection does."
     )
 
     static let block = V5OutageCopy(
