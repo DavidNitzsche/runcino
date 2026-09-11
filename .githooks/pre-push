@@ -118,14 +118,33 @@ scoped=1
 MAIN_PUSH_SHAS=""
 while read -r _lref lsha rref rsha; do
   [ -z "${lsha:-}" ] && continue
-  [ "$lsha" = "$ZERO" ] && continue            # branch deletion, nothing to check
   # Captured alongside the existing loop rather than in a second stdin read —
   # stdin is a pipe and can only be consumed once. Guarded on the REMOTE ref
   # (what the push updates), not the local branch name, so `git push origin
   # some-local-name:main` is caught the same as pushing an actual local `main`.
+  #
+  # THIS CHECK RUNS BEFORE THE DELETION SHORT-CIRCUIT BELOW, DELIBERATELY.
+  # Until this fix, `[ "$lsha" = "$ZERO" ] && continue` (a branch deletion)
+  # ran FIRST, so `git push origin :main` never reached this `if` at all —
+  # MAIN_PUSH_SHAS stayed empty, Section 0 below never ran, and a deletion of
+  # main sailed through with no lock and no authorization check whatsoever
+  # (reproduced live: `git push origin :main` with zero authorization on file
+  # went straight through, stopped only by the remote's own unrelated
+  # `receive.denyDeleteCurrent`, which is not guaranteed to be set the same
+  # way everywhere). Deleting main is at least as destructive as an
+  # unauthorized content push, so it must clear the exact same gate. When
+  # `lsha` is `$ZERO` here, `MAIN_PUSH_SHAS` is populated with `$ZERO` itself —
+  # `mpg_check_authorization`/`mpg_authorize` both resolve a SHA through
+  # `mpg_canonical_sha` (`git rev-parse --verify <sha>^{commit}`), and the
+  # all-zero SHA never resolves to a real commit, so a deletion of main can
+  # never be authorized through the normal flow — it fails closed
+  # unconditionally, same as any other push nobody has signed off on. The
+  # only way past that is the documented `git push --no-verify` escape hatch,
+  # which already carries its own disclosure obligation.
   if [ "${rref:-}" = "refs/heads/main" ]; then
     MAIN_PUSH_SHAS="$MAIN_PUSH_SHAS$lsha"$'\n'
   fi
+  [ "$lsha" = "$ZERO" ] && continue            # branch deletion — nothing else to diff
   if [ "${rsha:-$ZERO}" != "$ZERO" ] && git cat-file -e "$rsha" 2>/dev/null; then
     changed="$changed$(git diff --name-only "$rsha" "$lsha")"$'\n'
   else

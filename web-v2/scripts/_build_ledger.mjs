@@ -315,6 +315,7 @@ async function main() {
       const q = `/v1/builds?filter[app]=${app.id}&filter[version]=${targetBuild}&fields[builds]=version,uploadedDate,processingState,expired`;
       const builds = await ascFetch(jwt, q);
       const findings = [];
+      const warnings = [];
 
       if (!builds.data.length) {
         findings.push(`ASC has NO build numbered ${targetBuild} at all — the local ledger entry may be a phantom (never actually uploaded, or expired+purged).`);
@@ -339,7 +340,7 @@ async function main() {
       // Ledger-vs-ASC max build comparison (reuses the same live query the
       // existing _asc_max_build.mjs makes, inlined here to avoid a second JWT
       // mint) — catches "ledger is missing recent ships" and "ledger has a
-      // build ASC has never heard of" in one shot.
+      // build ASC does not (phantom entry, or ASC purged it).
       const allBuilds = await ascFetch(jwt, `/v1/builds?filter[app]=${app.id}&limit=200&fields[builds]=version`);
       const ascMax = allBuilds.data.reduce((m, b) => Math.max(m, parseInt(b.attributes.version, 10) || 0), 0);
       const ledgerMax = latestEntry(entries)?.build ?? 0;
@@ -350,16 +351,55 @@ async function main() {
         findings.push(`ledger's highest recorded build is ${ledgerMax}, but ASC's highest is only ${ascMax} — the ledger has a build ASC does not (phantom entry, or ASC purged it).`);
       }
 
+      // ── indirect SHA plausibility (WARNING only, never PASS/FAIL) ──────────
+      //
+      // ASC genuinely has no git-SHA field — nothing here can CONFIRM the sha
+      // is right, and this does not pretend to. What IS independently checkable
+      // is whether the recorded sha's own commit timestamp is even plausible
+      // next to the recorded upload time: a build cannot ship a commit that
+      // did not exist yet, and a build shipping a commit from months before
+      // the upload (for a "live" — recorded at the moment of shipping — entry)
+      // is at least worth a second look. Neither direction is proof of
+      // anything (a slow release process, a rebased commit, or clock skew all
+      // produce the same signal without any wrongdoing), so this is reported
+      // as a WARNING, clearly separate from the PASS/FAIL findings above and
+      // never gating the exit code.
+      try {
+        const commitIso = git(['show', '-s', '--format=%cI', local.sha]);
+        const commitMs = Date.parse(commitIso);
+        const uploadMs = Date.parse(local.uploaded_at);
+        if (Number.isFinite(commitMs) && Number.isFinite(uploadMs)) {
+          const deltaMin = (uploadMs - commitMs) / 60000; // positive = commit before upload (expected)
+          const FUTURE_TOLERANCE_MIN = 60; // clock skew allowance
+          const STALE_TOLERANCE_DAYS = local.recorded === 'reconstructed' ? 180 : 14;
+          if (deltaMin < -FUTURE_TOLERANCE_MIN) {
+            warnings.push(`plausibility: recorded sha's commit is dated AFTER the recorded upload (commit ${commitIso}, uploaded_at ${local.uploaded_at}, commit is ${Math.abs(deltaMin).toFixed(0)} min later) — a build cannot ship code that does not exist yet. This sha is likely wrong, or the two clocks disagree. Not proof (ASC has no git-SHA field to confirm against) — a signal worth checking by hand.`);
+          } else if (deltaMin > STALE_TOLERANCE_DAYS * 1440) {
+            warnings.push(`plausibility: recorded sha's commit (${commitIso}) predates the recorded upload (${local.uploaded_at}) by ${(deltaMin / 1440).toFixed(1)} days, wider than the ${STALE_TOLERANCE_DAYS}-day band expected for a "${local.recorded}" entry. Not proof of a wrong sha — a slow release process or a rebase can explain this too — but wide enough to be worth a second look.`);
+          }
+        }
+      } catch {
+        warnings.push(`plausibility: recorded sha ${local.sha} does not resolve in this local checkout, so its commit date could not be cross-checked against uploaded_at (fetch it first if it's on a remote you haven't fetched).`);
+      }
+
       console.log(`verify: build ${targetBuild} — local sha ${local.sha} (${local.recorded})`);
+      // Mandatory on EVERY invocation of this command, pass or fail — this is
+      // the one fact the ledger cannot prove about itself, and it must never
+      // be possible to read a clean run as "the sha was confirmed."
+      console.log('  SHA NOT INDEPENDENTLY VERIFIED — ASC has no git-SHA field; this ledger');
+      console.log('  entry\'s sha is only as trustworthy as whatever process wrote it.');
       if (findings.length === 0) {
-        console.log('  OK — no drift detected against live App Store Connect.');
-        console.log('  NOTE: ASC has no git-SHA field, so this cannot confirm the SHA itself —');
-        console.log('  only that the build number, upload time, and ledger-vs-ASC max agree.');
+        console.log('  OK — no drift detected against live App Store Connect (build number,');
+        console.log('  upload time, and ledger-vs-ASC max all agree).');
       } else {
         console.log(`  ${findings.length} finding(s):`);
         for (const f of findings) console.log(`  - ${f}`);
-        process.exit(1);
       }
+      if (warnings.length > 0) {
+        console.log(`  ${warnings.length} WARNING(s) (indirect plausibility signal only, does not fail this check):`);
+        for (const w of warnings) console.log(`  ! ${w}`);
+      }
+      if (findings.length > 0) process.exit(1);
       break;
     }
 

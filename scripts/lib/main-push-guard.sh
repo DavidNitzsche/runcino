@@ -225,13 +225,37 @@ mpg_authorize() {
   local now expires
   now="$(mpg_now_epoch)"
   expires=$(( now + $(mpg_auth_ttl_sec) ))
+  # Atomic write: build the record in a per-writer temp file in the SAME
+  # directory (same filesystem, so the mv below is a single rename(2), not a
+  # cross-device copy), then move it into place. rename(2) is atomic — a
+  # reader either sees the old file or the fully-written new one, never a
+  # mix of both. This is the same class of guarantee the lock directory
+  # above already relies on (mkdir(2) is atomic too), just applied to a file.
+  #
+  # Before this, `{ ... } > "$dir/$full_sha"` opened the target file directly
+  # and wrote it as several separate `echo` calls (several separate write(2)
+  # syscalls to the same fd). Two concurrent `authorize` calls for the same
+  # SHA — a real scenario this system exists to police, e.g. two people/agents
+  # both trying to sign off on the same commit at once — could interleave
+  # their writes and leave a corrupted, part-A/part-B file on disk. Reproduced
+  # directly: forcing the two writers' write() calls to overlap in wall-clock
+  # time produced a garbled record mixing both writers' fields. Combined with
+  # the TTL-corruption bug above (a malformed `expires_at_epoch` used to read
+  # as "still valid"), that corrupted file would have been ACCEPTED rather
+  # than rejected. Now it can't be produced in the first place.
+  local tmp
+  tmp="$(mktemp "$dir/.${full_sha}.XXXXXX" 2>/dev/null)" || {
+    echo "authorize: failed to create a scratch file under $dir" >&2
+    return 1
+  }
   {
     echo "sha=$full_sha"
     echo "authorized_at=$(mpg_now_iso)"
     echo "authorized_by=$(mpg_agent_id)"
     echo "expires_at_epoch=$expires"
     echo "reason=$reason"
-  } > "$dir/$full_sha"
+  } > "$tmp"
+  mv -f "$tmp" "$dir/$full_sha"
   echo "→ authorized push of $full_sha to main (expires in $(( $(mpg_auth_ttl_sec) / 60 )) min, single-use)"
   echo "  recorded by: $(mpg_agent_id)"
   return 0
@@ -251,7 +275,33 @@ mpg_check_authorization() {
   fi
   expires="$(awk -F= '/^expires_at_epoch=/{print $2}' "$file")"
   now="$(mpg_now_epoch)"
-  if [ -z "$expires" ] || [ "$now" -gt "$expires" ]; then
+  # Validate BEFORE comparing. `[ "$now" -gt "$expires" ]` on a non-numeric
+  # `$expires` throws "integer expression expected" to stderr and `[` returns
+  # a non-zero USAGE-ERROR exit status (2), not "false" (1) — and this file
+  # has no `set -e`, so execution continued past it. In the original
+  # `[ -z "$expires" ] || [ "$now" -gt "$expires" ]`, a non-empty-but-garbage
+  # `$expires` made the first test false and the second test error out
+  # non-zero, so the WHOLE `||` chain evaluated false — the "expired" branch
+  # never ran and the function fell through to `return 0`, i.e. a corrupted
+  # authorization record was treated as VALID rather than invalid. This is
+  # not only a manual-tampering scenario: `mpg_authorize`'s write used to be a
+  # non-atomic multi-write redirect, and a real two-process race of two
+  # concurrent `authorize` calls for the same SHA could interleave their
+  # writes into exactly this kind of corrupted file (see the write-side fix
+  # below) — so a mistimed double-authorize could silently produce a
+  # corrupted-but-ACCEPTED authorization instead of a clean TTL-bounded one.
+  #
+  # Fail toward stale, not toward fresh — the same posture `mpg_iso_to_epoch`
+  # already uses elsewhere in this file (prints `0`, i.e. "ancient", on any
+  # parse failure, never "stale-immune"). A malformed or missing
+  # `expires_at_epoch` must read as EXPIRED/INVALID, never as "still good".
+  if ! [[ "$expires" =~ ^[0-9]+$ ]]; then
+    reason="$(awk -F= '/^reason=/{print $2}' "$file")"
+    authorized_by="$(awk -F= '/^authorized_by=/{print $2}' "$file")"
+    echo "authorization for $full_sha is CORRUPT (expires_at_epoch='${expires:-<missing>}' is not a valid integer) — treating as INVALID, not as valid (recorded by ${authorized_by:-unknown}: \"${reason:-}\")" >&2
+    return 1
+  fi
+  if [ "$now" -gt "$expires" ]; then
     reason="$(awk -F= '/^reason=/{print $2}' "$file")"
     authorized_by="$(awk -F= '/^authorized_by=/{print $2}' "$file")"
     echo "authorization for $full_sha EXPIRED (granted by $authorized_by: \"$reason\")" >&2

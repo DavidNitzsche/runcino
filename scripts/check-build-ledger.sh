@@ -43,6 +43,13 @@ node() { command node "$ROOT/web-v2/scripts/_build_ledger.mjs" "$@"; }
 SHA_HEAD="$(git rev-parse HEAD)"
 SHA_PARENT="$(git rev-parse HEAD~1)"
 SHA_GRANDPARENT="$(git rev-parse HEAD~2 2>/dev/null || echo "$SHA_PARENT")"
+# The OLDEST commit reachable from HEAD — used to trigger the "predates the
+# upload by a wide margin" plausibility warning (CASE 12). Found by walking
+# history rather than a fixed hardcoded SHA, so this keeps working regardless
+# of how long the repo's history is; paired against "now" as the uploaded_at,
+# the gap is however old the repo is, always comfortably past the 14-day
+# tolerance for a "live" entry.
+SHA_OLD="$(git rev-list --max-parents=0 HEAD | tail -1)"
 
 echo "── CASE 1 · sha-for on an empty ledger is a clean 'not found', not a crash ──"
 if node sha-for 290 >/tmp/faff-ledger-t1.$$ 2>&1; then
@@ -143,6 +150,107 @@ elif [ "$real_rc" = "0" ]; then
 else
   echo "$real_out" | sed 's/^/    /'
   assert "verify against the real ledger's build-290 entry is clean" 0
+fi
+
+echo ""
+echo "── CASE 11 · the SHA-NOT-VERIFIED disclosure is on EVERY invocation, pass or fail ──"
+# The independent review's Defect 3: `verify` disclosed "ASC has no git-SHA
+# field" only inside the CLEAN (OK) branch. A build with real findings (a
+# phantom build number, say) printed no disclosure at all — the one case
+# where a reader most needs to be reminded the sha itself was never checked.
+# CASE 9 above already produced a FAILING verify (phantom build 999999); CASE
+# 10 already produced a PASSING one (real build 290). Re-check both outputs
+# here for the mandatory line rather than re-running the network calls.
+if [ "${real_rc:-}" = "3" ]; then
+  echo "  (verify exited UNRUNNABLE earlier — no ASC credentials reachable here; skipping CASE 11)"
+else
+  node record --build 999998 --sha "$SHA_HEAD" --recorded reconstructed --note "CASE 11 phantom, disclosure-on-failure check" >/dev/null
+  fail_out="$(node verify 999998 2>&1)"
+  fail_rc=$?
+  if [ "$fail_rc" = "3" ]; then
+    echo "  (verify exited UNRUNNABLE — no ASC credentials reachable here; skipping this case's assertion)"
+  else
+    assert "verify on a FAILING (phantom-build) case still exits non-zero" "$([ "$fail_rc" != "0" ] && echo 1 || echo 0)"
+    printf '%s' "$fail_out" | grep -q "SHA NOT INDEPENDENTLY VERIFIED"
+    assert "  disclosure line is present even though this run FAILS (was previously OK-branch-only)" "$([ "$?" = "0" ] && echo 1 || echo 0)"
+  fi
+
+  pass_out="$(BUILD_LEDGER_PATH="$ROOT/docs/testflight-builds.jsonl" node verify 290 2>&1)"
+  pass_rc=$?
+  if [ "$pass_rc" = "3" ]; then
+    echo "  (verify exited UNRUNNABLE — no ASC credentials reachable here; skipping this case's assertion)"
+  else
+    printf '%s' "$pass_out" | grep -q "SHA NOT INDEPENDENTLY VERIFIED"
+    assert "disclosure line is ALSO present on a clean/PASSING run (unmissable either way)" "$([ "$?" = "0" ] && echo 1 || echo 0)"
+  fi
+fi
+
+echo ""
+echo "── CASE 12 · indirect SHA plausibility: a WARNING, distinct from PASS/FAIL ─"
+# ASC genuinely has no git-SHA field (the review confirmed this is a real,
+# disclosed limitation, not a hidden lie) — this does not try to make verify
+# CONFIRM a sha. It checks the one indirect signal that IS available: does the
+# recorded sha's own commit timestamp fall in a sane window next to the
+# recorded upload time. Neither branch below is a PASS/FAIL finding; both are
+# WARNING-only, and the exit code must not move because of them.
+if [ "${real_rc:-}" = "3" ] || [ -z "$SHA_OLD" ]; then
+  echo "  (skipping CASE 12 — no ASC credentials reachable here, or no root commit found)"
+else
+  # Each sub-case below gets its OWN fresh, single-entry scratch ledger. The
+  # shared $LEDGER used everywhere else in this file already carries CASE 9's
+  # phantom build 999999 (and others) by this point, and verify's ledger-vs-
+  # ASC-max cross-check compares the LEDGER'S OWN highest build against ASC's
+  # — reusing the shared, already-polluted ledger here would make 12b's "must
+  # still report OK" assertion fail for a reason that has nothing to do with
+  # the plausibility check this case exists to test.
+
+  # 12a · commit dated AFTER the recorded upload — a build cannot ship code
+  # that does not exist yet. Force this deterministically with an
+  # impossibly-early --uploaded-at, rather than hoping for a race.
+  LEDGER_12A="$(mktemp -d /tmp/faff-ledger-test.XXXXXX)/testflight-builds.jsonl"
+  BUILD_LEDGER_PATH="$LEDGER_12A" node record --build 999997 --sha "$SHA_HEAD" --recorded reconstructed --uploaded-at "2000-01-01T00:00:00Z" --note "CASE 12a future-commit-vs-upload" >/dev/null
+  future_out="$(BUILD_LEDGER_PATH="$LEDGER_12A" node verify 999997 2>&1)"
+  printf '%s' "$future_out" | grep -qi "dated AFTER the recorded upload"
+  assert "12a: a commit dated AFTER its recorded upload is flagged as a WARNING" "$([ "$?" = "0" ] && echo 1 || echo 0)"
+  printf '%s' "$future_out" | grep -qE '^\s*-\s.*dated AFTER'
+  assert "  (the future-dated-commit signal is a WARNING line, not listed among the numbered PASS/FAIL findings)" "$([ "$?" != "0" ] && echo 1 || echo 0)"
+  rm -rf "$(dirname "$LEDGER_12A")"
+
+  # 12b · commit predates the upload by far more than the "live" tolerance —
+  # reproduces the review's EXACT scenario: correct build number, correct
+  # uploaded_at (copied from the real build-290 entry so ASC's own record
+  # agrees and this stays a clean/OK run), WRONG sha (the repo's own root
+  # commit, ~months old). Must still report OK — ASC cannot confirm a sha —
+  # but must ALSO surface the plausibility warning and the mandatory
+  # disclosure, so a reader is never left thinking a clean run means the sha
+  # was checked. Deliberately its own ledger containing ONLY this one entry,
+  # so the ledger-vs-ASC-max cross-check has nothing else to object to.
+  real_290_uploaded_at="$(command node -e '
+    const fs = require("fs");
+    const lines = fs.readFileSync(process.argv[1], "utf8").split("\n").filter(Boolean);
+    for (const l of lines) { const o = JSON.parse(l); if (o.build === 290) { console.log(o.uploaded_at); process.exit(0); } }
+  ' "$ROOT/docs/testflight-builds.jsonl" 2>/dev/null)"
+  if [ -z "$real_290_uploaded_at" ]; then
+    echo "  (skipping 12b — could not read the real build-290 uploaded_at)"
+  else
+    LEDGER_12B="$(mktemp -d /tmp/faff-ledger-test.XXXXXX)/testflight-builds.jsonl"
+    BUILD_LEDGER_PATH="$LEDGER_12B" node record --build 290 --sha "$SHA_OLD" --recorded live --uploaded-at "$real_290_uploaded_at" --note "CASE 12b — Defect 3's exact repro: correct build+uploaded_at, WRONG sha" >/dev/null
+    repro_out="$(BUILD_LEDGER_PATH="$LEDGER_12B" node verify 290 2>&1)"
+    repro_rc=$?
+    assert "12b (Defect 3's own repro): correct build+uploaded_at with a WRONG sha still reports OK (ASC genuinely cannot confirm the sha — this is disclosed, not silently hidden)" "$([ "$repro_rc" = "0" ] && echo 1 || echo 0)"
+    printf '%s' "$repro_out" | grep -q "SHA NOT INDEPENDENTLY VERIFIED"
+    assert "  the disclosure is unmissable on this exact repro" "$([ "$?" = "0" ] && echo 1 || echo 0)"
+    printf '%s' "$repro_out" | grep -qi "predates the recorded upload"
+    assert "  a WRONG sha old enough to be implausible is flagged as a WARNING" "$([ "$?" = "0" ] && echo 1 || echo 0)"
+    rm -rf "$(dirname "$LEDGER_12B")"
+  fi
+
+  # 12c · NEGATIVE CONTROL — a sha recorded close in time to its own upload
+  # (the real build-290 entry, unmodified) must NOT trip the plausibility
+  # warning. Without this, 12a/12b could pass by a matcher that always fires.
+  clean_out="$(BUILD_LEDGER_PATH="$ROOT/docs/testflight-builds.jsonl" node verify 290 2>&1)"
+  printf '%s' "$clean_out" | grep -qi "plausibility:"
+  assert "NEGATIVE CONTROL: the real, correctly-paired build-290 entry triggers NO plausibility warning" "$([ "$?" != "0" ] && echo 1 || echo 0)"
 fi
 
 echo ""
