@@ -336,19 +336,38 @@ export async function resolveAdaptationProposals(
    * DURATION and DENSITY agree about which weeks take no step. A failed read
    * is `readable: false` — the levers refuse on it rather than assuming the
    * week steps (Rule 11). No plan is not a failed read: with no rows ahead the
-   * levers are silent anyway, and the flags are simply not a question. */
+   * levers are silent anyway, and the flags are simply not a question.
+   *
+   * ── RACEPROT-LOADADAPT-1 (2026-09-11) · `days` NOW SUPPLIED ────────────────
+   *
+   * This was the one caller `weekRowNoStepReason`'s own header (progression-
+   * pass.ts) named as unable to cheaply supply the week's day types, so it
+   * fell back to `is_race_week` alone — which `race-week.ts` documents as
+   * holding ONLY the goal race's week, never a B/C tune-up's. A tune-up's
+   * taper/recovery days (typed `easy`, `is_race_week = false`) read as an
+   * ordinary step-eligible week here, the same gap RACEPROT-VERIFY-1 closed
+   * in `adapt.ts`/`mutate.ts` and RACEPROT-PROGRESSION-1 closed in
+   * `progression-pass.ts` itself. The query already selects one row per
+   * `plan_workouts` day in the window `FROM plan_workouts pw`, so `pw.type`
+   * costs nothing extra to add, and every row in `r.rows` IS the week's own
+   * day list — passed to each call exactly as `diagnoseProgressionWeek` passes
+   * its `weekRows` to itself (Rule 16: one predicate, not a fourth re-typing
+   * of the same detector). The goal-race case is unaffected: `weekContainsRace`
+   * short-circuits on `isRaceWeek === true` before it ever looks at `days`. */
   const weekAhead: WeekAheadRead = planRow
     ? await pool.query<{
-        is_cutback: boolean | null; is_race_week: boolean | null; phase: string | null;
+        is_cutback: boolean | null; is_race_week: boolean | null; phase: string | null; type: string | null;
       }>(
-        `SELECT wk.is_cutback, wk.is_race_week, ph.label AS phase
+        `SELECT wk.is_cutback, wk.is_race_week, ph.label AS phase, pw.type
            FROM plan_workouts pw
            LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
            LEFT JOIN plan_phases ph ON ph.id = wk.phase_id
           WHERE pw.plan_id = $1 AND pw.date_iso BETWEEN $2 AND $3`,
         [planRow.id, today, weekAheadEnd],
       ).then((r): WeekAheadRead => {
-        const reasons = r.rows.map(weekRowNoStepReason).filter((x): x is NonNullable<typeof x> => x != null);
+        const reasons = r.rows
+          .map((row) => weekRowNoStepReason({ ...row, days: r.rows }))
+          .filter((x): x is NonNullable<typeof x> => x != null);
         return reasons.length > 0
           ? { readable: true, takesProgressionStep: false, reason: reasons[0] }
           : { readable: true, takesProgressionStep: true };

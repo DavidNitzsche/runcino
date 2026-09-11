@@ -1421,8 +1421,18 @@ describe('1.1.0 · phase-aware LOAD levers · the week ahead decides before the 
     expect(weekRowNoStepReason({ is_cutback: null, is_race_week: true, phase: null })).toBe('RACE_WEEK');
     expect(weekRowNoStepReason({ is_cutback: false, is_race_week: false, phase: 'TAPER' })).toBe('TAPER');
     expect(weekRowNoStepReason({ is_cutback: false, is_race_week: false, phase: 'QUALITY' })).toBeNull();
+    // RACEPROT-LOADADAPT-1 (2026-09-11): the loader now supplies `days` (the
+    // week's own row types) to `weekRowNoStepReason`, mirroring exactly how
+    // `diagnoseProgressionWeek` passes its own `weekRows` to itself — see
+    // `_load_adaptation_week_ahead_race_detection.test.ts` for the fix's own
+    // coverage. The bare `r.rows.map(weekRowNoStepReason)` this pin used to
+    // assert was the unclosed instance of that same gap: it silently fell
+    // back to the raw `is_race_week` column, missing a B/C tune-up week. This
+    // assertion still pins Rule 16 · one owner — the loader still calls the
+    // shared predicate rather than a second definition — just against the
+    // fixed call shape.
     const src = readFileSync(path.join(__dirname, 'load-adaptation-engine.ts'), 'utf8');
-    expect(src).toMatch(/r\.rows\.map\(weekRowNoStepReason\)/);
+    expect(src).toMatch(/weekRowNoStepReason\(\{\s*\.\.\.row,\s*days:\s*r\.rows\s*\}\)/);
   });
 });
 
