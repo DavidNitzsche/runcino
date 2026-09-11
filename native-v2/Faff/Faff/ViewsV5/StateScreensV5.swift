@@ -725,7 +725,7 @@ struct ScrollClock3RegressionV5: View {
                     .foregroundStyle(panelInk.primary)
             }
         } content: {
-            Text("SCROLLCLOCK-3 regression harness — proves the scaffold's own stale-banner wiring composes after the status-bar cap.")
+            Text("SCROLLCLOCK-3 regression harness · proves the scaffold's own stale-banner wiring composes after the status-bar cap.")
                 .font(.faffText(TypeScaleV5.body15))
                 .foregroundStyle(V5.textSecondary)
         }
