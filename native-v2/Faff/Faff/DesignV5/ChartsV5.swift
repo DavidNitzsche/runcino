@@ -1018,6 +1018,11 @@ struct WeekStripDayV5: Identifiable, Equatable {
     var isToday: Bool = false
     var isDone: Bool = false
     var isRest: Bool = false
+    /// FINDING-3 · `nil` means "still a live, open prescription" — the
+    /// ordinary case, drawn exactly as it always has been. See
+    /// `V5.ResolutionState`'s own header for why this is a dimension
+    /// separate from `state` above.
+    var resolution: V5.ResolutionState? = nil
 }
 
 struct WeekStripV5: View {
@@ -1193,10 +1198,29 @@ struct WeekStripV5: View {
                     Text(d.number)
                         .font(.faffText(16, weight: d.isToday ? .semibold : .regular))
                         .foregroundStyle(d.isToday ? panelInk.primary : panelInk.secondary)
-                    Capsule()
-                        .fill(rail(d))
-                        .frame(maxWidth: 22)
-                        .frame(height: 4)
+                    ZStack(alignment: .top) {
+                        Capsule()
+                            .fill(rail(d))
+                            .frame(maxWidth: 22)
+                            .frame(height: 4)
+                        // FINDING-3 · a small badge for the four resolution
+                        // states with no existing treatment. `completed`
+                        // draws nothing extra — full-opacity rail already
+                        // says "done", and doubling that up would be Rule 17
+                        // (the runner reads a sentence once) drawn as a dot.
+                        if let s = d.resolution, let accent = s.badgeAccent {
+                            Circle()
+                                .fill(accent)
+                                .frame(width: 12, height: 12)
+                                .overlay {
+                                    Image(systemName: s.symbolName)
+                                        .font(.system(size: 7, weight: .bold))
+                                        .foregroundStyle(Theme.V5.ground)
+                                }
+                                .offset(y: -10)
+                        }
+                    }
+                    .frame(height: 4)
                 }
                 .padding(.vertical, V5.S.s10)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1236,7 +1260,7 @@ struct WeekStripV5: View {
         // crossfades together — the rail fading in rather than appearing,
         // which is what turns "the ghost got replaced" into "this cell
         // learned its answer."
-        .animation(V5.Motion.fill, value: ds.map { "\($0.id)|\($0.state.rawValue)|\($0.isDone)|\($0.isRest)" })
+        .animation(V5.Motion.fill, value: ds.map { "\($0.id)|\($0.state.rawValue)|\($0.isDone)|\($0.isRest)|\($0.resolution?.rawValue ?? "")" })
     }
 
     /// The week `offset` days away, as dates only. No state, no rails, no
@@ -1292,7 +1316,14 @@ struct WeekStripV5: View {
             parts.append("rest day")
         } else {
             parts.append(kind(d.state))
-            if d.isDone { parts.append("done") }
+            // FINDING-3 · the resolution word replaces the old bare "done" —
+            // it already covers `.completed` ("done") and adds the four
+            // cases VoiceOver had no way to say before this existed.
+            if let r = d.resolution {
+                parts.append(r.spokenWord)
+            } else if d.isDone {
+                parts.append("done")
+            }
         }
         return parts.joined(separator: ", ")
     }

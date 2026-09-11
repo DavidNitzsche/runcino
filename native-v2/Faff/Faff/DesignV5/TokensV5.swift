@@ -378,6 +378,86 @@ enum V5 {
     }
 
     // ═════════════════════════════════════════════════════════════════════
+    // MARK: Resolution state — FINDING-3 (2026-09-11)
+    //
+    // A SECOND, PARALLEL DIMENSION FROM `DayState` ABOVE, DELIBERATELY NOT A
+    // SEVENTH DAY-STATE CASE.
+    //
+    // `DayState` answers "what KIND of day is this" and is explicitly never a
+    // grade — its own header comment says so, and the six ramps are a locked,
+    // CI-enforced palette (`scripts/check-palette-sync.sh`). `ResolutionState`
+    // answers a completely different question: "did this happen." A missed
+    // LONG run is still a long run — it should keep the long-run gradient, not
+    // lose its identity to a seventh "missed" ramp that would also have to be
+    // reconciled with web/watch parity for a case those surfaces don't carry.
+    // Rule 16 (one quantity, one name) cuts the other way here too: collapsing
+    // "what kind" and "did it happen" into one enum is the exact mistake that
+    // made a missed workout indistinguishable from an upcoming one of the same
+    // type in the first place (`lib/faff/v5-today.ts`'s `dayStateWordFor()`
+    // took only `plannedType`, with nothing for "did this happen").
+    //
+    // `nil` (no `ResolutionState` at all) means "still a live, open
+    // prescription" — the ordinary case, drawn exactly as before this existed.
+    // These five cases are additive information layered on top of whichever
+    // `DayState` gradient already paints the day.
+    enum ResolutionState: String, CaseIterable, Hashable {
+        case completed, moved, skipped, missed, supplemental
+
+        /// The accent this state's badge draws in, from the SAME three-signal
+        /// palette every other decision in the app already uses — no new hex
+        /// value, so `check-palette-sync.sh` has nothing new to lock.
+        ///
+        /// `missed` reads as `fault` (the app's one "something is wrong"
+        /// accent) because a real training gap is the most consequential of
+        /// the five and CLAUDE.md's own voice rule ("a missed run is stated,
+        /// never judged") is honored by the COPY, not by softening the color.
+        /// `skipped` and `supplemental` share `attention` ("a decision
+        /// waiting" — exactly what both are: mark it, move it, or leave it).
+        /// `moved` reads as `signal`, the app's action/primary accent, because
+        /// it is a decision already taken and resolved, not one still open.
+        /// `completed` draws no badge accent at all — the existing full-
+        /// opacity rail already says "done"; this case exists so a caller can
+        /// still ask "why" (`matchTier`) without a color decision to make.
+        var badgeAccent: Color? {
+            switch self {
+            case .completed:    return nil
+            case .moved:        return Theme.V5.signal
+            case .skipped:      return Theme.V5.attention
+            case .missed:       return Theme.V5.fault
+            case .supplemental: return Theme.V5.attention
+            }
+        }
+
+        /// SF Symbol for the badge. Distinct per case even where two share an
+        /// accent (`skipped`/`supplemental` both draw `attention`), so the
+        /// week-strip dot and the past-day hero are never told apart by color
+        /// alone — VoiceOver and color-blind runners get the same distinction
+        /// everyone else does.
+        var symbolName: String {
+            switch self {
+            case .completed:    return "checkmark"
+            case .moved:        return "arrow.turn.up.right"
+            case .skipped:      return "minus.circle.fill"
+            case .missed:       return "exclamationmark"
+            case .supplemental: return "questionmark"
+            }
+        }
+
+        /// Coach-voice word for VoiceOver and the past-day hero's headline.
+        /// Short, direct, no hype — matches the tone rule the rest of the app
+        /// already holds itself to.
+        var spokenWord: String {
+            switch self {
+            case .completed:    return "done"
+            case .moved:        return "moved"
+            case .skipped:      return "skipped"
+            case .missed:       return "missed"
+            case .supplemental: return "needs a look"
+            }
+        }
+    }
+
+    // ═════════════════════════════════════════════════════════════════════
     // MARK: Shape · larger surfaces get larger radii, every pill is 999
     // ═════════════════════════════════════════════════════════════════════
 

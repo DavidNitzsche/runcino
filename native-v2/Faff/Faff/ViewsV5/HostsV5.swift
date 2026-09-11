@@ -1035,8 +1035,40 @@ struct TodayHostV5: View {
         }
     }
 
+    /// FINDING-3 (2026-09-11) · a thin dispatcher in front of `legacyContent`
+    /// below, added rather than threaded into that switch, so its ~100 lines
+    /// of per-state branches (one edit away from every other screen in this
+    /// file) stay untouched. `model.viewedDayResolution` is non-nil ONLY for
+    /// the four resolution states this screen previously had no hero for —
+    /// see that field's own doc comment (`APIV5.swift`) — so a live,
+    /// still-open prescription (the ordinary case, `nil` here) falls straight
+    /// through to `legacyContent` exactly as it always has.
+    ///
+    /// This is the fix for the root-caused defect itself: `/api/v5/today
+    /// ?date=` used to compute every downstream fact as if the requested
+    /// past date were live "today", so `model.state` (before_run/after_run/
+    /// etc.) reflected a LIVE prescription reading for a day that had
+    /// already passed. Rendering `legacyContent` for one of these four cases
+    /// would still be that defect, now with a resolution fact sitting
+    /// unused on the payload.
     @ViewBuilder
     private func content(_ model: V5Today) -> some View {
+        if let resolution = model.viewedDayResolution {
+            inSharedShell(model, fill: panelFill(for: model)) {
+                PastDayResolutionHeroV5(
+                    model: model,
+                    resolution: resolution,
+                    onMarkSkipped: { await markPastDaySkipped(model.dateISO) },
+                    onUndoSkip: { await undoPastDaySkip(model.dateISO) }
+                )
+            }
+        } else {
+            legacyContent(model)
+        }
+    }
+
+    @ViewBuilder
+    private func legacyContent(_ model: V5Today) -> some View {
         switch model.state {
         case .notOnPhoneYet:
             inSharedShell(model) {
@@ -2298,6 +2330,24 @@ struct TodayHostV5: View {
         await reloadIfLanded(await V5NiggleCheckIn.send(today))
     }
 
+    /// FINDING-3 (2026-09-11) · declared skip for an arbitrary PAST day.
+    /// `API.postSkip(date:)` already existed for a FUTURE day (from the
+    /// reschedule sheet) — the backend route itself has accepted any date in
+    /// its body since before this feature (`web-v2/app/api/today/skip/
+    /// route.ts`'s `body.date ?? runnerToday(userId)`). This is the same
+    /// call, reached from a new place: the past-day resolution hero, for a
+    /// day the resolver has already found unresolved.
+    private func markPastDaySkipped(_ dateISO: String) async -> V5WriteSettlement {
+        await settleAndReload { try await API.postSkip(date: dateISO); return true }
+    }
+
+    /// The undo half — `API.deleteSkip(date:)` already existed too. Reachable
+    /// from the past-day hero once a skip is recorded, mirroring `RS-6`'s own
+    /// "an Undo that stays reachable" rule for Move-a-Run.
+    private func undoPastDaySkip(_ dateISO: String) async -> V5WriteSettlement {
+        await settleAndReload { try await API.deleteSkip(date: dateISO); return true }
+    }
+
     private func reportSick(_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement {
         await settleAndReload {
             try await API.postSick(symptoms: symptoms, started: started, fever: hasFever)
@@ -2356,6 +2406,157 @@ struct TodayHostV5: View {
     private func pushStrava(_ model: V5Today) async {
         guard let runId = model.runId else { return }
         _ = try? await API.pushRunToStrava(runId: runId)
+    }
+}
+
+// MARK: - Past-day resolution hero (FINDING-3, 2026-09-11)
+//
+// The full card a runner sees when they step to a day whose prescription
+// resolved to one of moved/skipped/missed/supplemental — the four cases
+// `V5Today.viewedDayResolution` carries and this screen otherwise had no
+// hero for (`completed` already renders through `after_run`/`postRun`).
+//
+// Rendered by `TodayHostV5.content(_:)` as the shared shell's `content:`
+// slot (same header, week strip, account button as every other quiet-panel
+// Today state — `InjuryFlareV5`/`SickFlareV5`/`WeekOffV5` are the direct
+// siblings this view is modeled on, down to reusing `CoachSay`/`ListGroup`/
+// `ListRow`/`Alert`/`ErrorNote`/`V5RowWriteState` rather than inventing a
+// second write-state vocabulary).
+//
+// STATES ITS REAL RESOLUTION, NOT A LIVE PRESCRIPTION. That is the entire
+// point: the root-caused defect was `/api/v5/today?date=` computing a
+// before_run/after_run reading for a day that had already passed, so a
+// missed threshold session rendered as though it were still upcoming.
+struct PastDayResolutionHeroV5: View {
+    let model: V5Today
+    let resolution: V5ViewedDayResolution
+    /// Declared-skip write for THIS day (`POST /api/today/skip` with an
+    /// explicit date — the same route and mechanism today's own skip button
+    /// already used, extended to an arbitrary past day). A landed write
+    /// flips the resolution on the next reload — `lib/execution/
+    /// day-resolution.ts` recomputes live, so there is no local state here
+    /// to keep in sync by hand.
+    var onMarkSkipped: () async -> V5WriteSettlement = { .cancelled }
+    /// `RS-6`'s own rule, applied to skip: an undo that stays reachable.
+    var onUndoSkip: () async -> V5WriteSettlement = { .cancelled }
+
+    @State private var writeState: V5RowWriteState = .idle
+
+    private var state: V5.ResolutionState? { resolution.state }
+
+    private var headline: String {
+        switch state {
+        case .moved:        return "Moved"
+        case .skipped:      return "Skipped"
+        case .missed:       return "Missed"
+        case .supplemental: return "Needs a look"
+        case .completed, nil: return "Unresolved"
+        }
+    }
+
+    /// Coach voice: states the fact, never judges it (CLAUDE.md's own rule —
+    /// "a missed run is stated, never judged").
+    private var verdict: String {
+        switch state {
+        case .moved:
+            if let to = resolution.movedToISO {
+                return "This session moved to \(Self.dayWords(to))."
+            }
+            return "This session moved to another day."
+        case .skipped:
+            return "Marked skipped. A real choice, not a passive gap."
+        case .missed:
+            return "Nothing matched this prescription. No activity landed here."
+        case .supplemental:
+            let n = resolution.supplementalRunIds?.count ?? 0
+            return n > 1
+                ? "\(n) activities exist this day, but none match this session."
+                : "An activity exists this day, but it doesn't match this session."
+        case .completed, nil:
+            return "This day's resolution could not be read."
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+            VStack(alignment: .leading, spacing: V5.S.s2) {
+                Text(model.panel.dateLine)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textSecondary)
+                Text(headline)
+                    .faffDisplayV5(TypeScaleV5.display44)
+                    .foregroundStyle(V5.textPrimary)
+            }
+
+            CoachSay(text: verdict, size: .md)
+
+            // MISSED/SUPPLEMENTAL · a real choice, not a passive label — the
+            // exact device-acceptance requirement (see the design note and
+            // the device acceptance test plan). `RescheduleEntryRowV5` is
+            // the fully-built Move-a-Run engine (`RescheduleV5.swift`),
+            // wired here to an actual UI affordance for the first time —
+            // previously reachable only via the `-faffReschedule` launch
+            // argument.
+            if state == .missed || state == .supplemental {
+                ListGroup(header: "What do you want to do") {
+                    RescheduleEntryRowV5(dateISO: model.dateISO,
+                                         phrasing: .moveThisWorkout,
+                                         sessionLabel: model.panel.type.isEmpty ? nil : model.panel.type)
+                    ListRow(label: writeState.isSending ? "Marking skipped" : "Mark this day skipped",
+                            sub: "Stated as a deliberate skip, not left as a gap.",
+                            onTap: { markSkipped() })
+                }
+            }
+
+            // SKIPPED · the undo half, reachable from the day itself rather
+            // than only from wherever the skip was originally declared.
+            if state == .skipped {
+                ListGroup {
+                    ListRow(label: writeState.isSending ? "Undoing" : "Undo skip",
+                            sub: "This day goes back to unresolved.",
+                            onTap: { undoSkip() })
+                }
+            }
+
+            if let refusal = writeState.refusal {
+                Alert(text: refusal, tone: .attention)
+            }
+            if case .failed = writeState {
+                ErrorNote(text: "That didn't save. Try again.",
+                          onRetry: { state == .skipped ? undoSkip() : markSkipped() })
+            }
+        }
+    }
+
+    private func markSkipped() {
+        guard !writeState.isSending else { return }
+        writeState = .sending("mark_skip")
+        Task {
+            let settlement = await onMarkSkipped()
+            writeState = .settled(settlement, token: "mark_skip")
+        }
+    }
+
+    private func undoSkip() {
+        guard !writeState.isSending else { return }
+        writeState = .sending("undo_skip")
+        Task {
+            let settlement = await onUndoSkip()
+            writeState = .settled(settlement, token: "undo_skip")
+        }
+    }
+
+    /// "SAT 6" from "2026-09-06" — deliberately independent of
+    /// `RescheduleSheetV5.dayWords` (same shape, different owner) rather than
+    /// reaching across files for a three-line date formatter.
+    private static func dayWords(_ iso: String) -> String {
+        let shortNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        guard let d = ISO8601DateFormatter().date(from: "\(iso)T12:00:00Z") else { return iso }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let dow = cal.component(.weekday, from: d) - 1
+        let day = cal.component(.day, from: d)
+        return "\(shortNames[dow]) \(day)"
     }
 }
 
