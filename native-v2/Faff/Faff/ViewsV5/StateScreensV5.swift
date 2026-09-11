@@ -172,6 +172,44 @@ private struct StateScreenScaffold<Panel: View, Body: View>: View {
     /// ScrollView the cap protects — the `nested` branch's host
     /// (`TodayHostV5.inSharedShell`) is responsible for its own.
     var panelFill: PanelFill
+    /// SCROLLCLOCK-3 (2026-09-10) · THE STALE-BANNER EXTENSION POINT, BUILT
+    /// SO THE ORDERING BUG CANNOT COME BACK.
+    ///
+    /// `DataOutageV5` and `RaceJustFinishedV5` default to `nested: false` and
+    /// have no other option — neither type exposes a `suppressOwnHeader`
+    /// parameter at all. `InjuryFlareV5`/`WeekOffV5`/`OffSeasonV5` DO, and
+    /// every real Today host that draws them passes `suppressOwnHeader: true`
+    /// — except `InjuryPreviewHostV5` ("See it in Injury", off Today, per
+    /// `TODAYWRITE-1`'s own header above), which calls `InjuryFlareV5(model:
+    /// injury, onCheckIn:)` with NO `suppressOwnHeader`, so it ALSO reaches
+    /// `!nested` in a real, currently-shipping build — it just has no
+    /// `.v5StaleBanner` wired onto it today, so the bug this section fixes
+    /// has not yet fired there. All five screens used to call
+    /// `.v5ScrollSafeTop(fill:)` directly on their own `ScrollView`, exactly
+    /// the shape SCROLLCLOCK-2 fixed at every OTHER call site in the app: a
+    /// cap composed as an ANCESTOR of wherever `.v5StaleBanner` might attach,
+    /// instead of the OUTERMOST layer. `DataOutageV5`'s own header names it as
+    /// the data-outage/stale-readiness screen, and `InjuryPreviewHostV5`
+    /// already loads over the network and already branches on
+    /// `surface.isOutage` — a "Can't reach faff" banner landing on either one
+    /// later is exactly the kind of change nobody would think to re-read this
+    /// file's history for.
+    ///
+    /// So the fix does not just correct today's shape — it removes the
+    /// choice. This scaffold now owns BOTH modifiers and composes them in the
+    /// one order that works, INTERNALLY, so no caller (today's five screens or
+    /// a sixth one added later) can attach `.v5StaleBanner` externally and get
+    /// the order backwards, the way `Races`/`Block`/`Today` originally did.
+    /// `nil` — every current caller — means no banner, matching today's
+    /// behaviour byte for byte; a future screen that needs one passes it here
+    /// rather than composing `.v5StaleBanner` + `.v5ScrollSafeTop` at its own
+    /// call site.
+    struct StaleBannerWiring {
+        let stale: Bool
+        let cachedAt: Date?
+        let onRetry: () -> Void
+    }
+    var staleBanner: StaleBannerWiring? = nil
     @ViewBuilder var panel: () -> Panel
     @ViewBuilder var content: () -> Body
 
@@ -195,10 +233,25 @@ private struct StateScreenScaffold<Panel: View, Body: View>: View {
                     .background(V5.surfacePage)
                     .scrollIndicators(.hidden)
             }
-            // SCROLLCLOCK-1 · caps the status-bar band with the same slice of
-            // `panel()`'s own gradient that shows there at rest, so no
-            // section in `content()` below it can ever collide with the
-            // clock once the panel itself has scrolled away.
+            // SCROLLCLOCK-3 · `.v5StaleBanner` FIRST, `.v5ScrollSafeTop`
+            // LAST, in the SAME chain, both owned by this scaffold rather
+            // than left for a caller to compose. `.v5StaleBanner(stale:
+            // false, ...)` is what every current caller gets (`staleBanner ==
+            // nil`) — its `.safeAreaInset` reserves nothing when `stale` is
+            // false, so this is a no-op byte-for-byte, the same way
+            // `HostsV5.swift`'s Today/Block/Races hosts already call
+            // `.v5StaleBanner` unconditionally and rely on it doing nothing
+            // while not stale. `.v5ScrollSafeTop` then caps the status-bar
+            // band with the same slice of `panel()`'s own gradient that shows
+            // there at rest — attached OUTERMOST so no section in `content()`
+            // below it, and no banner a future caller wires in through
+            // `staleBanner`, can ever collide with the clock or fight the cap
+            // for the same pixels. See `PanelV5.swift`'s SCROLLCLOCK-2 header
+            // for why the order is load-bearing and `StaleBannerWiring`'s own
+            // comment above for why it lives here now instead of at a host.
+            .v5StaleBanner(stale: staleBanner?.stale ?? false,
+                           cachedAt: staleBanner?.cachedAt,
+                           onRetry: staleBanner?.onRetry ?? {})
             .v5ScrollSafeTop(fill: panelFill)
         }
     }
@@ -639,6 +692,40 @@ struct DataOutageV5: View {
                 V5SectionLabel(text: "Readiness")
                 OutageBodyV5(onRetry: onRetry)
             }
+        }
+    }
+}
+
+// MARK: - SCROLLCLOCK-3 regression harness
+//
+// `StateScreenScaffold` is `private` to this file, and none of its five real
+// callers wires `staleBanner` today — which is exactly how the bug this
+// section fixes went unwatched (Rule 15: a mechanism no case can reach is
+// untested). Rather than leaving the fix's correctness resting on the doc
+// comment alone (Rule 20: a rule with no gate is a hypothesis), this view
+// exercises the scaffold's own stale-banner composition directly, reachable
+// from `ScreensCatalogV5` like every other render-verification fixture in
+// this app, and sample-only — no network, no host, nothing to seed.
+// `ScrollHeaderStatusBarCollisionUITests.testStateScreenScaffoldStaleBannerNeverLeavesABlackGapBehindTheStatusBarClock`
+// drives it and samples the pixel behind the status-bar clock, falsified
+// against the pre-fix composition (see that fix's own commit) before this
+// landed.
+struct ScrollClock3RegressionV5: View {
+    var body: some View {
+        StateScreenScaffold(panelFill: .state(.easy),
+                             staleBanner: .init(stale: true,
+                                                 cachedAt: Date().addingTimeInterval(-900),
+                                                 onRetry: {})) {
+            DayPanel(fill: .state(.easy)) {
+                PlaceHeaderRow(fill: .onPanel)
+                Text("Easy")
+                    .faffDisplayV5(TypeScaleV5.display56)
+                    .foregroundStyle(V5.OnPanel.primary)
+            }
+        } content: {
+            Text("SCROLLCLOCK-3 regression harness — proves the scaffold's own stale-banner wiring composes after the status-bar cap.")
+                .font(.faffText(TypeScaleV5.body15))
+                .foregroundStyle(V5.textSecondary)
         }
     }
 }

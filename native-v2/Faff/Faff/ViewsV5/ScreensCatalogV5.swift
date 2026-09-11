@@ -229,6 +229,13 @@ struct ScreensCatalogV5: View {
             Entry(id: "16a", title: "Data outage", sub: "We could not read this") {
                 AnyView(DataOutageV5(today: .sampleOutageV5, onRetry: {}))
             },
+            // SCROLLCLOCK-3 (2026-09-10) · regression coverage for
+            // `StateScreenScaffold`'s stale-banner composition — see
+            // `ScrollClock3RegressionV5`'s own header comment. Reached by
+            // `ScrollHeaderStatusBarCollisionUITests`, no network needed.
+            Entry(id: "scrollclock3-regression", title: "TEST · scaffold stale-banner ordering", sub: "SCROLLCLOCK-3 regression") {
+                AnyView(ScrollClock3RegressionV5())
+            },
             Entry(id: "18a-slower", title: "Paces slower", sub: "Modelled · did this race count?") {
                 AnyView(PacesMovedV5(paces: PacesMovedV5Sample.slower))
             },
