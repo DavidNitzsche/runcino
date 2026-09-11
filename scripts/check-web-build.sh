@@ -57,6 +57,54 @@
 #
 # To run manually:
 #   bash scripts/check-web-build.sh
+#
+# ── WHY MISSING node_modules NOW REFUSES INSTEAD OF SKIPPING (2026-09-11) ───
+#
+# Until this date, a missing `web-v2/node_modules` made this whole script
+# `exit 0` with a one-line notice. That is Rule 18's exact failure shape: a
+# push from a worktree that had never run `npm install` passed this hook with
+# ZERO checks executed, and the push's own output looked identical to a push
+# that was actually typechecked and built — nothing distinguished "verified"
+# from "the gate quietly declined to look." `b018980c1` on
+# `fix/recovery-honesty-strides-grading` went through this exact hole.
+#
+# The fix REFUSES the push instead of auto-running `npm install` here. Two
+# reasons, not one:
+#
+#   1. This is explicitly a SHARED checkout (see the block at the top of
+#      `.githooks/pre-push`) — multiple agents hold uncommitted work in it and
+#      push from it concurrently. `npm install` is not safe under a second,
+#      concurrent `npm install` writing into the SAME `node_modules`: npm does
+#      not lock the tree against another npm process the way it locks against
+#      itself mid-command, so two installs racing on one directory can each
+#      observe the other's half-written `.package-lock.json` staging state or
+#      partially-extracted package, which is precisely the shared-mutable-
+#      state race class CLAUDE.md Rule 6 and Rule 9's CASE 3 already document
+#      in this repo (multi-writer jsonb columns, concurrent lock-file writers)
+#      — same shape, different resource. A pre-push hook fires exactly when an
+#      agent is mid-push, which is exactly when another agent is likeliest to
+#      be mid-push too. Silently kicking off a mutating install as a SIDE
+#      EFFECT of a hook the pusher did not ask to mutate anything is also
+#      exactly the failure Rule 23 names: an operation quietly depending on a
+#      precondition ("nobody else is touching node_modules right now") that
+#      nothing here can actually guarantee.
+#   2. A gate that fixes its own precondition and then proceeds is still a
+#      gate that can silently do less than the pusher believes: a same-run
+#      auto-install failing for an unrelated reason (registry timeout, disk
+#      full, a lockfile drift) has to be handled as ANOTHER failure mode on
+#      top of typecheck and build, and "install, then check" only reads as
+#      simpler until the install itself is the thing that's flaky. Refusing
+#      loudly has exactly one failure mode: it always tells the pusher to run
+#      `npm install` themselves, in their own moment, outside the hook's
+#      shared-checkout blast radius.
+#
+# So: missing `node_modules` is now a hard `exit 1`, worded like every other
+# failure in this file (state, fix, override), never a silent `exit 0`.
+# Falsified in both directions by
+# `scripts/check-web-build-node-modules-gate.sh` (Rule 18): CASE 1 proves a
+# push with node_modules absent is now REFUSED, not waved through; CASE 2
+# proves the node_modules-present path — the normal case — is byte-for-byte
+# unchanged (same typecheck, same build, same exit codes).
 
 set -euo pipefail
 
@@ -69,8 +117,21 @@ ROOT="$(git rev-parse --show-toplevel 2>/dev/null || (cd "$(dirname "$0")/.." &&
 WEB="$ROOT/web-v2"
 
 if [ ! -d "$WEB/node_modules" ]; then
-  echo "→ web-v2/node_modules missing — skipping pre-push checks (run 'cd web-v2 && npm install' to enable)"
-  exit 0
+  echo ""
+  echo "✗ web-v2/node_modules is missing. Push aborted."
+  echo ""
+  echo "  This hook cannot typecheck or build web-v2 without it, and letting the"
+  echo "  push through anyway used to be this script's behaviour — that made a"
+  echo "  push from an uninstalled worktree indistinguishable from one that was"
+  echo "  actually verified, with zero checks run either way (Rule 18)."
+  echo ""
+  echo "  Fix:"
+  echo "    cd web-v2 && npm install"
+  echo "  then retry the push."
+  echo ""
+  echo "  Override (skips typecheck AND build, not just this check):"
+  echo "    git push --no-verify"
+  exit 1
 fi
 
 cd "$WEB"
