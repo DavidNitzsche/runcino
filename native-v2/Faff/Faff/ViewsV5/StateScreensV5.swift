@@ -711,6 +711,8 @@ struct DataOutageV5: View {
 // against the pre-fix composition (see that fix's own commit) before this
 // landed.
 struct ScrollClock3RegressionV5: View {
+    private var panelInk: V5.PanelInk { PanelFill.state(.easy).ink }
+
     var body: some View {
         StateScreenScaffold(panelFill: .state(.easy),
                              staleBanner: .init(stale: true,
@@ -720,7 +722,7 @@ struct ScrollClock3RegressionV5: View {
                 PlaceHeaderRow(fill: .onPanel)
                 Text("Easy")
                     .faffDisplayV5(TypeScaleV5.display56)
-                    .foregroundStyle(V5.OnPanel.primary)
+                    .foregroundStyle(panelInk.primary)
             }
         } content: {
             Text("SCROLLCLOCK-3 regression harness — proves the scaffold's own stale-banner wiring composes after the status-bar cap.")
