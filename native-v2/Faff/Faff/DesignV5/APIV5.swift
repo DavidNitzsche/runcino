@@ -2563,12 +2563,27 @@ extension API {
     /// that reason thrown away at the transport, and the screen could only
     /// show a generic nothing-happened. The read path learned this lesson
     /// already; the write path had not.
-    enum V5Write {
+    enum V5Write: Equatable {
         case ok
         /// The engine declined, and said why. Renders as `Alert`.
         case refused(String)
         /// We could not complete it. Renders as `ErrorNote`.
         case failed
+    }
+
+    /// A 2xx write can still be a disclosed refusal. `use_measured_elevation`
+    /// against an editorial-sourced course (`course_library.source`) is the
+    /// case this exists for: `POST /api/v5/goal-answer` can't apply the
+    /// runner's GPS reading over a curated row, but the runner's choice was
+    /// received and acted on — "protect the shared course record" — so the
+    /// route answers 200 with `applied: false` and its own `reason` rather
+    /// than a 4xx. Without this, that reason never reached the decoder and
+    /// the runner saw nothing at all, which is exactly the silent no-op Rule
+    /// 11 exists to rule out. `applied` is absent on every other v5Write
+    /// route's success body, so this only ever fires on an explicit `false`.
+    private struct V5WriteApplied: Decodable {
+        let applied: Bool?
+        let reason: String?
     }
 
     private static func v5Write(_ path: String, body: [String: Any]) async throws -> V5Write {
@@ -2577,7 +2592,13 @@ extension API {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, http) = try await API.authedSend(req)
-        if (200...299).contains(http.statusCode) { return .ok }
+        if (200...299).contains(http.statusCode) {
+            if let r = try? JSONDecoder().decode(V5WriteApplied.self, from: data),
+               r.applied == false, let text = r.reason, !text.isEmpty {
+                return .refused(text)
+            }
+            return .ok
+        }
         if (400...499).contains(http.statusCode),
            let r = try? JSONDecoder().decode(V5Refusal.self, from: data) {
             // `refusal` is what the clinician gate uses; `reason` is what

@@ -772,6 +772,32 @@ enum RacesV5Sample {
         let goal: String
         let gap: String
         let gapAttention: Bool
+        /// Overrides the emitted `trigger` key, which otherwise defaults to
+        /// this spec's own dictionary key — that default is fine for every
+        /// entry except "course", whose real production trigger id is
+        /// `course_changed` (`FactChoiceTriggerId` in `race-card.ts`), not
+        /// the literal string "course". `RaceDecisionCardV5`'s
+        /// `courseElevationDetail` rendering is gated on exactly that
+        /// string match, so a spec claiming to preview the course-changed
+        /// card must actually carry it or the preview silently skips the
+        /// code path it exists to demonstrate (Rule 13).
+        let triggerOverride: String?
+        /// Present only for the course-changed card. Mirrors the real
+        /// `V5CourseElevationDetail` shape the server sends — see
+        /// `V5CourseElevationDetailTests` (informational shape, `resolved:
+        /// true`) for the field vocabulary this reuses.
+        let courseElevationDetailJSON: String?
+
+        init(shape: String, verdict: String, question: String, cautions: [String],
+             safeTarget: String?, stretchTarget: String?,
+             answers: [(id: String, label: String, action: String, targetSec: Double?)],
+             goal: String, gap: String, gapAttention: Bool,
+             triggerOverride: String? = nil, courseElevationDetailJSON: String? = nil) {
+            self.shape = shape; self.verdict = verdict; self.question = question
+            self.cautions = cautions; self.safeTarget = safeTarget; self.stretchTarget = stretchTarget
+            self.answers = answers; self.goal = goal; self.gap = gap; self.gapAttention = gapAttention
+            self.triggerOverride = triggerOverride; self.courseElevationDetailJSON = courseElevationDetailJSON
+        }
     }
 
     static let specs: [(key: String, spec: Spec)] = [
@@ -851,7 +877,22 @@ enum RacesV5Sample {
             answers: [
                 ("ack", "Acknowledge", "acknowledge", nil)
             ],
-            goal: "Sub 3:30", gap: "+2:56", gapAttention: false
+            goal: "Sub 3:30", gap: "+2:56", gapAttention: false,
+            // The real production trigger id (`FactChoiceTriggerId`), not the
+            // spec's own dictionary key "course" — see `Spec.triggerOverride`.
+            triggerOverride: "course_changed",
+            // `resolved: true` — the informational (fact) shape this card
+            // actually renders, matching `shape: "fact"` above. Numbers
+            // consistent with the cautions' own "312 ft more climb":
+            // 712 - 400 = 312.
+            courseElevationDetailJSON: """
+            {
+              "oldNetFt": -400, "oldGainFt": 400, "oldSecondsImpact": 0,
+              "newNetFt": -88, "newGainFt": 712, "newSecondsImpact": 62,
+              "confidence": "high", "resolved": true,
+              "reasons": ["dense track, distance matches, no dropouts or altitude spikes"]
+            }
+            """
         )),
         ("lock", Spec(
             shape: "fact", verdict: "realistic",
@@ -992,12 +1033,18 @@ enum RacesV5Sample {
             let ts = a.targetSec.map { String($0) } ?? "null"
             return "{\"id\": \"\(a.id)\", \"label\": \"\(a.label)\", \"action\": \"\(a.action)\", \"targetSec\": \(ts)}"
         }.joined(separator: ",\n    ")
+        let trigger = s.triggerOverride ?? key
+        // Only the course-changed card carries this key at all — matching
+        // `V5DecisionCard.courseElevationDetail`'s own doc comment
+        // ("Non-nil only for `trigger == \"course_changed\"`"), so every
+        // other sample's card JSON is unchanged.
+        let detailField = s.courseElevationDetailJSON.map { ",\n  \"courseElevationDetail\": \($0)" } ?? ""
 
         return """
         {
           "shape": "\(s.shape)",
           "verdict": "\(s.verdict)",
-          "trigger": "\(key)",
+          "trigger": "\(trigger)",
           "question": "\(s.question)",
           \(targetsJSON)
           "cautions": [
@@ -1005,7 +1052,7 @@ enum RacesV5Sample {
           ],
           "answers": [
             \(answersJSON)
-          ]
+          ]\(detailField)
         }
         """
     }
@@ -1088,4 +1135,21 @@ extension RacesV5 {
 
 #Preview("Two A races \u{b7} choice") {
     RacesV5(model: RacesV5Sample.decode("races"))
+}
+
+// GOALANSWER-APPLIED-1 (2026-09-11) verification render · what the runner
+// now sees after tapping "use my measurement" on an editorial-sourced course
+// (CIM, AFC, Big Sur, Sombrero Half). Before this fix, `v5Write` never
+// decoded a 2xx body, so `POST /api/v5/goal-answer`'s disclosed
+// `{ applied: false, reason }` reached `RacesHostV5.send(_:)` as bare `.ok`
+// and nothing was shown. The copy below is verbatim from
+// `web-v2/lib/race/course-elevation-choice.ts`'s `note` for the
+// `librarySource === 'editorial'` branch — not placeholder text. Rendered
+// with `WriteNote` (`Alert`, `.attention` tone), the SAME component the
+// existing 4xx `.refused` paths already draw, since this fix's whole point
+// is that the disclosed-refusal-over-200 case now reaches that one existing
+// treatment rather than needing a new one.
+#Preview("Course changed \u{b7} editorial protection declined") {
+    RacesV5(model: RacesV5Sample.decode("course"),
+            answerOutcome: .refused("This course\u{2019}s elevation record is set from certified race data and is shared by every runner training toward it. Your GPS reading was noted but the record was not changed."))
 }

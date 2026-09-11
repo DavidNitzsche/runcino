@@ -299,6 +299,7 @@
 		FE5F82DC4942E609C7F38E7A /* WorkoutFoundation.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7728E61DBFCD6F34B4C9675 /* WorkoutFoundation.swift */; };
 		FF78B023B6AF759194C870EC /* LoadState.swift in Sources */ = {isa = PBXBuildFile; fileRef = FCA4369345EE34EAFD3E307C /* LoadState.swift */; };
 		FFB5C401E6C7A2CB320CE248 /* V5CourseElevationDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA181E9943107E228EC31844 /* V5CourseElevationDecodeTests.swift */; };
+		7BF97B18AE56D5BB22393DD5 /* V5GoalAnswerAppliedFalseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7FABE9BFA5DE44F411B96020 /* V5GoalAnswerAppliedFalseTests.swift */; };
 		FFF338FB78E8EDB247A9B0D4 /* PhoneRunTracker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CBC6B190CCB38D107978B08 /* PhoneRunTracker.swift */; };
 /* End PBXBuildFile section */
 
@@ -583,6 +584,7 @@
 		B8B66BB20F1C8DE49B6D9600 /* FaffWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffWidgetBundle.swift; sourceTree = "<group>"; };
 		B9DA4E35CB6828B2EA70A434 /* NotificationsAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsAppDelegate.swift; sourceTree = "<group>"; };
 		BA181E9943107E228EC31844 /* V5CourseElevationDecodeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5CourseElevationDecodeTests.swift; sourceTree = "<group>"; };
+		7FABE9BFA5DE44F411B96020 /* V5GoalAnswerAppliedFalseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5GoalAnswerAppliedFalseTests.swift; sourceTree = "<group>"; };
 		BA3827C851A7F3AE4FBE6B0D /* WorkoutGrade.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutGrade.swift; sourceTree = "<group>"; };
 		BB5B89100A345745753B0C8B /* HealthBarCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthBarCard.swift; sourceTree = "<group>"; };
 		BEB309AB7B2E3BF539872275 /* I_RunDetail.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = I_RunDetail.swift; sourceTree = "<group>"; };
@@ -736,6 +738,7 @@
 				F3A738F6B07437E922761372 /* V5ContrastTests.swift */,
 				BA181E9943107E228EC31844 /* V5CourseElevationDecodeTests.swift */,
 				F61803F39A7F14262E27C4D4 /* V5GaugeGeometryTests.swift */,
+				7FABE9BFA5DE44F411B96020 /* V5GoalAnswerAppliedFalseTests.swift */,
 				3650C3635F31A5B912030FCE /* V5PhaseAnswersDecodeTests.swift */,
 				82E415054AF8F3E0C1B04391 /* V5PlanSheetCopyTests.swift */,
 				04C367E8791B53FBF3C23ADD /* V5PostRunSurfacesTests.swift */,
@@ -1455,6 +1458,7 @@
 				F70FE052B115F95BFC68C5BD /* V5ContrastTests.swift in Sources */,
 				FFB5C401E6C7A2CB320CE248 /* V5CourseElevationDecodeTests.swift in Sources */,
 				06D85202CC7B5FEA024A919D /* V5GaugeGeometryTests.swift in Sources */,
+				7BF97B18AE56D5BB22393DD5 /* V5GoalAnswerAppliedFalseTests.swift in Sources */,
 				4895E2672CA7DBC5C153FF76 /* V5PhaseAnswersDecodeTests.swift in Sources */,
 				F9EAEA6A32A4C57CDB1EAE91 /* V5PlanSheetCopyTests.swift in Sources */,
 				82507340C4146ED7B38C2832 /* V5PostRunSurfacesTests.swift in Sources */,
