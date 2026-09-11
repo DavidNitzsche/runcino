@@ -1129,7 +1129,7 @@ struct TodayAfterV5: View {
     /// THE SHAPE OF THIS SESSION, which decides what the screen may claim.
     /// One rule, in `PostRunShapeV5`, shared with run detail — the two screens
     /// may not answer one run differently.
-    private var shape: RunShapeV5 {
+    var shape: RunShapeV5 {
         RunShapeV5.of(workoutType: model.workoutType,
                       indoor: model.onTheBelt != nil)
     }
@@ -1191,6 +1191,7 @@ struct TodayAfterV5: View {
                                 ? RouteMapView.paceColumnCaption(splits: model.routeSplits,
                                                                  phases: routePhaseSamples)
                                 : nil,
+                            coverageLine: milesCoverageLine,
                             paceColor: MileBreakdownV5.paceRamp(splits: model.routeSplits,
                                                                 phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,
@@ -1208,6 +1209,7 @@ struct TodayAfterV5: View {
                                 ? RouteMapView.paceColumnCaption(splits: model.routeSplits,
                                                                  phases: routePhaseSamples)
                                 : nil,
+                            coverageLine: milesCoverageLine,
                             paceColor: MileBreakdownV5.paceRamp(splits: model.routeSplits,
                                                                 phases: routePhaseSamples),
                             allowsElevation: shape.showsElevation,
@@ -1331,10 +1333,27 @@ struct TodayAfterV5: View {
         }
     }
 
-    private var milePieces: [MilePiece] {
+    var milePieces: [MilePiece] {
         // No run total on this payload, so a trailing piece is sized only if
         // the wire told us its length. Unknown is not "a whole mile".
         MileBreakdownV5.pieces(from: model.routeSplits)
+    }
+
+    /// MILEFALLBACK-LABEL-1 (2026-09-09) · the caption drawn above the mile
+    /// table when its own numeral already gave up the claim
+    /// (`MilePiece.columnLabel` prints "Whole run", never a bare "1", for
+    /// exactly this row) — belt AND braces, because a runner skimming past
+    /// the numeral should still meet the sentence above the table, not just
+    /// the honest label inside it.
+    ///
+    /// Reuses `MileBreakdownV5.coverageLine`'s existing slot rather than
+    /// inventing a second caption mechanism: that slot's own header already
+    /// says its job is "what these rows cover, when they do not cover the
+    /// run [the way a mile table normally does]" — a single averaged row
+    /// standing in for every mile is exactly that case.
+    private var milesCoverageLine: String? {
+        guard milePieces.count == 1, milePieces[0].isWholeRunAverage else { return nil }
+        return "One row · the whole run's own measured pace, not a mile-cut split."
     }
 
     /// The samples the route map normalises its pace ramp across, built the
@@ -1374,7 +1393,7 @@ struct TodayAfterV5: View {
     /// A PHASE WITH NO `type` (a payload from before 2026-09-01, or a future
     /// era this screen does not recognise) still gets a row — it just falls
     /// back to a numbered, unnamed one rather than guessing what it was.
-    private var sectionPieces: [RepPiece] {
+    var sectionPieces: [RepPiece] {
         let usable = model.routePhases.filter { $0.mi > 0 && $0.sec > 0 }
         // A SINGLE PHASE IS THE RUN, and the poster at the top of this screen
         // already carries its distance, its time and its pace. Restating them
@@ -1641,7 +1660,11 @@ struct TodayAfterV5: View {
         return "not completed"
     }
 
-    private var workoutPhasePieces: [RepPiece] {
+    /// ROUTING-1 (2026-09-09) · non-`private` so `TodayAfterV5RoutingTests`
+    /// can read this lane directly — the fail-before falsifier asserts on
+    /// `workoutPhasePieces` itself (the bug's raw, undeduplicated shape),
+    /// separately from `breakdownPieces` (the routed, fixed outcome).
+    var workoutPhasePieces: [RepPiece] {
         let usable = model.workoutPhases.filter { ($0.durationSec ?? 0) > 0 }
         // A LIST OF ONE IS THE RUN, and the poster already states it — the
         // same refusal `sectionPieces` makes directly above.
@@ -1675,10 +1698,35 @@ struct TodayAfterV5: View {
     }
 
     /// The pieces this screen actually draws: the GPS-keyed phases when the
-    /// run has them, the authored phase list when it does not (indoors).
-    /// ONE list, so there is exactly one "Piece by piece" on this screen.
-    private var breakdownPieces: [RepPiece] {
-        sectionPieces.isEmpty ? workoutPhasePieces : sectionPieces
+    /// run has them, the authored phase list when it does not AND the run is
+    /// indoor. ONE list, so there is exactly one "Piece by piece" on this
+    /// screen.
+    ///
+    /// ROUTING-1 (2026-09-09) · `workoutPhasePieces`'s own header calls it
+    /// "the treadmill lane", built for the one case a GPS-keyed `routePhases`
+    /// structurally cannot cover — indoors, where there is no route to key it
+    /// by. This used to fall back to it whenever `sectionPieces` came back
+    /// empty FOR ANY REASON, with no check that the run was actually indoor.
+    ///
+    /// Proven on the owner's own 2026-09-09 5-mile-easy-plus-6-strides run: a
+    /// `runs` row can carry `phases` from one completion POST and its mile
+    /// `splits` from a LATER one (`fetched_at` 14:17:04, the row's own
+    /// `data.ingestedAt` 14:36:46 — nineteen minutes apart, same row). In that
+    /// window `hasMiles` is false and `sectionPieces` — built off the server's
+    /// GRADED `routePhases`, a heavier derivation than the raw completion
+    /// payload — can be empty too, for an outdoor run. The old fallback then
+    /// read `data.phases` DIRECTLY (unconditionally, never indoor-gated, per
+    /// its own header) and rendered all fourteen raw phases — the 5-mile body,
+    /// six strides and six walk-backs, undeduplicated, `actualPace: nil` on
+    /// every row — which is the exact defect reported: no pace on the 5-mile
+    /// phase, and the raw pairs instead of `PostRunLearnedV5(.strides)`'s
+    /// clean treatment.
+    ///
+    /// An outdoor run with neither miles nor sections now draws nothing —
+    /// Rule 11's refusal, not a lane that was never built to describe it.
+    var breakdownPieces: [RepPiece] {
+        guard sectionPieces.isEmpty else { return sectionPieces }
+        return shape == .indoor ? workoutPhasePieces : []
     }
 
     /// PARITY-1, 2026-09-04 · `RunDetailV5.marathonPacePhase`'s twin, off
@@ -2518,6 +2566,110 @@ enum TodayAfterV5Samples {
       "weekOff": null,
       "offSeason": null,
       "notOnPhoneYet": null
+    }
+    """
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ROUTING-1, 2026-09-09 · the owner's real 5-mile-easy-plus-6-strides run
+    // (`runs.id -218380344929823`), read read-only at `faff_readonly`.
+    //
+    // `phases` below is verbatim off `data.phases`. `routeSplits`/`routePhases`
+    // are forced empty to reproduce the window the investigation proved real:
+    // the row's own `fetched_at` (14:17:04) sits nineteen minutes before its
+    // own `data.ingestedAt` (14:36:46) — the same canonical row written more
+    // than once, `phases` landing before `splits`.
+    //
+    // BEFORE the fix this rendered `workoutPhasePieces` raw — fourteen rows,
+    // the 5.0 mi body and six strides indistinguishable from their six
+    // walk-backs, every `actualPace` nil. AFTER the fix (this entry) the
+    // screen draws nothing extra rather than the wrong lane — Rule 11's
+    // refusal — because the run is not indoor.
+    static let routing1MidWrite: V5Today = decode(routing1MidWriteJSON)
+
+    /// The same run, with the server-side fix's one honest row on
+    /// `routeSplits` (`phaseFallbackSplits`, `lib/runs/splits-pick.ts`) — the
+    /// 5.0 mi work phase's own measured distance and pace, restoring the
+    /// `.milesAndSections` lane.
+    static let routing1PhaseFallback: V5Today = decode(
+        routing1MidWriteJSON.replacingOccurrences(
+            of: "\"routeSplits\": [],",
+            with: """
+            "routeSplits": [
+              { "mile": 1, "pace": "8:41", "hr": 133, "cadence": null, "elev_change_ft": null, "distanceMi": 5.01,
+                "source": "phase-fallback" }
+            ],
+            """))
+
+    private static let routing1MidWriteJSON = """
+    {
+      "dateISO": "2026-09-09",
+      "state": "after_run",
+      "workoutType": "easy",
+      "panel": {
+        "dayState": "easy", "quiet": false, "place": "Today",
+        "dateLine": "Wednesday 9 Sep", "weekLine": "Logged 49:07",
+        "kicker": null, "type": "Easy", "dose": null,
+        "stats": [
+          { "label": "Distance", "value": { "text": "5.58", "modelled": false }, "tone": null },
+          { "label": "Time", "value": { "text": "49:07", "modelled": false }, "tone": null },
+          { "label": "Pace", "value": { "text": "8:48", "modelled": false }, "tone": null }
+        ]
+      },
+      "weekStrip": [], "groups": [], "why": null,
+      "whereYouAre": [], "beforeYouGo": [], "askedVsRan": [],
+      "verdict": null, "facts": [], "win": null, "conditionsNote": null, "coachTip": null,
+      "zoneShares": null, "zoneTarget": null, "zoneTargets": null, "elevation": null,
+      "onTheBelt": null, "shoesWorn": null, "whatThisDidToTheWeek": [],
+      "runId": "-218380344929823", "changed": null, "injury": null, "weekOff": null,
+      "offSeason": null, "notOnPhoneYet": null,
+      "routeSplits": [],
+      "routePhases": [],
+      "postRun": {
+        "version": "1", "runId": "-218380344929823", "decisionVersion": "1",
+        "headline": "Easy done, strides sharp",
+        "summary": "5.0 mi easy at 8:41/mi, then six strides.",
+        "targetProvenanceNote": null, "noPrescribedStructure": false,
+        "cost": null,
+        "learned": "Threshold and durability both held; an easy day adds no new evidence.",
+        "change": "No change", "changeState": "UNCHANGED", "changes": [],
+        "next": null, "why": [],
+        "accessibilitySummary": "Easy run with six strides. No plan change.",
+        "capture": null, "coverage": null,
+        "strides": {
+          "summary": "6 of 6 strides completed. Six walk-backs between them, 0.27 mi.",
+          "recoveryCount": 6, "recoveryDistanceMi": 0.27,
+          "rows": [
+            { "ordinal": 1, "label": "Stride 1 of 6", "duration": "0:20",
+              "pace": { "text": "6:40/mi", "modelled": true }, "hr": 135, "distanceMi": 0.05 },
+            { "ordinal": 2, "label": "Stride 2 of 6", "duration": "0:22",
+              "pace": { "text": "7:20/mi", "modelled": true }, "hr": 137, "distanceMi": 0.05 },
+            { "ordinal": 3, "label": "Stride 3 of 6", "duration": "0:21",
+              "pace": { "text": "7:00/mi", "modelled": true }, "hr": 126, "distanceMi": 0.05 },
+            { "ordinal": 4, "label": "Stride 4 of 6", "duration": "0:20",
+              "pace": { "text": "6:40/mi", "modelled": true }, "hr": 109, "distanceMi": 0.05 },
+            { "ordinal": 5, "label": "Stride 5 of 6", "duration": "0:22",
+              "pace": { "text": "Pace unavailable", "modelled": true }, "hr": 131, "distanceMi": null },
+            { "ordinal": 6, "label": "Stride 6 of 6", "duration": "0:21",
+              "pace": { "text": "7:00/mi", "modelled": true }, "hr": 135, "distanceMi": 0.05 }
+          ]
+        }
+      },
+      "workoutPhases": [
+        { "type": "work", "label": "5.0 mi easy", "durationSec": 2607, "avgHr": 133, "maxHr": 144, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 1 of 6", "durationSec": 20, "avgHr": 135, "maxHr": 137, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 30, "avgHr": 144, "maxHr": 148, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 2 of 6", "durationSec": 22, "avgHr": 137, "maxHr": 140, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 43, "avgHr": 141, "maxHr": 147, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 3 of 6", "durationSec": 21, "avgHr": 126, "maxHr": 132, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 61, "avgHr": 135, "maxHr": 146, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 4 of 6", "durationSec": 20, "avgHr": 109, "maxHr": 115, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 24, "avgHr": 132, "maxHr": 138, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 5 of 6", "durationSec": 22, "avgHr": 131, "maxHr": 136, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 38, "avgHr": 144, "maxHr": 149, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "work", "label": "Stride 6 of 6", "durationSec": 21, "avgHr": 135, "maxHr": 142, "completed": true, "speedMph": null, "inclinePct": null },
+        { "type": "recovery", "label": "Walk back", "durationSec": 8, "avgHr": 139, "maxHr": 139, "completed": false, "speedMph": null, "inclinePct": null },
+        { "type": "overtime", "label": "After the session", "durationSec": 10, "avgHr": null, "maxHr": null, "completed": true, "speedMph": null, "inclinePct": null }
+      ]
     }
     """
 }

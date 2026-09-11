@@ -26,6 +26,8 @@
  * is the test here, because a split array's whole job is to decompose the run.
  */
 
+import { fmtPace } from '@/lib/format/run';
+
 export interface SplitLike {
   mile?: unknown;
   pace?: unknown;
@@ -63,6 +65,75 @@ export interface SplitCandidate {
   splits: SplitLike[] | null | undefined;
   /** For the report only — which ingest wrote it. */
   source?: string | null;
+}
+
+/** The one raw phase field this fallback reads. Matches `runs.data.phases[]`
+ *  verbatim — see `readStrides`'s own `GradedPhase` for the graded sibling. */
+export interface PhaseLikeForFallback {
+  type?: unknown;
+  isStrideSegment?: unknown;
+  actualDistanceMi?: unknown;
+  actualPaceSPerMi?: unknown;
+  avgHr?: unknown;
+}
+
+/**
+ * ROUTING-1 (2026-09-09) · ONE HONEST ROW, for the window no split source has
+ * anything at all.
+ *
+ * `runs` rows for a single watch completion are written in more than one
+ * POST, merged by `data || jsonb_strip_nulls(EXCLUDED.data)` — confirmed on
+ * the owner's own 2026-09-09 5-mile-easy-plus-6-strides row, whose `fetched_at`
+ * (14:17:04) sits 19 minutes before its own `data.ingestedAt` (14:36:46). In
+ * that window a canonical row can carry `phases` — the watch's own per-phase
+ * telemetry, written directly, never derived — with no `splits` array yet,
+ * because `deriveSplitsFromPaceSamples` runs at write time over whatever
+ * `phases` THAT post carried.
+ *
+ * `pickSplits` correctly returns null when nothing has a split array. Without
+ * this, that null becomes `routeSplits: []`, `hasMiles` false on the phone,
+ * and `PostRunShapeV5.decomposition` — CORRECTLY, given that false input —
+ * routes an easy run with real recorded miles into the section lane, which
+ * has no pace field at all.
+ *
+ * `phases[].actualDistanceMi` / `actualPaceSPerMi` are the watch's own
+ * distance-over-time for the session's continuous body, and they exist from
+ * the same write that put `phases` on the row — no derivation to race against.
+ * Returns exactly ONE row when the run has exactly one non-stride work phase
+ * — the unambiguous "one continuous effort" case `.steady`/`.longSteady`/
+ * `.progression` decompose to `.miles` for — and null otherwise: a session
+ * built from more than one work block (tempo, threshold, reps) does not get
+ * one averaged row standing in for pieces that were never one effort, which
+ * is the same ruling `PostRunShapeV5.showsWholeRunPace` already makes.
+ *
+ * `mile: 1` is a placeholder ordinal, not a claim about mile-cut boundaries —
+ * `distanceMi` carries the real length, and `MileBreakdownV5.pieces` sizes the
+ * row off that field, not off the ordinal.
+ */
+export function phaseFallbackSplits(phases: unknown): SplitLike[] | null {
+  if (!Array.isArray(phases)) return null;
+  const body = phases.filter((p): p is PhaseLikeForFallback => (
+    !!p && typeof p === 'object'
+    && (p as PhaseLikeForFallback).type === 'work'
+    && (p as PhaseLikeForFallback).isStrideSegment !== true
+  ));
+  if (body.length !== 1) return null;
+  const p = body[0];
+  const distanceMi = Number(p.actualDistanceMi);
+  const paceSecPerMi = Number(p.actualPaceSPerMi);
+  if (!Number.isFinite(distanceMi) || distanceMi <= 0) return null;
+  if (!Number.isFinite(paceSecPerMi) || paceSecPerMi <= 0) return null;
+  // Presence, not magnitude — `p.avgHr == null` is "unmeasured"; a finite
+  // reading of any size is a real one. `> 0` here would read a genuinely
+  // absent avgHr and a syntactically-zero one as the same case the scanner
+  // exists to catch (`lib/audit/coercion-scan.ts`'s ZERO-ERASURE shape).
+  const hr = p.avgHr == null ? NaN : Number(p.avgHr);
+  return [{
+    mile: 1,
+    pace: fmtPace(paceSecPerMi),
+    hr: Number.isFinite(hr) ? Math.round(hr) : null,
+    distanceMi,
+  }];
 }
 
 export interface SplitChoice {

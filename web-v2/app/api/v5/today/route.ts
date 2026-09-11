@@ -1228,7 +1228,10 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       // Coverage decides, then richness. Never a blend of two arrays: they are
       // separate instruments observing the same run, and interleaving them
       // would invent miles nothing recorded.
-      const splitChoice = resolveSplits(canonicalFigures, elevTwins);
+      const splitChoice = resolveSplits(
+        canonicalFigures, elevTwins,
+        Array.isArray(data.phases) ? data.phases : null,
+      );
 
       // The runner's own zone bands, from their threshold heart rate. Null
       // at true cold start — never fabricated, and an absent band simply
@@ -1763,6 +1766,24 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
               pace: typeof sp.pace === 'string' ? sp.pace : null,
               hr: sp.hr != null && Number.isFinite(Number(sp.hr)) ? Math.round(Number(sp.hr)) : null,
               cadence: sp.cadence != null && Number.isFinite(Number(sp.cadence)) ? Math.round(Number(sp.cadence)) : null,
+              // MILEFALLBACK-LABEL-1 (2026-09-09) · `splitChoice.source` names
+              // which instrument produced THIS ENTIRE array — 'canonical',
+              // a twin's own `source`, or `'phase-fallback'` for
+              // `phaseFallbackSplits`' single averaged row. Every row in one
+              // choice shares one source by construction (`resolveSplits`
+              // never blends arrays — see its own header), so stamping the
+              // choice-level value onto each row is not a guess.
+              //
+              // This was dropped here before: `phaseFallbackSplits` derives
+              // one honest "Mile 1" row that is really the whole run's own
+              // measured pace (5.01 mi averaged, not a mile-cut GPS split),
+              // and with no `source` on the wire the phone could not tell the
+              // two apart — a runner reading "Mile 1 · 8:41" would reasonably
+              // believe that was his actual first mile. `MilePiece
+              // .isWholeRunAverage` (native-v2) reads this to give up the
+              // numeral the same way it already gives up a fragment's, per
+              // this file's own established rule for a partial mile.
+              source: typeof splitChoice.source === 'string' ? splitChoice.source : null,
               elev_change_ft: (() => {
                 // `elev_ft` on the watch's array, `elev_change_ft` on Strava's.
                 // Two spellings of one measurement — read the set, never a

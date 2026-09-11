@@ -123,6 +123,16 @@ struct MilePiece: Identifiable, Equatable {
     /// How much of a mile this covers. Nil when the source did not say, which
     /// is why it is not defaulted to 1.
     let distanceMi: Double?
+    /// MILEFALLBACK-LABEL-1 (2026-09-09) · this row is not a mile-cut GPS
+    /// split at all — it is `phaseFallbackSplits`' one honest row, the run's
+    /// own single continuous work phase averaged into a "Mile 1" shape so
+    /// `hasMiles` has something real to point at when nothing else cut the
+    /// run into miles. `RunSplit.source == "phase-fallback"` is the ONLY
+    /// place this is decided; see that field's own doc comment. False
+    /// (including on every payload from before this field existed) means
+    /// "an ordinary mile-cut split" — the honest default, never a false
+    /// positive.
+    var isWholeRunAverage: Bool = false
 
     // `inBand` IS GONE (2026-08-30). It carried the band verdict into the
     // pace column's fill, which is the collision this component's header
@@ -150,7 +160,16 @@ struct MilePiece: Identifiable, Equatable {
     ///
     /// In miles, for the same reason the header says MILE: this is a mile-cut
     /// piece, so its length is a fraction of a mile.
+    ///
+    /// MILEFALLBACK-LABEL-1 (2026-09-09) · a whole-run average gives up its
+    /// numeral for the SAME reason a fragment does: the bare digit "1" claims
+    /// a real first mile-cut split, and this row is not one — it is the run's
+    /// own measured pace over its whole distance, dressed as a mile because
+    /// that is the only shape `hasMiles` understands. Checked first, because
+    /// a whole-run row can carry a real `distanceMi` well over 0.95 and must
+    /// not fall through to the plain numeral branch below it.
     var columnLabel: String {
+        if isWholeRunAverage { return "Whole run" }
         if isPartial, let d = distanceMi { return String(format: "%.2f mi", d) }
         return "\(mile)"
     }
@@ -321,7 +340,7 @@ struct MileBreakdownV5: View {
             // remainder is called. Only the INK is decided here.
             Text(p.columnLabel)
                 .font(.faffText(TypeScaleV5.body17))
-                .foregroundStyle(p.isPartial ? V5.textSecondary : V5.textPrimary)
+                .foregroundStyle((p.isPartial || p.isWholeRunAverage) ? V5.textSecondary : V5.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             // THE PACE COLUMN IS THE ONLY COLOURED ONE, and what it carries
@@ -374,7 +393,9 @@ struct MileBreakdownV5: View {
         // still follows the runner's unit preference.
         let unitWord = "mile"
         var out: [String] = []
-        if p.isPartial, let d = p.distanceMi {
+        if p.isWholeRunAverage, let d = p.distanceMi {
+            out.append(String(format: "Whole run average, %.2f miles", d))
+        } else if p.isPartial, let d = p.distanceMi {
             out.append(String(format: "Part mile %d, %.2f of a mile", p.mile, d))
         } else {
             out.append("Mile \(p.mile)")
@@ -442,7 +463,11 @@ extension MileBreakdownV5 {
                              hr: (s.hr ?? 0) > 0 ? s.hr : nil,
                              elevFt: s.elev_change_ft,
                              cadence: (s.cadence ?? 0) > 0 ? s.cadence : nil,
-                             distanceMi: derived)
+                             distanceMi: derived,
+                             // MILEFALLBACK-LABEL-1 · the ONLY read of
+                             // `RunSplit.source` in the mile table. See
+                             // `MilePiece.isWholeRunAverage`'s own comment.
+                             isWholeRunAverage: s.source == "phase-fallback")
         }
     }
 

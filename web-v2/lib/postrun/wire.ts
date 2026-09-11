@@ -128,9 +128,28 @@ export interface PostRunStrideWire {
   label: string | null;
   /** "0:20". */
   duration: string | null;
-  /** "5:47/mi". Present because a stride HAS a pace; it is never compared to
-   *  a target here, and no field on this type can carry one. */
-  pace: string | null;
+  /**
+   * SHORT-STRIDE-PACE-1 (2026-09-09) · "5:47/mi", always `modelled: true`.
+   *
+   * `Research/15` §"Pace and GPS Accuracy": "Instantaneous pace is noisy even
+   * with good GPS" — and a stride's own distance (~0.05 mi, ~260 ft over
+   * ~20 s) is short enough that a single-band GPS fix's own open-sky error
+   * (1-3 m) is already a real share of the whole distance being divided,
+   * before any tree cover or urban multipath is counted. The number is real
+   * arithmetic (the watch's own distance over its own duration) and not
+   * invented, but it is not a mile-split's precision either, so it carries
+   * the engine's own modelled flag rather than reading as a measured number.
+   *
+   * `text: null` — `paceSecPerMi` absent because the phase recorded no usable
+   * distance/duration to divide — is NOT the same fact as a stride whose pace
+   * came back short-of-band, and Rule 11 forbids collapsing them into one
+   * blank cell. It reads "Pace unavailable" instead: a phrase carries no
+   * digits, so `FaffValue.from` renders it plainly regardless of the
+   * `modelled` flag (see `ValuesV5.swift`'s own guard) — an honest sentence,
+   * never a red "could not be read" dash, because nothing here failed to
+   * read; the watch simply did not record enough to say.
+   */
+  pace: { text: string | null; modelled: boolean };
   hr: number | null;
   distanceMi: number | null;
   /* NO CADENCE. `PRODUCT_UX_SIMPLIFICATION_DOCTRINE.md` and the post-run
@@ -152,6 +171,21 @@ export interface PostRunStridesWire {
   recoveryDistanceMi: number | null;
 }
 
+
+/**
+ * SHORT-STRIDE-PACE-1 (2026-09-09) · the honest wire shape for one stride's
+ * pace. Pulled out of `postRunWire`'s mapping so the decision — modelled
+ * when read, the explicit "Pace unavailable" sentence when not — is testable
+ * on its own rather than only reachable through a full composed experience.
+ * See `PostRunStrideWire.pace`'s own header for the citation and the
+ * `FaffValue.from` behaviour this relies on client-side (a phrase with no
+ * digits renders plainly regardless of the `modelled` flag).
+ */
+export function stridePaceWire(paceSecPerMi: number | null): { text: string | null; modelled: boolean } {
+  return paceSecPerMi != null
+    ? { text: fmtPaceSlash(paceSecPerMi), modelled: true }
+    : { text: 'Pace unavailable', modelled: true };
+}
 
 export function postRunWire(x: PostRunExperienceV1): PostRunWire {
   const hedge = certaintyHedge(x.briefing.certainty);
@@ -196,7 +230,7 @@ export function postRunWire(x: PostRunExperienceV1): PostRunWire {
         ordinal: s.ordinal,
         label: s.label,
         duration: fmtClock(s.durationSec),
-        pace: fmtPaceSlash(s.paceSecPerMi),
+        pace: stridePaceWire(s.paceSecPerMi),
         hr: s.avgHr,
         distanceMi: s.distanceMi,
       })),

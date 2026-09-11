@@ -51,7 +51,9 @@ import {
   runMergedIntoIdSql, runAvgHrSql, runMaxHrSql,
 } from '@/lib/runs/run-shape';
 import { pickElevationGain, type ElevationReading } from '@/lib/runs/elevation';
-import { pickSplits, type SplitChoice, type SplitLike } from '@/lib/runs/splits-pick';
+import {
+  pickSplits, phaseFallbackSplits, splitsCoverageMi, type SplitChoice, type SplitLike,
+} from '@/lib/runs/splits-pick';
 
 /** One absorbed row, reduced to the fields a surface may prefer over the canonical's. */
 export interface RunTwin {
@@ -142,9 +144,26 @@ export function resolveElevationGain(
 export function resolveSplits(
   canonical: CanonicalFigures,
   twins: RunTwin[] | null,
+  /**
+   * ROUTING-1 (2026-09-09) · the canonical row's own raw `data.phases`, read
+   * ONLY when neither the canonical row nor any twin has a split array at
+   * all. See `phaseFallbackSplits`' own header for the production incident
+   * this closes and why it is scoped to the single-work-phase case.
+   */
+  phases?: unknown,
 ): SplitChoice | null {
-  return pickSplits(canonical.distanceMi, [
+  const picked = pickSplits(canonical.distanceMi, [
     { splits: canonical.splits, source: 'canonical' },
     ...(twins ?? []).map((t) => ({ splits: t.splits, source: t.source })),
   ]);
+  if (picked) return picked;
+  const fallback = phaseFallbackSplits(phases);
+  if (!fallback) return null;
+  return {
+    splits: fallback,
+    source: 'phase-fallback',
+    coverageMi: splitsCoverageMi(fallback),
+    // Never claim mile-cut coverage from one averaged row.
+    coversRun: false,
+  };
 }

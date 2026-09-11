@@ -134,18 +134,16 @@ struct FaffValue: Equatable, Hashable {
     /// True when this value must not be presented as evidence of fitness.
     var isModelled: Bool { basis == .modelled }
 
-    /// WHAT A SCREEN READER SAYS, and since 2026-08-21 the ONLY thing carrying
-    /// rule one at the point of render.
-    ///
-    /// The amber tilde was retired because nobody could interpret it. The
-    /// distinction was explicitly kept — "the wire still carries `modelled`,
-    /// and VoiceOver still says estimated before the figure" — which makes
-    /// this string the whole visible-to-assistive-tech half of the rule.
+    /// WHAT A SCREEN READER SAYS. MARKER-RESTORE-1 (2026-09-09) · between
+    /// 2026-08-21 and today this was the ONLY thing carrying rule one at the
+    /// point of render, while the visible tilde was retired. David has since
+    /// reinstated the visible mark (see `FaffValueText.body`'s `.modelled`
+    /// case for the full history) — this string is now the COMPLEMENT to the
+    /// glyph, not its replacement, exactly per his own framing: "VoiceOver is
+    /// complementary, not a replacement for visible provenance."
     ///
     /// It lives here rather than inline in `FaffValueText.body` so it can be
-    /// tested. A rule whose last remaining carrier sits inside a view body is
-    /// a rule nothing can check, and this one has already lost its other
-    /// carrier once.
+    /// tested independently of whether the glyph is drawn.
     var voiceOverLabel: String {
         switch basis {
         case .measured:   return text
@@ -221,30 +219,45 @@ struct FaffValueText: View {
                 .foregroundStyle(color)
 
         case .modelled:
-            // THE MARK IS NO LONGER DRAWN. David, 2026-08-21: "we dont need
-            // the tilde. its obvious and implied the number is calculated".
+            // THE MARK IS DRAWN AGAIN (2026-09-09) · MARKER-RESTORE-1.
             //
-            // He is right, and the evidence is that he had to ask what it
-            // was. A mark nobody can interpret is noise in front of a number,
-            // which is the opposite of the job.
+            // Retired 2026-08-21 on David's own ruling ("we dont need the
+            // tilde. its obvious and implied the number is calculated"), kept
+            // as a one-line-back change per this file's own comment at the
+            // time. David has now explicitly reversed that, in the terms he
+            // used: "Treat the current brief as authoritative: modelled
+            // numbers must visibly carry the amber `~` marker. An older
+            // August ruling does not override the current explicit
+            // design-system requirement." The current design handoff
+            // (`design_handoff_faff_iphone_app v5/README.md`, locked
+            // 2026-08-19, restated in `docs/faff-iphone-design-contract.md`
+            // §1) states it as a system rule, not a per-screen choice: "A
+            // modelled/projected number... carries a small amber `~` (tilde)
+            // immediately before its value — the app's one mark for 'this
+            // number is estimated'... Apply it everywhere a number is
+            // estimated." `check-modelled-mark.sh`'s own header already
+            // quoted that same contract line and Guard 2 already assumed
+            // this is where the glyph lives — the gate's documentation and
+            // this file's rendering had quietly drifted apart since 08-21;
+            // this closes that gap rather than opening a new one.
             //
-            // It was also redundant with the words already beside every one
-            // of these values. "Pace band" and "HR ceiling" are prescriptions
-            // by name. Races says "Projected". 8c's watch time is labelled
-            // "on the watch", and that phrase — not a glyph — is what stops
-            // it reading as a result. Rule one asked for a value the runner
-            // can interpret; the labels were already carrying it.
-            //
-            // THE DISTINCTION IS KEPT, ONLY THE GLYPH IS GONE. `FaffValue`
-            // still knows the basis, the wire still carries `modelled`, and
-            // VoiceOver still says "estimated" before the figure — a spoken
-            // word has none of the ambiguity a symbol had. So the day a
-            // screen needs to show provenance visually again, the data is
-            // there and this is a one-line change back.
-            Text(value.text)
-                .font(font)
-                .foregroundStyle(color)
-                .accessibilityLabel(value.voiceOverLabel)
+            // VoiceOver is UNCHANGED, not replaced: `value.voiceOverLabel`
+            // still says "estimated" before the figure for a reader who
+            // cannot see the glyph at all — visible and spoken provenance are
+            // both required, per David's explicit "VoiceOver is
+            // complementary, not a replacement for visible provenance."
+            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                Text(Theme.V5.modelledMark)
+                    .font(font)
+                    .scaleEffect(markScale, anchor: .bottomTrailing)
+                    .foregroundStyle(mark)
+                    .accessibilityHidden(true)
+                Text(value.text)
+                    .font(font)
+                    .foregroundStyle(color)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(value.voiceOverLabel)
 
         case .unreadable:
             // `fault`, not `V5.fault`. On a gradient panel the red is

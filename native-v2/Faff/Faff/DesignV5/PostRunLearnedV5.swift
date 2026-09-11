@@ -347,7 +347,10 @@ extension PostRunLearnedV5 {
     static func strideSpoken(_ r: PostRunStrideV5) -> String {
         var parts: [String] = [r.label ?? "Stride \(r.ordinal)"]
         if let d = r.duration { parts.append("\(d) seconds") }
-        if let p = r.pace { parts.append("at \(p)") }
+        // `.voiceOverLabel` says "estimated 5:47/mi" for a modelled pace and
+        // the plain "Pace unavailable" sentence for the refusal — VoiceOver
+        // hears the same provenance a sighted reader sees, per rule one.
+        if let p = r.pace { parts.append("at \(p.value.voiceOverLabel)") }
         if let hr = r.hr { parts.append("heart rate \(hr)") }
         return parts.joined(separator: ", ")
     }
@@ -368,8 +371,22 @@ struct PostRunStrideV5: Decodable, Equatable, Identifiable {
     let label: String?
     /// "0:20".
     let duration: String?
-    /// "5:47/mi". A reading, never a grade.
-    let pace: String?
+    /// SHORT-STRIDE-PACE-1 (2026-09-09) · a reading, never a grade, and always
+    /// carrying its own provenance now rather than a bare formatted string.
+    ///
+    /// `Research/15` §"Pace and GPS Accuracy": "Instantaneous pace is noisy
+    /// even with good GPS", and a stride's own distance is short enough
+    /// (~260 ft over ~20 s) that a single GPS fix's own open-sky error is
+    /// already a real share of it — real arithmetic, not invented, but not a
+    /// mile split's precision either, so the server always marks it
+    /// `modelled`. `nil` never reaches this field: when the phase recorded no
+    /// usable distance/duration to divide, the server sends the honest
+    /// sentence "Pace unavailable" rather than dropping the key — see
+    /// `PostRunStrideWire.pace`'s own header. A payload from before this
+    /// shipped (bare `pace: "5:47/mi"` or an absent key) still decodes: the
+    /// fallback below reads the old string shape and marks it measured, which
+    /// is what it always was under the old contract.
+    let pace: V5Number?
     let hr: Int?
     let distanceMi: Double?
 
@@ -380,12 +397,20 @@ struct PostRunStrideV5: Decodable, Equatable, Identifiable {
         ordinal = ((try? c.decodeIfPresent(Int.self, forKey: .ordinal)) ?? 0) ?? 0
         label = (try? c.decodeIfPresent(String.self, forKey: .label)) ?? nil
         duration = (try? c.decodeIfPresent(String.self, forKey: .duration)) ?? nil
-        pace = (try? c.decodeIfPresent(String.self, forKey: .pace)) ?? nil
+        let modernPace: V5Number? = (try? c.decodeIfPresent(V5Number.self, forKey: .pace)) ?? nil
+        if let modernPace {
+            pace = modernPace
+        } else {
+            // A payload from before SHORT-STRIDE-PACE-1 sent a bare string —
+            // decode it as measured rather than failing the whole row.
+            let legacyPace: String? = (try? c.decodeIfPresent(String.self, forKey: .pace)) ?? nil
+            pace = legacyPace.map { V5Number(text: $0, modelled: false) }
+        }
         hr = (try? c.decodeIfPresent(Int.self, forKey: .hr)) ?? nil
         distanceMi = (try? c.decodeIfPresent(Double.self, forKey: .distanceMi)) ?? nil
     }
 
-    init(ordinal: Int, label: String?, duration: String?, pace: String?, hr: Int?, distanceMi: Double?) {
+    init(ordinal: Int, label: String?, duration: String?, pace: V5Number?, hr: Int?, distanceMi: Double?) {
         self.ordinal = ordinal; self.label = label; self.duration = duration
         self.pace = pace; self.hr = hr; self.distanceMi = distanceMi
     }
@@ -588,9 +613,14 @@ struct PostRunLearnedV5: View {
                                             .foregroundStyle(V5.textSecondary)
                                     }
                                     if let pace = row.pace {
-                                        Text(pace)
-                                            .font(.faffText(TypeScaleV5.label14))
-                                            .foregroundStyle(V5.textSecondary)
+                                        // SHORT-STRIDE-PACE-1 · `FaffValueText`
+                                        // draws "Pace unavailable" plainly (a
+                                        // phrase carries no digits to qualify)
+                                        // and a real reading as estimated to
+                                        // VoiceOver — see `pace`'s own header.
+                                        FaffValueText(pace.value,
+                                                      font: .faffText(TypeScaleV5.label14),
+                                                      color: V5.textSecondary)
                                     }
                                     if let hr = row.hr {
                                         Text("\(hr)")
