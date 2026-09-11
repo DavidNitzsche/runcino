@@ -379,6 +379,11 @@ struct TodayAfterV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
+        // SCROLLCLOCK-2 (2026-09-09) · `.v5ScrollSafeTop` moved OUT of this
+        // screen's own body — `TodayHostV5` now applies it once, for every
+        // `model.state` branch, AFTER (outside) `.v5StaleBanner`. See that
+        // call site's comment (`HostsV5.swift`) for why. This screen's own
+        // `.v5MeasureFullBleedPanel()` below is unchanged.
     }
 
     // MARK: - Strava push
@@ -554,6 +559,8 @@ struct TodayAfterV5: View {
 
             posterStatsRow
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift.
+        .v5MeasureFullBleedPanel()
     }
 
     /// Distance / time / pace, read positionally off `panel.stats` (falling

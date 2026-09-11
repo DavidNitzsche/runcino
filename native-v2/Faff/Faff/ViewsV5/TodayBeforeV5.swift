@@ -396,6 +396,11 @@ struct TodayBeforeV5: View {
             }
             .zIndex(7)
         }
+        // SCROLLCLOCK-2 (2026-09-09) · `.v5ScrollSafeTop` moved OUT of this
+        // screen's own body — `TodayHostV5` now applies it once, for every
+        // `model.state` branch, AFTER (outside) `.v5StaleBanner`. See that
+        // call site's comment (`HostsV5.swift`) for why. This screen's own
+        // `.v5MeasureFullBleedPanel()` below is unchanged.
     }
 
     // MARK: - Panel
@@ -455,6 +460,10 @@ struct TodayBeforeV5: View {
                 }
             )
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift. Publishes this panel's height so
+        // `TodayHostV5`'s `.v5ScrollSafeTop()` (SCROLLCLOCK-2 moved it there,
+        // out of this file) knows how tall a cap to draw.
+        .v5MeasureFullBleedPanel()
     }
 
     private var avatarInitials: String {

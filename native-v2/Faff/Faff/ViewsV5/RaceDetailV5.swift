@@ -78,13 +78,18 @@ struct RaceDetailV5: View {
     @State private var submitting = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                AppBar(title: raceDetail.name, eyebrow: raceDetail.dateLine, onBack: onBack,
-                       trailingIcon: onEdit != nil ? "pencil" : nil,
-                       trailingLabel: "Edit race",
-                       onTrailing: onEdit)
-
+        // SCROLLCLOCK-1 (2026-09-09) · `AppBar` pinned OUTSIDE the
+        // `ScrollView` — see `SettingsV5.swift`'s identical fix for the full
+        // reasoning. A `ScrollView`'s content clips to the ScrollView's OWN
+        // frame, and that frame now starts below `AppBar` rather than at the
+        // very top of the screen, so nothing scrolled inside it can ever
+        // reach the status bar.
+        VStack(spacing: 0) {
+            AppBar(title: raceDetail.name, eyebrow: raceDetail.dateLine, onBack: onBack,
+                   trailingIcon: onEdit != nil ? "pencil" : nil,
+                   trailingLabel: "Edit race",
+                   onTrailing: onEdit)
+            ScrollView {
                 // The prototype specified `gap:24px` here — the upper end of the
                 // brief's own stated 20-24 "between groups" range, which is exactly
                 // the kind of per-screen pick-a-number-in-the-range latitude that

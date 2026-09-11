@@ -167,12 +167,17 @@ private struct StateScreenScaffold<Panel: View, Body: View>: View {
     /// for one fact would be the same violation, so the callers pass one value
     /// to both and the coupling is stated here.
     var nested: Bool = false
+    /// SCROLLCLOCK-1 (PanelV5.swift) · the SAME `PanelFill` `panel()` was
+    /// built with. Only read in the `!nested` branch below, which owns the
+    /// ScrollView the cap protects — the `nested` branch's host
+    /// (`TodayHostV5.inSharedShell`) is responsible for its own.
+    var panelFill: PanelFill
     @ViewBuilder var panel: () -> Panel
     @ViewBuilder var content: () -> Body
 
     private var band: some View {
         VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-            panel()
+            panel().v5MeasureFullBleedPanel()
             content()
         }
         .padding(.horizontal, V5.S.gutter)
@@ -190,6 +195,11 @@ private struct StateScreenScaffold<Panel: View, Body: View>: View {
                     .background(V5.surfacePage)
                     .scrollIndicators(.hidden)
             }
+            // SCROLLCLOCK-1 · caps the status-bar band with the same slice of
+            // `panel()`'s own gradient that shows there at rest, so no
+            // section in `content()` below it can ever collide with the
+            // clock once the panel itself has scrolled away.
+            .v5ScrollSafeTop(fill: panelFill)
         }
     }
 }
@@ -310,7 +320,7 @@ struct InjuryFlareV5: View {
     }
 
     var body: some View {
-        StateScreenScaffold(nested: suppressOwnHeader) {
+        StateScreenScaffold(nested: suppressOwnHeader, panelFill: .quiet) {
             DayPanel(fill: .quiet) {
                 if !suppressOwnHeader {
                     PlaceHeaderRow(onOpenAccount: onOpenAccount)
@@ -436,7 +446,7 @@ struct WeekOffV5: View {
     private var range: String { Self.formatRange(fromISO: model.fromISO, toISO: model.toISO) }
 
     var body: some View {
-        StateScreenScaffold(nested: suppressOwnHeader) {
+        StateScreenScaffold(nested: suppressOwnHeader, panelFill: .state(.rest)) {
             DayPanel(fill: .state(.rest)) {
                 if !suppressOwnHeader {
                     PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
@@ -520,7 +530,7 @@ struct OffSeasonV5: View {
     var suppressOwnHeader: Bool = false
 
     var body: some View {
-        StateScreenScaffold(nested: suppressOwnHeader) {
+        StateScreenScaffold(nested: suppressOwnHeader, panelFill: .quiet) {
             DayPanel(fill: .quiet) {
                 if !suppressOwnHeader {
                     PlaceHeaderRow(onOpenAccount: onOpenAccount)
@@ -597,7 +607,7 @@ struct DataOutageV5: View {
     var onOpenAccount: () -> Void = {}
 
     var body: some View {
-        StateScreenScaffold() {
+        StateScreenScaffold(panelFill: today.panel.fill) {
             DayPanel(fill: today.panel.fill) {
                 PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
                 VStack(alignment: .leading, spacing: V5.S.s20) {
@@ -781,7 +791,7 @@ struct RaceJustFinishedV5: View {
     var onOpenAccount: () -> Void = {}
 
     var body: some View {
-        StateScreenScaffold() {
+        StateScreenScaffold(panelFill: .state(.race)) {
             DayPanel(fill: .state(.race)) {
                 PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
 

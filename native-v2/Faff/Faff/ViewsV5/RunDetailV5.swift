@@ -226,10 +226,15 @@ struct RunDetailV5: View {
     }
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                AppBar(title: title, eyebrow: eyebrow, subtitle: titleSubtitle, onBack: onBack)
-
+        // SCROLLCLOCK-1 (2026-09-09) · `AppBar` pinned OUTSIDE the
+        // `ScrollView` — see `SettingsV5.swift`'s identical fix for the full
+        // reasoning. A `ScrollView`'s content clips to the ScrollView's OWN
+        // frame, and that frame now starts below `AppBar` rather than at the
+        // very top of the screen, so nothing scrolled inside it can ever
+        // reach the status bar.
+        VStack(spacing: 0) {
+            AppBar(title: title, eyebrow: eyebrow, subtitle: titleSubtitle, onBack: onBack)
+            ScrollView {
                 VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
 
                     /* ═══ DIGEST-1 (2026-09-04) — THE APPROVED HIERARCHY ═══

@@ -199,6 +199,13 @@ struct RacesV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
+        // SCROLLCLOCK-2 (2026-09-09) · `.v5ScrollSafeTop` moved OUT of this
+        // screen's own body and up to `RacesHostV5`, composed AFTER (outside)
+        // `.v5StaleBanner` there. See that call site's comment for why: the
+        // cap has to sit at a composition point the banner's own
+        // `.safeAreaInset` cannot cut off. `.v5MeasureFullBleedPanel()` below
+        // on `heroPanel` is unchanged — its `PreferenceKey` bubbles up through
+        // the host's modifiers exactly the same either way.
     }
 
     // MARK: Hero
@@ -278,6 +285,8 @@ struct RacesV5: View {
                 PanelStat(s.label, s.value.value, ink: s.toneValue.inkOverride)
             })
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift.
+        .v5MeasureFullBleedPanel()
     }
 }
 

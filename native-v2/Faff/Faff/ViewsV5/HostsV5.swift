@@ -582,6 +582,28 @@ struct TodayHostV5: View {
                         // this banner and the day panel's full-bleed colour.
                         .v5StaleBanner(stale: surface.stale, cachedAt: surface.cachedAt,
                                        onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
+                        // SCROLLCLOCK-2 (2026-09-09) · the review defect this
+                        // fixes: `.v5ScrollSafeTop` used to live INSIDE each
+                        // of `content(matched)`'s own screens (`TodayAfterV5`,
+                        // `TodayBeforeV5` via `TodayBeforeLiveV5`,
+                        // `inSharedShell`'s state screens), which put it as an
+                        // ANCESTOR of `.v5StaleBanner`'s own `.safeAreaInset`
+                        // from the wrong side — the cap sat where the banner's
+                        // reserved space could cut it off, reproduced as a
+                        // persistent black gap between the status-bar clock
+                        // and the banner (never a one-frame flicker). Applying
+                        // it HERE, after `.v5StaleBanner` in the SAME chain,
+                        // makes the cap the outermost layer: it unconditionally
+                        // paints the exact status-bar sliver regardless of
+                        // whether the banner is reserving space below it, so
+                        // the two can never fight over the same pixels.
+                        // `panelFill(for:)` mirrors `content(_:)`'s own
+                        // branching so the cap always matches whichever
+                        // screen actually rendered — `.v5MeasureFullBleedPanel()`
+                        // stays where each screen's own `DayPanel` calls it;
+                        // its `PreferenceKey` bubbles up through `.id()`,
+                        // `.transition()` and `.safeAreaInset` unchanged.
+                        .v5ScrollSafeTop(fill: panelFill(for: matched))
                 case .loading(let date):
                     pendingCard(for: date, phase: .loading(summary: weekSummary(for: date)))
                 case .failed(let date):
@@ -895,6 +917,11 @@ struct TodayHostV5: View {
                     )
                     hero()
                 }
+                // SCROLLCLOCK-1 (PanelV5.swift) · lets the ScrollView's own
+                // cap below know when the panel above has scrolled fully
+                // off screen, so nothing in `content()` can collide with the
+                // status-bar clock.
+                .v5MeasureFullBleedPanel()
                 content()
             }
             .padding(.horizontal, V5.S.gutter)
@@ -902,6 +929,12 @@ struct TodayHostV5: View {
             .v5PageWidth()
         }
         .background(V5.surfacePage)
+        // SCROLLCLOCK-2 (2026-09-09) · `.v5ScrollSafeTop` moved OUT of this
+        // shell and up to `TodayHostV5.body`'s own `.match` case, applied
+        // ONCE for every `model.state` branch AFTER (outside)
+        // `.v5StaleBanner` — see that call site's comment and
+        // `panelFill(for:)` below for why one fill value has to serve every
+        // branch. `.v5MeasureFullBleedPanel()` above is unchanged.
         }
     }
 
@@ -973,6 +1006,33 @@ struct TodayHostV5: View {
         if day.is_long { return .long }
         if day.is_quality { return .quality }
         return .easy
+    }
+
+    /// SCROLLCLOCK-2 (2026-09-09) · the fill `.v5ScrollSafeTop` needs at the
+    /// `TodayHostV5.body` call site, mirroring `content(_:)`'s own branching
+    /// EXACTLY — every branch below corresponds one-to-one with a case in
+    /// that switch, and has to keep matching it, because a mismatch here is
+    /// not a missing cap, it is a WRONG-COLOURED one (the cap showing a
+    /// different day-state's gradient than the screen underneath actually
+    /// drew). `inSharedShell`'s callers all default to `.quiet`, so every
+    /// branch that reaches it below states `.quiet` explicitly rather than
+    /// leaving it implicit, so the two functions read as one decision made
+    /// twice, not two independent guesses.
+    private func panelFill(for model: V5Today) -> PanelFill {
+        switch model.state {
+        case .notOnPhoneYet:
+            return .quiet
+        case .injuryFlare:
+            return model.injury != nil ? .quiet : model.panel.fill
+        case .sick:
+            return model.sick != nil ? .quiet : model.panel.fill
+        case .weekOff:
+            return model.weekOff != nil ? .quiet : model.panel.fill
+        case .offSeason:
+            return .quiet
+        case .afterRun, .beforeRun, .raceDay:
+            return model.panel.fill
+        }
     }
 
     @ViewBuilder
@@ -2324,6 +2384,11 @@ struct BlockHostV5: View {
                     // panel's full-bleed colour.
                     .v5StaleBanner(stale: surface.stale, cachedAt: surface.cachedAt,
                                    onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
+                    // SCROLLCLOCK-2 (2026-09-09) · applied HERE, after
+                    // `.v5StaleBanner` in the same chain, not inside
+                    // `BlockV5`'s own body — see `BlockV5.body`'s own comment
+                    // at its old call site for the defect this fixes.
+                    .v5ScrollSafeTop(fill: model.panel.fill)
             } else if let reason = surface.absentReason {
                 // The engine answered and the answer is that this does
                 // not apply. Silence, never ErrorNote: nothing failed.
@@ -2398,6 +2463,14 @@ struct RacesHostV5: View {
                         // strip above it).
                         .v5StaleBanner(stale: surface.stale, cachedAt: surface.cachedAt,
                                        onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
+                        // SCROLLCLOCK-2 (2026-09-09) · applied HERE, after
+                        // `.v5StaleBanner` in the same chain, not inside
+                        // `RacesV5`'s own body — see `RacesV5.body`'s own
+                        // comment at its old call site for the defect this
+                        // fixes (the same black-gap bug this file's comment
+                        // just above already names for the banner itself,
+                        // one composition layer further out).
+                        .v5ScrollSafeTop(fill: model.panel.fill)
                 } else if let reason = surface.absentReason {
                     ScrollView {
                         Silence(reason: reason)
@@ -2971,28 +3044,34 @@ struct SettingsHostV5: View {
                     // the same treatment `TodayHostV5.pendingCard`'s `.failed`
                     // case already uses (HostsV5.swift ~338) — reused rather
                     // than invented, per this fix's own brief.
-                    ScrollView {
-                        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-                            AppBar(title: "Settings", onBack: { dismiss() })
-                            ErrorNote(text: loadFailure.message, onRetry: { requestLoad() })
-                            // SETTINGSDIAG-1 (2026-09-07 review) · THE DOOR
-                            // HAS TO EXIST ON THE SCREEN THAT NEEDS IT.
-                            //
-                            // Settings is the only way into the request
-                            // diagnostics sheet, and the hidden seven-tap
-                            // gesture lived on the version footer of the
-                            // LOADED screen only. So a runner looking at
-                            // "Can't reach faff" — the exact moment the
-                            // request log is worth reading, and the exact
-                            // moment a support conversation needs the build
-                            // number — had no way to reach either. The same
-                            // footer, on the failure state.
-                            SettingsDiagnosticsFooter()
+                    // SCROLLCLOCK-1 (2026-09-09) · `AppBar` pinned OUTSIDE
+                    // the `ScrollView`, same fix as `SettingsV5.swift`'s own
+                    // loaded state — this failure state had the identical
+                    // bug, just less often seen.
+                    VStack(spacing: 0) {
+                        AppBar(title: "Settings", onBack: { dismiss() })
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                                ErrorNote(text: loadFailure.message, onRetry: { requestLoad() })
+                                // SETTINGSDIAG-1 (2026-09-07 review) · THE DOOR
+                                // HAS TO EXIST ON THE SCREEN THAT NEEDS IT.
+                                //
+                                // Settings is the only way into the request
+                                // diagnostics sheet, and the hidden seven-tap
+                                // gesture lived on the version footer of the
+                                // LOADED screen only. So a runner looking at
+                                // "Can't reach faff" — the exact moment the
+                                // request log is worth reading, and the exact
+                                // moment a support conversation needs the build
+                                // number — had no way to reach either. The same
+                                // footer, on the failure state.
+                                SettingsDiagnosticsFooter()
+                            }
+                            .padding(.horizontal, V5.S.gutter)
+                            .v5PageWidth()
                         }
-                        .padding(.horizontal, V5.S.gutter)
-                        .v5PageWidth()
+                        .background(V5.surfacePage)
                     }
-                    .background(V5.surfacePage)
                 } else {
                     ScrollView { Skeleton(lines: 6).padding(.horizontal, V5.S.gutter) }
                         .background(V5.surfacePage)

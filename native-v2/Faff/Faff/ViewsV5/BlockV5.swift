@@ -248,6 +248,14 @@ struct BlockV5: View {
                 if let p = openProposalDetail { ProposalDetailV5(proposal: p) }
             }
         }
+        // SCROLLCLOCK-2 (2026-09-09) · `.v5ScrollSafeTop` moved OUT of this
+        // screen's own body and up to `BlockHostV5`, composed AFTER (outside)
+        // `.v5StaleBanner` there — see that call site's comment. Leaving it
+        // here, inside the same view the banner wraps, is FULLBLEED-2's
+        // fixed defect one file over: the banner's `.safeAreaInset` sits as
+        // an ancestor of this modifier and can leave the cap unable to paint
+        // the sliver behind the clock. `.v5MeasureFullBleedPanel()` on `panel`
+        // is unchanged — its `PreferenceKey` still bubbles all the way up.
     }
 
     // MARK: Panel
@@ -335,6 +343,8 @@ struct BlockV5: View {
                 })
             }
         }
+        // SCROLLCLOCK-1 · see PanelV5.swift.
+        .v5MeasureFullBleedPanel()
     }
 
     // MARK: The arc
