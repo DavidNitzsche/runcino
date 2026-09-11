@@ -1,0 +1,9 @@
+VERIFICATION_POLICY.md bypass, condition-by-condition:
+1. Unrelated: diff scoped to web-v2/lib/execution/verdict.ts + its test only (git diff --stat 886d1529e^..886d1529e). Zero native/watch files touched.
+2. Verified at exact commit 886d1529e in isolated worktree /tmp/verify-recovery-honesty (git worktree add, detached HEAD).
+3. Ran tsc --noEmit (clean) + full lib/execution/ suite (243 passed, 1 expected-fail) in that worktree. Implementer's own worktree separately ran the full 12197-test repo suite (11990 passed, 1 pre-existing DATABASE_URL_RO-gated failure) + tsc clean.
+4. This note is the record (git notes on 886d1529e).
+5. No CI run available for this unmerged feature branch yet; will confirm via workflow_dispatch if needed before merge.
+6. No merge/migration/security/destructive check omitted -- pure application logic change, no schema, no infra.
+7. Disclosed to David directly in-session at time of push.
+Failure reason for the record: .githooks/pre-push watch-gate (native FaffWatch xcodebuild test) failed with 'test host died' / SessionTimelineTests.driftFiresOnSustainedDrift() -- a native watch test, unrelated to this web-only change, under confirmed concurrent-agent simulator contention on this shared machine at push time.
