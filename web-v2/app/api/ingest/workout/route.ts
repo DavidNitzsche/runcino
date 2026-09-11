@@ -50,7 +50,8 @@ import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs
 import { classifyRunDistance, DISTANCE_REVIEW_FLAG, SOFT_DISTANCE_CEILING_MI, HARD_DISTANCE_CEILING_MI } from '@/lib/runs/distance-guard';
 import { bucketHrSamplesByZone, hasHrSamples } from '@/lib/coach/hr-zone-bucket';
 import { computeZones } from '@/lib/training/zones';
-import { distanceMatchesPlan } from '@/lib/runs/plan-type-stamp';
+import { selectMatchingPlanDay } from '@/lib/runs/plan-type-stamp';
+import { recordPlanMatchAmbiguity } from '@/lib/runs/plan-match-ambiguity';
 
 export async function POST(req: NextRequest) {
   const auth = await requireUserId(req);
@@ -249,6 +250,13 @@ export async function POST(req: NextRequest) {
   // non-rest prescription for the day is read, the distance band is applied to
   // each, and a stamp is written only when EXACTLY ONE survives. Two candidates
   // is a fact worth keeping (Rule 11), not a coin to flip.
+  //
+  // WATCHMATCH-1 (2026-09-11) · candidate selection now runs through
+  // `lib/runs/plan-type-stamp.ts`'s `selectMatchingPlanDay` — the SAME
+  // function `/api/watch/workouts/complete` was just fixed to call — so this
+  // route's band and refusal posture can never again drift from that one's.
+  // The refusal is also recorded durably (`recordPlanMatchAmbiguity`), not
+  // only console-logged, for the same Rule 20 reason that route documents.
   let plannedWorkoutType: string | null = null;
   let plannedWorkoutId: string | null = null;
   try {
@@ -264,18 +272,25 @@ export async function POST(req: NextRequest) {
       [userId, body.date],
     )).rows;
     const actualMi = Number(body.distance_mi);
-    const candidates = planDays.filter((d) => distanceMatchesPlan(
-      actualMi, d.distance_mi != null ? Number(d.distance_mi) : null,
-    ));
-    if (candidates.length === 1) {
-      const planDay = candidates[0];
-      // race_week_tuneup is T-pace work · stamp as threshold so the
-      // quality-type readers treat it as the T-effort it is.
-      plannedWorkoutType = planDay.type === 'race_week_tuneup' ? 'threshold' : planDay.type;
-      plannedWorkoutId = planDay.id;
-    } else if (candidates.length > 1) {
-      console.warn(`[ingest/workout] ${candidates.length} prescriptions on ${body.date} `
-        + 'fit this distance — refusing to stamp rather than picking one');
+    const match = selectMatchingPlanDay(
+      String(body.date),
+      actualMi,
+      planDays.map((d) => ({
+        id: d.id,
+        distanceMi: d.distance_mi != null ? Number(d.distance_mi) : null,
+        type: d.type,
+      })),
+    );
+    if (match.ok) {
+      if (match.value) {
+        // race_week_tuneup is T-pace work · stamp as threshold so the
+        // quality-type readers treat it as the T-effort it is.
+        plannedWorkoutType = match.value.type === 'race_week_tuneup' ? 'threshold' : match.value.type;
+        plannedWorkoutId = match.value.id;
+      }
+    } else {
+      console.warn(`[ingest/workout] ${match.refusal.message}`);
+      await recordPlanMatchAmbiguity(userId, body.source ?? 'apple_watch', match.refusal);
     }
   } catch (e: unknown) {
     // Non-fatal · an unstamped run is the pre-fix status quo.

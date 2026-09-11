@@ -44,11 +44,39 @@
  * part of the classifier's contract because the reference case records them
  * and because they are cheap to wire once a surface collects them; they are
  * null until then.
+ *
+ * ── EXECID-DOORCLOSE-1 (2026-09-11) · IDENTITY GATES THE PLAN CONTEXT ──────
+ *
+ * Both loaders below used to decide "what was this run's prescribed intent"
+ * by DATE ALONE — join `plan_workouts` on the run's calendar day and hand its
+ * `type`/`distance_mi`/`duration_min` straight to the classifier as
+ * `plannedWorkout`, with no check that this SPECIFIC run is the one that
+ * actually satisfies that SPECIFIC prescription. `lib/execution/day-
+ * resolver.ts` exists precisely to answer that question — its own header
+ * quotes David's ruling verbatim: "same calendar date... are all named
+ * EXPLICITLY INSUFFICIENT" — and this file never called it. Confirmed live
+ * per docs/audit-2026-09-10-brain-adaptation-forensic-audit-v2-CORRECTED.md
+ * §7: "`load-activity-evidence.ts`'s date-only intent match... bypasses
+ * `day-resolver.ts`... A supplemental run landing on a day that also had a
+ * scheduled quality session would silently inherit that session's
+ * `PlannedIntent` in evidence classification."
+ *
+ * The fix is a GATE, not a replacement of the existing plan-day queries
+ * below (which stay exactly as scoped — active-plan-only for the single-
+ * activity path, `ownedDaysSql`-reign-aware for the window path; that
+ * divergence is deliberate and documented above and this fix does not
+ * touch it). Both loaders now also ask `day-resolver.ts` whether THIS run is
+ * the EXACT or LEGACY match for a prescription on its date, and only use the
+ * queried plan-day row as `plannedWorkout` when its `id` is the one day-
+ * resolver names. A supplemental run — day-resolver's answer is "none of
+ * today's prescriptions" — gets `plannedWorkout: null` regardless of what a
+ * raw date join would have found sitting on the same calendar day.
  */
 import { pool } from '@/lib/db/pool';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
 import { normalizeSplits, runDaySql, type RunData } from '@/lib/runs/run-shape';
 import { ownedDaysSql } from '@/lib/plan/owned-days';
+import { resolveDayExecutions, resolveDateRangeExecutions } from '@/lib/execution/day-resolver';
 import { runFacts } from '@/lib/runs/run-facts';
 import { runCadenceSpm } from '@/lib/runs/coherence';
 import {
@@ -270,25 +298,39 @@ export async function classifyStoredActivity(
   );
   const lthrBpm = num(profRes.rows[0]?.lthr ?? null);
 
-  // ACTIVE plan only — see the Rule 14 note in the file header.
-  const planRes = dateISO
+  // ACTIVE plan only — see the Rule 14 note in the file header. Every
+  // non-LIMIT-1 candidate for the date is read (not just the lowest id) so
+  // the EXECID-DOORCLOSE-1 gate below can pick the SPECIFIC row day-resolver
+  // confirms this run satisfies on a two-a-day, rather than whichever row
+  // happened to sort first.
+  const planRowsRes = dateISO
     ? await pool.query<{
-        type: string | null; distance_mi: string | number | null;
+        id: string; type: string | null; distance_mi: string | number | null;
         duration_min: string | number | null; is_quality: boolean | null;
       }>(
-        `SELECT pw.type, pw.distance_mi, pw.duration_min, pw.is_quality
+        `SELECT pw.id::text, pw.type, pw.distance_mi, pw.duration_min, pw.is_quality
            FROM plan_workouts pw
            JOIN training_plans tp ON tp.id = pw.plan_id
           WHERE tp.user_uuid = $1::uuid
             AND tp.archived_iso IS NULL
             AND pw.date_iso = $2
-          ORDER BY pw.id ASC
-          LIMIT 1`,
+          ORDER BY pw.id ASC`,
         [userUuid, dateISO],
       )
-    : { rows: [] as Array<{ type: string | null; distance_mi: string | number | null; duration_min: string | number | null; is_quality: boolean | null }> };
+    : { rows: [] as Array<{ id: string; type: string | null; distance_mi: string | number | null; duration_min: string | number | null; is_quality: boolean | null }> };
 
-  const planRow = planRes.rows[0] ?? null;
+  // EXECID-DOORCLOSE-1 · see this file's header. A run inherits a plan-day
+  // row here ONLY when `day-resolver.ts` confirms THIS run is the EXACT or
+  // LEGACY match for THAT specific prescription — never by date alone. A
+  // supplemental run gets `planRow: null`, full stop, whatever else shares
+  // its calendar date.
+  const resolvedDay = dateISO ? await resolveDayExecutions(userUuid, dateISO) : null;
+  const matchedWorkoutId = resolvedDay?.prescriptions.find(
+    (p) => p.matchedRun?.runId === row.id,
+  )?.id ?? null;
+  const planRow = matchedWorkoutId != null
+    ? planRowsRes.rows.find((r) => r.id === matchedWorkoutId) ?? null
+    : null;
   const intent = intentForPlanType(planRow?.type ?? null);
   const plannedWorkout: PlannedWorkoutContext | null = intent
     ? {
@@ -420,13 +462,13 @@ export async function classifyRecentActivities(
   );
   if (runsRes.rows.length === 0) return [];
 
-  const [profRes, planRes, rpeRes, checkinRes] = await Promise.all([
+  const [profRes, planRes, rpeRes, checkinRes, dayResolutions] = await Promise.all([
     pool.query<{ lthr: string | number | null }>(
       `SELECT lthr FROM profile WHERE user_uuid = $1::uuid`,
       [userUuid],
     ),
     pool.query<{
-      date_iso: string; type: string | null; distance_mi: string | number | null;
+      id: string; date_iso: string; type: string | null; distance_mi: string | number | null;
       duration_min: string | number | null; is_quality: boolean | null;
     }>(
       // `ownedDaysSql` · THE one answer to "which plan owned this day", and a
@@ -439,7 +481,7 @@ export async function classifyRecentActivities(
       // Its upper bound is EXCLUSIVE, so `toISO` is advanced one day to keep
       // this function's own inclusive window.
       ownedDaysSql({
-        columns: 'pw.date_iso, pw.type, pw.distance_mi, pw.duration_min, pw.is_quality',
+        columns: 'pw.id, pw.date_iso, pw.type, pw.distance_mi, pw.duration_min, pw.is_quality',
       }),
       [userUuid, fromISO, isoPlusOneDay(toISO)],
     ),
@@ -457,6 +499,11 @@ export async function classifyRecentActivities(
         ORDER BY date::date, updated_at DESC`,
       [userUuid, fromISO, toISO],
     ),
+    // EXECID-DOORCLOSE-1 · see this file's header. Resolved ONCE for the
+    // whole window (same fixed-query-count design this function's own
+    // header argues for), then used below as a per-run identity gate on
+    // `planByDate` — never as a second, independent source of plan context.
+    resolveDateRangeExecutions(userUuid, fromISO, isoPlusOneDay(toISO)),
   ]);
 
   const lthrBpm = num(profRes.rows[0]?.lthr ?? null);
@@ -464,13 +511,30 @@ export async function classifyRecentActivities(
   const rpeByKey = new Map(rpeRes.rows.map((r) => [String(r.activity_id), r]));
   const ratingByDate = new Map(checkinRes.rows.map((r) => [r.d, r.rating]));
 
+  // EXECID-DOORCLOSE-1 · runId -> the specific `plan_workouts.id` day-resolver
+  // confirms that run satisfies (EXACT or LEGACY tier). Absent for a
+  // supplemental run, whatever else is scheduled on its date.
+  const matchedWorkoutIdByRunId = new Map<string, string>();
+  for (const day of dayResolutions.values()) {
+    for (const p of day.prescriptions) {
+      if (p.matchedRun) matchedWorkoutIdByRunId.set(p.matchedRun.runId, p.id);
+    }
+  }
+
   const out: ClassifiedActivity[] = [];
   for (const row of runsRes.rows) {
     const data = row.data ?? {};
     const dateISO = String(data.date ?? String(data.startLocal ?? '').slice(0, 10));
     if (!dateISO) continue;
 
-    const planRow = planByDate.get(dateISO) ?? null;
+    // EXECID-DOORCLOSE-1 · `planByDate`'s row for this date is used as this
+    // run's `plannedWorkout` ONLY when day-resolver confirms THIS run is the
+    // one that satisfies THAT specific prescription — never by date alone.
+    const dateRow = planByDate.get(dateISO) ?? null;
+    const matchedWorkoutId = matchedWorkoutIdByRunId.get(row.id) ?? null;
+    const planRow = matchedWorkoutId != null && dateRow?.id === matchedWorkoutId
+      ? dateRow
+      : null;
     const intent = intentForPlanType(planRow?.type ?? null);
     const plannedWorkout: PlannedWorkoutContext | null = intent
       ? {

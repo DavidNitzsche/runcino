@@ -41,6 +41,8 @@ import { isSubThresholdRun, MIN_DISTANCE_MI, MIN_DURATION_SEC } from '@/lib/runs
 import { deriveSplitsFromPaceSamples } from '@/lib/runs/derive-splits';
 import { bucketHrSamplesByZone } from '@/lib/coach/hr-zone-bucket';
 import { computeZones } from '@/lib/training/zones';
+import { selectMatchingPlanDay } from '@/lib/runs/plan-type-stamp';
+import { recordPlanMatchAmbiguity } from '@/lib/runs/plan-match-ambiguity';
 
 /** Seconds of slack between a run's wall clock and the time it accounts for.
  *  Covers the End-confirm tap, the final partial tick, and the POST itself. */
@@ -729,9 +731,30 @@ export async function POST(req: NextRequest) {
   //
   // Was previously LIMIT 1 with no ORDER BY on a query that can return more
   // than one row (a two-a-day) — an arbitrary pick, silently. Now reads every
-  // non-rest prescription for the date and picks the one whose distance is
-  // the closest ±30%-band fit, so two sessions on one day are told apart by
-  // distance rather than by whichever the database happened to return first.
+  // non-rest prescription for the date and hands them all to
+  // `selectMatchingPlanDay`.
+  //
+  // WATCHMATCH-1 (2026-09-11) · this block used to carry its OWN inlined
+  // symmetric `[0.7, 1.3]` band and picked whichever candidate's distance was
+  // numerically CLOSEST when more than one fit — a silent guess. Two defects,
+  // both closed by routing through `lib/runs/plan-type-stamp.ts`'s
+  // `selectMatchingPlanDay`, the same function `/api/ingest/workout` already
+  // uses (EXECIDENT-2, 2026-09-04):
+  //
+  //   1. THE BAND. `/api/ingest/workout` received OVERRUN-MATCH-1's asymmetric
+  //      `[0.7, 2.0]` fix on 2026-09-04; THIS route — the app's own live
+  //      tracker for watch, phone-GPS and treadmill sessions, and the PRIMARY,
+  //      tier-5 canonical writer — never did, because its copy of the band
+  //      was a separate literal, not an import. Confirmed live: docs/audit-
+  //      2026-09-10-brain-adaptation-forensic-audit-v2-CORRECTED.md §7 — "the
+  //      exact bug class OVERRUN-MATCH-1 was built to fix is still live on
+  //      the dominant write path."
+  //   2. AMBIGUITY. Rule 11: two live prescriptions that could both plausibly
+  //      match one completed activity is a fact worth keeping, not a coin to
+  //      flip. A stamp is written only when EXACTLY ONE candidate survives
+  //      the band; two or more refuses and is recorded via
+  //      `recordPlanMatchAmbiguity` rather than silently guessed away or only
+  //      console-logged (Rule 20 — a refusal nobody can see is worth nothing).
   let plannedWorkoutType: string | null = null;
   let plannedSubLabel: string | null = null;
   let planWorkoutId: string | null = null;
@@ -747,25 +770,29 @@ export async function POST(req: NextRequest) {
         ORDER BY pw.id`,
       [userId, date],
     )).rows;
-    let best: { id: string; type: string; distance_mi: string | null; sub_label: string | null } | null = null;
-    let bestDelta = Infinity;
-    for (const planDay of planDays) {
-      const plannedMi = planDay.distance_mi != null ? Number(planDay.distance_mi) : null;
-      const distanceMatches = plannedMi == null || plannedMi <= 0
-        ? true
-        : totalMi >= plannedMi * 0.7 && totalMi <= plannedMi * 1.3;
-      if (!distanceMatches) continue;
-      const delta = plannedMi == null ? 0 : Math.abs(totalMi - plannedMi);
-      if (delta < bestDelta) { best = planDay; bestDelta = delta; }
-    }
-    if (best) {
-      // 2026-08-28 · field-test LTHR capture reads this below. Carried out of
-      // the try so a stamp failure can't silently also kill the capture.
-      plannedSubLabel = best.sub_label ?? null;
-      // race_week_tuneup is T-pace work · stamp as threshold so the
-      // quality-type readers treat it as the T-effort it is.
-      plannedWorkoutType = best.type === 'race_week_tuneup' ? 'threshold' : best.type;
-      planWorkoutId = best.id;
+    const match = selectMatchingPlanDay(
+      date,
+      totalMi,
+      planDays.map((d) => ({
+        id: d.id,
+        distanceMi: d.distance_mi != null ? Number(d.distance_mi) : null,
+        type: d.type,
+        subLabel: d.sub_label,
+      })),
+    );
+    if (match.ok) {
+      if (match.value) {
+        // 2026-08-28 · field-test LTHR capture reads this below. Carried out
+        // of the try so a stamp failure can't silently also kill the capture.
+        plannedSubLabel = match.value.subLabel ?? null;
+        // race_week_tuneup is T-pace work · stamp as threshold so the
+        // quality-type readers treat it as the T-effort it is.
+        plannedWorkoutType = match.value.type === 'race_week_tuneup' ? 'threshold' : match.value.type;
+        planWorkoutId = match.value.id;
+      }
+    } else {
+      console.warn(`[watch/complete] ${match.refusal.message}`);
+      await recordPlanMatchAmbiguity(userId, source, match.refusal);
     }
   } catch (e: unknown) {
     // Non-fatal · an unstamped run is the pre-fix status quo.
