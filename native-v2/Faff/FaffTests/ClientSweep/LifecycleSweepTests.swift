@@ -35,10 +35,18 @@ final class LifecycleSweepTests: XCTestCase {
 
     // MARK: - The cache's own clock
 
-    /// `AppCache.fresh` takes an injectable `now`, which is the one piece of
-    /// this machinery that was already testable. Twelve hours, so a cached
-    /// payload cannot survive the boundary between one training day and the
-    /// next.
+    /// COLDOPEN-1 (2026-09-11) · RENAMED FROM `AppCache.fresh`, AND NO LONGER
+    /// A CLAIM ABOUT `read`.
+    ///
+    /// This test used to double as coverage of `read`'s own TTL gate (the two
+    /// tests below it made that explicit). `read(_:as:)` no longer consults
+    /// this function at all — see its header comment in `AppCache.swift` and
+    /// `docs/audit-2026-09-11-session-handback.md` §5 Finding 1. What is left
+    /// to test here is narrower and still real: `withinIdentityWindow` is the
+    /// signal `V5Surface.init` uses to decide whether a just-seeded cache
+    /// needs to disclose its age before any refresh has answered — twelve
+    /// hours, so a cached payload's own claim about "today" cannot be trusted
+    /// past the boundary between one training day and the next.
     func testCacheExpiresAtTwelveHoursAndNotBefore() {
         let ledger = SweepLedger("lifecycle · cache age", floor: 6)
         AppCache.writeRaw(key, data: Data("{}".utf8))
@@ -57,82 +65,99 @@ final class LifecycleSweepTests: XCTestCase {
         ]
 
         for (name, offset, expected) in cases {
-            ledger.exercised("AppCache.fresh")
-            let actual = AppCache.fresh(key, now: at.addingTimeInterval(offset))
+            ledger.exercised("AppCache.withinIdentityWindow")
+            let actual = AppCache.withinIdentityWindow(key, now: at.addingTimeInterval(offset))
             guard actual != expected else { continue }
-            ledger.found("AppCache.fresh",
-                         "\(name): fresh = \(actual), expected \(expected)",
+            ledger.found("AppCache.withinIdentityWindow",
+                         "\(name): withinIdentityWindow = \(actual), expected \(expected)",
                          onScreen: expected
-                            ? "an honest data-outage screen where a good cached day was available"
+                            ? "an eager stale-age disclosure firing over a payload that should still read as current"
                             : "yesterday's session drawn as today's, with nothing on screen saying it is old")
         }
 
         /// A CLOCK THAT WENT BACKWARDS IS NOT FRESHNESS. A payload stamped in
         /// the future (timezone change, a clock correction) must not read as
         /// fresh forever.
-        ledger.exercised("AppCache.fresh")
-        XCTAssertFalse(AppCache.fresh(key, now: at.addingTimeInterval(-60)),
-                       "a cache stamped in the future read as fresh")
+        ledger.exercised("AppCache.withinIdentityWindow")
+        XCTAssertFalse(AppCache.withinIdentityWindow(key, now: at.addingTimeInterval(-60)),
+                       "a cache stamped in the future read as within the identity window")
 
         ledger.settle()
     }
 
-    /// THE HOLE IN THE TTL. `read` checks freshness; `readRaw` does not, and
-    /// callers reach for it whenever they want the untyped bag.
+    /// COLDOPEN-1 · `read` NO LONGER HAS AN AGE CHECK TO BYPASS.
     ///
-    /// Recorded rather than asserted-away: this is real, it is how
-    /// `Units.applyLocalPatch` preserves fields it does not name, and changing
-    /// it is a behaviour decision rather than a bug fix.
-    func testReadRawDeliberatelyBypassesTheAgeCheck() {
+    /// This used to pin "`read` must refuse a two-day-old payload" as the
+    /// contrast case against `readRaw`'s deliberate bypass. That refusal is
+    /// exactly the defect Finding 1 closed: `read` returning nil past
+    /// `maxAgeSec` is indistinguishable from a cold install to every caller,
+    /// including `V5Surface`, which is what turned "haven't opened the app in
+    /// 12h01m" into the full outage scaffold over a perfectly legible cached
+    /// day. `read` and `readRaw` now agree on age — neither gates on it —
+    /// and the only thing left to distinguish is decodability, which the
+    /// second assertion below covers.
+    func testReadNoLongerGatesOnAgeAndCorruptionIsTheOnlyRealMiss() {
         AppCache.writeRaw(key, data: Data(#"{"units_distance":"km"}"#.utf8))
         UserDefaults.standard.set(Date().addingTimeInterval(-48 * 3_600),
                                   forKey: "faff.cache.\(key.rawValue).at")
 
-        XCTAssertFalse(AppCache.fresh(key), "the stamp did not take")
-        XCTAssertNil(AppCache.read(key, as: UserSettings.self),
-                     "`read` must refuse a two-day-old payload")
+        XCTAssertFalse(AppCache.withinIdentityWindow(key), "the stamp did not take")
+        XCTAssertEqual(AppCache.read(key, as: UserSettings.self)?.units_distance, "km",
+                       "a decodable two-day-old payload is still handed back — age is a disclosure question now, not a readability one")
         XCTAssertNotNil(AppCache.readRaw(key),
-                        "`readRaw` bypasses the age check by design — if this ever changes, Units.applyLocalPatch loses the fields it preserves")
+                        "`readRaw` was never age-gated — this is unchanged")
+
+        // The one real miss left: bytes that do not decode, regardless of age.
+        AppCache.writeRaw(key, data: Data("not json {".utf8))
+        XCTAssertNil(AppCache.read(key, as: UserSettings.self),
+                     "corrupt bytes are the only thing `read` still refuses")
     }
 
-    // MARK: - A stale cache silently changes the runner's units
+    // MARK: - Units survive an aged cache instead of silently reverting
 
-    /// THE SCREENSHOT DEFECT, IN THE SMALLEST FORM I CAN PROVE WITHOUT A DEVICE.
+    /// COLDOPEN-1 CLOSED THIS AS A SIDE EFFECT, AND IT IS RECORDED HERE
+    /// RATHER THAN SILENTLY LEFT TO DRIFT.
     ///
-    /// `Units.preference` reads through `AppCache.read`, which is TTL-guarded.
-    /// Past twelve hours the read misses and the preference falls back to the
-    /// DEFAULT — miles and Fahrenheit. For a runner who set kilometres, every
-    /// distance and every pace on every screen silently switches units, with
-    /// no outage banner, because as far as the app is concerned nothing failed.
+    /// This test used to be named `testUnitsRevertToImperialOnceTheCacheAges`
+    /// and pinned a KNOWN, documented bug: past twelve hours `AppCache.read`
+    /// missed, `Units.preference` fell back to the byte-safe default (miles/
+    /// Fahrenheit), and a kilometres runner saw every distance and pace on
+    /// every screen silently switch units with no outage banner, because as
+    /// far as the app was concerned nothing had failed. The test's own prior
+    /// text said the real fix was "a units preference that outlives the
+    /// payload cache... a product decision... it should not be made inside a
+    /// test file."
     ///
-    /// A screenshot taken past that boundary shows numbers that are correct for
-    /// units the runner never chose, and it cannot be reproduced afterwards —
-    /// the next successful fetch re-writes the cache and the app looks fine.
-    func testUnitsRevertToImperialOnceTheCacheAges() throws {
+    /// `Units.preference` is exactly this shape: it reads through the SAME
+    /// shared `AppCache.read(_:as:)` COLDOPEN-1 changed for `V5Surface`'s
+    /// sake, and gets the same fix for free — a decodable preference now
+    /// outlives its own payload cache, precisely the product decision the
+    /// old comment asked for. Recorded here rather than left implicit: this
+    /// file's job is `AppCache`/lifecycle coverage, and a consumer's behavior
+    /// changing underneath it without a word is exactly the kind of silent
+    /// drift this sweep exists to catch.
+    func testUnitsSurviveAnAgedCacheInsteadOfRevertingToTheDefault() throws {
         let settings = #"{"units_distance":"km","units_temp":"C"}"#
         AppCache.writeRaw(key, data: Data(settings.utf8))
 
         XCTAssertEqual(Units.preference.distance, .km, "a fresh cache must honour the runner's choice")
         XCTAssertEqual(Units.preference.temperature, .c)
 
-        // Age it past the boundary. Nothing else changes.
+        // Age it past the old boundary. Nothing else changes.
         UserDefaults.standard.set(Date().addingTimeInterval(-13 * 3_600),
                                   forKey: "faff.cache.\(key.rawValue).at")
 
-        XCTAssertEqual(Units.preference.distance, .mi, """
-        KNOWN, AND RECORDED RATHER THAN FIXED HERE. Past the 12h TTL a \
-        kilometres runner is shown miles with no marker. The fix is a units \
-        preference that outlives the payload cache — it is a product decision \
-        about what units mean when we are offline, not a decode bug, and it \
-        should not be made inside a test file.
+        XCTAssertEqual(Units.preference.distance, .km, """
+        BEFORE COLDOPEN-1 this read `.mi` — the documented screenshot defect.
+        A decodable preference, however old, is now handed back rather than
+        silently swapped for the byte-safe default.
         """)
-        XCTAssertEqual(Units.preference.temperature, .f)
+        XCTAssertEqual(Units.preference.temperature, .c)
 
-        // And the number on the glass really does change. This is the part a
-        // runner would actually see.
+        // The number on the glass now stays the runner's own choice.
         XCTAssertEqual(Units.formatDistance(miles: 10, unit: .km), "16.1")
-        XCTAssertEqual(Units.formatDistance(miles: 10), "10.0",
-                       "the same run, the same cache, two different distances either side of a timeout")
+        XCTAssertEqual(Units.formatDistance(miles: 10), "16.1",
+                       "the same run, the same cache, the same distance on either side of the old timeout")
     }
 
     // MARK: - Coming back to the app

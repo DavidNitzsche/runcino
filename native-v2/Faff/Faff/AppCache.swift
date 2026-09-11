@@ -120,33 +120,83 @@ enum AppCache {
 
     /// Decode the cached payload into `type`. Returns nil if the key
     /// was never written, or the on-disk shape no longer matches the
-    /// type (e.g. wire schema drifted between app versions).
+    /// type (e.g. wire schema drifted between app versions, or the bytes are
+    /// truncated/corrupt).
+    ///
+    /// COLDOPEN-1 (2026-09-11) · NO LONGER GATED ON AGE.
+    ///
+    /// This used to also return nil the instant a payload turned
+    /// `maxAgeSec` old, which collapsed two different questions into one
+    /// nil: "is there something honest to show" and "is this recent enough
+    /// to trust its own claim about 'today' at face value" are not the same
+    /// fact. Answering both with a single nil is what turned "runner hasn't
+    /// opened the app in 12h01m, and the network hiccups" into the FULL
+    /// outage scaffold replacing an otherwise perfectly legible Today/Block/
+    /// Races screen — see `docs/audit-2026-09-11-session-handback.md` §5
+    /// Finding 1, and the doc comment on `withinIdentityWindow` below for
+    /// where the age question now lives.
+    ///
+    /// The presentation question belongs here, unconditionally: any bytes on
+    /// disk that still decode are handed back, however old. A caller that
+    /// also cares whether the payload is old enough to need an honest
+    /// disclosure asks `withinIdentityWindow` separately — `V5Surface` is
+    /// that caller, and it answers with a stale banner, never with a blank
+    /// screen.
     static func read<T: Decodable>(_ key: Key, as type: T.Type) -> T? {
-        guard let data = readRaw(key), fresh(key) else { return nil }
+        guard let data = readRaw(key) else { return nil }
         return try? JSONDecoder().decode(type, from: data)
     }
 
-    /// A CACHED DAY IS STILL A DAY, AND DAYS EXPIRE.
+    /// A CACHED DAY IS STILL A DAY, AND DAYS EXPIRE — but, since COLDOPEN-1,
+    /// that fact governs TRUST, not READABILITY.
     ///
-    /// `writtenAt` was recorded from the beginning and read by nothing. The
-    /// cache had no age check at all and was cleared only by sign-out or by a
-    /// change of owner, so a phone that had been offline since yesterday
-    /// rendered YESTERDAY'S session as today's — the prescription, the week
-    /// line, the strip — with nothing on screen saying it was old. The
-    /// surface store's `stale` flag only fires when a REFRESH fails; a cold
-    /// launch with no network never refreshes, so it never fired.
+    /// `writtenAt` was recorded from the beginning and, at the time this
+    /// constant was introduced, read by nothing: the cache had no age check
+    /// at all and was cleared only by sign-out or by a change of owner, so a
+    /// phone that had been offline since yesterday rendered YESTERDAY'S
+    /// session as today's — the prescription, the week line, the strip —
+    /// with nothing on screen saying it was old. The surface store's `stale`
+    /// flag only fired when a REFRESH failed; a cold launch with no network
+    /// never refreshed, so it never fired either.
     ///
-    /// Twelve hours, not twenty-four: the point is that a cached payload must
-    /// not survive the boundary between one training day and the next, and a
-    /// runner who reads Today at 06:00 and again at 06:00 is two days apart.
-    /// Past it the cache misses, the surface asks the network, and a failure
-    /// there is the honest data-outage screen rather than a confident wrong
-    /// day.
+    /// Twelve hours, not twenty-four: the point is that a cached payload's
+    /// own claim about "today" must not be trusted past the boundary
+    /// between one training day and the next — a runner who reads Today at
+    /// 06:00 and again at 06:00 is two days apart. Past it, the payload may
+    /// still be exactly what happened, but nothing on this phone can tell
+    /// that from a fresh confirmation, so it is disclosed rather than
+    /// presented as current.
+    ///
+    /// COLDOPEN-1 changed WHAT happens past that boundary. It used to mean
+    /// `read` returns nil — the exact same outcome as never having cached
+    /// anything at all, which is why a 12h-old, perfectly legible cache and
+    /// a cold install both fell through to the full outage scaffold the
+    /// instant a refresh failed. Now it means `V5Surface` discloses the age
+    /// honestly (the stale banner) while leaving the content on screen —
+    /// the identity risk this constant exists for is answered by TELLING
+    /// THE RUNNER, not by hiding the data.
     static let maxAgeSec: TimeInterval = 12 * 60 * 60
 
-    static func fresh(_ key: Key, now: Date = Date()) -> Bool {
-        // No timestamp means it predates `writeRaw` stamping one. Treat it as
-        // expired rather than trusted — the payload is at least that old.
+    /// Is the payload written at `writtenAt(key)` recent enough that its own
+    /// claim about "today" — a plan, a prescription, a week — may be taken
+    /// at face value, with no disclosure needed?
+    ///
+    /// COLDOPEN-1 · RENAMED FROM `fresh(_:now:)`, and no longer consulted by
+    /// `read(_:as:)` at all. The old name did two jobs under one word: "may
+    /// this be READ" (what `read` used to gate on) and "may this be TRUSTED
+    /// as current without saying otherwise" (what `V5Surface` actually
+    /// needs). Per this project's Rule 8 corollary — a reader that turns out
+    /// to answer two questions gets split, one name per quantity — those are
+    /// now two different call sites asking two different things, and this
+    /// name says which question survives here. The one caller left is
+    /// `V5Surface.init`, which uses a `false` answer to disclose age eagerly
+    /// (an honest stale banner, still holding the content) rather than to
+    /// withhold anything.
+    ///
+    /// No timestamp means the payload predates `writeRaw` stamping one —
+    /// treat it as OUTSIDE the window (untrusted), same posture as before
+    /// the rename.
+    static func withinIdentityWindow(_ key: Key, now: Date = Date()) -> Bool {
         guard let at = writtenAt(key) else { return false }
         let age = now.timeIntervalSince(at)
         return age >= 0 && age <= maxAgeSec
