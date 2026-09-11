@@ -21,6 +21,21 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 NATIVE_V2="$ROOT/native-v2"
 ENV_FILE="$ROOT/legacy/native/.asc.env"
 BUILD_FILE="$ROOT/legacy/native/.asc.build"
+
+# ARTIFACT-MAP-1 (2026-09-11) · capture the source SHA NOW, before anything
+# else in this script runs, and record it durably right after the upload
+# succeeds. This project has repeatedly lost track of which commit is on
+# which TestFlight build — reconstructing it after the fact from commit
+# messages is unreliable (see web-v2/scripts/_build_ledger.mjs's header: two
+# docs cite two DIFFERENT commits for build 290, and the "obviously right"
+# one — the commit whose message literally says "build 290" — is provably
+# the WRONG one, since it's the bookkeeping commit made one commit AFTER the
+# archive). Capturing HEAD here, before archive/export/upload run and
+# certainly before anyone commits an `.asc.build` bump, is the only point in
+# this script where "the SHA that was actually archived" is unambiguous.
+SHIP_SOURCE_SHA="$(cd "$ROOT" && git rev-parse HEAD 2>/dev/null || echo unknown)"
+SHIP_SOURCE_DIRTY="$(cd "$ROOT" && git status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+SHIP_SOURCE_BRANCH="$(cd "$ROOT" && git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
 # SHIPRACE-1 (2026-09-04) · THE LOCK AND THE SCRATCH PATHS MUST BE MACHINE-WIDE.
 #
 # `$ROOT` is the WORKTREE, and every agent ships from its own worktree, so this
@@ -342,6 +357,25 @@ xcrun altool --upload-app -f "$SHIP_EXPORT"/Faff.ipa -t ios \
 # Counter was already bumped inside the lock at script start. The
 # .asc.build file currently holds the NEXT-available number. Commit it.
 echo "✓ Uploaded build $BUILD. Counter is at $(cat "$BUILD_FILE") — commit asc.build."
+
+# ARTIFACT-MAP-1 · durable record, made the moment the upload succeeds — not
+# reconstructed later from a commit message. If the tree had uncommitted
+# changes at archive time, say so in the note rather than silently recording
+# a SHA that doesn't fully describe what was actually built.
+LEDGER_NOTE=""
+if [ "${SHIP_SOURCE_DIRTY:-0}" != "0" ]; then
+  LEDGER_NOTE="WARNING: working tree had $SHIP_SOURCE_DIRTY uncommitted change(s) at archive time — recorded SHA is the last commit, not the exact tree shipped."
+  echo "  ! $LEDGER_NOTE" >&2
+fi
+if node "$ROOT/web-v2/scripts/_build_ledger.mjs" record \
+     --build "$BUILD" --sha "$SHIP_SOURCE_SHA" --branch "$SHIP_SOURCE_BRANCH" \
+     --agent "${AGENT_ID:-$(whoami)@$(hostname -s 2>/dev/null || hostname)}" \
+     --recorded live --note "$LEDGER_NOTE"; then
+  echo "  (commit docs/testflight-builds.jsonl alongside asc.build)"
+else
+  echo "  ! Failed to record build $BUILD in the artifact ledger — record it by hand:" >&2
+  echo "    node web-v2/scripts/_build_ledger.mjs record --build $BUILD --sha $SHIP_SOURCE_SHA" >&2
+fi
 
 # Wait for processing → comply → autoship to internal testers (reuse legacy script)
 echo "→ Waiting for App Store Connect to finish processing build $BUILD…"
