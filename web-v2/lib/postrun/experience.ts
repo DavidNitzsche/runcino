@@ -991,7 +991,7 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       return {
         status: 'PARTIAL_PRODUCTIVE',
         headline: strides ? 'Walk-backs ran short' : 'Recovery ran short',
-        summary: `${cap1(reps)} ${insideBound}. ${recoveryWord} came in short of what was modelled — logged as run, not judged.${strideClause}`,
+        summary: `${cap1(reps)} ${insideBound}. ${recoveryWord} came in short of what was modelled: recorded, not graded.${strideClause}`,
         intendedStimulus: stimulus,
         stimulusDelivered: 'PARTIAL',
         confidence: 'MODERATE',

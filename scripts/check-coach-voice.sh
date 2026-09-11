@@ -83,6 +83,7 @@
 #   · web-v2/lib/prescription      (the instruction attached to a session)
 #   · web-v2/lib/race              (race plate, strategy, retrospective)
 #   · web-v2/lib/today             (Today's own composed lines)
+#   · web-v2/lib/postrun           (the post-run "Coach's Read" surface · added 2026-09-11)
 #
 # ── WHAT THIS GATE CANNOT FAIL ON (Rule 22) ─────────────────────────────────
 #
@@ -151,6 +152,15 @@ targets() {
   # is scanned. Copy moving out of a scanned directory into an unscanned one is
   # exactly how a gate quietly loses reach (the `lib/plan` hole Rule 20 names),
   # so the directory is added in the same change that moved the strings.
+  #
+  # 2026-09-11 · `lib/postrun` added. It authors the entire post-run "Coach's
+  # Read" surface (`readExecution`'s status/headline/summary), which is the
+  # exact copy a runner reads immediately after finishing a run — the same
+  # gate-scope-gap shape Rule 20 already names for `lib/plan`: a directory
+  # that authors runner-facing sentences and sat outside every `find` here.
+  # Falsified before widening: the gate reported "377 user-facing source
+  # file(s) clean" with a live em dash sitting in
+  # `lib/postrun/experience.ts`'s summary string.
   find "$ROOT/web-v2/lib/faff" \
        "$ROOT/web-v2/app/api/v5" \
        "$ROOT/web-v2/lib/coach" \
@@ -161,6 +171,7 @@ targets() {
        "$ROOT/web-v2/lib/prescription" \
        "$ROOT/web-v2/lib/race" \
        "$ROOT/web-v2/lib/today" \
+       "$ROOT/web-v2/lib/postrun" \
        -name '*.ts' ! -name '._*' ! -name '*.test.ts' 2>/dev/null
   find "$ROOT/web-v2/components/faff-app" \
        \( -name '*.ts' -o -name '*.tsx' \) \

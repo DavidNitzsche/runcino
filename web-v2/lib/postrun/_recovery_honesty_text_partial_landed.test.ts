@@ -142,8 +142,8 @@ describe('RECOVERY-HONESTY-TEXT-1 · the real 2026-09-09 strides day', () => {
     const out = composePostRunExperience(makeInput());
     expect(out.execution.headline).toBe('Walk-backs ran short');
     expect(out.execution.summary).toBe(
-      'The work block stayed under the ceiling. Walk-backs came in short of what was modelled '
-      + '— logged as run, not judged. Six strides completed.',
+      'The work block stayed under the ceiling. Walk-backs came in short of what was modelled: '
+      + 'recorded, not graded. Six strides completed.',
     );
     // No fabricated claim about WHY they were short — neither "chose" nor
     // "missed"/"failed"/"lapse" appears anywhere in the sentence.
