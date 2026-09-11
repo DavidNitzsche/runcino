@@ -269,6 +269,7 @@ import { validateComposedPlan, PlanValidationError } from './validate';
 import type { ComposePlanResult, ComposedWeek, DayPlan } from './generate';
 import type { PlanMode } from './goal-tiers';
 import type { PlanPrescription } from './plan-delta';
+import { weekContainsRace } from './race-week';
 
 // ── row shapes ────────────────────────────────────────────────────────────────
 
@@ -406,9 +407,20 @@ export function rehydratePlan(snap: PlanSnapshot): ComposePlanResult {
         notes: r.notes ?? '',
       }));
     // VOL-1 (generate.ts) · realized day-sum, race excluded on the race week.
+    //
+    // RACEPROT-VERIFY-1 (2026-09-09) · `wk.is_race_week` alone only marks the
+    // GOAL race's week (race-week.ts's own header: "the column is not wrong"
+    // — it just answers a narrower question than this reducer needs). A B/C
+    // tune-up's week reads `is_race_week = false`, so its race day's distance
+    // was counting into `weeklyMi` on every mutation-time check that reads
+    // this snapshot, while the goal race's already excluded correctly.
+    // `weekContainsRace` (race-week.ts) is the same day-level detector
+    // `dose-guard.ts` already uses for this exact gap — one predicate, not a
+    // second inline copy of it (Rule 16).
+    const weekHasRace = weekContainsRace({ isRaceWeek: wk.is_race_week, days });
     const weeklyMi = Math.round(
       days.reduce(
-        (s, d) => s + ((d.type !== 'race' || !wk.is_race_week) ? d.distanceMi : 0),
+        (s, d) => s + ((d.type !== 'race' || !weekHasRace) ? d.distanceMi : 0),
         0,
       ) * 10,
     ) / 10;
