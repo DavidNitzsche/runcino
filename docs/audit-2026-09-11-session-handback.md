@@ -10,8 +10,9 @@
 
 - **`origin/main` is now `72ae3831ff841f87f1a76f143ed1b92f4b19feeb`**, up from `9696decac2` at session start — a 6-branch integration wave landed, built, tested, and **deployed to Railway production** `[PROD]` (confirmed `SUCCESS` via live Railway API poll, not assumed from a push).
 - `docs/PRODUCT_DECISIONS.md`'s literal, live git-conflict markers — present on `main` since before this session and confirmed broken twice — are now fixed on `main`.
-- Three new implementation lanes (A/B/D) landed real fixes for confirmed cross-audit findings; a fourth (G) produced a UX/IA acceptance plan. **Lane B is fully independently reviewed and clean. Lanes A and D are implemented and pushed, but their independent reviews were dispatched only just now, after an accuracy correction — see §4.**
-- Four new runner-observed physical-device findings were investigated to full root cause; none implemented yet (see §5) — all are precisely scoped and ready for a lane assignment.
+- Three new implementation lanes (A/B/D) landed real fixes for confirmed cross-audit findings. **All three are now independently reviewed PASS** — see §4 (updated after this section was first drafted with A and D's reviews still pending; that gap has been corrected and both have since returned clean).
+- Lane G produced a UX/IA **acceptance plan** — a planning/evidence artifact against which future work will be checked — not completed UX implementation work. No screens were changed.
+- **Three** new runner-observed physical-device findings (1–3) were investigated to full root cause; none implemented yet (see §5). A fourth (Finding 4, Santa Monica copy) is a small copy-refinement item that was **routed**, not root-caused as an open defect — the design is explicitly to be preserved, this is language-only.
 - Real, tested infrastructure was built for a machine-wide shipping lock and TestFlight artifact-SHA mapping (§6), and rollout/rollback evidence was prepared for Migrations 166/170 without applying either (§6).
 - **No TestFlight candidate has been cut.** Build 290 (source `0dce24f23`) remains the only build ever uploaded and is now 118+ commits behind `main` before today's integration, more after. It contains none of this session's work.
 - Canonical v3 remains explicitly a DRAFT. Brain and Coach packets are fully integrated into it; Runner Data's findings are integrated but its **provenance receipt** is still the one thing standing between the draft and real canonical status.
@@ -28,7 +29,7 @@
 | `audit-suite` | Red — `DATABASE_URL_RO` not a GitHub secret | `[PROD]` `gh run list`; human action only, see §8 |
 | Migration 166 (`plan_decision_ledger`) | NOT applied | `[PROD]` live `SELECT to_regclass(...)` → NULL |
 | Migration 170 (`request_failures`) | NOT applied | `[PROD]` same query → NULL |
-| Latest TestFlight build | 290, source `0dce24f23`, uploaded 2026-09-07 | `[PROD]` live ASC query; confirmed still the only build in existence |
+| Latest TestFlight build | 290, source `0dce24f23`, uploaded 2026-09-07 — **this is the current shipping build**, and it is **stale relative to current `main`** (118+ commits behind before this session's integration, more after). Findings 1–3 in §5 are confirmed defects in current `main`'s own source, independently of what's on 290 — they are not explained away or excused by build 290 being old; they will still be present in whatever build ships next unless fixed. | `[PROD]` live ASC query; confirmed still the only build in existence |
 | Commits behind `main` (pre-integration) | 118 | `[SRC]` `git rev-list --count 0dce24f23..origin/main` at last check; now higher post-integration |
 
 ---
@@ -46,6 +47,8 @@ Executed by a single dedicated integration agent, sequentially, in one isolated 
 | 5 | `fix/scroll-header-status-bar-collision` | `7502f8166` | `4437f5815` | `project.pbxproj` churn only | Full `FaffTests` 506/506 |
 | 6 | `fix/statescreens-scaffold-stale-banner-ordering` | `25d193b27` (already an ancestor via #5) | `686dfe3f3` | None | `StateScreenScaffoldStaleBannerCompositionUITests` 1/1; full `FaffTests` 506/506 |
 
+**Parentage correction on merge 6, verified directly against `git log`/`git merge-base` rather than restated:** merge commit `4437f5815` (row 5) is a standard two-parent merge — `9094b994f` (the integration line after merge 4) and `7502f81664085c423b55ed920c7c87ae4b19b893` (branch 5's own tip). Merge commit `686dfe3f39f3c9bc921e34164bfa07f6edd649a5` (row 6) is also a genuine two-parent merge — its parents are `4437f5815` (merge 5's result) and `25d193b2749b6b8c204731b9b45883c0661f6fc3` (branch 6's own tip). `git merge-base --is-ancestor 7502f8166 25d193b27` confirms branch 5's tip really is an ancestor of branch 6's tip (branch 6 was built on top of branch 5, as claimed) — so by the time merge 6 runs, branch 5's commits are already present via both of merge 6's parents, and nothing is duplicated. `686dfe3f3`'s own diffstat (`git show --stat`) is exactly branch 6's incremental delta on top of branch 5 — 4 files, 209 insertions (`PanelV5.swift` +16, `ScreensCatalogV5.swift` +7, `StateScreensV5.swift` +95, the UI test file +95) — not a re-application of branch 5's own changes. The original table's phrasing ("already an ancestor via merge 5") was imprecise about *which* commit that referred to; the corrected, verified fact is above.
+
 **Two standalone fixup commits**, found and fixed by the integration agent after merging (prebuild lint caught them, not part of any of the six branches' own reviewed diffs): `610c4725b` (hardcoded panel-ink color instead of computed value, `check-panel-ink.sh`) and `72ae3831f` (an em dash in `ScrollClock3RegressionV5`'s harness label, `check-coach-voice.sh`).
 
 **Combined gate results on the fully-merged tree** `[TEST]`:
@@ -61,7 +64,7 @@ Executed by a single dedicated integration agent, sequentially, in one isolated 
 ## 4. New implementation lanes
 
 ### Lane A — Recovery honesty
-**Branch:** `fix/recovery-honesty-strides-grading` @ `886d1529ee3c91b7e1c8443a3f36cf07e4097c3c`. **Status: IMPLEMENTED, PUSHED — independent review dispatched, not yet returned.**
+**Branch:** `fix/recovery-honesty-strides-grading` @ `886d1529ee3c91b7e1c8443a3f36cf07e4097c3c`. **Status: IMPLEMENTED, PUSHED, INDEPENDENTLY REVIEWED — PASS, no conditions. Awaiting merge authorization.**
 
 Root cause (deeper than the original brief assumed): `resolveWorkoutVerdict()` in `web-v2/lib/execution/verdict.ts` read only `spec.rep_rest_s`, but strides-format workouts never carry that field — and the real wire completion payload carries no `targetDurationSec` at all, so recovery-honesty grading for **every** strides workout was permanently `null` (no signal), not merely sometimes wrong. Fix: `restS ?? stridesRecoverySec` precedence.
 
@@ -71,7 +74,7 @@ Nine-case falsification matrix, all in a new test file: 6/9 red pre-fix exactly 
 
 Flagged but explicitly NOT fixed (correct scope discipline): `web-v2/lib/training/_recovery_ended_early.test.ts` exercises `gradeStoredPhases` with a synthetic `targetDurationSec` shape real completion data never produces — a Rule 15 test-corpus blind spot in a sibling file, named for a future pass, not folded into this branch.
 
-**Independent review: dispatched (agent `a18774208db5beef7`), result pending.**
+**Independent review (agent `a18774208db5beef7`): PASS, no conditions.** Independently confirmed the root cause by direct code reading (three ways: the wire type, the native struct, an exhaustive repo-wide grep for `targetDurationSec` returning zero emitters), reproduced the exact 6/9→9/9 falsification, verified case 5's unreachability by tracing every write site app-wide, confirmed WALKBACK-2/session-end handling untouched against the original fix commits' own stated requirements, and — going further than the implementer could — had live `DATABASE_URL_RO` access and found a real completed strides workout in David's own account with two genuinely short, unrecorded walk-backs: pre-fix grading silently masked them (`null`/`'executed'`), post-fix correctly catches them (`false`/`'uneven'`).
 
 ### Lane B — Execution identity
 **Branch:** `fix/execution-identity-watch-matcher` @ `f4cbb67f88b75a33217ff7dc08fa5ac330630dd0`. **Status: IMPLEMENTED, PUSHED, INDEPENDENTLY REVIEWED — PASS. Ready for merge.**
@@ -87,7 +90,7 @@ Pushed clean through the real pre-push hook (native watch gate passed, 234/234) 
 **Condition fixed** (commit `f4cbb67f88b75a33217ff7dc08fa5ac330630dd0`): excluded `plan_match_ambiguous` outright from that route's default query (chose exclusion over inventing runner-facing copy, since the branch's own doc comments already claimed this should never be phrased to the runner at all; confirmed no manual-resolution UI exists yet to need read access). Falsified (reverted the one-line exclusion, confirmed the leak reproduces verbatim; restored, confirmed clean) and independently re-verified by a fast targeted re-review (agent `a110914a5d49f8e5b`): **PASS**, condition closed, zero discrepancies, `state-loader.ts` confirmed untouched and unaffected.
 
 ### Lane D — Readiness and coaching truth
-**Branch:** `fix/standing-recommendation-convergence-and-cutback-copy` @ `ab5a5eb7cae0314ba87d75fc368af8b3715b6655`. **Status: IMPLEMENTED, PUSHED — independent review dispatched, not yet returned.**
+**Branch:** `fix/standing-recommendation-convergence-and-cutback-copy` @ `ab5a5eb7cae0314ba87d75fc368af8b3715b6655`. **Status: IMPLEMENTED, PUSHED, INDEPENDENTLY REVIEWED — PASS, no conditions. Awaiting merge authorization.**
 
 **Fix 1 (single-domain standing recommendation):** `standing-recommendation.ts`'s `evaluateSignals()` fired on any one of several single-domain signals (a composite pull-back band, a sleep streak, one elevated RHR reading, an HRV streak, soft pillars), violating convergence doctrine. Investigation found the current canonical owner isn't `gradeConvergence()` directly but `lib/training/runner-state.ts`'s `resolveRunnerState()` — whose own header records that `gradeConvergence` was **removed** as an input on 2026-09-02 (a doctrine correction: readiness pillars no longer argue for a training decision alone). Routed through the current owner, inheriting the more recent correction rather than the one the original brief assumed.
 
@@ -97,9 +100,11 @@ Both falsified: Fix 1's oracle-vs-live-composer test went 4/6 red pre-fix, 6/6 g
 
 Rule 13 (render with real data) explicitly not performed — no DB/simulator access in that environment; verified instead by calling the real production functions directly with realistic fixtures. Disclosed honestly, not substituted.
 
-**Independent review: dispatched (agent `a9318fe97c593f846`), result pending.**
+**Independent review (agent `a9318fe97c593f846`): PASS, no conditions.** Verified the "gradeConvergence removed 2026-09-02" claim against the actual commit (`6892bb0e3`), reproduced both falsifications exactly (including the verbatim false-reduction copy strings), confirmed no new Plan calculation via direct variable tracing, confirmed the doctrine routing directly against `docs/BRAIN_CONSTITUTION.md` (which names `runner-state.ts` by file), confirmed `replace`/`recover`/`stop` are genuinely unreachable today by both type signature and runtime trace, and — with real `DATABASE_URL_RO` access the implementer didn't have — ran both fixes against David's actual CIM plan: the false-cutback bug isn't currently live on his account, but the fix is confirmed correct for when a reschedule would trigger it. One unrelated incidental finding surfaced in passing, not investigated further: David's real active plan has two duplicate "race" workout rows for 2026-09-13 (same distance).
 
-### Lane G — UX/IA acceptance owner (read-only)
+### Lane G — UX/IA acceptance PLAN (read-only, not implementation work)
+**This is a planning/evidence artifact, not completed UX work.** No screen was changed, no design decision was executed — this is the reference document Main and future implementers check new/changed screens against, and the honest render/BLOCKED inventory that scopes what's actually been visually verified so far.
+
 **Output:** `docs/design/ux-ia-acceptance-plan-2026-09-11.md` @ `27f657581` (pushed via documented bypass — pure docs, zero code, lowest possible risk).
 
 Rendered and personally inspected 22 distinct catalog screens plus a real non-catalog app launch (no prior audit had done the latter). Folded Design-System Phase 2's KEEP/REFINE/RESTYLE/UNIFY/REMOVE register into the 27-area master list. Got one genuinely new result no prior pass achieved: AX5 (largest accessibility Dynamic Type size) on Today visibly reflows correctly, **contradicting** two prior audits' "inconclusive" finding on that exact mechanism — everything else stays honestly marked BLOCKED, not assumed fine, including 16 Pro Max (simulator set up, ran out of time to render).
@@ -110,7 +115,7 @@ Also live-confirmed independently: two of Design-System Phase 2's own priority f
 
 ---
 
-## 5. Physical-device intake — four new findings, all root-caused, none implemented
+## 5. Physical-device intake — three findings root-caused, one copy issue routed; none implemented yet
 
 All four are from real screenshots off the installed phone. Build identity verified first: **build 290 is confirmed still the only build ever uploaded** `[PROD]` — nothing here is stale-build noise.
 
