@@ -38,7 +38,16 @@
  *                   `lib/race/course-elevation.ts`'s own header already
  *                   documents for AFC and Big Sur. This is the ONE action
  *                   in this route that changes what every other consumer of
- *                   `resolveCourseElevation()` sees, going forward.
+ *                   `resolveCourseElevation()` sees, going forward — EXCEPT
+ *                   for an editorial-sourced row (CIM, AFC, Big Sur, Sombrero
+ *                   Half; `course_library.source`, a GLOBAL cross-user table
+ *                   per migrations 102/127). `decideCourseElevationChoice`
+ *                   (`lib/race/course-elevation-choice.ts`) refuses the write
+ *                   there — same protection `lib/courses/promote-from-
+ *                   race.ts` already documents for L1→L2 promotion — and the
+ *                   response carries `applied: false` so the runner's choice
+ *                   still produces an honest outcome instead of a silent
+ *                   no-op (Rule 11, Rule 6).
  *   keep_curated_elevation
  *                 · course-changed CHOICE only. Suppresses the trigger;
  *                   writes nothing to `course_library`. Genuinely the
@@ -278,9 +287,13 @@ export async function POST(req: NextRequest) {
         if (!raceRow?.course_geometry) {
           return NextResponse.json({ ok: false, error: 'no_geometry', reason: 'No GPS track on file for this race.' }, { status: 400 });
         }
-        const libRow = await rowOrNull<{ elevation_gain_ft: number | string | null; net_elevation_ft: number | string | null }>(
+        const libRow = await rowOrNull<{
+          elevation_gain_ft: number | string | null;
+          net_elevation_ft: number | string | null;
+          source: 'editorial' | 'crowd-sourced' | 'stub' | null;
+        }>(
           'v5/goal-answer use_measured_elevation · course_library row',
-          pool.query(`SELECT elevation_gain_ft, net_elevation_ft FROM course_library WHERE slug = $1`, [slug]),
+          pool.query(`SELECT elevation_gain_ft, net_elevation_ft, source FROM course_library WHERE slug = $1`, [slug]),
         );
         if (libRow === null) throw new Error('course_library read failed');
         // Re-derive server-side — a client-supplied number is never trusted.
@@ -308,13 +321,34 @@ export async function POST(req: NextRequest) {
           previousGainFt: toNumOrNull(libRow?.elevation_gain_ft),
           previousNetFt: toNumOrNull(libRow?.net_elevation_ft),
           confidence: resolved.confidence,
+          librarySource: libRow?.source ?? null,
         });
         if (!outcome.ok) {
           return NextResponse.json({ ok: false, error: 'no_measurement', reason: outcome.error }, { status: 400 });
         }
-        // outcome.courseLibraryUpdate is non-null whenever outcome.ok is
-        // true for this action — the guard above is what makes that so.
-        const update = outcome.courseLibraryUpdate!;
+        // `course_library` is a GLOBAL, cross-user table (slug UNIQUE, no
+        // user_uuid — migrations 102/127), and an editorial-sourced row (CIM,
+        // AFC, Big Sur, Sombrero Half) is curated data every runner training
+        // toward that race shares. `decideCourseElevationChoice` returns
+        // `courseLibraryUpdate: null` for that case specifically — the same
+        // "nothing to apply" signal `keep_curated_elevation` already uses —
+        // so the write below is structurally skipped rather than guarded by
+        // a second, easy-to-forget condition. CLAUDE.md Rule 6 (multi-writer
+        // columns) and `lib/courses/promote-from-race.ts`'s own header
+        // ("source='editorial' → Editorial is canonical. Do NOT overwrite
+        // ... Just bump contributor_count") are why: this action is reached
+        // only on a LOW-confidence GPS reading — the resolver itself already
+        // declined to trust it — so it must never win over a curated row.
+        if (!outcome.courseLibraryUpdate) {
+          await suppressTrigger(userId, outcome.suppressTrigger!);
+          await writeIntent(userId, GOAL_ANSWER_RECEIPT, slug, outcome.receipt!);
+          // Rule 11: this is a disclosed outcome, not a silent no-op. The
+          // runner's choice was received and acted on — the action taken was
+          // "protect the shared course record" rather than "apply your GPS
+          // reading" — and `applied: false` says which one happened.
+          return NextResponse.json({ ok: true, action, slug, applied: false, reason: outcome.note });
+        }
+        const update = outcome.courseLibraryUpdate;
         await pool.query(
           `UPDATE course_library SET elevation_gain_ft = $2, net_elevation_ft = $3, updated_ts = NOW() WHERE slug = $1`,
           [update.slug, update.elevationGainFt, update.netElevationFt],
@@ -325,7 +359,7 @@ export async function POST(req: NextRequest) {
         // material data change keep a path back.
         await writeIntent(userId, GOAL_ANSWER_RECEIPT, slug, outcome.receipt!);
         await bustBriefingCacheForEvent(userId, 'race_crud').catch(() => {});
-        return NextResponse.json({ ok: true, action, slug, previous: outcome.previous, applied: { elevationGainFt: update.elevationGainFt, netElevationFt: update.netElevationFt } });
+        return NextResponse.json({ ok: true, action, slug, applied: true, previous: outcome.previous, appliedValues: { elevationGainFt: update.elevationGainFt, netElevationFt: update.netElevationFt } });
       }
 
       case 'keep_curated_elevation': {
@@ -333,6 +367,10 @@ export async function POST(req: NextRequest) {
         const outcome = decideCourseElevationChoice({
           action: 'keep_curated_elevation', slug: slug ?? '',
           measuredGainFt: null, measuredNetFt: null, previousGainFt: null, previousNetFt: null, confidence: 'unknown',
+          // `keep_curated_elevation` never touches `course_library` regardless
+          // of source (see the `action === 'keep_curated_elevation'` branch
+          // above) — `librarySource` is irrelevant here, not looked up.
+          librarySource: null,
         });
         await suppressTrigger(userId, outcome.suppressTrigger!);
         await writeIntent(userId, GOAL_ANSWER_RECEIPT, slug, outcome.receipt!);

@@ -2860,6 +2860,7 @@ extension V5Races {
 extension V5DecisionCard {
     enum K: String, CodingKey {
         case shape, verdict, trigger, question, safeTarget, stretchTarget, cautions, answers
+        case courseElevationDetail
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -2873,6 +2874,7 @@ extension V5DecisionCard {
         // client never adds a fourth and never re-orders them.
         cautions = Array(c.list(.cautions).prefix(3))
         answers = c.list(.answers)
+        courseElevationDetail = c.opt(.courseElevationDetail)
     }
 }
 
