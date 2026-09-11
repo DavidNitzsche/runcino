@@ -80,6 +80,11 @@ import {
 } from '@/lib/prescription/trajectory';
 import { isNonBuildingPhaseLabel } from './non-building-week';
 import { resolveProgressionStep, type ProgressionAction } from './progression-gate';
+// RACEPROT-PROGRESSION-1 (2026-09-11) · the day-level race detector, not the
+// raw `is_race_week` column — see `weekRowNoStepReason` and the prior-lookback
+// query in `diagnoseProgressionWeek` below. Same predicate `dose-guard.ts` and
+// the now-merged `adapt.ts`/`mutate.ts` fix already use for this exact gap.
+import { weekContainsRace } from './race-week';
 import type { AdaptationVerdict } from '@/lib/adaptation/adaptation-model';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
 import { pool } from '@/lib/db/pool';
@@ -399,6 +404,39 @@ export function renderResolution(res: ProgressionResolution, paceTag: string | n
  *  repeating it to mean anything, and the authored seed is the honest answer. */
 export const PRIOR_LOOKBACK_DAYS = 21;
 
+/** A prior-lookback candidate row, plus enough of its week to answer whether
+ *  the race-week machinery already owns it. */
+export interface PriorLookbackCandidate {
+  weekIsRaceWeek: boolean | null;
+  /** Every day's `type` in this row's training week. */
+  weekDayTypes: ReadonlyArray<string | null>;
+}
+
+/**
+ * RACEPROT-PROGRESSION-1 (2026-09-11) · is this row eligible to be read as the
+ * "last normal prescription" for its family, or does a race in its week
+ * already own it?
+ *
+ * The prior-lookback query used to read `COALESCE(wk.is_race_week, false) =
+ * false` directly alongside `is_cutback` and the TAPER phase exclusion.
+ * `is_race_week` holds ONLY the goal race's week (`race-week.ts`'s own
+ * header) — a B/C tune-up's taper and post-race recovery days are typed
+ * `easy`/`shakeout`, not excluded by phase or cutback, and their week's
+ * column reads false. So a tune-up week's deliberately-eased session could
+ * still be read as the reference point a struggling runner's next step gets
+ * compared against — the identical shape `adapt.ts`'s `volume_overshoot`
+ * shave and `mutate.ts`'s `weeklyMi` rollup were fixed for
+ * (RACEPROT-VERIFY-1), pure and exported for the same reason
+ * `overshootShaveEligible` is (Rule 15: a mechanism the test corpus cannot
+ * reach is untested).
+ */
+export function priorLookbackEligible(row: PriorLookbackCandidate): boolean {
+  return !weekContainsRace({
+    isRaceWeek: row.weekIsRaceWeek,
+    days: row.weekDayTypes.map((type) => ({ type })),
+  });
+}
+
 /** The row the reshape writer needs, beyond the resolution itself. */
 export interface ProgressionRowContext {
   type: string;
@@ -543,14 +581,40 @@ export interface ProgressionWeekDiagnosis {
  * `is_cutback` (a >15% drop off the week before) is false on every recovery
  * week by construction. Measured on production 2026-09-03: 6 recovery weeks
  * across 4 plans, `is_cutback` false on all six. See that module's header.
+ *
+ * ── RACEPROT-PROGRESSION-1 (2026-09-11) · `is_race_week` READ THROUGH THE
+ * SHARED DETECTOR, NOT THE COLUMN ────────────────────────────────────────────
+ *
+ * `is_race_week` (`plan_weeks.is_race_week`) holds ONLY the goal race's week
+ * — `race-week.ts`'s own header. A B/C tune-up's taper and post-race recovery
+ * days read `is_race_week = false` and their day is typed `easy`, so this
+ * predicate used to wave a tune-up week through as a normal, step-eligible
+ * week — the identical shape `adapt.ts`'s `volume_overshoot` shave and
+ * `mutate.ts`'s `rehydratePlan` weekly-mileage rollup were fixed for
+ * (RACEPROT-VERIFY-1). `weekContainsRace` (race-week.ts) is the same
+ * day-level detector `dose-guard.ts` already uses for this exact gap, reused
+ * here rather than re-typed a fourth time (Rule 16).
+ *
+ * `days` is OPTIONAL rather than required, so this predicate stays exactly as
+ * pure as it always was and every existing caller keeps compiling. A caller
+ * that cannot cheaply supply the week's day types (there is currently one:
+ * `load-adaptation-engine.ts`'s `weekAhead` read, flagged separately — it
+ * queries only the three scalar flags) falls back to `is_race_week` alone,
+ * which is the ORIGINAL behaviour and therefore never a regression, only an
+ * unclosed instance of the same gap. `diagnoseProgressionWeek` below always
+ * supplies `days`, since it already holds every row in the week.
  */
 export function weekRowNoStepReason(r: {
   is_cutback: boolean | null;
   is_race_week: boolean | null;
   phase: string | null;
+  /** Every day's `type` in this row's training week (its own row included).
+   *  Omit only when the week's own rows are genuinely unavailable to the
+   *  caller — see the header note above. */
+  days?: ReadonlyArray<{ type?: string | null }> | null;
 }): 'CUTBACK' | 'RACE_WEEK' | 'TAPER' | 'RECOVERY' | null {
   if (r.is_cutback === true) return 'CUTBACK';
-  if (r.is_race_week === true) return 'RACE_WEEK';
+  if (weekContainsRace({ isRaceWeek: r.is_race_week, days: r.days ?? null })) return 'RACE_WEEK';
   // The label, not a flag. Returned VERBATIM (upper-cased) so the caller's log
   // says which phase eased the week rather than collapsing two into one word —
   // "the plan is in recovery" and "the plan is tapering" are different facts
@@ -648,7 +712,11 @@ export async function diagnoseProgressionWeek(userId: string): Promise<Progressi
   ).catch(() => ({ rows: [] }))).rows;
   if (weekRows.length === 0) return { week: null, skip: 'NO_ROWS_IN_WEEK' };
 
-  if (weekRows.some((r) => weekRowNoStepReason(r) != null)) {
+  // RACEPROT-PROGRESSION-1 (2026-09-11) · `weekRows` already holds every row
+  // in this training week (the query above has no `type` filter), so the
+  // day-level race check `weekRowNoStepReason` now runs needs no extra
+  // query — the same rows just answer a second question.
+  if (weekRows.some((r) => weekRowNoStepReason({ ...r, days: weekRows }) != null)) {
     return { week: null, skip: 'WEEK_TAKES_NO_STEP' };
   }
 
@@ -706,10 +774,22 @@ export async function diagnoseProgressionWeek(userId: string): Promise<Progressi
   const lookbackISO = new Date(
     Date.parse(due.weekStartISO + 'T12:00:00Z') - PRIOR_LOOKBACK_DAYS * 86_400_000,
   ).toISOString().slice(0, 10);
-  const priorRows = (await pool.query<{
+  // RACEPROT-PROGRESSION-1 (2026-09-11) · `COALESCE(wk.is_race_week, false) =
+  // false` is the identical column-only gap `adapt.ts`'s overshoot shave and
+  // `mutate.ts`'s weeklyMi rollup were fixed for (RACEPROT-VERIFY-1): a B/C
+  // tune-up's taper and post-race recovery week reads `is_race_week = false`,
+  // so its (deliberately eased) sessions were still usable as the "last
+  // normal prescription" a struggling runner's next step gets compared
+  // against. Fetch each candidate's week_id and is_race_week here, then
+  // resolve `weekContainsRace` per week below — same two-step shape as the
+  // merged fix, since SQL alone cannot ask "does any OTHER row in this row's
+  // week carry `type = 'race'`" without a self-join per row.
+  const priorCandidateRows = (await pool.query<{
     date_iso: string; type: string; sub_label: string | null; workout_spec: unknown;
+    week_id: string | null; is_race_week: boolean | null;
   }>(
-    `SELECT pw.date_iso::text AS date_iso, pw.type, pw.sub_label, pw.workout_spec
+    `SELECT pw.date_iso::text AS date_iso, pw.type, pw.sub_label, pw.workout_spec,
+            pw.week_id::text AS week_id, wk.is_race_week
        FROM plan_workouts pw
        LEFT JOIN plan_weeks wk ON wk.id = pw.week_id
        LEFT JOIN plan_phases ph ON ph.id = wk.phase_id
@@ -717,11 +797,33 @@ export async function diagnoseProgressionWeek(userId: string): Promise<Progressi
         AND pw.date_iso::date < $2::date
         AND pw.date_iso::date >= $3::date
         AND COALESCE(wk.is_cutback, false) = false
-        AND COALESCE(wk.is_race_week, false) = false
         AND COALESCE(ph.label, '') <> 'TAPER'
       ORDER BY pw.date_iso::date DESC`,
     [plan.id, due.weekStartISO, lookbackISO],
   ).catch(() => ({ rows: [] }))).rows;
+
+  // One extra read for every distinct week touched by the lookback, not one
+  // per row — mirrors `overshootShaveEligible`'s caller in adapt.ts.
+  const priorWeekIds = [...new Set(
+    priorCandidateRows.map((r) => r.week_id).filter((id): id is string => id != null),
+  )];
+  const priorWeekDayTypes = new Map<string, Array<{ type: string | null }>>();
+  if (priorWeekIds.length > 0) {
+    const dayRows = (await pool.query<{ week_id: string; type: string | null }>(
+      `SELECT week_id::text AS week_id, type FROM plan_workouts WHERE week_id = ANY($1::uuid[])`,
+      [priorWeekIds],
+    ).catch(() => ({ rows: [] }))).rows;
+    for (const d of dayRows) {
+      const bucket = priorWeekDayTypes.get(d.week_id) ?? [];
+      bucket.push({ type: d.type });
+      priorWeekDayTypes.set(d.week_id, bucket);
+    }
+  }
+
+  const priorRows = priorCandidateRows.filter((r) => priorLookbackEligible({
+    weekIsRaceWeek: r.is_race_week,
+    weekDayTypes: r.week_id != null ? (priorWeekDayTypes.get(r.week_id) ?? []).map((d) => d.type) : [],
+  }));
 
   const prior = new Map<SessionFamily, PriorPrescription>();
   for (const r of priorRows) {
