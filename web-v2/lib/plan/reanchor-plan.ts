@@ -93,7 +93,8 @@ import {
 } from './reanchor-proposal';
 import { repriceSubject, type RepriceArm, type RepriceAnchorMove } from './reprice-payload';
 import { fmtPace } from '@/lib/format/run';
-import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
+import { sealedWorkoutIdsForRange } from './seal';
+import { addDays } from './core';
 import { recordPaceZoneEvent, type PaceZoneEvidenceSource } from './pace-drop-event';
 import {
   SELF_HEAL_REANCHOR_DELTA,
@@ -1181,22 +1182,33 @@ async function reanchorMaintenance(
   //
   // GUARD 1 · sealed days. This arm used to rewrite every row dated >= today,
   // including today's, which the runner may already have run — the race-prep
-  // arm has honoured Rule 15 since it was written and this one did not. Same
-  // EXISTS predicate as `recomputePacesForPlan` and `adapt.ts`
-  // filterUnsealedWorkouts: a date with a non-merged run on it is immutable.
-  const wkos = (await pool.query<{ id: string; type: string; distance_mi: string | null; sealed: boolean }>(
-    `SELECT pw.id, pw.type, pw.distance_mi,
-            EXISTS (
-              SELECT 1 FROM runs r
-               WHERE r.user_uuid = $3::uuid
-                 AND ${runDaySql('r')}::date = pw.date_iso::date
-                 AND ${runNotMergedSql('r')}
-            ) AS sealed
+  // arm has honoured Rule 15 since it was written and this one did not.
+  //
+  // SEALEDBYPASS-1 (2026-09-09) · this used to run its OWN EXISTS(SELECT 1
+  // FROM runs WHERE ... date matches ...) subquery — the exact date-EXISTS
+  // join SEALING-IDENTITY-1 closed for isDaySealed/adapt.ts, left running a
+  // second, independent time here (and a THIRD time in race-row-refresh.ts).
+  // Sealed is now resolved through the SAME canonical predicate
+  // isPrescriptionSealed/isDaySealed use — see lib/plan/seal.ts's
+  // `sealedWorkoutIdsForRange`.
+  const wkos = (await pool.query<{ id: string; type: string; distance_mi: string | null; date_iso: string }>(
+    `SELECT pw.id, pw.type, pw.distance_mi, pw.date_iso::text AS date_iso
        FROM plan_workouts pw
       WHERE pw.plan_id = $1 AND pw.date_iso >= $2
         AND pw.type NOT IN ('rest','cross','strength')`,
-    [planId, today, userId],
+    [planId, today],
   )).rows;
+
+  // SEALEDBYPASS-1 · one bulk canonical resolver read for the whole block. A
+  // `null` result is a resolver failure — seal everything conservatively,
+  // matching `isPrescriptionSealed`'s own posture.
+  const sealedIds = wkos.length === 0
+    ? new Set<string>()
+    : await sealedWorkoutIdsForRange(
+      userId,
+      wkos.reduce((min, w) => (w.date_iso < min ? w.date_iso : min), wkos[0].date_iso),
+      addDays(wkos.reduce((max, w) => (w.date_iso > max ? w.date_iso : max), wkos[0].date_iso), 1),
+    );
 
   // Same 'derivations' declaration as the race-prep arm above — paces and specs
   // only — proven by the boundary's structural fingerprint.
@@ -1215,7 +1227,7 @@ async function reanchorMaintenance(
     detail: { to_vdot: measuredVdot, rows: wkos.length },
     apply: async (client) => {
     for (const w of wkos) {
-      if (w.sealed) { sealedCount++; continue; }
+      if (sealedIds === null || sealedIds.has(w.id)) { sealedCount++; continue; }
       const { paceTargetSPerMi, spec } = refreshedPaceAndSpec(
         w.type, w.distance_mi != null ? Number(w.distance_mi) : null, anchors,
         { lthr, maxHr },

@@ -194,6 +194,62 @@ export function logSealSkip(
 }
 
 /**
+ * Bulk canonical seal check for a date range · SEALEDBYPASS-1 (2026-09-09).
+ *
+ * `recompute-paces.ts`, the maintenance arm of `reanchor-plan.ts`
+ * (`reanchorMaintenance`), and `race-row-refresh.ts` each carried their OWN
+ * "sealed" predicate — a correlated `EXISTS (SELECT 1 FROM runs WHERE ...
+ * date matches ...)` subquery embedded inside their row-fetch SELECT —
+ * instead of calling this file's `isPrescriptionSealed`/`isDaySealed`. That
+ * is exactly the pre-fix date-EXISTS join SEALING-IDENTITY-1 (2026-09-04,
+ * this file's own header) closed for `adapt.ts`: any unmerged run on the
+ * same calendar date sealed EVERY prescription that date, friend's run
+ * included, with no check that the run had anything to do with THIS
+ * prescription. All three sites still ran that pre-fix query, three
+ * independent times, so a day could seal in one and stay unsealed in
+ * another depending on which of the three last touched it.
+ *
+ * `EXECID-SCAN-1` (`lib/audit/_execution_identity_scan.test.ts`) is the
+ * scanner meant to catch exactly this, and it missed all three: its
+ * `projectsOnlyDates` check ran on the WHOLE literal string, so a bypass
+ * subquery sitting inside a SELECT that also read genuine quantity columns
+ * (`pw.distance_mi`, `pw.pace_target_s_per_mi`, …) read as "projects a
+ * quantity" even though the nested runs-subquery itself projects nothing but
+ * `1`. The scanner is fixed alongside this to inspect nested subqueries on
+ * their own terms — see `isRunCompletionBypass` in
+ * `lib/audit/execution-identity-scan.ts`.
+ *
+ * This is the bulk form of `isPrescriptionSealed` — one resolver read for a
+ * whole plan/range of dates, for callers that need the per-row seal
+ * predicate for many rows at once rather than one row at a time.
+ *
+ * A resolver read that FAILS returns `null`; callers seal every id
+ * conservatively on `null` (never `.has()` on an unreadable set), matching
+ * `isPrescriptionSealed`'s posture — refusing to write is recoverable,
+ * overwriting a completed session is not.
+ */
+export async function sealedWorkoutIdsForRange(
+  userUuid: string,
+  fromISO: string,
+  toISOExclusive: string,
+): Promise<Set<string> | null> {
+  const resolved = await resolveDateRangeExecutions(userUuid, fromISO, toISOExclusive)
+    .catch((err: unknown) => {
+      console.warn('[plan/seal] range resolver unreadable, sealing conservatively:',
+        err instanceof Error ? err.message : err);
+      return null;
+    });
+  if (resolved === null) return null;
+  const ids = new Set<string>();
+  for (const day of resolved.values()) {
+    for (const p of day.prescriptions) {
+      if (p.matchedRun != null) ids.add(p.id);
+    }
+  }
+  return ids;
+}
+
+/**
  * Prescription snapshot · what gets preserved across a rebuild.
  * Mirrors the columns persistPlan inserts (minus structural ones).
  */

@@ -57,4 +57,28 @@ export const EXECUTION_IDENTITY_EXEMPTIONS: readonly ExecutionIdentityExemption[
       + 'not read — dropping it would silently narrow a second, different guard (Rule 11: "no '
       + 'matching run" and "the run row has not arrived yet" are two facts).',
   },
+  {
+    file: 'lib/coach/state-loader.ts',
+    reason:
+      'NESTED-SUBQUERY-1 · loadTodayRunTiming/todayRunDone deliberately asks "did ANY run over '
+      + '1mi happen today," never "was TODAY\'S PRESCRIPTION completed" — its own header comment '
+      + 'says why: it must read true even before plan-match has run, because the watch can write a '
+      + 'run before the plan-reconciliation cron does, and gating the post-run UI pivot on the '
+      + 'resolver would leave the runner staring at the pre-run screen after a real run. It gates a '
+      + 'DISPLAY choice (which Today layout to render), never a seal or a completion claim on a '
+      + 'specific plan_workouts row — the one row that DOES need prescription-level matching '
+      + '(todayRunLong, immediately below it in the same file) joins runs to plan_workouts by date '
+      + 'AND compares distance against that row\'s own prescribed distance, so it never trips this '
+      + 'scanner\'s FROM-runs fingerprint at all.',
+  },
+  {
+    file: 'lib/coach/voice-band.ts',
+    reason:
+      'NESTED-SUBQUERY-1 · computeVdotConfidence\'s run_v CTE counts qualifying quality-effort '
+      + 'CANDIDATES over a rolling 180-day window (workoutType + distance + canonical-id filtered) '
+      + 'to score evidence confidence for VDOT banding — a load/evidence-count question over a '
+      + 'RANGE, not a completion/sealing question about one specific calendar date. It answers '
+      + '"how much recent quality evidence exists," the same shape as any other evidence-window '
+      + 'reader in lib/training, and never reads or writes a plan_workouts row at all.',
+  },
 ];

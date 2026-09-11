@@ -59,9 +59,17 @@ describe('RACE-ROW-STALENESS · every path that reprices a plan reprices its rac
     });
     expect('refused' in w).toBe(false);
     expect((w as { specDrops: string[] }).specDrops).toContain('hr_cap_bpm');
-    expect(s).toMatch(/AND \$\{runNotMergedSql\('r'\)\}/); // sealed = a canonical run exists that day
+    // SEALEDBYPASS-1 (2026-09-09) · sealed used to be its own ad-hoc
+    // EXISTS(SELECT 1 FROM runs WHERE ... date matches ...) subquery — the
+    // exact date-EXISTS join SEALING-IDENTITY-1 closed for isDaySealed/
+    // adapt.ts, run a third, independent time here. It is now resolved
+    // through the SAME canonical predicate isPrescriptionSealed/isDaySealed
+    // use, via lib/plan/seal.ts's sealedWorkoutIdsForRange — never a
+    // freestanding EXISTS-against-runs subquery of this file's own.
+    expect(s).toMatch(/sealedWorkoutIdsForRange\(/);
+    expect(s).not.toMatch(/EXISTS\s*\(\s*SELECT[^)]*FROM\s+runs/is);
     // and a sealed or past row is skipped before anything is resolved for it
-    expect(s).toMatch(/if \(row\.sealed \|\| row\.date_iso < today\)/);
+    expect(s).toMatch(/if \(sealedIds === null \|\| sealedIds\.has\(row\.id\) \|\| row\.date_iso < today\)/);
   });
   it('5 · the fields the refresh writes are the brain\'s, by name', async () => {
     const o = await composeRaceOutlook(fixtureRace(), '2026-09-01', fixtureReads());

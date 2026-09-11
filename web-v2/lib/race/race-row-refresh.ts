@@ -40,7 +40,8 @@ import type { PoolClient } from 'pg';
 /** Anything with `query` · the pool, a PoolClient, or a transaction handle. */
 export type Queryable = Pick<PoolClient, 'query'>;
 import { runnerToday } from '@/lib/runtime/runner-tz';
-import { runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
+import { sealedWorkoutIdsForRange } from '@/lib/plan/seal';
+import { addDays } from '@/lib/plan/core';
 import { resolveRaceOutlook, loadRaceForOutlook, RACE_EXECUTION_BAND_S_PER_MI, type RaceOutlook, type RaceForOutlook } from './race-outlook';
 import { MEANINGFUL_MOVE_SEC } from '@/lib/training/projection-trend';
 import { racePaceAbortRule } from '@/lib/race/distance-doctrine';
@@ -85,7 +86,6 @@ interface RaceRow {
    *  so the refresh reads them rather than writing past them. */
   notes: string | null;
   sub_label: string | null;
-  sealed: boolean;
 }
 
 /** The race row's slug: the race on the runner's calendar dated that day,
@@ -600,25 +600,34 @@ async function refreshRaceRowsCore(
   source: string | undefined,
 ): Promise<RaceRowRefreshResult> {
 
+  // SEALEDBYPASS-1 (2026-09-09) · this used to carry its OWN
+  // EXISTS(SELECT 1 FROM runs WHERE ... date matches ...) subquery — the
+  // exact date-EXISTS join SEALING-IDENTITY-1 closed for isDaySealed/
+  // adapt.ts, left running a third, independent time here (recompute-paces.ts
+  // and reanchor-plan.ts's maintenance arm each carried their own copy too).
+  // Sealed is now resolved through the SAME canonical predicate
+  // isPrescriptionSealed/isDaySealed use — lib/plan/seal.ts's
+  // `sealedWorkoutIdsForRange`.
   const rows = (await client.query<RaceRow>(
     `SELECT pw.id::text AS id, pw.date_iso::text AS date_iso, pw.type, pw.pace_target_s_per_mi, pw.distance_mi, pw.workout_spec,
-            pw.notes, pw.sub_label,
-            EXISTS (
-              SELECT 1 FROM runs r
-               WHERE r.user_uuid = $2::uuid
-                 AND ${runDaySql('r')}::date = pw.date_iso::date
-                 AND ${runNotMergedSql('r')}
-            ) AS sealed
+            pw.notes, pw.sub_label
        FROM plan_workouts pw
       WHERE pw.plan_id = $1 AND pw.type IN ('race', 'race_week_tuneup')
       ORDER BY pw.date_iso::date ASC`,
     [planId, userUuid],
   )).rows;
 
+  // SEALEDBYPASS-1 · one bulk canonical resolver read for the whole plan's
+  // race rows. `null` is a resolver failure — seal everything conservatively,
+  // matching `isPrescriptionSealed`'s own posture.
+  const sealedIds = rows.length === 0
+    ? new Set<string>()
+    : await sealedWorkoutIdsForRange(userUuid, rows[0].date_iso, addDays(rows[rows.length - 1].date_iso, 1));
+
   const result: RaceRowRefreshResult = { planId, userUuid, todayISO: today, rows: [], updated: 0, refused: 0 };
   for (const row of rows) {
     const before = { paceSecPerMi: row.pace_target_s_per_mi != null ? Number(row.pace_target_s_per_mi) : null };
-    if (row.sealed || row.date_iso < today) {
+    if (sealedIds === null || sealedIds.has(row.id) || row.date_iso < today) {
       result.rows.push({ id: row.id, dateISO: row.date_iso, slug: null, action: 'sealed', before, after: null });
       continue;
     }

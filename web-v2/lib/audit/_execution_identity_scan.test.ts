@@ -8,6 +8,18 @@
  * undo gate — four fixes, each believing it was the last, because nothing could
  * see a surface that simply did not call `lib/execution/day-resolver.ts`.
  *
+ * NESTED-SUBQUERY-1 (2026-09-09) · a FIFTH instance, in three places at once,
+ * that this scanner ALSO missed, for a different reason than "no scanner
+ * existed yet": `recompute-paces.ts`, `reanchor-plan.ts`'s maintenance arm,
+ * and `race-row-refresh.ts` each ran the pre-fix date-EXISTS join as a
+ * subquery NESTED inside a larger SELECT that also read real quantity
+ * columns (`pw.distance_mi`, …). The scanner's `projectsOnlyDates` ran on the
+ * WHOLE literal, so those quantity columns made the whole query look
+ * load-shaped even though the nested runs-subquery itself was a pure
+ * date-coincidence check. See `lib/audit/execution-identity-scan.ts`'s header
+ * for the full incident and the fix (`isRunCompletionBypass`), and
+ * `lib/plan/seal.ts`'s `sealedWorkoutIdsForRange` for the three sites' fix.
+ *
  * WHAT THIS CANNOT FAIL ON (Rule 22):
  *   · a file that asks the wrong question through a HELPER rather than inline
  *     SQL — the scanner reads string literals, so a date-only completion test
@@ -17,113 +29,25 @@
  *     only insist that a runner-scoped day-key read of `runs` is either
  *     obviously load-shaped or argued for. That is why the allowlist exists,
  *     and why every entry has to say which question its file is asking.
+ *   · a bypass subquery whose own projection ALSO happens to mention a
+ *     quantity-shaped identifier (NESTED-SUBQUERY-1's own fix note) — narrower
+ *     than a whole-string scan, on purpose, to avoid re-widening back into the
+ *     20-file rubber stamp the fingerprint was built to avoid.
  *   · anything outside lib/ and app/.
  */
 import { describe, it, expect } from 'vitest';
-import fs from 'node:fs';
 import path from 'node:path';
-import { extractStringLiterals } from './sql-scan';
+import {
+  selectsRunDayKey, scopesToOneRunner, projectsOnlyDates,
+  extractParenSubqueries, isRunCompletionBypass, scanExecutionIdentity,
+} from './execution-identity-scan';
 import { EXECUTION_IDENTITY_EXEMPTIONS } from './execution-identity-exemptions';
 
 const ROOT = path.resolve(__dirname, '..', '..');
 const DIRS = ['lib', 'app'];
 
-/**
- * A day key selected out of `runs` — the shape every one of the four defects
- * had. `runDaySql()` renders to an `AT TIME ZONE ... ::date` expression, so
- * both the helper call and its expansion are matched.
- */
-function selectsRunDayKey(sql: string): boolean {
-  if (!/\bFROM\s+runs\b/i.test(sql)) return false;
-  return /::date/i.test(sql) || /\bAT TIME ZONE\b/i.test(sql);
-}
-
-function scopesToOneRunner(sql: string): boolean {
-  return /user_uuid\s*=|user_id\s*=/i.test(sql);
-}
-
-/**
- * THE FINGERPRINT, and why it is this and not a keyword search.
- *
- * The first draft of this scanner flagged any runner-scoped day-key read of
- * `runs` in a file whose text mentioned completion. That matched 20 files —
- * `vdot-inputs.ts`, `durability-anchor.ts`, `adaptive-ramp.ts`, every load and
- * volume reader in the engine — because they all legitimately ask "what did
- * this runner run", and almost every file in `lib/coach` says "complete"
- * somewhere. A 20-entry allowlist is a rubber stamp, and Rule 18 is explicit
- * that an exemption list which excuses the normal case has stopped meaning
- * anything.
- *
- * What separates the four real defects from all twenty of those readers is not
- * vocabulary, it is the SHAPE OF THE ANSWER. A load reader asks for
- * quantities — distance, duration, pace, HR, the `data` payload — keyed BY
- * date. A date-coincidence completion check asks for the DATES THEMSELVES and
- * nothing else: "give me the days this runner ran", and then treats membership
- * in that set as proof a prescription was executed. That is precisely the
- * query `app/api/plan/undo/route.ts` was running.
- *
- * So: flag a runner-scoped day-key read of `runs` whose projection carries no
- * quantity at all. A reader that wants a number is asking a load question and
- * is not this bug; a reader that wants only a set of dates is asserting
- * identity from the calendar, which is the thing that may not be done.
- */
-// No leading \b: the engine reaches these columns through helper names like
-// `runDistanceMiSql('r')`, where "Distance" is mid-identifier and a word
-// boundary would miss it. That gap let `decoupling-trend.ts` and
-// `durability-anchor.ts` — three plainly load-shaped reads — through as
-// findings on the first run of this predicate.
-const QUANTITY_COLUMNS =
-  /(distance|duration|elapsed|moving|pace|avg_?hr|max_?hr|hr_|cadence|elevation|calor|\.data\b|data\s*->|shoe_id|SUM\s*\(|AVG\s*\(|MAX\s*\(|MIN\s*\()/i;
-
-function projectsOnlyDates(sql: string): boolean {
-  return !QUANTITY_COLUMNS.test(sql);
-}
-
-interface Finding { file: string; sql: string }
-
-/** Rule 18 · a scanner states how much it read, so a silent zero is visible. */
-const READ = { files: 0, literals: 0, runSql: 0 };
-
-function scan(): Finding[] {
-  READ.files = 0; READ.literals = 0; READ.runSql = 0;
-  const out: Finding[] = [];
-  const walk = (dir: string): void => {
-    let entries: string[];
-    try { entries = fs.readdirSync(dir); } catch { return; }
-    for (const e of entries) {
-      const p = path.join(dir, e);
-      let st: fs.Stats;
-      try { st = fs.statSync(p); } catch { continue; }
-      if (st.isDirectory()) {
-        if (e === 'node_modules' || e === '.next') continue;
-        walk(p);
-        continue;
-      }
-      if (!p.endsWith('.ts') && !p.endsWith('.tsx')) continue;
-      if (p.includes('.test.')) continue;
-      // The resolver IS the owner; it is allowed to write this SQL.
-      const rel = path.relative(ROOT, p);
-      if (rel === 'lib/execution/day-resolver.ts') continue;
-      let src: string;
-      try { src = fs.readFileSync(p, 'utf8'); } catch { continue; }
-      READ.files += 1;
-      for (const raw of extractStringLiterals(src)) {
-        READ.literals += 1;
-        const sql = raw.replace(/\s+/g, ' ');
-        if (/\bFROM\s+runs\b/i.test(sql)) READ.runSql += 1;
-        if (!selectsRunDayKey(sql)) continue;
-        if (!scopesToOneRunner(sql)) continue;
-        if (!projectsOnlyDates(sql)) continue;
-        out.push({ file: rel, sql: sql.slice(0, 180) });
-      }
-    }
-  };
-  for (const d of DIRS) walk(path.join(ROOT, d));
-  return out;
-}
-
 describe('EXECID-SCAN-1 · completion is resolved, never inferred from a date', () => {
-  const findings = scan();
+  const { findings, counts } = scanExecutionIdentity(ROOT, DIRS);
   const exemptFiles = new Set(EXECUTION_IDENTITY_EXEMPTIONS.map((e) => e.file));
 
   it('the scanner reads real SQL — a silent zero would prove nothing', () => {
@@ -131,9 +55,9 @@ describe('EXECID-SCAN-1 · completion is resolved, never inferred from a date', 
     // `check-modelled-mark.sh` reported clean for months while scanning
     // nothing, and that is the worst available outcome because it also
     // reported confidence.
-    expect(READ.files, 'the walk read no source files at all').toBeGreaterThan(500);
-    expect(READ.literals, 'no string literals were extracted').toBeGreaterThan(500);
-    expect(READ.runSql, 'no `FROM runs` SQL anywhere in lib/ or app/ — the extractor is broken')
+    expect(counts.files, 'the walk read no source files at all').toBeGreaterThan(500);
+    expect(counts.literals, 'no string literals were extracted').toBeGreaterThan(500);
+    expect(counts.runSql, 'no `FROM runs` SQL anywhere in lib/ or app/ — the extractor is broken')
       .toBeGreaterThan(10);
 
     // And the predicate itself, falsified in BOTH directions (Rule 18 §1).
@@ -163,10 +87,11 @@ describe('EXECID-SCAN-1 · completion is resolved, never inferred from a date', 
       unexcused.length,
       'A query reads a day key out of `runs` for one runner in a file that talks about '
       + 'completion/sealing. Same calendar date is NOT identity — that is the defect '
-      + 'WORKOUT-EXECUTION-ID-1, EXECUTION-IDENTITY-1, SEALING-IDENTITY-1 and SEALDATE-1 each '
-      + 'closed in a different place. Route the decision through '
-      + '`lib/execution/day-resolver.ts` (or `isDaySealed`), or add an argued entry to '
-      + 'EXECUTION_IDENTITY_EXEMPTIONS saying which question this file is actually asking.',
+      + 'WORKOUT-EXECUTION-ID-1, EXECUTION-IDENTITY-1, SEALING-IDENTITY-1, SEALDATE-1 and '
+      + 'SEALEDBYPASS-1 each closed in a different place. Route the decision through '
+      + '`lib/execution/day-resolver.ts` (or `isDaySealed`/`sealedWorkoutIdsForRange`), or add '
+      + 'an argued entry to EXECUTION_IDENTITY_EXEMPTIONS saying which question this file is '
+      + 'actually asking.',
     ).toBe(0);
   });
 
@@ -185,5 +110,113 @@ describe('EXECID-SCAN-1 · completion is resolved, never inferred from a date', 
       expect(e.reason.length, `${e.file} has no argued reason`).toBeGreaterThan(60);
       expect(e.reason, `${e.file}'s reason is a shrug`).not.toMatch(/^(ok|fine|safe|n\/a)\b/i);
     }
+  });
+});
+
+/**
+ * NESTED-SUBQUERY-1 · falsified in both directions on synthetic fixtures that
+ * mirror the three real sites' exact shape, per Rule 18: break the old
+ * behaviour on purpose and watch it fail, then confirm the fix catches it.
+ *
+ * These fixtures are deliberately NOT the real files' live SQL (which is
+ * fixed as of SEALEDBYPASS-1 and should no longer trip anything) — they are
+ * frozen reproductions of the bypass shape, so this test keeps proving the
+ * scanner catches the CLASS even after the three known instances are gone.
+ */
+describe('NESTED-SUBQUERY-1 · a bypass nested inside a quantity-bearing outer query', () => {
+  // recompute-paces.ts's exact pre-fix shape: the outer SELECT reads
+  // pw.distance_mi (a real quantity), and the nested EXISTS is a pure
+  // date-coincidence completion check using the raw jsonb date derivation.
+  const RECOMPUTE_SHAPE = `
+    SELECT pw.id::text AS id, pw.week_id::text AS week_id, pw.type,
+           pw.distance_mi::text AS distance_mi, pw.sub_label,
+           pw.date_iso::text AS date_iso, pw.notes, pw.workout_spec,
+           EXISTS (
+             SELECT 1 FROM runs r
+              WHERE r.user_uuid = $2::uuid
+                AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
+                AND NOT (r.data ? 'mergedIntoId')
+           ) AS sealed
+      FROM plan_workouts pw
+     WHERE pw.plan_id = $1
+       AND pw.date_iso::date >= $3::date
+     ORDER BY pw.date_iso::date ASC
+  `.replace(/\s+/g, ' ');
+
+  // reanchor-plan.ts / race-row-refresh.ts's shape: the runs-subquery is
+  // built from `${runDaySql('r')}`/`${runNotMergedSql('r')}` template
+  // interpolations, present in extracted source as literal `${...}` text
+  // (interpolations are never evaluated by extractStringLiterals) — and the
+  // outer query reads pw.pace_target_s_per_mi and pw.distance_mi.
+  const REANCHOR_SHAPE = `
+    SELECT pw.id::text AS id, pw.date_iso::text AS date_iso, pw.type,
+           pw.pace_target_s_per_mi, pw.distance_mi, pw.workout_spec,
+           pw.notes, pw.sub_label,
+           EXISTS (
+             SELECT 1 FROM runs r
+              WHERE r.user_uuid = $2::uuid
+                AND \${runDaySql('r')}::date = pw.date_iso::date
+                AND \${runNotMergedSql('r')}
+           ) AS sealed
+      FROM plan_workouts pw
+     WHERE pw.plan_id = $1 AND pw.type IN ('race', 'race_week_tuneup')
+     ORDER BY pw.date_iso::date ASC
+  `.replace(/\s+/g, ' ');
+
+  // A negative control: a genuinely load-shaped nested subquery (reads a real
+  // quantity in ITS OWN projection, not just the outer query's) must not be
+  // flagged — the fix must not regress into the 20-file rubber stamp the
+  // original fingerprint was built to avoid.
+  const LOAD_SUBQUERY_SHAPE = `
+    SELECT pw.id::text AS id, pw.distance_mi,
+           (SELECT SUM(r.distance_mi) FROM runs r
+             WHERE r.user_uuid = $2::uuid AND r.data->>'date' ::date = pw.date_iso::date) AS trailing_mi
+      FROM plan_workouts pw
+     WHERE pw.plan_id = $1
+  `.replace(/\s+/g, ' ');
+
+  it('FALSIFIED · the OLD whole-string-only predicate misses all three real shapes', () => {
+    // This is the exact pre-fix predicate (selectsRunDayKey && scopesToOneRunner
+    // && projectsOnlyDates, applied to the WHOLE literal only) — reconstructed
+    // here, not imported, so this assertion keeps proving the historical blind
+    // spot regardless of what the fixed module later does.
+    const oldPredicate = (sql: string): boolean =>
+      selectsRunDayKey(sql) && scopesToOneRunner(sql) && projectsOnlyDates(sql);
+
+    expect(oldPredicate(RECOMPUTE_SHAPE),
+      'recompute-paces.ts\'s shape should have evaded the pre-fix scanner — if this is now true, '
+      + 'the blind spot this test documents no longer reproduces and the historical claim is stale')
+      .toBe(false);
+    expect(oldPredicate(REANCHOR_SHAPE),
+      'reanchor-plan.ts/race-row-refresh.ts\'s shape should have evaded the pre-fix scanner')
+      .toBe(false);
+  });
+
+  it('FIXED · isRunCompletionBypass catches all three real shapes', () => {
+    expect(isRunCompletionBypass(RECOMPUTE_SHAPE)).toBe(true);
+    expect(isRunCompletionBypass(REANCHOR_SHAPE)).toBe(true);
+  });
+
+  it('the extractor pulls the nested EXISTS content out intact', () => {
+    const subs = extractParenSubqueries(RECOMPUTE_SHAPE);
+    expect(subs.length).toBeGreaterThan(0);
+    const runsSub = subs.find((s) => /from\s+runs/i.test(s));
+    expect(runsSub).toBeDefined();
+    expect(runsSub?.trim()).toMatch(/^select 1 from runs/i);
+    expect(runsSub).not.toMatch(/pw\.distance_mi/);
+  });
+
+  it('does not regress into flagging a genuinely load-shaped nested subquery', () => {
+    // A negative control on the boundary case adjacent to the real fix: a
+    // subquery that projects a real quantity (SUM(r.distance_mi)) in its OWN
+    // select list must stay unflagged, or the fix has re-widened the
+    // fingerprint back toward the 20-file rubber stamp the original scanner
+    // was built to avoid.
+    expect(isRunCompletionBypass(LOAD_SUBQUERY_SHAPE)).toBe(false);
+  });
+
+  it('a genuinely flat, non-nested bypass is still caught (no regression on the original shape)', () => {
+    const flat = 'SELECT DISTINCT d::date AS d FROM runs r WHERE r.user_uuid = $1::uuid';
+    expect(isRunCompletionBypass(flat)).toBe(true);
   });
 });

@@ -106,6 +106,8 @@ import { rationaleForRow } from '@/lib/workout-catalogue/select';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import type { AuthorityClass } from '@/lib/brain/mutation/authority';
+import { sealedWorkoutIdsForRange } from './seal';
+import { addDays } from './core';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * THE GOAL→TRAINING-PACE BLEND IS DELETED · AUTHORING-CANONICAL-1 (2026-09-01)
@@ -414,11 +416,16 @@ export async function recomputePacesForPlan(
     .then((r) => r.bpm)
     .catch(() => null);
 
-  // Future rows + seal predicate in one read (same sealed EXISTS as
-  // adapt.ts filterUnsealedWorkouts · Rule 15).
+  // Future rows, unsealed determined below through the SAME resolver
+  // isPrescriptionSealed/isDaySealed use (SEALEDBYPASS-1 · Rule 15). This used
+  // to carry its own EXISTS(SELECT 1 FROM runs WHERE ... date matches ...)
+  // subquery — the exact pre-fix date-EXISTS join SEALING-IDENTITY-1 closed
+  // for isDaySealed/adapt.ts, left running a second, independent time here.
+  // See lib/plan/seal.ts's `sealedWorkoutIdsForRange` doc comment for the full
+  // incident and why the scanner meant to catch this (EXECID-SCAN-1) missed it.
   const rows = (await q.query<{
     id: string; week_id: string | null; type: string; distance_mi: string | null;
-    sub_label: string | null; date_iso: string; sealed: boolean;
+    sub_label: string | null; date_iso: string;
     notes: string | null; workout_spec: unknown;
   }>(
     // RATIONALE-BACKFILL-1 · `notes` and `workout_spec` are read for one
@@ -427,20 +434,27 @@ export async function recomputePacesForPlan(
     // line for the latter. See the write below.
     `SELECT pw.id::text AS id, pw.week_id::text AS week_id, pw.type,
             pw.distance_mi::text AS distance_mi, pw.sub_label,
-            pw.date_iso::text AS date_iso, pw.notes, pw.workout_spec,
-            EXISTS (
-              SELECT 1 FROM runs r
-               WHERE r.user_uuid = $2::uuid
-                 AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
-                 AND NOT (r.data ? 'mergedIntoId')
-            ) AS sealed
+            pw.date_iso::text AS date_iso, pw.notes, pw.workout_spec
        FROM plan_workouts pw
       WHERE pw.plan_id = $1
-        AND pw.date_iso::date >= $3::date
-        AND pw.type <> ALL($4::text[])
+        AND pw.date_iso::date >= $2::date
+        AND pw.type <> ALL($3::text[])
       ORDER BY pw.date_iso::date ASC`,
-    [planId, plan.user_uuid, today, RECOMPUTE_EXEMPT_TYPES],
+    [planId, today, RECOMPUTE_EXEMPT_TYPES],
   ).catch(() => ({ rows: [] }))).rows;
+
+  // SEALEDBYPASS-1 · one bulk canonical resolver read for the whole block,
+  // covering every date this recompute could touch. `sealedIds === null`
+  // means the resolver itself failed — seal EVERYTHING conservatively
+  // (isPrescriptionSealed's same posture: a resolver failure is not a
+  // prescription we know to be mutable).
+  const sealedIds = rows.length === 0
+    ? new Set<string>()
+    : await sealedWorkoutIdsForRange(
+      plan.user_uuid,
+      rows[0].date_iso,
+      addDays(rows[rows.length - 1].date_iso, 1),
+    );
 
   /**
    * PRESCRIPTION-WIRE-1 · THE I-PACE ELIGIBILITY GATE IS DELETED, NOT MOVED.
@@ -490,7 +504,11 @@ export async function recomputePacesForPlan(
   let rationalesWritten = 0;
   const core = async (tx: { query: typeof pool.query }): Promise<void> => {
     for (const row of rows) {
-      if (row.sealed) { sealedCount++; continue; }
+      // SEALEDBYPASS-1 · `sealedIds === null` is a resolver failure, sealed
+      // conservatively (Rule 11: "don't know" and "measured zero" are not the
+      // same fact); `sealedIds.has(row.id)` is the canonical, per-prescription
+      // answer, same as isPrescriptionSealed.
+      if (sealedIds === null || sealedIds.has(row.id)) { sealedCount++; continue; }
       const distanceMi = row.distance_mi != null ? Number(row.distance_mi) : null;
       const built = buildWorkoutSpec(
         row.type, distanceMi,

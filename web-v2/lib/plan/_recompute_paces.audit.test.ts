@@ -65,6 +65,8 @@ describe.skipIf(!RO)('RECOMPUTE PACES · the exact before/after on the owner\'s 
     const { resolvePrescribedPaceAnchors } = await import('@/lib/training/load-prescription-anchors');
     const { buildWorkoutSpec } = await import('./spec-builder');
     const { loadEffectiveMaxHr } = await import('@/lib/training/max-hr');
+    const { sealedWorkoutIdsForRange } = await import('./seal');
+    const { addDays } = await import('./core');
 
     /* ── 1 · THE ACTIVE PLAN · resolved, never assumed (Rule 14) ──────────── */
     const plan = (await pool.query<{ id: string; mode: string; race_id: string | null }>(
@@ -87,29 +89,36 @@ describe.skipIf(!RO)('RECOMPUTE PACES · the exact before/after on the owner\'s 
     )).rows[0]?.lthr ?? null;
     const maxHr = (await loadEffectiveMaxHr(OWNER, TODAY)).bpm;
 
-    /* ── 4 · THE ROWS THE RECOMPUTE WOULD TOUCH ───────────────────────────── */
+    /* ── 4 · THE ROWS THE RECOMPUTE WOULD TOUCH ─────────────────────────────
+     * SEALEDBYPASS-1 (2026-09-09) · this used to carry its own ad-hoc
+     * EXISTS(SELECT 1 FROM runs WHERE ... date matches ...) sealed predicate
+     * — the SAME shape the live function used to carry, and the same one
+     * SEALING-IDENTITY-1 closed for isDaySealed/adapt.ts elsewhere. Reporting
+     * a diagnostic's own copy of a since-fixed predicate would silently drift
+     * from what `recomputePacesForPlan` now actually does, so this reads
+     * sealed ids the SAME way the live function does — one canonical
+     * resolver, not a second approximation of it for display purposes. */
     const EXEMPT = ['rest', 'cross', 'strength', 'race', 'race_week_tuneup'];
     const rows = (await pool.query<{
+      id: string;
       date_iso: string; type: string; distance_mi: string | null; sub_label: string | null;
       pace_target_s_per_mi: number | null; workout_spec: Record<string, unknown> | null;
-      sealed: boolean;
     }>(
-      `SELECT pw.date_iso::text AS date_iso, pw.type, pw.distance_mi::text AS distance_mi,
-              pw.sub_label, pw.pace_target_s_per_mi, pw.workout_spec,
-              EXISTS (
-                SELECT 1 FROM runs r
-                 WHERE r.user_uuid = $2::uuid
-                   AND COALESCE(r.data->>'date', LEFT(r.data->>'startLocal',10))::date = pw.date_iso::date
-                   AND NOT (r.data ? 'mergedIntoId')
-              ) AS sealed
+      `SELECT pw.id::text AS id, pw.date_iso::text AS date_iso, pw.type, pw.distance_mi::text AS distance_mi,
+              pw.sub_label, pw.pace_target_s_per_mi, pw.workout_spec
          FROM plan_workouts pw
         WHERE pw.plan_id = $1
-          AND pw.date_iso::date >= $3::date
-          AND pw.type <> ALL($4::text[])
+          AND pw.date_iso::date >= $2::date
+          AND pw.type <> ALL($3::text[])
         ORDER BY pw.date_iso::date ASC`,
-      [plan.id, OWNER, TODAY, EXEMPT],
+      [plan.id, TODAY, EXEMPT],
     )).rows;
     expect(rows.length).toBeGreaterThan(0);
+
+    const sealedIds = rows.length === 0
+      ? new Set<string>()
+      : (await sealedWorkoutIdsForRange(OWNER, rows[0].date_iso, addDays(rows[rows.length - 1].date_iso, 1))
+        ?? new Set<string>(rows.map((r) => r.id))); // resolver failure · report every row sealed, same conservative posture the live path takes
 
     /* eslint-disable no-console */
     console.log('\n' + '═'.repeat(118));
@@ -134,7 +143,8 @@ describe.skipIf(!RO)('RECOMPUTE PACES · the exact before/after on the owner\'s 
     const findings: string[] = [];
 
     for (const r of rows) {
-      if (r.sealed) { sealedCount++; }
+      const sealed = sealedIds.has(r.id);
+      if (sealed) { sealedCount++; }
       const distanceMi = r.distance_mi != null ? Number(r.distance_mi) : null;
       const built = buildWorkoutSpec(
         r.type, distanceMi, a.thresholdSecPerMi, lthr, r.sub_label, maxHr,
@@ -157,11 +167,11 @@ describe.skipIf(!RO)('RECOMPUTE PACES · the exact before/after on the owner\'s 
         ? `${pace(newSpec.pace_target_s_per_mi_lo as number)}-${pace(newSpec.pace_target_s_per_mi_hi as number)}`
         : pace(after);
 
-      if (!r.sealed) touched++;
+      if (!sealed) touched++;
       if (before != null && after != null && Math.round(before) !== Math.round(after)) changed++;
 
       console.log(
-        `  ${pad(r.date_iso, 11)}${pad(r.type, 11)}${pad(r.sealed ? 'SEAL' : '', 6)}` +
+        `  ${pad(r.date_iso, 11)}${pad(r.type, 11)}${pad(sealed ? 'SEAL' : '', 6)}` +
         `${pad(beforeStr, 20)}${pad(afterStr, 20)}${pad(delta(before, after), 10)}${r.sub_label ?? ''}`,
       );
 
