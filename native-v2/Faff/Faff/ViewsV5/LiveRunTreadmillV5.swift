@@ -285,9 +285,17 @@ struct LiveRunTreadmillV5: View {
         // ground as 12a, but this screen never reaches for a day-state
         // panel at all; the belt IS the console.
         .background(V5.surfacePage.ignoresSafeArea())
-        // Stage 5 · "independent toggles for voice and tones... do not turn
-        // this into a settings project" — a `Menu`, not a new screen.
-        .overlay(alignment: .topTrailing) { cuesMenu.padding(V5.S.s16) }
+        // TREADMILL-CUES-OVERLAP-1 (2026-09-09) · `cuesMenu` used to float
+        // here as a `.overlay(alignment: .topTrailing)` pinned to the
+        // screen's own top-right corner — the same corner `topRow`'s
+        // current-interval label is right-aligned into, so the overlay's
+        // fixed z-order drew the speaker glyph directly on top of the
+        // label's trailing characters ("Warm u|p", "Interval N of |M") at
+        // every Dynamic Type size. It is now a real sibling inside
+        // `topRow`'s own HStack (see that property), which reserves its
+        // width through ordinary layout instead of drawing over whatever
+        // was already there. See that property's header for the full
+        // account and the on-device verification.
         // Live tick · 2026-08-21. Was a `TimelineView(.periodic(from: .now,
         // by: 1.0))` inside `.background`, which reads the clock inside `body`
         // and so closes a feedback loop: render builds a new schedule, the new
@@ -778,7 +786,37 @@ struct LiveRunTreadmillV5: View {
 
     private var topRow: some View {
         VStack(alignment: .leading, spacing: V5.S.s4) {
-            HStack(alignment: .lastTextBaseline) {
+            // TREADMILL-CUES-OVERLAP-1 (2026-09-09) · `cuesMenu` used to be a
+            // screen-corner `.overlay(alignment: .topTrailing)`, floating
+            // independently of this row's own layout. An overlay never
+            // reserves space — it draws its own frame on top of whatever is
+            // already there — and this row's interval label is ALSO pinned
+            // to the top-trailing corner (right-aligned via the `Spacer`
+            // below). Both wanted the same corner, and the overlay always won
+            // the z-order, so the last few characters of "Warm up" / "Interval
+            // N of M" rendered directly underneath the speaker glyph —
+            // confirmed on device at every Dynamic Type size, because neither
+            // element's geometry actually depends on text size: the label is
+            // drawn at the fixed 34pt "value register" (see `faffText`'s own
+            // `scales` contract — nothing at or above `TypeScaleV5.valueMin`
+            // follows the runner's text-size setting) and the button is a
+            // fixed 36pt circle, so the collision was present even at the
+            // smallest content size and did not change shape at the largest.
+            // This is the one label the console exists to make legible
+            // (Nielsen H1 — visibility of system status), so it may never be
+            // silently occluded, cues menu open or closed.
+            //
+            // The fix makes `cuesMenu` a real sibling in this HStack instead
+            // of a floating overlay, so SwiftUI's own layout reserves its
+            // 36pt of trailing space before laying out anything else — the
+            // interval label's already-present `.lineLimit(1)` +
+            // `.minimumScaleFactor` (the row's existing "shrink to fit rather
+            // than clip" contract) now shrinks INTO the space that's actually
+            // left, rather than being drawn full-width and then covered.
+            // `.alignmentGuide(.lastTextBaseline)` keeps the circle centered
+            // against the row's text baseline instead of adopting its own
+            // (bottom-edge) default, which would otherwise sit visibly low.
+            HStack(alignment: .lastTextBaseline, spacing: V5.S.s8) {
                 Text(FaffFmt.clock(sec: Double(elapsedSec)) ?? "0:00")
                     .font(.faffText(34, weight: .semibold))
                     .foregroundStyle(V5.textPrimary)
@@ -787,7 +825,10 @@ struct LiveRunTreadmillV5: View {
                     .font(.faffText(34, weight: .semibold))
                     .foregroundStyle(V5.signal)
                     .lineLimit(1)
-                    .minimumScaleFactor(0.6)
+                    .minimumScaleFactor(0.5)
+                    .layoutPriority(1)
+                cuesMenu
+                    .alignmentGuide(.lastTextBaseline) { d in d[VerticalAlignment.center] }
             }
             // Stage 6 · THIS phase's own remaining time/distance — never
             // conditional on a next phase existing, which is exactly why
