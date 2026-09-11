@@ -1,0 +1,121 @@
+# Independent Review — Historical-Run Cohort Audit (Agent B, Pass 2)
+### Reviewer pass · faff.run · RUNNER_DAVID (`user_uuid = <RUNNER_UUID_REDACTED>`) · 2026-09-09
+
+## Method note
+
+I did not take Pass 2 on trust. I reconnected to `DATABASE_URL_RO` independently (confirmed `current_user = faff_readonly`, zero write attempts), re-resolved the user identity, and re-ran every material SQL claim in the report against production, in most cases writing my own version of the query rather than copy-pasting the report's. For source citations I used `git show 8559245496bf498d3d4b0479e1117ae416988c4a:<path>` exclusively — the pinned commit exists on this checkout and matches `HEAD` (`git rev-parse HEAD` = the pinned SHA), so no drift concern. I traced two mechanisms one hop further than Pass 2 did (the `fmtPaceShared`/`usable()` bound check, and the `PostRunLearnedV5(.strides)` call-site question) and found genuinely new evidence on both. I did not attempt a live render/screenshot of the app — that remains outside what I could responsibly do in a read-only DB+source review, and Pass 2 itself deferred that to "Domain D"; I flag it as still open rather than pretending to close it.
+
+I found the report to be **substantially reliable on its most consequential claims** (the Rule 21 correction, the §2 pace-mechanism correction, and nearly every named case) but **materially wrong on several specific numbers it presented as freshly re-queried `[PROD-QUERY]` facts** — three of them inside the very passage (the `plan_mutations` reconciliation) that the report itself calls "the single most consequential reconciliation finding in this pass." That is worth taking seriously on its own terms: the report's most important correction to doctrine contains errors of exactly the kind Rule 18 and Rule 22 warn about — a table whose row-level detail does not match its own underlying query.
+
+---
+
+## 1. Verdict per material claim
+
+### 1.1 Core reconciliation claims (§1.1, §1.4)
+
+| # | Claim | My verdict | Evidence |
+|---|---|---|---|
+| Canonical/absorbed 2026 split (162/1208.3 mi canonical, 125/971.0 mi absorbed) | **CONFIRMED-BY-ME** | `[PROD-QUERY]` re-ran independently, byte-identical: `canonical_2026=162, canonical_mi=1208.3, absorbed_2026=125, absorbed_mi=971.0`. |
+| Zero orphaned-absorption rows (`absorbed_into_canonical_at` set, `mergedIntoId` null/dangling) | **CONFIRMED-BY-ME** | `[PROD-QUERY]` ran the predicate directly against all 125 absorbed rows for this user: `orphaned_absorbed = 0`. This independently re-confirms the 2026-08-30 canonical-dataloss memory shows no current recurrence for this account. |
+| 09-02 run: 13 phases, phase-sum 5.98 mi vs. 6.41 mi actual, gap 0.43 mi, terminal phase `type=recovery, label="Walk back"` | **CONFIRMED-BY-ME** | `[PROD-QUERY]` re-derived independently: `phase_sum=5.98, mi=6.41, n_phases=13, last_phase_type=recovery, last_phase_label="Walk back"`. Exact match. |
+| Causal dating of 09-02 run against fix commits `8196d683a`/`2cd075a9d` | **CONTRADICTED-BY-ME (timestamps), narrative direction holds** | See §2 write-up below. Report states 10:56:04/10:58:27 PDT; actual `git show -s` timestamps are **10:40:01 PDT and 10:46:07 PDT** — 16 minutes earlier than claimed. The qualitative conclusion (run happened before the fix landed, same morning) still holds, but the specific "~97 minutes" figure is wrong; the real gap is ~80–86 minutes. |
+| `adaptation_shadow_log`: HOLD=16, PROGRESS=8, total 24 | **CONFIRMED-BY-ME** | `[PROD-QUERY]` exact reproduction. |
+| `canonical_adaptation_shadow_log`: 36 rows, zero PROGRESS, breakdown LONG_RUN/HOLD=11, LONG_RUN/REFUSE=1, THRESHOLD_PACE/REFUSE=12, WEEKLY_VOLUME/REFUSE=10, WEEKLY_VOLUME/REGRESS=2 | **CONFIRMED-BY-ME** | `[PROD-QUERY]` exact reproduction, same five rows, same counts. |
+| §6 pace-mechanism correction (`routePhases`/`sectionPieces`/`workoutPhasePieces` chain, all 14 phases of today's run clear the `mi>0 && sec>0` filter) | **CONFIRMED-BY-ME, and independently strengthened** | See §3 write-up below — I traced this one hop further than the report did and found additional corroborating (and one clarifying) piece of evidence the report did not have. |
+| `plan_workouts` population hazard: 4,124 total rows for the user, 103 active | **CONFIRMED-BY-ME** (and resolves an internal Pass-1 inconsistency the report itself flagged but did not resolve) | `[PROD-QUERY]`: `total_pw=4124`, `active_pw=103`. The report's own §6.1 line ("96... (2.3%)") is the wrong figure; §4's "103" is correct. 103/4124 = 2.50%, not 2.3%. |
+| "2026-08-10 alone carries 43 separate `plan_workouts` rows" | **CONTRADICTED-BY-ME (the word "alone")** | `[PROD-QUERY]`: 2026-08-10 does have exactly 43 rows — but so do **75 other distinct dates** in this account's `plan_workouts` history. 43 is the common ceiling this multiply-rebuilt plan history hits on the large majority of its dates, not a unique outlier for that one date. The underlying hazard (unscoped `date_iso` joins multiply-counting) is real and correctly described; "alone" overstates 08-10 specifically. |
+
+### 1.2 The Rule 21 finding — `plan_mutations` (§1.3, the report's own "single most consequential" claim)
+
+This is where I found the report weakest. The **aggregate** conclusion survives; the **supporting table** does not.
+
+| Sub-claim | My verdict | Evidence |
+|---|---|---|
+| `coach_intents`: 321 rows total, zero upward-adaptation reasons | **CONFIRMED-BY-ME on the count and the "zero upward" claim** | `[PROD-QUERY]`: 321 rows confirmed. Scanned all reason values — none resembling `upgrade`/`bump`/`accelerate`/`mark_upgrade`. |
+| `coach_intents`: "21 distinct reasons" | **CONTRADICTED-BY-ME** | `[PROD-QUERY]`: `count(DISTINCT reason) = 22`, not 21. Minor, but it's a number the report presents as freshly counted. |
+| `plan_mutations` has exactly 10 rows, all `positive-drift`, all citing `Research/00a §Volume progression rules`, all `changed_fields` a distanceMi increase | **CONFIRMED-BY-ME** | `[PROD-QUERY]` reproduced all 10 rows in full (`-x` output). Citation and trigger_kind identical on every row. Verified against `plan_workouts.original_distance_mi` that every mutation target's *original* distance is below both the mutation's proposed distance and the workout's *current* distance — these are genuine increases, not lateral edits (e.g. 05-24 long run: original 11 → mutation proposed 12.1 → current 12.0). |
+| **Per-reason-group status breakdown**: report's table says "6% above" group = 6 rows, "4 seen, 2 applied"; "10% above" group = 3 rows, "3 seen"; "9% above" group = 1 row, "1 seen" | **CONTRADICTED-BY-ME** | `[PROD-QUERY]` the actual per-group breakdown is: **"6% above" (em-dash variant) = 6 rows, ALL `status=seen`, ZERO applied. "10% above" (comma variant) = 3 rows, 2 `seen` + 1 `applied`. "9% above" = 1 row, `status=applied`** (not `seen`). The report attributed both `applied` rows to the wrong reason-group and got every group's seen/applied split wrong. The report's *aggregate* claim elsewhere in the same section ("Only 2 of 10 rows carry `status='applied'`; 8 are `status='seen'`") is correct — 8 seen + 2 applied = 10, confirmed — but the table breaking that down by reason-group is fabricated in its details, not merely imprecise. |
+| "All 10 rows are dated 2026-05-21 through 2026-05-29" | **CONTRADICTED-BY-ME** | `[PROD-QUERY]`: the mutation-creation timestamps (`ts`) run **2026-05-21 through 2026-05-25** only (max `ts` = 2026-05-25 18:27:11+00). If instead read as the *target workout's* date (`plan_workouts.date_iso`), the range is **2026-05-21 through 2026-06-01** — the last mutation (applied, `status=applied`) targets a 06-01 workout. Neither reading produces "through 05-29." This is a small error but it sits inside a paragraph explicitly built to correct doctrine's own sloppy date-scoping — the irony is worth flagging on its own terms. |
+| All 10 target `plan_workouts` rows belong to plans that are now archived | **CONFIRMED-BY-ME** | `[PROD-QUERY]` joined all 10 `workout_id`s to `plan_workouts`→`training_plans`: every row resolves to `plan_id = 8599e3a1-07ab-4610-9f77-eae6a6f80032`, and `archived_iso IS NOT NULL` for all 10. |
+| (New, not examined by either pass) Do the 2 "applied" mutations' proposed distances match what the plan_workouts row currently holds? | **UNKNOWN, newly surfaced** | `[PROD-QUERY]`: the two `applied` rows propose `12.1` and `4.9` mi; the corresponding `plan_workouts.distance_mi` today reads `12.0` and `5.0` — close but **not identical** to the mutation's own proposed value, and also not identical to `original_distance_mi` (11 and 4.5). This suggests a *further* rounding/repricing pass touched these two rows after the mutation applied (unsurprising given `EVENT-2`-era repricing exists elsewhere in this codebase), but I did not trace what did the rounding. Neither pass examined this; I flag it as a genuinely open question rather than resolving it, since it does not change the core finding (both rows still reflect an increase over `original_distance_mi`, just not exactly the mutation's own number). |
+
+**Net effect on Rule 21**: the report's headline correction — *"the upward mechanism it describes fired at least 10 times, with 2 actually applied, five months ago, in a table the doctrine's own audit evidently never queried"* — **survives my independent check.** The aggregate 8-seen/2-applied split, the archived-plan caveat, and the doctrine-contradicts-Rule-22 framing are all sound. What does **not** survive is the specific reason-group/status table and the specific date range presented as freshly-queried supporting detail. This matters because it is precisely the failure mode Rule 18 names ("a check that hardcodes both sides only proves the test agrees with itself") applied to prose rather than code — a correction to doctrine's own sloppy accounting that is itself not fully accurate in its details.
+
+### 1.3 Named cases (§5.1–§5.5, §6)
+
+| Case | My verdict | Evidence |
+|---|---|---|
+| 5.1 — 6.18 mi run matched to 4.5 mi prescription via asymmetric `[0.7×, 2.0×]` band, `OVERRUN-MATCH-1`/`EXECIDENT-2` comments, "2 of 159" quote | **CONFIRMED-BY-ME, exactly** | `[SOURCE]` `git show ...ingest/workout/route.ts` lines 213–228: comment text reproduces verbatim, including the David quote ("Mondays run did match it just went longer") and "2 of 159 canonical rows carry `planWorkoutId`." `[SOURCE]` `_plan_type_stamp.test.ts` line 13: `expect(distanceMatchesPlan(6.18, 4.5)).toBe(true)` — this literal run is the test's own worked example. |
+| 5.2 — 09-03 dual-run richness tie-break, `richer()`/`pickRichest()` phase-count-first logic | **CONFIRMED-BY-ME, exactly** | `[SOURCE]` `day-resolver.ts:190-202` confirms phase-count → split-count → distance tie-break order verbatim. `[PROD-QUERY]` re-pulled both 09-03 rows: treadmill `4.71mi/21 phases/4 splits/indoor=true/completed/avgHr=129`; apple_watch `4.48mi/0 phases/5 splits/indoor=false/blank status/avgHr=140` — exact match to the report's table, including the 11 bpm HR gap. |
+| 5.3 — race chip time (1:41:53) vs. raw watch elapsed (1:42:33), 40s gap | **CONFIRMED-BY-ME, exactly** | `[PROD-QUERY]`: `races.actual_result.finishS=6113` (1:41:53); raw run `durationSec=6153` (1:42:33). 6153−6113=40. Exact. |
+| 5.4 — pause data captured at submission, discarded before storage; `pausedSec` etc. absent from every canonical row | **CONFIRMED-BY-ME on the storage-loss claim; CONTRADICTED-BY-ME on "every single payload" framing** | `[PROD-QUERY]`: zero canonical 2026 rows carry `pausedSec`/`pauseSec`/`elapsedSec`/`pauseCount` — confirmed exactly as stated. But re-querying **all** `watch_completion` payloads (not just the 8 the report selected) in the 2026-08-26→09-09 window turned up **13 total rows, 5 of which carry no `pausedSec` field at all** (two on 08-27/08-28, three on 09-02). The report's phrase "Every single watch-completion payload in the 14-day cohort carries a non-zero `pausedSec` — 8 of 8 sampled" is true of its curated 8-row sample but not true of the full population in that window. This doesn't overturn the core finding (the field never survives to `runs.data` regardless), but the universal framing overstates what was actually checked. (Date attribution across the two: when I first queried with `ts::date` in UTC I got a mismatch against the report's 09-03/08-29 labels; re-querying with `AT TIME ZONE 'America/Los_Angeles'` resolved it exactly — the report's dates are PDT-local and correct once you convert. I flag this so a future reviewer doesn't repeat my false alarm.) |
+| 5.5 — "14 PROGRESS outcomes" unreproducible; actual counts 8 and 0/36 | **CONFIRMED-BY-ME** | Covered under §1.1's shadow-log rows above — both counts reproduced exactly, and I likewise could not find "14" attached to "PROGRESS" anywhere I checked. |
+| §6 — today's run: all 14 raw phases carry nonzero `actualDistanceMi`/`actualDurationSec` | **CONFIRMED-BY-ME, exact table match** | `[PROD-QUERY]` reproduced the full 14-row phase table (index, type, label, completed, mi, sec, pace) — every value matches the report's table exactly, including the blank pace on the `overtime` phase. |
+| §6 — `routePhases` gate is `indoor===true` only; `sectionPieces` requires `usable.count > 1`; `breakdownPieces = sectionPieces.isEmpty ? workoutPhasePieces : sectionPieces` | **CONFIRMED-BY-ME, at source** | `[SOURCE]` `route.ts:1790` (`routePhases: indoor ? [] : grade.phases.flatMap(...)`), `TodayAfterV5.swift:1578` (`sectionPieces.isEmpty ? workoutPhasePieces : sectionPieces`), `TodayAfterV5.swift:1370-1376` (`usable = model.routePhases.filter{mi>0&&sec>0}; guard usable.count > 1 else { return [] }`). All three citations check out verbatim. |
+
+### 1.4 CLAUDE.md doctrine cross-checks (§1.3)
+
+| Rule | My verdict | Evidence |
+|---|---|---|
+| Race-data source-of-truth section, corroborated by the 40s chip-vs-watch gap | **CONFIRMED-BY-ME** | Same evidence as Case 5.3 above; doctrine text and DB evidence genuinely agree. |
+| Rule 14 (query names its population), the report's own plan_workouts finding framed as a fresh instance | **CONFIRMED-BY-ME (the class is real)** | Independently reproduced 4,124/103; the shape (unscoped `date_iso` join over an archived-plan history) matches Rule 14's own worked example structurally. |
+| Rules 6, 7, 10, 16 — explicitly marked NOT_RE_TESTED by the report | **UNTESTABLE by me too, same reasons** | I did not re-open these either; they're write-path/registry/HR-anchor questions outside a run-cohort data audit's reasonable scope for one review pass, and the report is honest that it skipped them rather than silently assuming they're clean. No objection. |
+
+---
+
+## 2. The fix-commit timing discrepancy, in detail
+
+The report's §1.1 row 4 states: *"Pass 2 pulled `startUtc` for that run (`2026-09-02T16:19:46Z` = 09:19:46 PDT) and compared it against the two fix commits' authored timestamps (`8196d683a` at 10:56:04 PDT, `2cd075a9d` at 10:58:27 PDT, same day)... The run happened ~97 minutes before the fix landed."*
+
+I re-ran `git show -s --format='%H %ai %s'` against both full hashes directly:
+
+```
+2cd075a9d7d760675d327b1034d3ec3983959f4e 2026-09-02 10:46:07 -0700 fix(watch): draw a Done button on the finish summary and the recovery receipt
+8196d683a5dd12d955398935c506c4e1e48969a3 2026-09-02 10:40:01 -0700 fix(watch): restore Pause and End run during recovery — the run could not be ended
+```
+
+Actual authored times: **10:40:01 and 10:46:07 PDT** — not 10:56:04 and 10:58:27. The run's `startUtc` (09:19:46 PDT, confirmed independently) is still before both commits, so the qualitative claim ("this run is very likely the actual triggering incident") is unaffected. But the specific "~97 minutes" figure is wrong; the actual gap to the first fix commit is **~80 minutes**, to the second **~86 minutes**. I cannot tell whether this is a transcription slip or a different local-time computation, but it is a `[SOURCE: git show -s]`-tagged factual claim that does not reproduce.
+
+## 3. The §2 pace-mechanism correction — independently extended
+
+I traced this one hop further than Pass 2 did, into the two specific things it flagged as unresolved: what `fmtPaceShared` does to these particular numeric values, and whether a sibling component competes for the same pixels.
+
+**`fmtPaceShared`/`usable()` bound check** — `[SOURCE]` `web-v2/lib/format/run.ts:136-138,200-202`:
+```
+function usable(v) { return v != null && Number.isFinite(v) && v > 0; }
+export function fmtPace(sPerMi) { return usable(sPerMi) ? minSec(sPerMi) : null; }
+```
+No upper or lower bound beyond "finite and positive." Today's run's phase paces range from 305 s/mi (the 8-second final walk-back) to 1004 s/mi (a 61-second walk-back) — all finite and positive. **`fmtPaceShared` would not blank any of these values.** This closes one of the two things Pass 2 flagged as "genuinely unresolved."
+
+**Does `avgSecPerMi` itself get nulled for a stride/recovery phase before reaching `fmtPaceShared`?** `[SOURCE]` `web-v2/lib/execution/verdict.ts:311`: `const avg = n.actualPaceSPerMi;` — unconditional, no type branch. `[SOURCE]` `web-v2/lib/runs/run-shape.ts:1701`: `actualPaceSPerMi: pos(p.actualPaceSPerMi)`, where `pos()` (line 1073) is `n != null && n > 0 ? n : null` — again type-blind. Combined with the DB confirmation that every one of today's 14 raw phases carries a positive `actualPaceSPerMi`, **the whole chain from raw storage to the wire's `actual_pace` field is, on the evidence available, type-blind and should carry a real value for every phase of today's run.** This is new, independently-derived corroboration the report did not have.
+
+**The `PostRunLearnedV5(.strides)` sibling-component question** — `[SOURCE]` `git grep -n "PostRunLearnedV5(model:"`: the call `PostRunLearnedV5(model: pr, includes: .strides)` exists **only in `RunDetailV5.swift`** (line 318), not in `TodayAfterV5.swift`. This resolves part of the report's open question for the specific screen §6 is about (the post-run "Today" screen, fed by `/api/v5/today` and rendered by `TodayAfterV5.swift`): there is no competing strides component on that screen. `sectionPieces`/`breakdownPieces` is the sole owner of its "Piece by Piece" pixels.
+
+But tracing this surfaced something **neither pass examined**, on the *other* screen (Run Detail): `[SOURCE]` `RunDetailV5.swift:757-763`, comment tagged `STRIDE-DEDUP-1 (2026-09-05)`:
+```swift
+let nonStride = phases.filter { $0.pace_shape != "effort" }
+guard nonStride.count > 1 else { return [] }
+```
+Run Detail's own phase list (`repPieces`) **explicitly excludes strides**, because `PostRunLearnedV5(.strides)` draws them separately there. Today's screen (`sectionPieces`) has no such filter — it includes strides in the same list. **These two screens genuinely differ in what they show for the same run's strides**, and that difference is real, doctrine-cited, and by design — not itself a bug, but a fact worth knowing if anyone is comparing what "Today" showed against what "Run Detail" shows for the same session.
+
+Separately, within `TodayAfterV5.swift`'s `RepPiece` construction (`[SOURCE]` lines ~1449-1465), I found a distinction the report did not draw: `actualPace` is mapped unconditionally from `p.actualPace`, but its sibling `askedPace` is **conditionally nil** — `(p.type == "work" && p.paceShape != "effort") ? paceContractText(...) : nil`. A stride (`paceShape=="effort"`) or a recovery phase (`type != "work"`) is **intentionally** given a blank *asked/target* pace, per the code's own comment ("a recovery jog's target is a band the watch needed to draw something, not a real prescription, and a stride is never pace-graded at all"). This gives whoever renders the live screen next a sharper, falsifiable question than either pass posed: **if a stride or walk-back row reads blank on the phone, check first whether it's the actual-pace slot or the target/range slot that's empty** — one is a doctrine-intended omission, the other would be the genuine defect the handback originally worried about. Neither pass drew this distinction; I offer it as a refinement, not a contradiction, of the §2 correction.
+
+---
+
+## 4. Explicit list of disagreements with the report
+
+1. **The `plan_mutations` per-reason-group status table (§1.3, Rule 21 writeup) is wrong in its row-level detail**, even though its aggregate rollup (8 seen / 2 applied) and its overall correction to doctrine are right. The two `applied` rows belong to the "10% above" and "9% above" reason groups, not the "6% above" group as tabulated; the "6% above" group is 6/6 `seen`, not "4 seen, 2 applied."
+2. **The date range "2026-05-21 through 2026-05-29" for the `plan_mutations` rows does not match either plausible reading** of the data — mutation-creation timestamps run through 05-25, target-workout dates run through 06-01.
+3. **`coach_intents` has 22 distinct reasons, not 21.**
+4. **The fix-commit timestamps for `8196d683a`/`2cd075a9d` are wrong by ~16 minutes each**, and the derived "~97 minutes" gap should read closer to 80–86 minutes. The causal ordering conclusion is unaffected.
+5. **"2026-08-10 alone carries 43... rows" overstates uniqueness** — 75 dates in this account's `plan_workouts` history tie at that same count; 08-10 is a representative example of the hazard, not a singular outlier.
+6. **"Every single watch-completion payload in the 14-day cohort carries a non-zero `pausedSec` — 8 of 8 sampled" is true only of the curated subset.** The full population of `watch_completion` rows in the same window (13 total) includes 5 with no `pausedSec` field at all. The report's own "sampled" qualifier is honest about not claiming universality, but the sentence immediately before it ("Every single... payload in the 14-day cohort") does claim it, and that stronger claim does not hold.
+7. **§6.1's own internal figure ("96... 2.3%") is wrong**; the correct figure, which the report uses correctly elsewhere in the same document (§4), is 103 / 2.50%. The report flagged this inconsistency itself but did not resolve it — I have now resolved it in the report's favor for the 103 figure.
+
+None of these seven disagreements overturn the report's central conclusions — the Rule 21 correction, the §2 pace-mechanism correction, the plan_workouts population hazard, and every named case (5.1–5.5) all independently reproduce. But item 1 in particular sits inside a passage whose entire rhetorical point is "doctrine's own audit trail has the blind spot Rule 22 says to watch for" — and that passage itself has a smaller instance of the same blind spot: a table presented as freshly `[PROD-QUERY]`-verified that, on independent re-query, does not match the underlying rows. That is worth surfacing exactly because of what this report is arguing about the discipline of checking your own claims.
+
+## 5. What remains genuinely open (my assessment, not just repeating the report's)
+
+- **No live render was performed by either pass or by me.** The §2/§6 mechanism trace is now corroborated two independent ways (Pass 2's trace, and my extension of it into `avgSecPerMi`/`fmtPaceShared`/`pos()`), and the `askedPace`-vs-`actualPace` distinction gives a sharper thing to check — but "the code as pinned should show pace" is still not the same fact as "the phone showed pace." I did not attempt a build+simulator render; doing so responsibly (build, boot, install, screenshot, and confirm the deployed server matches the pinned commit) is a nontrivial undertaking I judged out of scope for a read-only DB/source reconciliation pass, consistent with how both prior passes handled it (deferred to "Domain D"). This should not be read as low-priority — it is the one thing that would actually settle the controversy the handback opened with.
+- **The two-applied-mutation rounding gap** (proposed 12.1/4.9 vs. current plan_workouts values 12.0/5.0) is new and unexplained by any pass so far.
+- **`data.status = 'abandoned'` consumer trace, WALKBACK-2 physical-device verification, and the 5 non-`pausedSec` watch_completion rows' provenance** all remain open, as both passes already disclosed.
