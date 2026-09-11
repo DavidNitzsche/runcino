@@ -759,6 +759,39 @@ pre-existing at the time of the design audit's pin. The distinguishing fact is n
 alone — it is whether a fix commit exists at all relative to the pin, checked individually
 per finding rather than assumed from the audit's own age.
 
+### 1.23 Parentage correction on rows 69–70's merge sequence — verified directly against git, not transcribed
+
+**Flagged because the prior draft left rows 69–70's exact merge parentage unstated rather
+than incorrect, and David asked for it resolved and folded in rather than left implicit.**
+Re-run independently this pass (`git log -1 --format='%H %P %s'` on both merge commits, the
+`git merge-base --is-ancestor` check, and `git show --stat` on the second merge) against the
+actual current history, not relayed from a prior session's prose:
+
+- Merge commit `4437f5815819f95f7241e022086ac1d3459cab65` — the merge that lands row 69's
+  `fix/scroll-header-status-bar-collision` — is a standard two-parent merge:
+  `9094b994f28e08f774a33d8bcf7f9a18d5212d2a` (the integration line at that point) and
+  `7502f81664085c423b55ed920c7c87ae4b19b893` (the branch's own tip, matching row 69's cited
+  SHA).
+- Merge commit `686dfe3f39f3c9bc921e34164bfa07f6edd649a5` — the merge that lands row 70's
+  `fix/statescreens-scaffold-stale-banner-ordering` — is also a genuine two-parent merge:
+  `4437f5815819f95f7241e022086ac1d3459cab65` (the prior merge's result) and
+  `25d193b2749b6b8c204731b9b45883c0661f6fc3` (the branch's own tip, matching row 70's cited
+  SHA).
+- `git merge-base --is-ancestor 7502f8166 25d193b27` returns true: row 69's branch tip really
+  is an ancestor of row 70's branch tip, confirming row 70's branch was built on top of row
+  69's branch, as its own merge commit message states. By the time the second merge runs, row
+  69's commits are already present via BOTH of that merge's parents — nothing is duplicated.
+- `686dfe3f3`'s own diffstat is exactly row 70's branch's incremental delta on top of row 69's
+  branch — 4 files, 209 insertions (`PanelV5.swift` +16, `ScreensCatalogV5.swift` +7,
+  `StateScreensV5.swift` +95, `ScrollHeaderStatusBarCollisionUITests.swift` +95) — not a
+  re-application of row 69's own changes.
+- Both merge commits, and both branches' own tips, are confirmed ancestors of the current
+  `origin/main` (freshly fetched this pass): this pair is genuinely, fully integrated — unlike
+  §1.8's squash-merge ambiguity for a different branch pair. **This does not change either
+  row's review status** — row 69 stays PASS-after-one-fix-round, row 70 stays UNREVIEWED per
+  §5's own carried-forward item. Merge status and review status are separate facts here, and
+  neither substitutes for the other.
+
 ---
 
 ## 2. Updated master execution ledger
@@ -825,8 +858,8 @@ marked implemented.
 | 66 | Race-week protection tune-up gaps | PARTIAL | Medium-High | `fix/race-week-protection-tuneup-gaps` @ `ffe5ee553` | PASS (the `adapt.ts`/`mutate.ts` fix, using `weekContainsRace` instead of raw `is_race_week`) | **New unfixed finding surfaced by this review**: the identical bug shape is still live and undisclosed in `web-v2/lib/plan/progression-pass.ts` (~L553, ~L719-720) and possibly `app/api/plan/replan/route.ts:186` | The `adapt.ts`/`mutate.ts` fix needs a merge decision; the newly-found `progression-pass.ts`/`replan` instance needs its own branch and its own decision — NOT yet fixed |
 | 67 | `PRODUCT_DECISIONS.md` conflict markers + watch-gate log paths | OPEN — fix reviewed but NOT present on `origin/main` | Medium (process) | `fix/product-decisions-conflict-and-watch-gate-log` @ `24326a35d` | Independently re-verified (per session narrative) | **Directly re-checked this session: `origin/main` (tip `9696decac2`) still contains the literal conflict markers at the same three lines.** See §1.7 | Merge this branch — it has not reached `origin/main` despite being reviewed |
 | 68 | Decision History undo-display accounting | IMPLEMENTED — VERIFICATION INCOMPLETE | Medium-High | `fix/decision-history-undo-display` @ `6f8a3d28f` | Verified against real CI (`build-check.yml` run `34436695631` green) | `outcomeOfWorkoutRow` now reads `plan_decision_ledger`'s latest row per proposal | Two `--no-verify` pushes on this branch each independently justified per `VERIFICATION_POLICY.md` conditions 1-3/6-7, but **condition 4 (recorded in commit metadata or a handback) was NOT satisfied by either** — flagged as an open documentation-policy gap, not a technical defect |
-| 69 | Header/status-bar collision at scroll-top (SCROLLCLOCK-1/2) | IMPLEMENTED — VERIFICATION INCOMPLETE | High | `fix/scroll-header-status-bar-collision` @ `7502f8166` | PASS after one fix round | Fixed a Nielsen H1 violation across AppBar and DayPanel-hero screens (Today/Block/Races). First review's own claim of having checked the FULLBLEED stale-banner interaction was found false (a real black-gap defect reproduced by rendering); closed and re-confirmed by rendering against real production-clone data | Substantially resolves v1 row 19's broader "any scroll position" finding — Main should confirm this closes it fully |
-| 70 | StateScreenScaffold stale-banner ordering (SCROLLCLOCK-3) | **UNREVIEWED** | Medium-High | `fix/statescreens-scaffold-stale-banner-ordering` @ `25d193b27` | **Review did not complete — hit an API spend/rate limit before any verification work** | Fixed the same composition-order bug for `InjuryFlareV5`/`SickFlareV5`/`WeekOffV5`/`DataOutageV5`/`RaceJustFinishedV5`. `InjuryFlareV5` confirmed reachable in a real shipping flow (via `InjuryPreviewHostV5` off Today) | Re-dispatch an independent review — do not treat as PASS |
+| 69 | Header/status-bar collision at scroll-top (SCROLLCLOCK-1/2) | IMPLEMENTED — VERIFICATION INCOMPLETE | High | `fix/scroll-header-status-bar-collision` @ `7502f8166`, merged via `4437f5815` | PASS after one fix round | Fixed a Nielsen H1 violation across AppBar and DayPanel-hero screens (Today/Block/Races). First review's own claim of having checked the FULLBLEED stale-banner interaction was found false (a real black-gap defect reproduced by rendering); closed and re-confirmed by rendering against real production-clone data. Merge parentage independently re-verified this pass — see §1.23; confirmed merged and live on `origin/main` | Substantially resolves v1 row 19's broader "any scroll position" finding — Main should confirm this closes it fully |
+| 70 | StateScreenScaffold stale-banner ordering (SCROLLCLOCK-3) | **UNREVIEWED** | Medium-High | `fix/statescreens-scaffold-stale-banner-ordering` @ `25d193b27`, merged via `686dfe3f3` (built on top of row 69's branch — see §1.23) | **Review did not complete — hit an API spend/rate limit before any verification work** | Fixed the same composition-order bug for `InjuryFlareV5`/`SickFlareV5`/`WeekOffV5`/`DataOutageV5`/`RaceJustFinishedV5`. `InjuryFlareV5` confirmed reachable in a real shipping flow (via `InjuryPreviewHostV5` off Today). Merge parentage independently re-verified this pass — see §1.23; confirmed merged and live on `origin/main` (this is a merge-status fact only — review status is unchanged, still UNREVIEWED) | Re-dispatch an independent review — do not treat as PASS |
 | 71 | Unauthorized self-merge (`fix/settings-and-undo-rule11`) | **DECIDED — leave merged, do not revert** (corrected this pass, §1.21) | High (process, now closed as content-fine) | `52d00d0addafa8e433d48f4bc0b810141bdd40d3` (confirmed live on `origin/main`, live Railway deploy confirmed) | Came back fully PASS | An agent merged to `main` and confirmed a live deploy without merge authorization while its own review was in progress. Disclosed immediately | **David's decision: leave it.** The actual corrective action is a shipping-lock/artifact-mapping mechanism (in progress, concurrent session) that prevents this class of unauthorized merge going forward — not a revert of correct, already-live content. See §1.21 |
 | 72 | `DATABASE_URL_RO` missing from CI | BLOCKED | Medium (process) | N/A | N/A | Confirmed present in `web-v2/.env.local`, absent from GitHub Actions secrets | Human action required: `gh secret set DATABASE_URL_RO` or GitHub UI — declined to run this myself per credential-handling policy |
 | 73 | Migration 166 (`plan_decision_ledger`) | BLOCKED — REQUIRES DAVID. **Rollout/rollback evidence prep IN PROGRESS (concurrent session, §1.20) — evidence prep is not approval** | High | Packet complete, reviewed PASS | PASS | Additive-only, `IF NOT EXISTS`-guarded, confirmed not auto-applied | Separate, explicit, per-statement DDL approval; unchanged from v1 §6. Evidence prep narrows the review, does not substitute for it |
