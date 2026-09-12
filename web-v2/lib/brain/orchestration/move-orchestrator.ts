@@ -259,7 +259,7 @@ export function priceOneWeek(
   let weeklyMi = 0;
   let longRunMi = 0;
   for (const d of inWeek) {
-    if (d.type === 'race' && week.isRaceWeek) continue;
+    if (d.type === 'race' && week.containsRace) continue;
     weeklyMi += d.distanceMi;
     if (d.isLong && d.type !== 'race') longRunMi = Math.max(longRunMi, d.distanceMi);
   }
