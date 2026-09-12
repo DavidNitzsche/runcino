@@ -67,6 +67,7 @@ import type {
   OptionAppraisal, PlanAdjudication,
 } from './adjudication/contract';
 import type { RenderedHistory } from './history-shapes';
+import { weekContainsRace } from './race-week';
 import { coldStartFor, type RaceDistanceKey } from './adjudication/cold-start';
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -326,7 +327,22 @@ export function mpMiOfLabel(subLabel: string | null | undefined): number {
   return m ? Number(m[1]) : 0;
 }
 
-/** Composed weeks → the adjudicator's `PlannedWeek[]`. */
+/**
+ * Composed weeks → the adjudicator's `PlannedWeek[]`.
+ *
+ * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · this used to carry `isRaceWeek`
+ * alone (goal-only, `ComposedWeekLike.isRaceWeek`'s own header in
+ * `generate.ts`: `isRaceWeek = wi === totalWeeks - 1`) with no `containsRace`
+ * at all, which means every `_sweep_allusers.test.ts` archetype that embeds a
+ * B/C mid-block race fed `adjudicate.ts`'s `containsRaceOf` fallback
+ * `undefined ?? isRaceWeek` — false for every tune-up week in the entire
+ * corpus. Per Rule 15, that made the `containsRaceOf` branches at
+ * `detectStackedStress`'s `longStep` null-out and `checkPromotion`'s
+ * `executionIdentity` population UNREACHABLE by any archetype with a tune-up,
+ * however many archetypes the sweep ran. Fixed by computing it here from the
+ * composed week's own `days`, the same `weekContainsRace` detector every
+ * other consumer of this shape now uses.
+ */
 export function plannedWeeksFrom(weeks: readonly ComposedWeekLike[]): PlannedWeek[] {
   return weeks.map((w) => ({
     weekStartISO: w.startISO,
@@ -340,6 +356,7 @@ export function plannedWeeksFrom(weeks: readonly ComposedWeekLike[]): PlannedWee
     stressors: stressorsOfComposedWeek(w),
     isTaper: w.phase === 'TAPER',
     isRaceWeek: w.isRaceWeek,
+    containsRace: weekContainsRace(w),
   }));
 }
 

@@ -207,7 +207,7 @@ describe('BLOCK-STRATEGY-1 · brief §8 invariants', () => {
       if (w.primaryProgressionLever != null) continue;
       expect(w.proposedChange, `${w.weekStartISO} names no lever but proposes a step`).toBeNull();
       expect(w.rationale.length, `${w.weekStartISO} explains nothing`).toBeGreaterThan(10);
-      expect(['HOLD', 'CUTBACK', 'TAPER', 'RACE', 'RECOVERY', 'BUILD']).toContain(w.role);
+      expect(['HOLD', 'CUTBACK', 'TAPER', 'RACE', 'CONTROLLED', 'RECOVERY', 'BUILD']).toContain(w.role);
     }
     // A cutback never proposes a step: the reduction IS the work.
     for (const w of strategy.weeks.filter((x) => x.role === 'CUTBACK')) {
@@ -221,5 +221,78 @@ describe('BLOCK-STRATEGY-1 · brief §8 invariants', () => {
       expect(c, `"${c}" is not a path#symbol reference`).toMatch(/\.ts#/);
     }
     expect(strategy.adaptationPolicy).toMatch(/shadow-only/);
+  });
+});
+
+/**
+ * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · a B/C tune-up embedded mid-block
+ * used to resolve `roleOf`'s `isRaceWeek` off the raw goal-only column, so it
+ * fell through to ordinary BUILD/HOLD/CUTBACK arithmetic and, if the week
+ * also happened to read as `role === 'RACE'` some other way, would have
+ * carried the GOAL week's narrative verbatim — "the work is behind you",
+ * "everything that prepares you has already happened" — which is false of a
+ * tune-up embedded four-plus weeks before the goal.
+ *
+ * FALSIFIED (2026-09-11): reverting `roleOf` to `if (w.isRaceWeek) return
+ * 'RACE'; if (w.phase === 'TAPER') …` with no `weekContainsRace` branch makes
+ * `tuneUpWeek.role` read `'BUILD'` or `'HOLD'` off raw arithmetic for this
+ * exact fixture (the Dodgers 10k week composes with a volume step inside
+ * MATERIAL_FRACTION of the week before it), and the narrative assertions
+ * below still passed against that wrong role, because nothing was checking
+ * the role's NAME — only whether some rationale existed. Restoring the branch
+ * makes the role assertion itself the falsifier.
+ */
+describe('RACEWEEK-CONSOLIDATION-1 · a mid-block tune-up is CONTROLLED, not RACE', () => {
+  const DODGERS: NonNullable<ComposePlanInput['midBlockRaces']> = [
+    { slug: 'dodgers', name: 'Dodgers 10k', date: '2026-09-27', distanceMi: 6.21, goalPaceSec: null, priority: 'C' },
+  ];
+
+  function withTuneUp(): BlockStrategy {
+    const c = composePlan(marathonInput({ midBlockRaces: DODGERS }));
+    finalizeComposedPlan(c, 26.2, 'advanced');
+    return (c.authoredState as Record<string, unknown>).block_strategy as BlockStrategy;
+  }
+
+  it('the tune-up week reads CONTROLLED, never RACE, and the goal week is unaffected', () => {
+    const strategy = withTuneUp();
+    const raceDayWeek = strategy.weeks.find(
+      (w) => w.weekStartISO <= '2026-09-27' && w.weekStartISO >= '2026-09-21',
+    );
+    expect(raceDayWeek, 'no composed week covers the Dodgers 10k date').toBeTruthy();
+    expect(raceDayWeek!.role).toBe('CONTROLLED');
+
+    // The GOAL week — the block's last — must still resolve exactly as
+    // before: goal-only `isRaceWeek` is untouched, only the case that used to
+    // read as ordinary arithmetic is fixed.
+    const goalWeek = strategy.weeks[strategy.weeks.length - 1];
+    expect(goalWeek.role).toBe('RACE');
+  });
+
+  it('the tune-up week never claims the block is already over', () => {
+    const strategy = withTuneUp();
+    const w = strategy.weeks.find((x) => x.role === 'CONTROLLED')!;
+    expect(w).toBeTruthy();
+    // The exact phrases the GOAL week's narrative uses — asserting their
+    // ABSENCE here is Rule 13's warning ("an absence-only assertion cannot
+    // see wreckage"), so this also asserts the narrative says something
+    // affirmatively about rehearsal/evidence, not just that it omits the
+    // wrong sentence.
+    expect(w.answers.developsPrevious).not.toMatch(/does not build on anything|work is behind you/i);
+    expect(w.answers.preparesForRace).not.toMatch(/already happened/i);
+    expect(w.rationale).not.toMatch(/already happened/i);
+    expect(w.answers.developsPrevious).toMatch(/tests|proving|evidence/i);
+    expect(w.answers.preparesForRace).toMatch(/rehearsal|fitness check/i);
+    expect(w.rationale).toMatch(/not the goal/i);
+  });
+
+  it('a block with no mid-block race at all never produces a CONTROLLED week', () => {
+    // Negative check: `weekContainsRace` must not fire on a plain marathon
+    // block. Embedding a race legitimately reshapes NEARBY weeks' own
+    // mileage (`embedMidBlockRaces` redistributes volume around it), so this
+    // does not assert every other week is byte-identical — only that the new
+    // branch stays silent with nothing to detect.
+    const plain = composedWithStrategy().strategy;
+    const controlled = plain.weeks.filter((w) => w.role === 'CONTROLLED');
+    expect(controlled, 'a goal-only block produced a CONTROLLED week with no race in it').toEqual([]);
   });
 });

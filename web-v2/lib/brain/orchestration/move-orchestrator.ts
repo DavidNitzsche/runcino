@@ -361,12 +361,31 @@ interface MutableLiveWeek {
   mpMi: number;
   isTaper: boolean;
   isRaceWeek: boolean;
+  containsRace: boolean;
   rows: Array<{ id: string; dateISO: string; type: string; distanceMi: number; stressor: string | null }>;
 }
 
+/**
+ * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · this used to set `wk.isRaceWeek =
+ * true` off `d.type === 'race'` alone — ANY race day, goal or B/C tune-up —
+ * which is `containsRace` under the wrong name (Rule 16). It fed straight
+ * into `detectSimultaneousStressAddition`'s `window.every((w) => w.isTaper ||
+ * w.isRaceWeek)` REFUSAL check (`adjudicate.ts`), the same "is this a
+ * prescribed dip" question that file's own header argues at length must stay
+ * GOAL-only — a B/C tune-up week over-classified as a dip makes that refusal
+ * fire MORE often, which suppresses a real one-stressor-at-a-time finding
+ * `conflictCheck` should have raised on a reschedule move, not the safe
+ * direction.
+ *
+ * Fixed by threading the real goal-week starts through from `PlanShape` (the
+ * one place this pure day-map function did not otherwise have it) and
+ * carrying `containsRace` as its own field, exactly as `adjudicate.ts` and
+ * `live-sequence.ts` now do for the same shape.
+ */
 export function liveWeeksFrom(
   days: Map<string, PlanDay>,
   taperDays: ReadonlySet<string>,
+  goalWeekStarts: ReadonlySet<string> = new Set(),
 ): readonly LiveWeek[] {
   const byWeek = new Map<string, MutableLiveWeek>();
   const sorted = [...days.values()].sort((a, b) => (a.dateISO < b.dateISO ? -1 : 1));
@@ -376,7 +395,7 @@ export function liveWeeksFrom(
     if (!wk) {
       wk = {
         weekStartISO: start, weeklyMi: 0, longestMi: 0, stressors: [], mpMi: 0,
-        isTaper: false, isRaceWeek: false, rows: [],
+        isTaper: false, isRaceWeek: goalWeekStarts.has(start), containsRace: false, rows: [],
       };
       byWeek.set(start, wk);
     }
@@ -384,7 +403,7 @@ export function liveWeeksFrom(
     if (d.distanceMi > wk.longestMi) wk.longestMi = d.distanceMi;
     const stressor = stressorNameOf(d.type, d.subLabel, d.isQuality, d.isLong);
     if (stressor) wk.stressors.push(stressor);
-    if (d.type === 'race') wk.isRaceWeek = true;
+    if (d.type === 'race') wk.containsRace = true;
     if (taperDays.has(d.dateISO)) wk.isTaper = true;
     wk.rows.push({
       id: d.id, dateISO: d.dateISO, type: d.type, distanceMi: d.distanceMi, stressor,
@@ -566,7 +585,13 @@ export async function readjudicateMoveWith(
   checks.DEFERRALS = deferralCheck(queue, planVersion);
 
   /* ── 9 · CONFLICTS ─────────────────────────────────────────────────────── */
-  checks.CONFLICTS = conflictCheck(tl, after, taperDaysOf(shape), refusal, chosen, move);
+  // RACEWEEK-CONSOLIDATION-1 · the real goal-week starts, from the plan's own
+  // `is_race_week` column — the ONLY thing that lets `liveWeeksFrom` tell a
+  // goal week's prescribed dip apart from a B/C tune-up that merely races.
+  const goalWeekStarts = new Set(
+    shape.weeks.filter((w) => w.isRaceWeek).map((w) => mondayOf(w.startISO)),
+  );
+  checks.CONFLICTS = conflictCheck(tl, after, taperDaysOf(shape), refusal, chosen, move, goalWeekStarts);
 
   /* ── a better date ─────────────────────────────────────────────────────── */
   const betterDate = betterDateOf(options, chosen, move);
@@ -1047,6 +1072,7 @@ export function conflictCheck(
   refusal: { dateISO: string; reason: string; cause: string } | null,
   chosen: RescheduleOption | null,
   move: ProposedMove,
+  goalWeekStarts: ReadonlySet<string> = new Set(),
 ): CheckOutcome {
   const f: ReadjudicationFinding[] = [];
 
@@ -1067,8 +1093,8 @@ export function conflictCheck(
     ));
   }
 
-  const beforeSeq = findSequenceFindings(liveWeeksFrom(tl.byDate, taperDays), move.fromISO);
-  const afterSeq = findSequenceFindings(liveWeeksFrom(after, taperDays), move.fromISO);
+  const beforeSeq = findSequenceFindings(liveWeeksFrom(tl.byDate, taperDays, goalWeekStarts), move.fromISO);
+  const afterSeq = findSequenceFindings(liveWeeksFrom(after, taperDays, goalWeekStarts), move.fromISO);
   const had = new Set(beforeSeq.map((s) => s.weekStartISO));
   for (const s of afterSeq) {
     if (had.has(s.weekStartISO)) continue;

@@ -582,6 +582,39 @@ describe('conflicts', () => {
     expect([...wks[0].stressors].sort()).toEqual(['interval', 'long', 'threshold']);
     expect(wks[0].weeklyMi).toBe(47);
   });
+
+  /**
+   * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · `liveWeeksFrom` used to set
+   * `isRaceWeek = true` off ANY race day (`d.type === 'race'`), which is
+   * `containsRace` under the wrong name and fed straight into
+   * `detectSimultaneousStressAddition`'s GOAL-only "is this a prescribed dip"
+   * refusal in `adjudicate.ts` — over-classifying a B/C tune-up week as a dip
+   * makes that refusal fire MORE, which can silently swallow a real
+   * one-stressor-at-a-time finding `conflictCheck` should have raised.
+   *
+   * FALSIFIED: calling `liveWeeksFrom(days, taperDays)` with no third
+   * argument (the pre-fix call shape, still the default) makes a week
+   * containing only a B/C tune-up race read `isRaceWeek: true` — this test
+   * asserts it reads `false` and `containsRace: true` instead, and fails
+   * against the reverted single-field version.
+   */
+  it('a tune-up race day sets containsRace, never isRaceWeek, unless its week is in goalWeekStarts', () => {
+    const days = new Map<string, PlanDay>([
+      ['2026-09-07', easy('2026-09-07', 6)],
+      ['2026-09-13', day('2026-09-13', 'race', 6.21, { isQuality: true })],
+    ]);
+    const untagged = liveWeeksFrom(days, new Set());
+    expect(untagged).toHaveLength(1);
+    expect(untagged[0].isRaceWeek).toBe(false);
+    expect(untagged[0].containsRace).toBe(true);
+
+    // The identical days, now tagged as the GOAL week via the real
+    // `plan_weeks.is_race_week` column (the only thing that can tell the two
+    // apart) — `isRaceWeek` reads true, `containsRace` still true.
+    const tagged = liveWeeksFrom(days, new Set(), new Set(['2026-09-07']));
+    expect(tagged[0].isRaceWeek).toBe(true);
+    expect(tagged[0].containsRace).toBe(true);
+  });
 });
 
 /* ══════════════════════════════════════════════════════════════════════════
