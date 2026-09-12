@@ -71,14 +71,27 @@
 #                          protect against — read it before assuming more
 #                          coverage than it claims).
 #
-#   check-web-build.sh   · always. Typechecks web-v2 so a missing import is
-#                          caught here rather than by the sixteenth failed
-#                          Railway deploy in a row — and since 2026-08-30 also
-#                          runs `next build` (~30s), because tsc passing is not
-#                          evidence that Railway will deploy. On 2026-08-30
-#                          `main` sat undeployed for a full day with tsc and
-#                          twelve prebuild gates all green; the break was in
-#                          the build, which nothing here was running.
+#   check-web-build.sh   · only when the push touches web-v2 (mirrors
+#                          touches_watch below — see touches_web). Typechecks
+#                          web-v2 so a missing import is caught here rather
+#                          than by the sixteenth failed Railway deploy in a
+#                          row — and since 2026-08-30 also runs `next build`
+#                          (~30s), because tsc passing is not evidence that
+#                          Railway will deploy. On 2026-08-30 `main` sat
+#                          undeployed for a full day with tsc and twelve
+#                          prebuild gates all green; the break was in the
+#                          build, which nothing here was running. Scoped
+#                          2026-09-11: this used to run unconditionally, so a
+#                          push touching only e.g. `docs/` from a worktree
+#                          with no `web-v2/node_modules` got hard-blocked by
+#                          the missing-node_modules refusal below for a
+#                          change that never touched web-v2 at all — real,
+#                          frequent friction across this repo's many
+#                          concurrent worktrees. Scoping to `touches_web`
+#                          keeps the 2026-09-11 refusal-not-silent-skip fix
+#                          (see check-web-build.sh's own header) intact for
+#                          every push that actually needs it, without paying
+#                          it on every push regardless of content.
 #
 #   check-watch.sh       · only when the push touches watch code. Runs the
 #                          watch engine suite and audits rendered board
@@ -162,6 +175,17 @@ touches_watch() {
     '^(legacy/native/Faff/FaffWatch|native-v2/project\.yml|native-v2/Faff\.xcodeproj/|scripts/watch/|scripts/check-watch\.sh)'
 }
 
+# Same shape as touches_watch above: fail OPEN (run the check) whenever the
+# touched-paths range can't be resolved (scoped=0 — a brand-new branch, or a
+# manual invocation with no stdin), never guess narrow. Includes the gate
+# script itself and its falsifier, same convention as touches_watch including
+# scripts/check-watch.sh, so editing the gate forces the gate to run.
+touches_web() {
+  [ "$scoped" = "0" ] && return 0
+  printf '%s' "$changed" | grep -qE \
+    '^(web-v2/|scripts/check-web-build\.sh|scripts/check-web-build-node-modules-gate\.sh)'
+}
+
 # ── 0 · main-push lock + authorization ───────────────────────────────────────
 # Feature-branch pushes never reach this block (MAIN_PUSH_SHAS stays empty) —
 # they are exactly as unrestricted as before this change. Runs BEFORE the
@@ -193,9 +217,11 @@ if [ -n "$MAIN_PUSH_SHAS" ] && [ -f "$ROOT/scripts/lib/main-push-guard.sh" ]; th
   MAIN_PUSH_AUTHORIZED_SHA="$main_sha"
 fi
 
-# ── 1 · web typecheck (unchanged behaviour) ──────────────────────────────────
-if ! bash "$ROOT/scripts/check-web-build.sh"; then
-  exit 1
+# ── 1 · web typecheck (scoped to pushes that touch web-v2, 2026-09-11) ──────
+if touches_web; then
+  if ! bash "$ROOT/scripts/check-web-build.sh"; then
+    exit 1
+  fi
 fi
 
 # ── 2 · watch gate ───────────────────────────────────────────────────────────
