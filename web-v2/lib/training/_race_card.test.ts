@@ -131,6 +131,11 @@ describe('race-card', () => {
     expect(keepLabel).toContain('100 ft gain');
     expect(useLabel).not.toBe(keepLabel);
     expect(card.courseElevationDetail).toEqual(cimUnresolvedDetail);
+    // NATURAL-COACHING-3 (2026-09-12) · this card's own question text
+    // ("...isn't dense enough for us to trust it...") carried the same
+    // first-person-plural slip as its fact-card sibling above. Pinned here
+    // too, since the two cards compose their questions independently.
+    expect(card.question).not.toMatch(/\bwe\b|\bus\b/i);
   });
 
   it('chip-time lock approaching → fact, no safe/stretch, no take', () => {
