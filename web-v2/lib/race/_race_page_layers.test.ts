@@ -173,8 +173,19 @@ describe('RP-2 · the four layers are kept apart', () => {
   it('a controlled C effort gets no upside and no block forecast', () => {
     const l = raceLayers(dodgersOutlook())!;
     expect(l.layers.some((x) => x.kind === 'conditional_upside'),
-      'an upside beside "run it as the week’s hard session" is the incompatible-values defect').toBe(false);
+      'an upside beside "run it as the week’s quality session" is the incompatible-values defect').toBe(false);
     expect(l.layers.some((x) => x.kind === 'block_forecast')).toBe(false);
+  });
+
+  it('the execution_target note names it "quality session", not "hard session" (NATURAL-COACHING-5, 2026-09-12)', () => {
+    // Rule 16: the identical controlled_c_effort fact is stated in
+    // generate.ts and race-outlook.ts using "quality session" — this file's
+    // own note for the SAME fact was missed in that pass and still said
+    // "hard session" until an independent review caught it.
+    const l = raceLayers(dodgersOutlook())!;
+    const target = l.layers.find((x) => x.kind === 'execution_target')!;
+    expect(target.note).toMatch(/quality session/i);
+    expect(target.note).not.toMatch(/hard session/i);
   });
 
   it('RP-3 · the upside carries its criteria, and every one is honestly unevaluated', () => {
