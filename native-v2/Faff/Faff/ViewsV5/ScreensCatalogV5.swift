@@ -326,6 +326,17 @@ struct ScreensCatalogV5: View {
             Entry(id: "7a-course", title: "Races · course changed", sub: "A fact, not a decision") {
                 AnyView(RacesV5(model: RacesV5Sample.decode("course")))
             },
+            // GOALANSWER-APPLIED-1 (2026-09-11) · what the runner sees after
+            // tapping "use my measurement" on an editorial-sourced course
+            // (CIM, AFC, Big Sur, Sombrero Half) — a disclosed 200 refusal
+            // (`{ applied: false, reason }`) that `v5Write` now decodes
+            // instead of silently discarding. The copy is verbatim from
+            // `course-elevation-choice.ts`'s editorial-protection `note`.
+            Entry(id: "7a-course-declined", title: "Races · editorial protection declined",
+                  sub: "The 200 refusal now reaches the runner") {
+                AnyView(RacesV5(model: RacesV5Sample.decode("course"),
+                                answerOutcome: .refused("This course\u{2019}s elevation record is set from certified race data and is shared by every runner training toward it. Your GPS reading was noted but the record was not changed.")))
+            },
             Entry(id: "7a-lock", title: "Races · chip-time lock", sub: "A fact, not a decision") {
                 AnyView(RacesV5(model: RacesV5Sample.decode("lock")))
             },

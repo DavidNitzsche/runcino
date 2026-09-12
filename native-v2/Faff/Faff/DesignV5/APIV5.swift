@@ -1558,13 +1558,37 @@ struct V5DecisionCard: Decodable, Equatable {
     /// The answers. The row wraps rather than clipping, so a longer label like
     /// "Wait for Saturday" drops to its own line.
     let answers: [V5CardAnswer]
+    /// Non-nil only for `trigger == "course_changed"`. 2026-09-11 CIM
+    /// elevation-integrity fix — see `RaceDecisionCardV5`'s rendering of it
+    /// and `docs/design/cim-elevation-semantic-trace-2026-09-11.md`. Threaded
+    /// verbatim from the server's `resolveCourseElevation()`/
+    /// `computeCourseImpact()` output; this view never recomputes it.
+    let courseElevationDetail: V5CourseElevationDetail?
+}
+
+/// Mirrors `web-v2/lib/training/race-card.ts#V5CourseElevationDetailOut`
+/// field-for-field. One shape for both the informational (`resolved: true`)
+/// and choice (`resolved: false`) course-changed cards — a field means the
+/// same quantity in both.
+struct V5CourseElevationDetail: Decodable, Equatable {
+    let oldNetFt: Double?
+    let oldGainFt: Double?
+    let oldSecondsImpact: Double?
+    let newNetFt: Double?
+    let newGainFt: Double?
+    let newSecondsImpact: Double?
+    /// `high | medium | low | reject | unknown`
+    let confidence: String
+    /// True when the resolver already adopted the measured value.
+    let resolved: Bool
+    let reasons: [String]
 }
 
 struct V5CardAnswer: Decodable, Equatable, Hashable, Identifiable {
     let id: String
     let label: String
     /// `hold | take | not_now | acknowledge | repace | confirm | leave |
-    ///  choose_race`
+    ///  choose_race | use_measured_elevation | keep_curated_elevation`
     let action: String
     /// For `take`, the target being accepted, so the client never re-derives a
     /// time from a label.
@@ -2539,12 +2563,27 @@ extension API {
     /// that reason thrown away at the transport, and the screen could only
     /// show a generic nothing-happened. The read path learned this lesson
     /// already; the write path had not.
-    enum V5Write {
+    enum V5Write: Equatable {
         case ok
         /// The engine declined, and said why. Renders as `Alert`.
         case refused(String)
         /// We could not complete it. Renders as `ErrorNote`.
         case failed
+    }
+
+    /// A 2xx write can still be a disclosed refusal. `use_measured_elevation`
+    /// against an editorial-sourced course (`course_library.source`) is the
+    /// case this exists for: `POST /api/v5/goal-answer` can't apply the
+    /// runner's GPS reading over a curated row, but the runner's choice was
+    /// received and acted on — "protect the shared course record" — so the
+    /// route answers 200 with `applied: false` and its own `reason` rather
+    /// than a 4xx. Without this, that reason never reached the decoder and
+    /// the runner saw nothing at all, which is exactly the silent no-op Rule
+    /// 11 exists to rule out. `applied` is absent on every other v5Write
+    /// route's success body, so this only ever fires on an explicit `false`.
+    private struct V5WriteApplied: Decodable {
+        let applied: Bool?
+        let reason: String?
     }
 
     private static func v5Write(_ path: String, body: [String: Any]) async throws -> V5Write {
@@ -2553,7 +2592,13 @@ extension API {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, http) = try await API.authedSend(req)
-        if (200...299).contains(http.statusCode) { return .ok }
+        if (200...299).contains(http.statusCode) {
+            if let r = try? JSONDecoder().decode(V5WriteApplied.self, from: data),
+               r.applied == false, let text = r.reason, !text.isEmpty {
+                return .refused(text)
+            }
+            return .ok
+        }
         if (400...499).contains(http.statusCode),
            let r = try? JSONDecoder().decode(V5Refusal.self, from: data) {
             // `refusal` is what the clinician gate uses; `reason` is what
@@ -2836,6 +2881,7 @@ extension V5Races {
 extension V5DecisionCard {
     enum K: String, CodingKey {
         case shape, verdict, trigger, question, safeTarget, stretchTarget, cautions, answers
+        case courseElevationDetail
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -2849,6 +2895,7 @@ extension V5DecisionCard {
         // client never adds a fourth and never re-orders them.
         cautions = Array(c.list(.cautions).prefix(3))
         answers = c.list(.answers)
+        courseElevationDetail = c.opt(.courseElevationDetail)
     }
 }
 

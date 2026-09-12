@@ -52,14 +52,19 @@ import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
 import { taperWeeksForDistance } from '@/lib/training/fitness-trajectory';
 import { normalWeeklyMileage } from '@/lib/training/normal-window';
 import { selectionAuthority, authorityTier, type AuthorityTier } from '@/lib/race/effort-authority';
-import { resolveCourseElevation, type ResolveCourseElevationInput } from '@/lib/race/course-elevation';
+import {
+  resolveCourseElevation, elevationIsTrustedForAdjustment, type ResolveCourseElevationInput,
+} from '@/lib/race/course-elevation';
+import { computeCourseImpact } from '@/lib/training/course-impact';
 import { computeRaceConditions } from '@/lib/training/race-conditions';
 import { loadCoachLog } from '@/lib/coach/coach-log';
 import {
-  composeRaceCard, heatFactCard, courseChangedFactCard, chipLockFactCard, twoARacesChoiceCard,
+  composeRaceCard, heatFactCard, courseChangedFactCard, courseChangedChoiceCard,
+  chipLockFactCard, twoARacesChoiceCard,
   collidingARacePair,
   TRIGGER_SUPPRESS_DAYS,
   type FactChoiceSpec, type FactChoiceTriggerId, type V5DecisionCardOut,
+  type V5CourseElevationDetailOut,
 } from '@/lib/training/race-card';
 import { outage } from '@/lib/route/failure';
 
@@ -142,6 +147,33 @@ async function detectTwoARaces(aRaces: RaceRow[]): Promise<FactChoiceSpec | null
   return twoARacesChoiceCard({ slug: a.slug, name: a.name }, { slug: b.slug, name: b.name });
 }
 
+/**
+ * 2026-09-11 · CIM elevation-integrity fix
+ * (`docs/design/cim-elevation-semantic-trace-2026-09-11.md`,
+ * `docs/audit-2026-09-11-session-handback.md` §5 Finding 2). This used to
+ * call `resolveCourseElevation()`, check `.conflict`, and throw away every
+ * field it returned in favor of a bare race-name sentence. Both answers the
+ * old card offered ("Acknowledge" / "Not now") traced to the identical
+ * outcome — a 14-day suppression, zero data correction — because the card
+ * carried no data for them to diverge on.
+ *
+ * Now: `resolveCourseElevation()` and `computeCourseImpact()` are each
+ * called exactly once, here, and their output is threaded into the card
+ * verbatim (`V5CourseElevationDetailOut`) — nothing is recomputed by
+ * `race-card.ts` or by the phone. The product ruling this implements:
+ *
+ *   · high/medium confidence (the resolver has already adopted the measured
+ *     value) → INFORMATIONAL. `courseChangedFactCard`, one acknowledgment.
+ *   · low confidence (neither source clears the trust bar) → a real CHOICE.
+ *     `courseChangedChoiceCard`, two answers that write genuinely different
+ *     outcomes (`use_measured_elevation` writes the GPS reading into
+ *     `course_library`; `keep_curated_elevation` writes nothing).
+ *
+ * `resolved.conflict` already carries both the curated and measured
+ * candidates (`curatedGainFt`/`curatedNetFt`/`measuredGainFt`/
+ * `measuredNetFt`) — those, not a second read of `libRow`, are what feed
+ * the card, so there is exactly one place these four numbers come from.
+ */
 async function detectCourseChanged(race: RaceRow | null, userId: string): Promise<FactChoiceSpec | null> {
   if (!race || race.is_past) return null;
   const row = await pool.query<{ course_geometry: unknown }>(
@@ -162,7 +194,31 @@ async function detectCourseChanged(race: RaceRow | null, userId: string): Promis
     };
     const resolved = resolveCourseElevation(input);
     if (!resolved.conflict) return null;
-    return courseChangedFactCard(race.name);
+    const { curatedGainFt, curatedNetFt, measuredGainFt, measuredNetFt } = resolved.conflict;
+
+    // Seconds-of-race-time impact, both sides, via the SAME function Targets
+    // already uses — never re-derived here. Null goal/distance → null impact
+    // (Rule 11: no goal to price against is a fact, not a zero).
+    const distanceMi = race.distance_mi;
+    const goalSec = race.goal ? parseRaceTime(race.goal) : null;
+    const canPriceImpact = distanceMi != null && distanceMi > 0 && goalSec != null && goalSec > 0;
+    const oldImpact = canPriceImpact
+      ? computeCourseImpact({ distanceMi: distanceMi!, goalSec: goalSec!, elevationGainFt: curatedGainFt, netElevationFt: curatedNetFt })
+      : null;
+    const newImpact = canPriceImpact
+      ? computeCourseImpact({ distanceMi: distanceMi!, goalSec: goalSec!, elevationGainFt: measuredGainFt, netElevationFt: measuredNetFt })
+      : null;
+
+    const trusted = elevationIsTrustedForAdjustment(resolved);
+    const detail: V5CourseElevationDetailOut = {
+      oldNetFt: curatedNetFt, oldGainFt: curatedGainFt, oldSecondsImpact: oldImpact?.seconds ?? null,
+      newNetFt: measuredNetFt, newGainFt: measuredGainFt, newSecondsImpact: newImpact?.seconds ?? null,
+      confidence: resolved.confidence,
+      resolved: trusted,
+      reasons: resolved.geometry?.reasons ?? [],
+    };
+
+    return trusted ? courseChangedFactCard(race.name, detail) : courseChangedChoiceCard(race.name, detail);
   } catch {
     return null; // never fake a conflict off a shape we couldn't parse
   }

@@ -16,10 +16,11 @@
 import { describe, it, expect } from 'vitest';
 import {
   composeRaceCard,
-  heatFactCard, courseChangedFactCard, chipLockFactCard, twoARacesChoiceCard,
+  heatFactCard, courseChangedFactCard, courseChangedChoiceCard, chipLockFactCard, twoARacesChoiceCard,
   collidingARacePair, A_RACE_COLLISION_DAYS,
-  type V5DecisionCardOut,
+  type V5DecisionCardOut, type V5CourseElevationDetailOut,
 } from './race-card';
+import { computeCourseImpact } from './course-impact';
 import type { GoalAssessment, GoalFeasibility } from './goal-assessment';
 
 function assessment(overrides: Partial<GoalAssessment>): GoalAssessment {
@@ -68,12 +69,68 @@ describe('race-card', () => {
     expect(card.answers.map(a => a.action).sort()).toEqual(['acknowledge', 'repace']);
   });
 
-  it('course changed → fact, no safe/stretch, no take', () => {
-    const spec = courseChangedFactCard('CIM');
+  // 2026-09-11 · CIM elevation-integrity fix
+  // (docs/design/cim-elevation-semantic-trace-2026-09-11.md). The old test
+  // here just checked the fact shape existed for a bare race-name string.
+  // The bug this fix closes was exactly that "Acknowledge" and "Not now"
+  // traced to the SAME outcome — a fact card carrying no data at all, so
+  // there was nothing for the two buttons to meaningfully diverge on. These
+  // tests assert the replacement: a high/medium-confidence conflict is
+  // INFORMATIONAL (one answer, real numbers), a low-confidence one is a
+  // real CHOICE (two answers with genuinely different actions).
+  const cimResolvedDetail: V5CourseElevationDetailOut = {
+    oldNetFt: -340, oldGainFt: 100, oldSecondsImpact: 0,
+    newNetFt: -304, newGainFt: 723, newSecondsImpact: 54,
+    confidence: 'high', resolved: true, reasons: ['dense track, distance matches, no dropouts or altitude spikes'],
+  };
+  const cimUnresolvedDetail: V5CourseElevationDetailOut = {
+    oldNetFt: -340, oldGainFt: 100, oldSecondsImpact: 0,
+    newNetFt: -304, newGainFt: 723, newSecondsImpact: 54,
+    confidence: 'low', resolved: false, reasons: ['only 8 elevation samples per mile · too coarse for gross gain'],
+  };
+
+  it('course changed, resolver already trusts the measurement → fact, ONE answer, no safe/stretch, no take', () => {
+    const spec = courseChangedFactCard('CIM', cimResolvedDetail);
     const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec })!;
     expect(card.shape).toBe('fact');
     expect(card.trigger).toBe('course_changed');
     assertNoSafeStretchOrTake(card);
+    // The whole point of the fix: no second button pretending to be a
+    // different choice than the first.
+    expect(card.answers).toHaveLength(1);
+    expect(card.answers[0].action).toBe('acknowledge');
+    // The resolver's own numbers travel through unrecomputed — the numbers
+    // themselves render as a tile on the phone (RaceDecisionCardV5), not
+    // restated in the sentence, so they are never said twice (Rule 17).
+    expect(card.courseElevationDetail).toEqual(cimResolvedDetail);
+    // The copy names the actual seconds impact and never claims to move
+    // "the projection" (course elevation has zero input into
+    // race-projection.ts's trajectory-based Projected figure — Rule 16) —
+    // it names the course chunk of the goal gap instead.
+    expect(card.question).toContain('54 second');
+    expect(card.question.toLowerCase()).toContain('course chunk');
+    expect(card.question.toLowerCase()).not.toContain('projection');
+    expect(card.question).toContain('No verification date is on record');
+  });
+
+  it('course changed, resolver confidence is low → choice, TWO answers with genuinely different actions', () => {
+    const spec = courseChangedChoiceCard('CIM', cimUnresolvedDetail);
+    const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec })!;
+    expect(card.shape).toBe('choice');
+    expect(card.trigger).toBe('course_changed');
+    assertNoSafeStretchOrTake(card);
+    expect(card.answers).toHaveLength(2);
+    const actions = card.answers.map(a => a.action).sort();
+    expect(actions).toEqual(['keep_curated_elevation', 'use_measured_elevation']);
+    // Each answer names its own numbers, not a generic label — this is the
+    // "two DISTINCT, named choices with their exact, different effects"
+    // requirement, not a relabelled Acknowledge/Not-now.
+    const useLabel = card.answers.find(a => a.action === 'use_measured_elevation')!.label;
+    const keepLabel = card.answers.find(a => a.action === 'keep_curated_elevation')!.label;
+    expect(useLabel).toContain('723 ft gain');
+    expect(keepLabel).toContain('100 ft gain');
+    expect(useLabel).not.toBe(keepLabel);
+    expect(card.courseElevationDetail).toEqual(cimUnresolvedDetail);
   });
 
   it('chip-time lock approaching → fact, no safe/stretch, no take', () => {
@@ -174,5 +231,78 @@ describe('race-card', () => {
     const card = composeRaceCard({ assessment: assessment({ feasibility: 'comfortable' }), factOrChoice: spec })!;
     expect(card.shape).toBe('fact');
     expect(card.verdict).toBe('comfortable'); // verdict still travels, unlike the shape
+  });
+
+  // ── RENDERED ACCEPTANCE CASE · David's real CIM state ──────────────────
+  //
+  // Per the task's verification requirement and Rule 13 ("a fix to something
+  // the runner sees is verified by rendering it, with real data"). No
+  // `DATABASE_URL_RO` is available in this environment (disclosed in
+  // `docs/design/cim-elevation-semantic-trace-2026-09-11.md`'s access
+  // disclosure) — this fixture is RECONSTRUCTED FROM KNOWN VALUES already
+  // established and cited in that trace document, not a live query:
+  //
+  //   curated (course_library, migration 130 + the seed JSON)  · gain 100 ft, net -340 ft
+  //   measured (David's own GPS track, cited from a prior live-DB
+  //     read at ownership-scorecard.md:828 / closure-cross-surface.md:285) · gain 723 ft, net -304 ft
+  //   goal (ADAPTATION-REAL-REPLAY.md:4)                        · 3:00:00 (10,800 s)
+  //   distance (cim.json expected_facts)                        · 26.2 mi
+  //
+  // `computeCourseImpact()` — the REAL, shared function, imported here, not
+  // reimplemented — is what turns those into the +54s/0s the card carries,
+  // exactly the way `detectCourseChanged` in `app/api/v5/races/route.ts`
+  // computes it. This test proves the whole pipe end to end: real numbers in,
+  // through the real seconds-impact function, into the actual rendered card.
+  describe('rendered acceptance case · CIM (reconstructed from known values, not a live query)', () => {
+    const GOAL_SEC = 3 * 3600; // 3:00:00
+    const DISTANCE_MI = 26.2;
+    const CURATED = { elevationGainFt: 100, netElevationFt: -340 };
+    const MEASURED = { elevationGainFt: 723, netElevationFt: -304 };
+
+    it('computeCourseImpact confirms the trace doc\'s own hand-derived numbers', () => {
+      const oldImpact = computeCourseImpact({ distanceMi: DISTANCE_MI, goalSec: GOAL_SEC, ...CURATED });
+      const newImpact = computeCourseImpact({ distanceMi: DISTANCE_MI, goalSec: GOAL_SEC, ...MEASURED });
+      // Curated's net-downhill credit floors to 0 (course-impact.ts's own UX
+      // floor); measured's real climbing survives the same floor at +54.
+      expect(oldImpact.seconds).toBe(0);
+      expect(newImpact.seconds).toBe(54);
+    });
+
+    it('CIM, high confidence (the resolver has already adopted the measured value) → the informational card the runner actually sees', () => {
+      const oldImpact = computeCourseImpact({ distanceMi: DISTANCE_MI, goalSec: GOAL_SEC, ...CURATED });
+      const newImpact = computeCourseImpact({ distanceMi: DISTANCE_MI, goalSec: GOAL_SEC, ...MEASURED });
+      const detail: V5CourseElevationDetailOut = {
+        oldNetFt: CURATED.netElevationFt, oldGainFt: CURATED.elevationGainFt, oldSecondsImpact: oldImpact.seconds,
+        newNetFt: MEASURED.netElevationFt, newGainFt: MEASURED.elevationGainFt, newSecondsImpact: newImpact.seconds,
+        confidence: 'high', resolved: true,
+        reasons: ['dense track, distance matches, no dropouts or altitude spikes'],
+      };
+      const spec = courseChangedFactCard('California International Marathon', detail);
+      const card = composeRaceCard({ assessment: assessment({}), factOrChoice: spec })!;
+
+      // What David would actually see on his phone: one shape, one answer,
+      // never a fake choice between two backend values he cannot evaluate.
+      expect(card.shape).toBe('fact');
+      expect(card.answers).toHaveLength(1);
+      expect(card.answers[0].label).toBe('Acknowledge');
+      expect(card.answers[0].action).toBe('acknowledge');
+      // The +54s correction, computed by the real function, reaches the card.
+      expect(card.courseElevationDetail?.newSecondsImpact).toBe(54);
+      expect(card.courseElevationDetail?.oldSecondsImpact).toBe(0);
+      // The tile numbers the phone renders (RaceDecisionCardV5's
+      // `elevationTile`) — the real curated vs. measured figures, unrounded
+      // math already done upstream.
+      expect(card.courseElevationDetail?.oldGainFt).toBe(100);
+      expect(card.courseElevationDetail?.newGainFt).toBe(723);
+      expect(card.courseElevationDetail?.oldNetFt).toBe(-340);
+      expect(card.courseElevationDetail?.newNetFt).toBe(-304);
+      // Never claims to move "the projection" — course elevation has zero
+      // input into race-projection.ts's trajectory-based Projected figure
+      // (trace doc §6). Names the course chunk instead.
+      expect(card.question.toLowerCase()).not.toContain('projection');
+      expect(card.question.toLowerCase()).toContain('course chunk');
+      // The honestly-disclosed schema gap (trace doc §5) — no invented date.
+      expect(card.question).toContain('No verification date is on record');
+    });
   });
 });
