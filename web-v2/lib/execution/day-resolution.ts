@@ -133,8 +133,14 @@ export function missedGraceElapsed(dateISO: string, tz: string, now: Date): bool
  *  an undeployed table reads as "nothing moved" here specifically because
  *  `plan_workouts` itself still carries the day as a live prescription
  *  before this table exists, so falling through to the normal resolver is
- *  the honest answer, not a guess. */
-async function loadMovedAwayRows(
+ *  the honest answer, not a guess.
+ *
+ *  EXPORTED (SNAPSHOT-RESOLUTION-1, 2026-09-11 follow-up) so
+ *  `lib/plan/plan-snapshot.ts` can feed the SAME `resolveOneDay` this file's
+ *  own `resolveDateRangeDayStatus` uses, rather than re-deriving "was this
+ *  date moved away" a second way for the offline/snapshot path — Rule 16,
+ *  one owner. */
+export async function loadMovedAwayRows(
   userUuid: string,
   fromISO: string,
   toISOExclusive: string,

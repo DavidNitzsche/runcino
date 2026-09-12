@@ -121,15 +121,39 @@ struct PlanSnapshotDay: Decodable, Equatable, Identifiable {
     /// HEROPANEL-1 fields just above: a `PlanSnapshot` cached on disk from
     /// BEFORE this field existed must not fail to decode.
     let skipped: Bool
+    /// SNAPSHOT-RESOLUTION-1 (2026-09-11 follow-up) · the same five-state
+    /// fact `V5WeekStripDay.resolution`/`V5ViewedDayResolution` carry for the
+    /// live-model path, computed server-side by the identical canonical
+    /// resolver (`web-v2/lib/execution/day-resolution.ts`'s `resolveOneDay`)
+    /// rather than re-derived here. `nil` means "still a live, open
+    /// prescription" — the ordinary case, drawn exactly as before this
+    /// field existed. Decoded LENIENTLY (absent on an older cached snapshot
+    /// decodes to `nil`, not a failure) — same posture as `skipped` above,
+    /// which this is the sibling of: `skipped` alone could express one of
+    /// FINDING-3's five states; this expresses all five, so the OFFLINE
+    /// snapshot path can render the same past-day resolution hero the live
+    /// path does, instead of routing every browsed missed/moved/skipped day
+    /// around it (see `TodayHostV5.snapshotResolutionHero(for:)`).
+    let resolution: String?
+    /// `resolution == "moved"` only — where the prescription actually
+    /// landed. Mirrors `V5WeekStripDay.movedToISO`.
+    let moved_to_iso: String?
 
     var state: V5.DayState { V5.DayState(rawValue: day_state) ?? .easy }
     var fill: PanelFill { PanelFill.state(state) }
+    /// The typed form of `resolution` — same free function
+    /// `V5WeekStripDay.strip`/`V5ViewedDayResolution.state` decode through
+    /// (`resolutionState(from:)`, `DesignV5/APIV5.swift`), so an unknown or
+    /// missing raw value reads as `nil` here exactly as it does on those two
+    /// wire shapes, never a decode failure.
+    var resolvedState: V5.ResolutionState? { resolutionState(from: resolution) }
 
     init(plan_workout_id: String?, date_iso: String, dow: Int, type: String, is_rest: Bool,
          is_race: Bool, is_quality: Bool, is_long: Bool, distance_mi: Double, sub_label: String?,
          notes: String?, card: PlanSnapshotCard?, treadmill: PlanSnapshotTreadmillGuidance?,
          matched_run: PlanSnapshotMatchedRun?, supplemental_runs: [PlanSnapshotSupplementalRun],
-         day_state: String, kicker: String?, dose: V5Number?, stats: [V5Stat], skipped: Bool = false) {
+         day_state: String, kicker: String?, dose: V5Number?, stats: [V5Stat], skipped: Bool = false,
+         resolution: String? = nil, moved_to_iso: String? = nil) {
         self.plan_workout_id = plan_workout_id
         self.date_iso = date_iso
         self.dow = dow
@@ -150,12 +174,14 @@ struct PlanSnapshotDay: Decodable, Equatable, Identifiable {
         self.dose = dose
         self.stats = stats
         self.skipped = skipped
+        self.resolution = resolution
+        self.moved_to_iso = moved_to_iso
     }
 
     private enum CodingKeys: String, CodingKey {
         case plan_workout_id, date_iso, dow, type, is_rest, is_race, is_quality, is_long,
              distance_mi, sub_label, notes, card, treadmill, matched_run, supplemental_runs,
-             day_state, kicker, dose, stats, skipped
+             day_state, kicker, dose, stats, skipped, resolution, moved_to_iso
     }
 
     /// HEROPANEL-1 · the four new fields decode LENIENTLY — absent, not a
@@ -197,6 +223,12 @@ struct PlanSnapshotDay: Decodable, Equatable, Identifiable {
         // after it was written, which is the same "stale cache, not corrupt
         // cache" posture every other optional field on this struct takes.
         skipped = try c.decodeIfPresent(Bool.self, forKey: .skipped) ?? false
+        // SNAPSHOT-RESOLUTION-1 · same lenient posture as `skipped` just
+        // above — absent (an older cached snapshot, a version-skew window)
+        // decodes to `nil`, meaning "still a live, open prescription," never
+        // a decode failure.
+        resolution = try c.decodeIfPresent(String.self, forKey: .resolution)
+        moved_to_iso = try c.decodeIfPresent(String.self, forKey: .moved_to_iso)
     }
 }
 

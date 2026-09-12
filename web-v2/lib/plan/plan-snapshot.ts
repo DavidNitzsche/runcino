@@ -66,6 +66,10 @@ import { planVersionOf } from '@/lib/plan/plan-version';
 import { ownedDaysSql } from '@/lib/plan/owned-days';
 import { dayNoteFor, loadSkippedDates } from '@/lib/plan/week-loader';
 import { resolveDateRangeExecutions, type ExecutionMatch } from '@/lib/execution/day-resolver';
+import {
+  resolveOneDay, loadMovedAwayRows, missedGraceElapsed, type DayResolution,
+} from '@/lib/execution/day-resolution';
+import { runnerTimezone } from '@/lib/runtime/runner-tz';
 import { runFacts } from '@/lib/runs/run-facts';
 import { dayStateWordFor } from '@/lib/faff/v5-today';
 import { fmtMi, fmtMinutesCasual } from '@/lib/format/run';
@@ -422,6 +426,32 @@ export interface PlanSnapshotDay {
   matched_run: PlanSnapshotMatchedRun | null;
   supplemental_runs: PlanSnapshotSupplementalRun[];
   /**
+   * SNAPSHOT-RESOLUTION-1 (2026-09-11 follow-up) · the SAME five-state fact
+   * `/api/v5/today`'s `viewedDayResolution` and week-strip `resolution`
+   * carry, computed here by the identical canonical resolver
+   * (`lib/execution/day-resolution.ts`'s `resolveOneDay` — never
+   * re-implemented for this file). This is what makes the offline/snapshot
+   * render path (`TodayHostV5.body`'s snapshot branch, native-v2) honest
+   * about a missed/moved/skipped/supplemental day instead of routing that
+   * day around the hero that states it: `PlanSnapshotDay` previously carried
+   * `skipped` but nothing for moved/missed/supplemental, so the ONLY thing
+   * the phone is allowed to read for date navigation could not express four
+   * of its own five day states — a day covered by the snapshot (which is
+   * every missed/moved/skipped day, by definition of having no
+   * `matched_run`) rendered as a plain still-open prescription instead of
+   * the resolution hero `content(_:)`'s live path already draws.
+   *
+   * `null` means "still a live, open prescription" — the ordinary case,
+   * rendered exactly as before. Never `'completed'` in practice here: a
+   * completed day carries `matched_run`, and the phone's own snapshot
+   * branch is gated on `matched_run == nil` upstream of this field entirely
+   * (RECAP-1) — this field only has to distinguish the four cases that
+   * gate has no other way to see.
+   */
+  resolution: DayResolution | null;
+  /** `resolution === 'moved'` only. */
+  moved_to_iso: string | null;
+  /**
    * HEROPANEL-1 (2026-09-04) · every browsed day renders in the SAME hero
    * treatment `/api/v5/today` gives the actual current day — one gradient
    * card, one template, only the color and the numbers changing — not a
@@ -527,6 +557,11 @@ export function treadmillGuidanceFor(card: SpecCard | null): PlanSnapshotTreadmi
 
 export async function loadPlanSnapshot(userUuid: string, today: string): Promise<PlanSnapshotResult> {
   const nowIso = new Date().toISOString();
+  // SNAPSHOT-RESOLUTION-1 · the same instant `nowIso` stamps this response
+  // with, as a `Date` — `missedGraceElapsed` (below, per day) needs the
+  // object form. One `now`, not a second independent clock read a few lines
+  // apart from the first.
+  const now = new Date(nowIso);
 
   const plan = (await pool.query<{ id: string; last_adapted_at: string | null }>(
     `SELECT id, last_adapted_at FROM training_plans
@@ -643,13 +678,22 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
   // Mutually independent of the other three reads above, so it joins the
   // same `Promise.all` rather than adding a fifth sequential round trip.
   const skipQuery = loadSkippedDates(userUuid, planStartIso, planEndIso);
+  // SNAPSHOT-RESOLUTION-1 · the two reads `resolveOneDay` additionally needs
+  // beyond what this file already fetches above — same functions
+  // `resolveDateRangeDayStatus` itself calls, reused rather than
+  // re-implemented (Rule 16). Independent of everything else in this
+  // `Promise.all`, so they join it rather than adding sequential round trips.
+  const movedAwayQuery = loadMovedAwayRows(userUuid, planStartIso, toExclusiveIso);
+  const tzQuery = runnerTimezone(userUuid);
 
-  const [lthrRow, rows, easyBandRow, executionsByDate, skipRead] = await Promise.all([
+  const [lthrRow, rows, easyBandRow, executionsByDate, skipRead, movedAway, tz] = await Promise.all([
     lthrQuery.then((r) => r.rows[0]),
     rowsQuery.then((r) => r.rows),
     easyBandQuery.then((r) => (r.rows as Array<{ lo: number | null; hi: number | null }>)[0]),
     executionsQuery,
     skipQuery,
+    movedAwayQuery,
+    tzQuery,
   ]);
   const { skippedDates, failed: skipReadFailed } = skipRead;
 
@@ -820,6 +864,20 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
           indoor: matchedRun.data.indoor === true || matchedRun.data.source === 'treadmill',
         }
       : null;
+    // SNAPSHOT-RESOLUTION-1 · the identical pure classifier
+    // `resolveDateRangeDayStatus` calls per date, fed the same four facts
+    // (this row's own resolved executions, whether `plan_reschedules` names
+    // this date as a move-away origin, the skip read, and the grace
+    // boundary) — never a second decision procedure for "what happened to
+    // this day."
+    const resolutionDetail = resolveOneDay(
+      resolved,
+      movedAway?.get(row.date_iso),
+      skippedDates.has(row.date_iso),
+      skipReadFailed,
+      missedGraceElapsed(row.date_iso, tz, now),
+    );
+
     const supplemental_runs: PlanSnapshotSupplementalRun[] = (resolved?.supplementalRuns ?? []).map((r) => {
       const facts = runFacts(r.data, { basis: 'elapsed' });
       return {
@@ -942,6 +1000,9 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
       // (Rule 11) — this field does not collapse that into a false "not
       // skipped" for a caller that checks the top-level flag first.
       skipped: skippedDates.has(row.date_iso),
+      // SNAPSHOT-RESOLUTION-1 · see the field's own doc comment above.
+      resolution: resolutionDetail.resolution,
+      moved_to_iso: resolutionDetail.movedToISO ?? null,
     };
   });
 
