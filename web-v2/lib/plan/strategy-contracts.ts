@@ -56,6 +56,7 @@
 import type { ProgressionLever } from '@/lib/prescription/levers';
 import type { PhaseAnswer } from './phase-answers';
 import type { DistCategory } from './goal-tiers';
+import { weekContainsRace } from './race-week';
 
 /** Contract version. Bumped when the SHAPE changes, never when a value does. */
 export const BLOCK_STRATEGY_MODEL_VERSION = 'block-strategy/1';
@@ -157,7 +158,30 @@ export interface SecondaryChange {
   deltaFraction: number;
 }
 
-export type WeekRole = 'BUILD' | 'HOLD' | 'CUTBACK' | 'RACE' | 'RECOVERY' | 'TAPER';
+/**
+ * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · `'RACE'` alone used to be `roleOf`'s
+ * only race-shaped answer, resolved off `w.isRaceWeek` — the GOAL race's week
+ * and nothing else (`race-week.ts`'s header). A B/C tune-up embedded
+ * mid-block read as `BUILD`/`HOLD`/`CUTBACK` off ordinary volume arithmetic,
+ * and every narrative sentence keyed on `role === 'RACE'` (`developsPrevious`,
+ * `preparesForRace`, the week's own `rationale`) is GOAL-specific prose — "the
+ * work is behind you", "everything that prepares you has already happened" —
+ * that is false of a tune-up, which is very much still building toward the
+ * goal.
+ *
+ * `'CONTROLLED'` is the fix: `race-week-role.ts`'s own typed distinction
+ * (GOAL / TUNEUP / CONTROLLED / NONE), narrowed to what `StrategyWeek` can
+ * actually answer. `StrategyWeek.days` carries a race day's `type` but not
+ * its priority (`races.meta.priority` needs a join `roleOf`'s caller does not
+ * have), so this can tell GOAL from "some other race" but not TUNEUP (B) from
+ * CONTROLLED (C) — `race-week-role.ts`'s own doctrine rules that exact fork:
+ * an ungraded race resolves to the LOWER-license `controlled`, never the
+ * higher `tuneup`, because over-crediting is the unsafe error. Plumbing
+ * `races.meta.priority` into `StrategyWeek` so this can say `'TUNEUP'`
+ * specifically is named as a follow-up, not done here (it touches
+ * `generate.ts`'s composer, the highest-blast-radius file in this codebase).
+ */
+export type WeekRole = 'BUILD' | 'HOLD' | 'CUTBACK' | 'RACE' | 'CONTROLLED' | 'RECOVERY' | 'TAPER';
 
 export interface WeekIntent {
   weekStartISO: string;
@@ -359,6 +383,13 @@ const mi = (n: number): string => (Number.isInteger(n) ? String(n) : n.toFixed(1
 
 function roleOf(w: StrategyWeek, prev: StrategyWeek | null): WeekRole {
   if (w.isRaceWeek) return 'RACE';
+  // RACEWEEK-CONSOLIDATION-1 · a B/C race, checked before TAPER/CUTBACK/
+  // RECOVERY on purpose: the race is the most concrete, most narratable fact
+  // about the week, and RACEWEEK-2 rules it is not an automatic easing, so a
+  // controlled week authored with `isCutback` still reads as CONTROLLED
+  // rather than a plain CUTBACK the runner has no reason to connect to a race
+  // he can see on the same week.
+  if (weekContainsRace(w)) return 'CONTROLLED';
   if (w.phase === 'TAPER') return 'TAPER';
   if (w.isCutback) return 'CUTBACK';
   if (w.phase === 'RECOVERY') return 'RECOVERY';
@@ -545,6 +576,11 @@ function weekAnswers(args: {
 
   const whyMileage =
     role === 'RACE' ? `Race week. ${mi(vol)} mi, and almost all of it is the race.`
+    // RACEWEEK-CONSOLIDATION-1 · no reduction claimed. A tune-up or
+    // controlled race is not an automatic easing (RACEWEEK-2) and can be the
+    // block's biggest week, so the sentence states the volume rather than
+    // asserting it came down.
+    : role === 'CONTROLLED' ? `${mi(vol)} mi, including a race that is not the goal. The race is this week's key session.`
     : role === 'TAPER' ? `${mi(vol)} mi, ${sharePct}% of this block's biggest week. Volume comes down so the work already done can surface.`
     : role === 'CUTBACK' && cutbackIsActualReduction ? `${mi(vol)} mi against ${mi(prevVol)} mi last week. The reduction is deliberate and is what lets the next step land.`
     : role === 'CUTBACK' ? `${mi(vol)} mi against ${mi(prevVol)} mi last week. This week was authored lighter, but the total did not come down. The recovery this week is doing has to come from effort and spacing, not from the mileage.`
@@ -565,7 +601,15 @@ function weekAnswers(args: {
   const mpInLong = mpMilesInLongOf(w);
   const mpInQuality = Math.round((mp - mpInLong) * 10) / 10;
   const whyQuality =
-    qCount === 0 && mpInLong <= 0
+    // RACEWEEK-CONSOLIDATION-1 · a controlled/tune-up week's race IS its
+    // quality session (RACEWEEK-2: "counts as quality AND as maximal race
+    // evidence"). Without this branch a week whose only hard effort is the
+    // race itself fell through to "easy running is the whole prescription",
+    // which is false — the race is the week's hardest work, not an absence
+    // of one.
+    role === 'CONTROLLED' && qCount === 0 && mpInLong <= 0
+      ? "The race is the week's structured session. It stands in for a quality day, not on top of one."
+    : qCount === 0 && mpInLong <= 0
       ? 'No structured session this week. Easy running is the whole prescription.'
     : qCount === 0
       ? `No separate session. The ${mi(mpInLong)} mi at marathon pace inside the long run is the week's hard work.`
@@ -587,6 +631,11 @@ function weekAnswers(args: {
     // arithmetic did coming out of a down week. It unwinds the block.
     : role === 'TAPER' ? `It unwinds the block rather than adding to it. ${mi(vol)} mi against a peak of ${mi(blockPeakMi)}.`
     : role === 'RACE' ? 'It does not build on anything. The work is behind you.'
+    // RACEWEEK-CONSOLIDATION-1 · a controlled/tune-up race is EVIDENCE toward
+    // the goal, the opposite claim from the goal week's "work is behind you"
+    // — it develops the block precisely by testing what the weeks before it
+    // produced.
+    : role === 'CONTROLLED' ? 'The race tests what the weeks before it built. It develops the block by proving the fitness, not by adding to it.'
     : long > prevLong && vol > prevVol ? `Both the week and the long run step up, ${mi(prevVol)} to ${mi(vol)} mi and ${mi(prevLong)} to ${mi(long)} mi.`
     : long > prevLong ? `The long run moves, ${mi(prevLong)} to ${mi(long)} mi. Everything else holds so only one thing is being asked.`
     : vol > prevVol ? `The week moves, ${mi(prevVol)} to ${mi(vol)} mi, with the long run held at ${mi(long)}.`
@@ -596,6 +645,10 @@ function weekAnswers(args: {
   const preparesForRace = (() => {
     const when = out == null ? '' : out === 0 ? 'Race week. ' : `${out} week${out === 1 ? '' : 's'} out. `;
     if (role === 'RACE') return `${when}Everything that prepares you has already happened.`;
+    // RACEWEEK-CONSOLIDATION-1 · before the marathon-pace check below, because
+    // a controlled/tune-up week with MP miles inside it is preparing for the
+    // goal in TWO ways at once and the race itself is the more specific fact.
+    if (role === 'CONTROLLED') return `${when}This race is a rehearsal and a fitness check for the race that matters.`;
     if (mp > 0) return `${when}${mi(mp)} mi at marathon pace rehearses the effort you have to hold on the day, not just the distance.`;
     if (long >= blockPeakLongMi && long > 0) return `${when}The longest run of the block is where late-race fatigue gets practised.`;
     if (role === 'TAPER') return `${when}Freshness is the work now. The fitness is made.`;
@@ -680,6 +733,9 @@ export function deriveBlockStrategy(inputs: BlockStrategyInputs): BlockStrategy 
       qualityBudget: { sessions: qualitySessionsOf(w), atPaceMi: Number(qualityMiOf(w).toFixed(2)) },
       rationale:
         role === 'RACE' ? 'Race week. Everything before it has already happened.'
+        // RACEWEEK-CONSOLIDATION-1 · distinct from the goal week's rationale
+        // on purpose (RACEWEEK-2: not an automatic taper, still building).
+        : role === 'CONTROLLED' ? 'Race week, not the goal. Run as a fitness and pace check for the block ahead.'
         : role === 'TAPER' ? 'Taper. Volume comes down, intensity holds.'
         // CUTBACKCOPY-1 · same guard as `weekAnswers`'s `whyMileage` / `whyCutback`
         // — `role === 'CUTBACK'` is the persisted flag, not this week's actual

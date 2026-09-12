@@ -21,7 +21,7 @@
  *     week built to violate.
  */
 import { describe, it, expect } from 'vitest';
-import { stressorNameOf, findSequenceFindings, type LiveWeek } from './live-sequence';
+import { stressorNameOf, findSequenceFindings, withContainsRace, type LiveWeek } from './live-sequence';
 
 const wk = (
   weekStartISO: string, weeklyMi: number, stressors: string[], rows: LiveWeek['rows'],
@@ -56,6 +56,46 @@ describe('live sequence · the count is the layer’s own', () => {
     expect(stressorNameOf('recovery', null, null, null)).toBeNull();
     expect(stressorNameOf('rest', null, null, null)).toBeNull();
     expect(stressorNameOf('easy', 'STRIDES', false, false)).toBeNull();
+  });
+});
+
+/**
+ * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · `loadPlannedWeeks` used to populate
+ * `LiveWeek.isRaceWeek` purely from `plan_weeks.is_race_week` — the GOAL
+ * race's week and nothing else — with no other race signal reaching
+ * `adjudicate.ts` for a real, live block at all. `withContainsRace` is the
+ * fix: it derives `containsRace` from the week's own rows via
+ * `weekContainsRace` (`race-week.ts`), the same day-level `type === 'race'`
+ * check `v5-block.ts`'s `weekFlag` already uses for the identical question,
+ * rather than growing a second definition.
+ *
+ * FALSIFIED: deleting the `days: wk.rows.map(...)` line (or passing `days:
+ * []`) makes the tune-up case below read `containsRace: false`, silently
+ * reverting to the pre-fix blindness this loader shipped with.
+ */
+describe('live sequence · withContainsRace', () => {
+  it('a goal week resolves containsRace true through isRaceWeek alone, no rows needed', () => {
+    const w = wk('2026-11-30', 20, ['race · 26.2 mi'], [row('r1', '2026-12-06', 'race', 26.2, 'race')]);
+    expect(withContainsRace({ ...w, isRaceWeek: true }).containsRace).toBe(true);
+  });
+
+  it('a B/C tune-up embedded mid-block resolves containsRace true from its own rows, with isRaceWeek false', () => {
+    const w = wk('2026-09-21', 41, ['tempo', '17 mi long'], [
+      row('r1', '2026-09-22', 'easy', 5, null),
+      row('r2', '2026-09-24', 'tempo', 6, 'tempo'),
+      row('r3', '2026-09-27', 'race', 6.21, 'race'),
+    ]);
+    const out = withContainsRace(w);
+    expect(out.isRaceWeek).toBe(false);
+    expect(out.containsRace).toBe(true);
+  });
+
+  it('an ordinary week with no race day at all resolves containsRace false', () => {
+    const w = wk('2026-09-07', 40, ['threshold', 'long'], [
+      row('r1', '2026-09-08', 'threshold', 8, 'threshold'),
+      row('r2', '2026-09-14', 'long', 16, 'long'),
+    ]);
+    expect(withContainsRace(w).containsRace).toBe(false);
   });
 });
 

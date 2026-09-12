@@ -28,8 +28,10 @@
  *     does not ask about a week that has not run. A gate demanding something
  *     trivially true, on a sane schedule, passes it.
  *   · `executionIdentity` only knows the identities the caller declared. It
- *     reads `PlannedWeek.isRaceWeek`; a race week mislabelled as an ordinary
- *     one is invisible here and belongs to whatever builds the weeks.
+ *     reads `containsRaceOf(PlannedWeek)`; a race week mislabelled as an
+ *     ordinary one — or a caller that never populates `containsRace` and
+ *     whose `isRaceWeek` itself is wrong — is invisible here and belongs to
+ *     whatever builds the weeks.
  *   · `evidenceProvenance` checks the VOICE, never the number. A fabricated
  *     measurement carrying `ATHLETE_EVIDENCE` and a plausible basis string
  *     passes every clause. `_cim_trace.test.ts` pins the population; nothing
@@ -98,7 +100,45 @@ export interface PlannedWeek {
   /** Marathon-pace miles prescribed in this week, if any. */
   readonly mpMi: number;
   readonly isTaper: boolean;
+  /**
+   * `plan_weeks.is_race_week` — the GOAL race's week and NOTHING else
+   * (`race-week.ts`'s own header). A B/C tune-up embedded mid-block reads
+   * `false` here even though the runner races that week too.
+   *
+   * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · every site in this file that
+   * reads this field decides, on purpose, whether it means "the runner is
+   * tapering/recovering for a specific goal" (this field, correctly, alone)
+   * or "the runner races this week, of any priority" (`containsRace` below).
+   * Conflating the two is the bug this pass exists to close for good — see
+   * the header's RULE 22 note above and `containsRaceOf`'s doc comment.
+   */
   readonly isRaceWeek: boolean;
+  /**
+   * Does the runner race this week, of ANY priority — goal, B tune-up or C
+   * controlled? `race-week.ts`'s `weekContainsRace`, computed by the caller
+   * and carried here rather than re-derived, because this shape has no
+   * `days` array for this file to compute it from itself (Rule 16: one
+   * canonical answer to "does this week contain a race", stated by whoever
+   * built the week, not re-derived per reader).
+   *
+   * OPTIONAL, with a safe fallback in `containsRaceOf` (`containsRace ??
+   * isRaceWeek`): a caller that has not been updated to supply this field
+   * yet keeps EXACTLY its previous behaviour rather than silently changing
+   * meaning, and a caller whose week genuinely IS the goal week already
+   * answers this correctly through `isRaceWeek` alone.
+   */
+  readonly containsRace?: boolean;
+}
+
+/**
+ * THE any-race answer for a `PlannedWeek`, with the documented fallback.
+ * Every site in this file that means "does the runner race this week, of any
+ * priority" reads it through here — never `week.isRaceWeek` directly, and
+ * never `week.containsRace` directly either, so the fallback cannot be
+ * forgotten at a new call site.
+ */
+export function containsRaceOf(w: Pick<PlannedWeek, 'isRaceWeek' | 'containsRace'>): boolean {
+  return w.containsRace ?? w.isRaceWeek;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -397,7 +437,7 @@ export function detectStackedStress(
   const volStep = week.weeklyMi != null && hist.peakWeeklyMi
     ? week.weeklyMi / hist.peakWeeklyMi - 1 : null;
   /**
-   * EXECUTION IDENTITY (CORPUS-ADJ-1, 2026-09-04) · THE GOAL RACE IS NOT A
+   * EXECUTION IDENTITY (CORPUS-ADJ-1, 2026-09-04) · A RACE IS NOT A
    * TRAINING LONG RUN.
    *
    * `week.longestMi` on a race week is the RACE. Dividing 26.2 by an 18-mile
@@ -408,6 +448,17 @@ export function detectStackedStress(
    * verdict on "should he run the race he entered" is not a doctrine question
    * this layer gets to ask.
    *
+   * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · this used to null out on
+   * `week.isRaceWeek` alone, the GOAL race's week and nothing else
+   * (`race-week.ts`'s header). A B/C tune-up embedded mid-block races too,
+   * and a designed race weekend (`designed-race-weekend.ts`) can carry
+   * enough extra mileage around a tune-up's own distance that the DAY's
+   * total reads as a genuine reach over demonstrated training — the exact
+   * "race read as a training long run" confusion this comment already
+   * names, just at a shorter distance. Fixed to `containsRaceOf`, which
+   * still resolves `true` for the goal week first (Rule 16 — one answer,
+   * not two), so the goal-race case is unchanged.
+   *
    * `hist.longestRunMi` is symmetric about this: the corpus bridge and
    * `_cim_trace.test.ts` both read it from COMPLETED TRAINING only, never from
    * a race, so neither side of the comparison carries a race.
@@ -416,7 +467,7 @@ export function detectStackedStress(
    * real week of load the legs absorb, and Rule 8's corollary keeps an
    * absorbed-load reader on the literal number.
    */
-  const longStep = week.isRaceWeek ? null
+  const longStep = containsRaceOf(week) ? null
     : week.longestMi != null && hist.longestRunMi
       ? week.longestMi / hist.longestRunMi - 1 : null;
 
@@ -535,6 +586,16 @@ export function detectSimultaneousStressAddition(
   // What survives is the honest part, as a REFUSAL rather than a subtraction:
   // if every week in the window is a prescribed dip there is no baseline to
   // read, and Rule 11 says that is "do not know" rather than a number.
+  //
+  // RACEWEEK-CONSOLIDATION-1 (2026-09-11) · reviewed and left exactly as-is.
+  // This condition means "is this week a prescribed DIP", and `isRaceWeek`
+  // (goal-only) is the right read of that specific question — a B/C tune-up
+  // is doctrine-ruled (`race-week-role.ts` RACEWEEK-2) NOT an automatic
+  // whole-week easing, so it must not short-circuit a baseline refusal the
+  // way an actual taper/goal week does. `taperWeeks` (below) and
+  // `prescribedDip` (in `checkPromotion`) ask the identical "is this a
+  // prescribed dip" question and are held to the same answer for the same
+  // reason, not converted to `containsRaceOf`.
   if (window.every((w) => w.isTaper || w.isRaceWeek)) return null;
 
   const baselineMi = Math.max(...window.map((w) => w.weeklyMi));
@@ -808,7 +869,17 @@ export function checkPromotion(
        * classified every decline as ABSORPTION_EVIDENCE, so a correct taper
        * hold read as an unjustified refusal and the archetype sweep fell from
        * 85 promoted to 12. The objective's own exception list was unreachable
-       * from the only caller it had. */
+       * from the only caller it had.
+       *
+       * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · `isRaceWeek` here is
+       * deliberately goal-only, same reasoning as `detectSimultaneousStress
+       * Addition`'s window filter above. PRESCRIBED_RECOVERY is a FREE PASS
+       * on justifying a decline, and `race-week-role.ts` (RACEWEEK-2) rules a
+       * B/C tune-up is NOT an automatic whole-week easing — his tune-up weeks
+       * have been his biggest of the block. Giving that free pass to a
+       * tune-up week would let a real HOLD during his highest-evidence week
+       * go unjustified, which is the opposite of what this gate exists to
+       * catch. `containsRaceOf` is the wrong read here on purpose. */
       const w = (ctx?.weeks ?? []).find((x) => x.weekStartISO === weekOf(t));
       const prescribedDip = w != null && (w.isTaper || w.isRaceWeek);
       const declines = prescribedDip
@@ -861,6 +932,13 @@ export function checkPromotion(
   // old predicate required a `StackedStress` that `detectStackedStress` cannot
   // produce for a taper week, so this dimension was structurally unfailable
   // through the supported path and its one test hand-built the object.
+  //
+  // RACEWEEK-CONSOLIDATION-1 (2026-09-11) · `isRaceWeek` here is deliberately
+  // goal-only, the same "is this a prescribed dip" question and the same
+  // answer as the window filter above and `prescribedDip` in
+  // `checkPromotion`: a B/C tune-up week is not an automatic easing
+  // (RACEWEEK-2), so PUSH inside a tune-up week is not a taper-integrity
+  // violation — it is the tune-up doing its job.
   const taperWeeks = new Set((ctx?.weeks ?? []).filter((w) => w.isTaper || w.isRaceWeek)
     .map((w) => w.weekStartISO));
   // The eligible population is the decisions that LAND in a taper or race
@@ -923,14 +1001,21 @@ export function checkPromotion(
 
   /* ── EXECUTION IDENTITY · one quantity, one identity (Rule 16) ───────────
    *
-   * The goal race is not a training long run. `detectStackedStress` now
-   * declines to compare a race week's distance against demonstrated TRAINING
-   * capacity; this is the gate that acts on it, so a caller who hand-builds a
+   * A race is not a training long run. `detectStackedStress` now declines to
+   * compare a race week's distance against demonstrated TRAINING capacity;
+   * this is the gate that acts on it, so a caller who hand-builds a
    * `StackedStress` for a race week — or whose detector regresses — is caught
    * rather than trusted. Detector and gate, per the defect found on
    * 2026-09-04 where disabling a promotion-level block left the suite green.
+   *
+   * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · this used to key on `isRaceWeek`
+   * alone (goal-only), so this gate's population disagreed with the
+   * detector it is meant to police the moment `detectStackedStress`'s own
+   * `longStep` null-out was fixed to `containsRaceOf` (any race). Matched to
+   * `containsRaceOf` here too — same population on both sides of the check
+   * this comment says exists specifically to keep them from drifting apart.
    */
-  const raceWeekStarts = new Set((ctx?.weeks ?? []).filter((w) => w.isRaceWeek)
+  const raceWeekStarts = new Set((ctx?.weeks ?? []).filter((w) => containsRaceOf(w))
     .map((w) => w.weekStartISO));
   const allWeekStarts = new Set((ctx?.weeks ?? []).map((w) => w.weekStartISO));
   const identityFaults: string[] = [];

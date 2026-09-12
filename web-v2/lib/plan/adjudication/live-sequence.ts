@@ -35,6 +35,7 @@
 import { pool } from '@/lib/db/pool';
 import { rowsOrNull } from '@/lib/db/read';
 import { planVersionOf } from '@/lib/plan/plan-version';
+import { weekContainsRace } from '@/lib/plan/race-week';
 import {
   type PlannedWeek,
   detectSimultaneousStressAddition,
@@ -122,6 +123,35 @@ export type SequenceRead =
  * the boundary DOES matter is anything the runner reads about "this week", and
  * that has its own owner in `week-loader.ts`.
  */
+/**
+ * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · this loader used to populate
+ * `LiveWeek.isRaceWeek` purely from the raw `plan_weeks.is_race_week` column
+ * — the GOAL race's week and nothing else (`race-week.ts`'s own header) —
+ * and that was the ONLY race signal `adjudicate.ts`'s functions ever saw for
+ * a real, live block: a B/C tune-up race embedded mid-block was invisible to
+ * `detectStackedStress`'s "a race is not a training long run" null-out and
+ * to `checkPromotion`'s `executionIdentity` gate, both of which read
+ * `PlannedWeek.isRaceWeek` before this pass added `containsRace`.
+ *
+ * Fixed by computing `containsRace` per week via the shared
+ * `weekContainsRace` detector (`race-week.ts`) over the week's own rows —
+ * exactly the day-level `type === 'race'` check `v5-block.ts`'s `weekFlag`
+ * already uses for the same question — rather than growing a second
+ * definition here. `isRaceWeek` itself is untouched and stays goal-only,
+ * because several `adjudicate.ts` sites (the window-filter refusal, the
+ * PRESCRIBED_RECOVERY free pass, taper integrity) deliberately need THAT
+ * narrower answer.
+ */
+export function withContainsRace<T extends LiveWeek>(wk: T): T {
+  return {
+    ...wk,
+    containsRace: weekContainsRace({
+      isRaceWeek: wk.isRaceWeek,
+      days: wk.rows.map((r) => ({ type: r.type })),
+    }),
+  };
+}
+
 export async function loadPlannedWeeks(userUuid: string): Promise<SequenceRead> {
   const rows = await rowsOrNull<{
     id: string;
@@ -194,7 +224,8 @@ export async function loadPlannedWeeks(userUuid: string): Promise<SequenceRead> 
 
   return {
     ok: true,
-    weeks: [...byWeek.values()].sort((a, b) => a.weekStartISO.localeCompare(b.weekStartISO)),
+    weeks: [...byWeek.values()].map(withContainsRace)
+      .sort((a, b) => a.weekStartISO.localeCompare(b.weekStartISO)),
     planId: rows[0].plan_id,
     planVersion: planVersionOf({ id: rows[0].plan_id, last_adapted_at: rows[0].last_adapted_at }),
   };

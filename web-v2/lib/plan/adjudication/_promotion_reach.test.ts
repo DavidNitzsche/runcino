@@ -83,7 +83,10 @@
  *   four years of history.
  */
 import { describe, it, expect } from 'vitest';
-import { adjudicateColdStartBlock, adjudicateComposedBlock, type ComposedWeekLike } from '../adjudication-corpus';
+import {
+  adjudicateColdStartBlock, adjudicateComposedBlock, plannedWeeksFrom, type ComposedWeekLike,
+} from '../adjudication-corpus';
+import { containsRaceOf } from './adjudicate';
 import { PROMOTION_DIMENSIONS } from './contract';
 import type { PromotionCheck } from './contract';
 import type { RenderedHistory } from '../history-shapes';
@@ -356,5 +359,58 @@ describe('ADJ-REACH-1 · every promotion dimension examined something', () => {
           .toBeNull();
       }
     }
+  });
+});
+
+/**
+ * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · `plannedWeeksFrom` carried
+ * `isRaceWeek` (goal-only) into every `PlannedWeek` this corpus ever built,
+ * with no `containsRace` at all. Per Rule 15, that made `adjudicate.ts`'s
+ * `containsRaceOf` branches (the `detectStackedStress` `longStep` null-out,
+ * `checkPromotion`'s `executionIdentity` population) UNREACHABLE by
+ * `_sweep_allusers.test.ts`'s 11,598 archetypes, however many of them embed a
+ * B/C mid-block race — every one of them fell back to `isRaceWeek`, which is
+ * false for a tune-up by construction.
+ *
+ * Neither `block()` above nor `_sweep_allusers.test.ts`'s own archetype
+ * generator constructs a mid-block (non-terminal) race day, so this is a
+ * dedicated, narrower fixture rather than a rewrite of the shared corpus —
+ * extending that corpus to cover the tune-up shape end-to-end is named as a
+ * follow-up, not done here.
+ *
+ * FALSIFIED: deleting the `containsRace: weekContainsRace(w)` line from
+ * `plannedWeeksFrom` (or reverting it to only set `isRaceWeek`) makes the
+ * tune-up-week assertion below read `false` instead of `true`.
+ */
+describe('RACEWEEK-CONSOLIDATION-1 · plannedWeeksFrom carries containsRace', () => {
+  it('a mid-block B/C tune-up (isRaceWeek false) resolves containsRaceOf true', () => {
+    const tuneUpWeek: ComposedWeekLike = {
+      startISO: '2026-09-21',
+      phase: 'BUILD',
+      weeklyMi: 41,
+      isRaceWeek: false,
+      days: [
+        { type: 'race', distanceMi: 6.21, isQuality: true, isLong: false },
+        { type: 'easy', distanceMi: 5, isQuality: false, isLong: false },
+        { type: 'long', distanceMi: 17, isQuality: false, isLong: true },
+      ],
+    };
+    const goalWeek: ComposedWeekLike = {
+      startISO: '2026-11-30',
+      phase: 'RACE',
+      weeklyMi: 30,
+      isRaceWeek: true,
+      days: [{ type: 'race', distanceMi: 26.2, isQuality: false, isLong: true }],
+    };
+    const [pw1, pw2] = plannedWeeksFrom([tuneUpWeek, goalWeek]);
+    expect(pw1.isRaceWeek).toBe(false);
+    expect(containsRaceOf(pw1)).toBe(true);
+    expect(containsRaceOf(pw2)).toBe(true);
+
+    const ordinaryWeek: ComposedWeekLike = {
+      startISO: '2026-09-07', phase: 'BUILD', weeklyMi: 40, isRaceWeek: false,
+      days: [{ type: 'long', distanceMi: 16, isQuality: false, isLong: true }],
+    };
+    expect(containsRaceOf(plannedWeeksFrom([ordinaryWeek])[0])).toBe(false);
   });
 });

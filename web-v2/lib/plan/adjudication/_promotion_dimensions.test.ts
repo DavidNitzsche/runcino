@@ -616,6 +616,69 @@ describe('ADJ-DIM-1 · executionIdentity', () => {
     expectOnly(r, 'executionIdentity');
     expect(r.blockedBecause.join(' ')).toMatch(/not a week of this block/);
   });
+
+  /**
+   * RACEWEEK-CONSOLIDATION-1 (2026-09-11) · a B/C tune-up embedded mid-block
+   * carries `isRaceWeek: false` (the raw `plan_weeks.is_race_week` column is
+   * goal-only, `race-week.ts`'s own header) but DOES race, and its distance
+   * has the identical "read as a training long run" identity confusion the
+   * goal race does — a designed-race-weekend tune-up's own day can read as a
+   * real reach over demonstrated training. Before this pass, NEITHER the
+   * detector's null-out NOR this gate's population saw it.
+   *
+   * FALSIFIED: reverting `detectStackedStress`'s `longStep` line and this
+   * gate's `raceWeekStarts` line to bare `week.isRaceWeek` (deleting
+   * `containsRaceOf`) makes the first case below assert a NON-null
+   * `longRunOverDemonstratedMax` instead (the old, wrong behaviour) and makes
+   * the second case fail to raise `executionIdentity` at all — the exact
+   * "disabling a promotion-level block left the suite green" shape the
+   * goal-race case above already guards against, now guarded for the
+   * any-race case too.
+   */
+  it('THE SAME PROTECTION FOR A TUNE-UP · containsRace, not isRaceWeek', () => {
+    const tuneUpWeek: PlannedWeek = {
+      weekStartISO: '2026-09-14', weeklyMi: 34, longestMi: 26.2,
+      stressors: ['race · 26.2 mi'], mpMi: 0, isTaper: false,
+      isRaceWeek: false, containsRace: true,
+    };
+    const s = detectStackedStress(tuneUpWeek, HIST);
+    if (s != null) expect(s.longRunOverDemonstratedMax).toBeNull();
+
+    const handBuilt: StackedStress = {
+      weekStartISO: tuneUpWeek.weekStartISO,
+      stressors: tuneUpWeek.stressors,
+      weeklyMi: tuneUpWeek.weeklyMi,
+      longestMi: tuneUpWeek.longestMi,
+      volumeOverDemonstratedMax: -0.32,
+      longRunOverDemonstratedMax: 0.456,
+      simultaneousPeak: false,
+      why: 'a caller that graded the tune-up as a long run',
+    };
+    const r = checkPromotion([
+      trace(W1),
+      trace(tuneUpWeek, { chosen: 'HOLD', stacked: handBuilt }),
+    ], { weeks: [W1, tuneUpWeek] });
+    expectOnly(r, 'executionIdentity');
+    expect(r.blockedBecause.join(' ')).toMatch(/A race is not a long run/);
+  });
+
+  it('a week with NO race signal at all (goal-only AND containsRace both false) is not caught by the identity gate', () => {
+    const handBuilt: StackedStress = {
+      weekStartISO: W2.weekStartISO,
+      stressors: W2.stressors,
+      weeklyMi: W2.weeklyMi,
+      longestMi: W2.longestMi,
+      volumeOverDemonstratedMax: 0.05,
+      longRunOverDemonstratedMax: 0.05,
+      simultaneousPeak: false,
+      why: 'an ordinary training week',
+    };
+    const r = checkPromotion([
+      trace(W1),
+      trace(W2, { chosen: 'HOLD', stacked: handBuilt }),
+    ], { weeks: [W1, W2] });
+    expect(r.blockedBecause.join(' ')).not.toMatch(/A race is not a long run/);
+  });
 });
 
 /* ══════════════════════════════════════════════════════════════════════════
