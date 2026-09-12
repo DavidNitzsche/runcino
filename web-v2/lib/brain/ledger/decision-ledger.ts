@@ -721,6 +721,75 @@ export async function findLiveAcceptedLedgerRow(
 }
 
 /**
+ * UNDOTRACK-1 (2026-09-09) · WHICH OF THESE WORKOUT PROPOSALS ARE, RIGHT NOW,
+ * UNDONE — for the Decision History surface.
+ *
+ * `plan_workout_proposals.status` cannot answer this: `reopenProposal` resets
+ * it to `pending` on purpose after a per-workout undo, so the decision is open
+ * again and re-answerable (see the undo route's own comment). That means
+ * `status` alone can never distinguish "genuinely pending" from "accepted,
+ * then undone" for the per-workout lane, unlike the block-level lane, which
+ * has its own terminal `undone` status on `plan_proposals`. The ledger is the
+ * only place that still knows.
+ *
+ * Batched by design: `loadV5Decisions` knows every per-workout proposal id it
+ * is about to render before it renders any of them, so this asks the ledger
+ * ONCE per page rather than once per row — the same shape `loadProposalHistory`
+ * and `loadAllPlanProposals` already use beside it, not a new pattern.
+ *
+ * ── WHY THE LATEST ROW PER PROPOSAL, NOT "ANY ROW EVER" ────────────────────
+ *
+ * Ledger rows are never rewritten in place (see this file's header), so a
+ * proposal that was accepted, undone, and then re-accepted (the undo route
+ * reopens it to `pending`, which is answerable again) carries TWO rows: an old
+ * one with `undone_at` set and a new live `ACCEPTED` one with it null. "Any
+ * row ever had undone_at set" would keep reporting `undone` forever after a
+ * legitimate re-accept — the exact one-quantity-two-answers shape Rule 16
+ * forbids. `DISTINCT ON (proposal_id) ... ORDER BY proposal_id, at DESC` reads
+ * the LATEST fact per proposal, matching `findLiveAcceptedLedgerRow`'s own
+ * `ORDER BY at DESC LIMIT 1` reasoning for "which row is live" above.
+ *
+ * Rule 11 · three answers. `read` with an EMPTY set is a real, positive answer
+ * ("none of these were undone"); `table_absent` and `failed` both mean "this
+ * mechanism could not answer" and are NOT the same fact as a negative — the
+ * caller's job is to fall back to status-based logic for the whole batch
+ * rather than read either as "not undone".
+ */
+export type UndoneProposalIds =
+  | { readonly state: 'read'; readonly ids: ReadonlySet<string> }
+  | { readonly state: 'table_absent'; readonly why: string }
+  | { readonly state: 'failed'; readonly why: string };
+
+export async function findUndoneProposalIds(
+  userUuid: string,
+  proposalIds: readonly string[],
+): Promise<UndoneProposalIds> {
+  if (proposalIds.length === 0) return { state: 'read', ids: new Set() };
+  const probe = await ledgerTableExists();
+  if (probe === null) return { state: 'failed', why: PROBE_FAILED_WHY };
+  if (probe === 'absent') return { state: 'table_absent', why: ABSENT_WHY };
+  try {
+    const r = await pool.query<{ proposal_id: string }>(
+      `SELECT proposal_id FROM (
+         SELECT DISTINCT ON (proposal_id) proposal_id, undone_at
+           FROM plan_decision_ledger
+          WHERE user_uuid = $1::uuid AND proposal_id = ANY($2::text[])
+          ORDER BY proposal_id, at DESC
+       ) latest
+       WHERE undone_at IS NOT NULL`,
+      [userUuid, proposalIds],
+    );
+    return { state: 'read', ids: new Set(r.rows.map((row) => row.proposal_id)) };
+  } catch (e) {
+    return {
+      state: 'failed',
+      why: `reading undone proposal ids failed: ${e instanceof Error ? e.message : String(e)}. `
+        + 'That is not "none of these were undone".',
+    };
+  }
+}
+
+/**
  * The runner's answer to a proposal.
  *
  * Guarded on `runner_response = 'PENDING'`, so an accept cannot overwrite a

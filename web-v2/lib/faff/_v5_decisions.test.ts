@@ -29,10 +29,61 @@
  * answering. That asymmetry is about the engine's autonomy, not its
  * disposition, so it is argued rather than corrected.
  */
-import { describe, it, expect } from 'vitest';
-import { DECISION_OUTCOMES, _internals, type V5DecisionOutcome } from '@/lib/faff/v5-decisions';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// UNDOTRACK-1 · `loadV5Decisions` batches a ledger read alongside its two
+// existing loaders. Mocked here so the wiring tests below drive `loadV5Decisions`
+// itself without a database, the same shape `_proposal_expiry.test.ts` uses for
+// `pool`. The pure `outcomeOfWorkoutRow`/`outcomeOfPlanRow` tests further down
+// never call these and are unaffected by the mock.
+vi.mock('@/lib/plan/workout-proposals', () => ({ loadProposalHistory: vi.fn() }));
+vi.mock('@/lib/plan/proposals-state', () => ({ loadAllPlanProposals: vi.fn() }));
+vi.mock('@/lib/brain/ledger/decision-ledger', () => ({
+  findUndoneProposalIds: vi.fn(),
+  // `v5-proposals.ts` (real, unmocked) imports `isLedgerAvailable` at module
+  // scope for its own pending-cards path, which this test never exercises —
+  // stubbed here purely so the mocked module still has every export the rest
+  // of the real import graph expects.
+  isLedgerAvailable: vi.fn().mockResolvedValue(true),
+}));
+
+import { loadProposalHistory } from '@/lib/plan/workout-proposals';
+import { loadAllPlanProposals } from '@/lib/plan/proposals-state';
+import { findUndoneProposalIds } from '@/lib/brain/ledger/decision-ledger';
+import {
+  DECISION_OUTCOMES, _internals, loadV5Decisions, type V5DecisionOutcome,
+} from '@/lib/faff/v5-decisions';
 
 const { outcomeOfWorkoutRow, outcomeOfPlanRow } = _internals;
+const loadProposalHistoryMock = loadProposalHistory as unknown as ReturnType<typeof vi.fn>;
+const loadAllPlanProposalsMock = loadAllPlanProposals as unknown as ReturnType<typeof vi.fn>;
+const findUndoneProposalIdsMock = findUndoneProposalIds as unknown as ReturnType<typeof vi.fn>;
+
+const USER = '11111111-2222-3333-4444-555555555555';
+const TODAY = '2026-09-09';
+
+/** A minimal `plan_workout_proposals` row, shaped as `loadProposalHistory` returns it. */
+function workoutRow(over: {
+  id: number;
+  workoutDateISO: string;
+  storedStatus: string;
+  resolvedAtISO?: string | null;
+}) {
+  return {
+    id: over.id,
+    userUuid: USER,
+    planWorkoutId: `pw-${over.id}`,
+    workoutDateISO: over.workoutDateISO,
+    actionKind: 'unrecognized_kind_for_this_fixture',
+    actionPayload: {},
+    reason: 'a synthetic fixture row',
+    evidence: {},
+    status: 'pending' as const,
+    createdAt: `${over.workoutDateISO}T00:00:00.000Z`,
+    storedStatus: over.storedStatus,
+    resolvedAtISO: over.resolvedAtISO ?? null,
+  };
+}
 
 /** Every status `plan_proposals` can hold. Mirrors `PlanProposalStatus`. */
 const PLAN_STATUSES = [
@@ -78,6 +129,127 @@ describe('V5PROPOSALSURFACE-1 · a stored status is not the authority on a date'
   it('a future-dated pending row is open, and a deferred one says so', () => {
     expect(outcomeOfWorkoutRow('pending', false, false)).toBe('pending');
     expect(outcomeOfWorkoutRow('pending', false, true)).toBe('deferred');
+  });
+});
+
+describe('UNDOTRACK-1 · the ledger overrides status, never the other way around', () => {
+  it('undone wins over every status the row could otherwise carry', () => {
+    // `reopenProposal` deliberately resets a per-workout row to `pending`
+    // after an undo, so the status switch alone would print this as a still-
+    // open question. `undone=true` is checked first and wins regardless.
+    expect(outcomeOfWorkoutRow('pending', false, false, true)).toBe('undone');
+    // And it wins even against a row whose day has since passed, or one that
+    // was somehow re-marked expired before the ledger read landed.
+    expect(outcomeOfWorkoutRow('pending', true, false, true)).toBe('undone');
+    expect(outcomeOfWorkoutRow('expired', false, false, true)).toBe('undone');
+    expect(outcomeOfWorkoutRow('accepted', false, false, true)).toBe('undone');
+    expect(outcomeOfWorkoutRow('dismissed', false, false, true)).toBe('undone');
+  });
+
+  it('omitting the fourth argument is the same fact as undone=false', () => {
+    // Rule 11's fallback posture, at the call-site default: a caller that
+    // could not consult the ledger (or has not been taught about it) gets
+    // exactly the pre-UNDOTRACK-1 behaviour, not a silent new default.
+    for (const s of WORKOUT_STATUSES) {
+      expect(outcomeOfWorkoutRow(s, false, false)).toBe(outcomeOfWorkoutRow(s, false, false, false));
+    }
+  });
+});
+
+describe('UNDOTRACK-1 · loadV5Decisions consults the ledger, batched, per Rule 11', () => {
+  beforeEach(() => {
+    loadProposalHistoryMock.mockReset();
+    loadAllPlanProposalsMock.mockReset();
+    findUndoneProposalIdsMock.mockReset();
+    loadAllPlanProposalsMock.mockResolvedValue([]);
+  });
+
+  it('a per-workout accept-then-undo renders "undone", not "pending" or "expired"', async () => {
+    // The exact production shape: `applyUndo` reversed the plan and stamped
+    // `plan_decision_ledger.undone_at` on the original ACCEPTED row (the first
+    // half of UNDOTRACK-1), and `reopenProposal` then reset THIS row's own
+    // `status` back to `pending` so the decision is answerable again. Before
+    // this fix, that `pending` status is all `loadV5Decisions` had to go on.
+    loadProposalHistoryMock.mockResolvedValue({
+      ok: true,
+      rows: [workoutRow({ id: 42, workoutDateISO: '2026-09-15', storedStatus: 'pending' })],
+    });
+    findUndoneProposalIdsMock.mockResolvedValue({ state: 'read', ids: new Set(['42']) });
+
+    const read = await loadV5Decisions(USER, TODAY);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.decisions).toHaveLength(1);
+    expect(read.decisions[0].outcome).toBe('undone');
+
+    // The batched shape: one call, carrying every per-workout id in the page,
+    // not one probe per row.
+    expect(findUndoneProposalIdsMock).toHaveBeenCalledTimes(1);
+    expect(findUndoneProposalIdsMock).toHaveBeenCalledWith(USER, ['42']);
+  });
+
+  it('a genuinely pending row with no ledger entry still renders "pending"', async () => {
+    loadProposalHistoryMock.mockResolvedValue({
+      ok: true,
+      rows: [workoutRow({ id: 7, workoutDateISO: '2026-09-20', storedStatus: 'pending' })],
+    });
+    // The ledger answered and this proposal id is not in the undone set —
+    // most pending rows are just pending, never accepted at all.
+    findUndoneProposalIdsMock.mockResolvedValue({ state: 'read', ids: new Set() });
+
+    const read = await loadV5Decisions(USER, TODAY);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.decisions[0].outcome).toBe('pending');
+  });
+
+  it('a genuinely expired row with no ledger entry still renders "expired"', async () => {
+    loadProposalHistoryMock.mockResolvedValue({
+      ok: true,
+      rows: [workoutRow({ id: 8, workoutDateISO: '2026-08-01', storedStatus: 'expired' })],
+    });
+    findUndoneProposalIdsMock.mockResolvedValue({ state: 'read', ids: new Set() });
+
+    const read = await loadV5Decisions(USER, TODAY);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.decisions[0].outcome).toBe('expired');
+  });
+
+  it('a table-absent ledger falls back to status logic, never crashes, never a false "undone"', async () => {
+    // Migration 166 not applied on this database — Rule 11's third fact, not
+    // "nothing was undone". The row's own status (reset to pending by a real
+    // undo, or genuinely pending — this mechanism cannot tell them apart right
+    // now) is what carries it, exactly as it did before this fix existed.
+    loadProposalHistoryMock.mockResolvedValue({
+      ok: true,
+      rows: [workoutRow({ id: 42, workoutDateISO: '2026-09-15', storedStatus: 'pending' })],
+    });
+    findUndoneProposalIdsMock.mockResolvedValue({
+      state: 'table_absent',
+      why: 'plan_decision_ledger does not exist on this database',
+    });
+
+    const read = await loadV5Decisions(USER, TODAY);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.decisions[0].outcome).toBe('pending');
+  });
+
+  it('a failed ledger read falls back to status logic, never crashes', async () => {
+    loadProposalHistoryMock.mockResolvedValue({
+      ok: true,
+      rows: [workoutRow({ id: 9, workoutDateISO: '2026-08-01', storedStatus: 'expired' })],
+    });
+    findUndoneProposalIdsMock.mockResolvedValue({
+      state: 'failed',
+      why: 'the probe could not run',
+    });
+
+    const read = await loadV5Decisions(USER, TODAY);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.decisions[0].outcome).toBe('expired');
   });
 });
 

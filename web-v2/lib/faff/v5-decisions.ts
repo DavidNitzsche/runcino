@@ -36,12 +36,30 @@
  * state of the runner's plan, and it would keep lying for as long as any
  * unswept row survives anywhere. The stored status is not the authority on
  * whether a date has passed; the date is.
+ *
+ * ── UNDOTRACK-1 (2026-09-09) · NOR IS IT THE AUTHORITY ON "UNDONE" ─────────
+ *
+ * `plan_workout_proposals.status` also cannot be trusted to say a per-workout
+ * decision was undone, and for the opposite reason to the one above:
+ * `reopenProposal` DELIBERATELY resets it to `pending` after an undo, so the
+ * decision is open and re-answerable rather than terminally closed (see the
+ * undo route's own comment). `plan_proposals` has an `undone` status of its
+ * own for the block-level lane; the per-workout table does not, and cannot
+ * gain one without breaking the "open again" behaviour the undo route relies
+ * on. So this reads `plan_decision_ledger` instead — the ONE other place that
+ * still knows an accept happened and was reversed, via
+ * `findUndoneProposalIds`'s batched, latest-row-per-proposal lookup. A ledger
+ * row is not always there to ask (migration 166, or a decision made before it
+ * landed): that is Rule 11's third fact, not a "not undone", and this file
+ * falls back to the status-based reading for exactly that case rather than
+ * guessing.
  */
 import { PLAN_TITLES } from '@/lib/coach/decision-cards';
 import { loadAllPlanProposals } from '@/lib/plan/proposals-state';
 import { loadProposalHistory } from '@/lib/plan/workout-proposals';
 import { directionOf, headlineFor, standingOf } from '@/lib/faff/v5-proposals';
 import type { V5ProposalDirection } from '@/lib/faff/v5-today';
+import { findUndoneProposalIds } from '@/lib/brain/ledger/decision-ledger';
 
 /**
  * What became of a decision. Every state the two tables can be in, plus the
@@ -86,12 +104,24 @@ export type V5DecisionsRead =
  * `pastDated` is passed in rather than recomputed per row so one day boundary
  * governs the whole list. See the header for why a stored `pending` is not
  * believed over a date that has gone.
+ *
+ * `undone` is UNDOTRACK-1's addition, resolved by the caller from
+ * `plan_decision_ledger` (see the header's second "does not trust the
+ * database" section) and checked FIRST, ahead of the status switch: after an
+ * undo, `status` reads `pending` (`reopenProposal`'s intended behaviour, so
+ * the decision is answerable again), and without this check that `pending`
+ * would run straight through the switch below and print as a still-open
+ * question instead of a reversed one. When `undone` is false — a genuinely
+ * pending row, a genuinely expired one, or a ledger this file could not
+ * consult — the status switch runs exactly as it always has.
  */
 function outcomeOfWorkoutRow(
   status: string,
   pastDated: boolean,
   deferred: boolean,
+  undone = false,
 ): V5DecisionOutcome {
+  if (undone) return 'undone';
   switch (status) {
     case 'accepted': return 'accepted';
     case 'dismissed': return 'declined';
@@ -138,6 +168,21 @@ export async function loadV5Decisions(
   const perWorkout = await loadProposalHistory(userUuid, limit);
   if (!perWorkout.ok) return { ok: false, error: perWorkout.error };
 
+  // UNDOTRACK-1 · one batched ledger read for every per-workout row this call
+  // is about to render, rather than one probe per row (the same shape
+  // `loadAllPlanProposals`/`loadProposalHistory` already use beside it). A
+  // `null` here means the ledger could not answer for this batch at all —
+  // table absent (migration 166 not applied) or the read itself failed — and
+  // is Rule 11's third fact, not "nothing was undone": every row below falls
+  // back to its status-based reading exactly as it did before this file knew
+  // the ledger existed.
+  const undoneLookup = await findUndoneProposalIds(
+    userUuid,
+    perWorkout.rows.map((r) => String(r.id)),
+  );
+  const undoneIds: ReadonlySet<string> | null =
+    undoneLookup.state === 'read' ? undoneLookup.ids : null;
+
   const out: V5DecisionWire[] = [];
 
   for (const r of perWorkout.rows) {
@@ -154,6 +199,7 @@ export async function loadV5Decisions(
         r.storedStatus,
         r.workoutDateISO < todayISO,
         standingOf(r, todayISO) === 'deferral',
+        undoneIds?.has(String(r.id)) ?? false,
       ),
       headline: direction == null ? 'A change to one session' : headlineFor(r),
       why: (r.reason ?? '').trim(),
