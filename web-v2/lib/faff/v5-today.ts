@@ -132,6 +132,34 @@ export interface V5Group {
 
 export type V5DayStateWord = 'easy' | 'rest' | 'quality' | 'race' | 'phase' | 'long';
 
+/**
+ * FINDING-3 (2026-09-11) · the wire word for "what actually happened to
+ * this date's prescription" — a DIFFERENT question from `V5DayStateWord`
+ * above, which only ever names WHICH KIND of day this is (Rule 16: one
+ * quantity, one name, and this app's own `V5.DayState` doc comment is
+ * explicit that a day state "is never a grade").
+ *
+ * Canonical source: `lib/execution/day-resolution.ts`'s `DayResolution`.
+ * Mirrored here as a literal union rather than imported, so this file's own
+ * header claim ("the only import this file has") stays true — this file
+ * stays a pure, database-free composer, and `day-resolution.ts` (which
+ * touches Postgres) is not something this composer needs to know how to
+ * reach; the route resolves it and hands the word down on the context, same
+ * as every other fact here.
+ */
+export type V5DayResolutionWord = 'completed' | 'moved' | 'skipped' | 'missed' | 'supplemental';
+
+/** See `V5Today.viewedDayResolution`'s doc comment. */
+export interface V5ViewedDayResolution {
+  resolution: V5DayResolutionWord;
+  /** `moved` only. */
+  movedToISO?: string | null;
+  /** `supplemental` only — run ids that exist but don't satisfy the
+   *  prescription, so a future manual-resolution UI has something to point
+   *  at (see `lib/runs/plan-match-ambiguity.ts`'s own header). */
+  supplementalRunIds?: string[];
+}
+
 export interface V5Panel {
   dayState: V5DayStateWord;
   quiet: boolean;
@@ -162,6 +190,18 @@ export interface V5WeekStripDay {
   isToday: boolean;
   isDone: boolean;
   isRest: boolean;
+  /**
+   * FINDING-3 · `null` when this date has nothing to resolve yet (a rest
+   * day, or a still-live prescription — see
+   * `docs/design/missed-state-boundary-2026-09-11.md` for the grace
+   * window). Optional so an old cached payload and any pre-existing test
+   * fixture in this repo both decode exactly as before — same posture as
+   * `V5Row.skipped`'s own doc comment on this file.
+   */
+  resolution?: V5DayResolutionWord | null;
+  /** `moved` only — where the prescription actually landed, so the client
+   *  can offer "see it on <day>" rather than a bare label. */
+  movedToISO?: string | null;
 }
 
 export interface V5ConvergedDomain {
@@ -397,6 +437,24 @@ export interface V5Today {
   state: V5TodayStateWire;
   panel: V5Panel;
   weekStrip: V5WeekStripDay[];
+  /**
+   * FINDING-3 (2026-09-11) · the viewed day's real resolution, when it is
+   * one this screen does not already have a distinct treatment for.
+   *
+   * `completed` already renders through the existing `after_run`/`postRun`
+   * path and a `null` resolution means "still a live, open prescription" —
+   * both cases leave this `null` on purpose, so a client checking `!= null`
+   * gets exactly the four cases with no existing hero: moved, skipped,
+   * missed, supplemental. Populated for ANY stepped day the resolver has an
+   * opinion on, past or future — a runner can mark a future day skipped or
+   * moved today, and that is a true fact worth showing immediately, not
+   * something that waits for the day to lapse (see
+   * `docs/design/missed-state-boundary-2026-09-11.md`).
+   *
+   * Optional so every pre-existing hand-built `V5Today`/context in this
+   * repo's test suite keeps decoding unchanged.
+   */
+  viewedDayResolution?: V5ViewedDayResolution | null;
   groups: V5Group[];
   why: string | null;
   /// THE COACHING THESIS (BRAIN_CONSTITUTION §F), additive 2026-09-01.
@@ -1261,6 +1319,11 @@ export interface V5TodayContext {
     isToday: boolean;
     isRest: boolean;
     isDone: boolean;
+    /** FINDING-3 · optional so pre-existing hand-built contexts (tests,
+     *  fixtures) keep compiling with no opinion on resolution. */
+    resolution?: V5DayResolutionWord | null;
+    movedToISO?: string | null;
+    supplementalRunIds?: string[];
   }>;
 
   /** Pre-run prescription — null once the runner has logged today's run,
@@ -1611,6 +1674,8 @@ function buildWeekStrip(ctx: V5TodayContext): V5WeekStripDay[] {
       isToday: d.isToday,
       isDone: d.isDone,
       isRest: d.isRest,
+      resolution: d.resolution ?? null,
+      movedToISO: d.movedToISO ?? null,
     };
   });
 }
@@ -1976,7 +2041,35 @@ const EMPTY_TODAY = (
   notOnPhoneYet: null,
 });
 
+/**
+ * FINDING-3 · the viewed day's resolution, for the four cases this screen
+ * has no existing hero for. See `V5Today.viewedDayResolution`'s doc comment
+ * for why `null` and `completed` are both deliberately excluded here.
+ */
+function viewedDayResolutionFor(ctx: V5TodayContext): V5ViewedDayResolution | undefined {
+  // `undefined`, not `null` — so a caller's existing `toEqual` fixture that
+  // predates this field (built with no `viewedDayResolution` key at all)
+  // keeps matching: Vitest's `toEqual` treats an `undefined`-valued property
+  // as equivalent to an absent one, but NOT a `null`-valued one, and this
+  // wrapper runs unconditionally on every `composeV5Today` call.
+  if (!ctx.isSteppedDay) return undefined;
+  const day = ctx.weekStripDays.find((d) => d.dateISO === ctx.todayISO);
+  const resolution = day?.resolution ?? null;
+  if (resolution == null || resolution === 'completed') return undefined;
+  return {
+    resolution,
+    movedToISO: day?.movedToISO ?? null,
+    supplementalRunIds: day?.supplementalRunIds ?? [],
+  };
+}
+
 export function composeV5Today(rawCtx: V5TodayContext): V5Today {
+  const out = composeV5TodayCore(rawCtx);
+  out.viewedDayResolution = viewedDayResolutionFor(rawCtx);
+  return out;
+}
+
+function composeV5TodayCore(rawCtx: V5TodayContext): V5Today {
   // Applied ONCE, before any state branch reads `whereYouAre` — there are two
   // assignment sites below and a third would be easy to add without noticing.
   const ctx: V5TodayContext = rawCtx.isSteppedDay

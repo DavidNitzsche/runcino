@@ -452,6 +452,13 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     isToday: d.is_today,
     isRest: d.type === 'rest',
     isDone: d.completedRunId != null || (d.done_mi != null && d.done_mi >= 0.5),
+    // FINDING-3 · the real fact, from lib/execution/day-resolution.ts via
+    // week-loader.ts's `PlanWeekDay.resolution`. See that field's own doc
+    // comment for why this stays separate from `isDone` above rather than
+    // replacing it.
+    resolution: d.resolution.resolution,
+    movedToISO: d.resolution.movedToISO ?? null,
+    supplementalRunIds: d.resolution.supplementalRunIds ?? [],
   }));
 
   const weekLine = activePlan

@@ -36,6 +36,17 @@ const day = (over: Partial<PlanWeekDay> & { date_iso: string; dow: number }): Pl
   done_mi: null,
   skipped: false,
   secondaryRun: null,
+  // Pre-existing gap, unrelated to this test file's own subject: `resolution`
+  // (`lib/execution/day-resolution.ts`'s `DayResolutionDetail`) became a
+  // required `PlanWeekDay` field in the same commit that introduced it
+  // (Finding 3), and this fixture helper was never updated to default it —
+  // caught by `tsc`, not by this file's own tests. `{ resolution: null }` is
+  // that type's own "still a live, open prescription" default (see
+  // `week-loader.ts`'s `resolutionByDate?.get(dISO) ?? { resolution: null }`),
+  // matching what every day in this fixture actually is: nothing here is
+  // moved/skipped/missed/supplemental, so an explicit per-day override was
+  // never the fix — the shared default was.
+  resolution: { resolution: null },
   ...over,
 });
 

@@ -10,14 +10,17 @@ import XCTest
 
 final class PlanSnapshotNavigationTests: XCTestCase {
 
-    private func day(_ iso: String, dow: Int = 4, type: String = "easy") -> PlanSnapshotDay {
+    private func day(_ iso: String, dow: Int = 4, type: String = "easy",
+                      resolution: String? = nil, moved_to_iso: String? = nil,
+                      supplemental_runs: [PlanSnapshotSupplementalRun] = []) -> PlanSnapshotDay {
         PlanSnapshotDay(plan_workout_id: "pw_\(iso)", date_iso: iso, dow: dow, type: type,
                          is_rest: type == "rest", is_race: type == "race",
                          is_quality: type == "threshold" || type == "intervals" || type == "tempo",
                          is_long: type == "long", distance_mi: type == "rest" ? 0 : 6,
                          sub_label: nil, notes: nil, card: nil, treadmill: nil,
-                         matched_run: nil, supplemental_runs: [],
-                         day_state: type == "rest" ? "rest" : type, kicker: nil, dose: nil, stats: [])
+                         matched_run: nil, supplemental_runs: supplemental_runs,
+                         day_state: type == "rest" ? "rest" : type, kicker: nil, dose: nil, stats: [],
+                         resolution: resolution, moved_to_iso: moved_to_iso)
     }
 
     private func snapshot(days: [PlanSnapshotDay]) -> PlanSnapshot {
@@ -108,5 +111,92 @@ final class PlanSnapshotNavigationTests: XCTestCase {
         XCTAssertEqual(d.supplemental_runs.first?.runId, "r_friend")
         XCTAssertNotEqual(d.matched_run?.runId, d.supplemental_runs.first?.runId,
                            "the matched session and the supplemental run must never be the same identity")
+    }
+
+    // MARK: - SNAPSHOT-RESOLUTION-1 (2026-09-11 follow-up)
+    //
+    // A reviewer found that `shouldRenderFromSnapshot` returning `true` — the
+    // correct, unchanged decision for every missed/moved/skipped/supplemental
+    // day, since none of them carry a `matched_run` — routed the SNAPSHOT
+    // render path around the whole past-day resolution hero this branch adds,
+    // because `PlanSnapshotDay` had no `resolution` field for that path to
+    // read at all. These tests cover the fix: the wire field decodes to the
+    // same `V5.ResolutionState` the live path already uses, and
+    // `TodayHostV5.snapshotResolutionHero(for:)` — the pure function `body`'s
+    // snapshot branch gates on — returns the right thing for every case.
+
+    func testPlanSnapshotDayResolutionDecodesToTheTypedState() {
+        XCTAssertEqual(day("2026-09-06", resolution: "skipped").resolvedState, .skipped)
+        XCTAssertEqual(day("2026-09-10", resolution: "missed").resolvedState, .missed)
+        XCTAssertEqual(day("2026-09-04", resolution: "moved").resolvedState, .moved)
+        XCTAssertEqual(day("2026-09-07", resolution: "supplemental").resolvedState, .supplemental)
+        XCTAssertEqual(day("2026-09-08", resolution: "completed").resolvedState, .completed)
+    }
+
+    func testPlanSnapshotDayResolutionAbsentDecodesToNilNotAFailure() {
+        // Same lenient posture as `skipped` — an older cached snapshot, or a
+        // day the server never resolved (still a live, open prescription).
+        XCTAssertNil(day("2026-09-11").resolvedState)
+    }
+
+    func testPlanSnapshotDayResolutionUnknownRawValueDecodesToNil() {
+        // Mirrors `V5.ResolutionState`'s own "unknown reads as nil, never a
+        // crash" contract for a server that ships a sixth case before this
+        // build knows about it.
+        XCTAssertNil(day("2026-09-11", resolution: "something_new_the_server_added").resolvedState)
+    }
+
+    func testSnapshotResolutionHeroNilForALiveOpenPrescription() {
+        // The ordinary case — no resolution at all — must keep falling
+        // through to the existing `PlanSnapshotDayView`, unchanged.
+        XCTAssertNil(TodayHostV5.snapshotResolutionHero(for: day("2026-09-11")))
+    }
+
+    func testSnapshotResolutionHeroNilForCompleted() {
+        // Guarded defensively even though a completed day should never reach
+        // this function in practice (the `matched_run == nil` gate one call
+        // site up already excludes it) — see the function's own header for
+        // why this is asserted rather than assumed.
+        XCTAssertNil(TodayHostV5.snapshotResolutionHero(for: day("2026-09-08", resolution: "completed")))
+    }
+
+    func testSnapshotResolutionHeroForMissed() {
+        let hero = TodayHostV5.snapshotResolutionHero(for: day("2026-09-10", resolution: "missed"))
+        XCTAssertEqual(hero?.resolution, "missed")
+        XCTAssertEqual(hero?.state, .missed)
+        XCTAssertNil(hero?.movedToISO)
+    }
+
+    func testSnapshotResolutionHeroForSkipped() {
+        let hero = TodayHostV5.snapshotResolutionHero(for: day("2026-09-06", resolution: "skipped"))
+        XCTAssertEqual(hero?.state, .skipped)
+    }
+
+    func testSnapshotResolutionHeroCarriesMovedToISO() {
+        let hero = TodayHostV5.snapshotResolutionHero(
+            for: day("2026-09-04", resolution: "moved", moved_to_iso: "2026-09-06"))
+        XCTAssertEqual(hero?.state, .moved)
+        XCTAssertEqual(hero?.movedToISO, "2026-09-06")
+    }
+
+    func testSnapshotResolutionHeroCarriesSupplementalRunIds() {
+        let supplemental = PlanSnapshotSupplementalRun(runId: "r_extra", distanceMi: 3.1,
+                                                         durationSec: 1500, paceSPerMi: 480, indoor: false)
+        let hero = TodayHostV5.snapshotResolutionHero(
+            for: day("2026-09-07", resolution: "supplemental", supplemental_runs: [supplemental]))
+        XCTAssertEqual(hero?.state, .supplemental)
+        XCTAssertEqual(hero?.supplementalRunIds, ["r_extra"])
+    }
+
+    // MARK: - Falsified once (Rule 18): the field genuinely gates the branch,
+    // not a tautology that would pass however `snapshotResolutionHero` were
+    // wired.
+
+    func testFalsifier_aLiveDayAndAMissedDayMustNotBeIndistinguishable() {
+        let live = day("2026-09-11")
+        let missed = day("2026-09-11", resolution: "missed")
+        XCTAssertNotEqual(TodayHostV5.snapshotResolutionHero(for: live) != nil,
+                           TodayHostV5.snapshotResolutionHero(for: missed) != nil,
+                           "a day with no resolution and a missed day must route to different content")
     }
 }

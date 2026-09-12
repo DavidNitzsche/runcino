@@ -42,6 +42,24 @@ async function readBody(req: NextRequest): Promise<SkipBody> {
   }
 }
 
+/**
+ * FINDING-3 (2026-09-11) · this route already accepted an arbitrary `date` in
+ * its POST/DELETE bodies (SKIPCONFIRM-1's own GET handler already validates
+ * its `?date=` query param the same way) — extending "declared skip" to a
+ * past day needed no new mechanism here, only a native client willing to
+ * call it for a day other than today (`RescheduleV5.swift`'s "Mark as
+ * skipped" affordance). What was missing is this: POST/DELETE never
+ * validated `body.date`'s SHAPE, so a malformed client value would have been
+ * written straight into `day_actions.date_iso` (a text column with no CHECK
+ * constraint) rather than refused. Harmless while the only caller was the
+ * app's own "today" button (which never sent a hand-typed date), but a real
+ * gap now that a client can pass any date it read off the wire.
+ */
+function resolveValidatedDate(raw: string | undefined, fallback: string): string {
+  if (raw == null) return fallback;
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : fallback;
+}
+
 export async function GET(req: NextRequest) {
   const auth = await requireUserId(req);
   if (auth instanceof NextResponse) return auth;
@@ -77,7 +95,7 @@ export async function POST(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const body = await readBody(req);
-  const date = body.date ?? await runnerToday(userId);
+  const date = resolveValidatedDate(body.date, await runnerToday(userId));
 
   try {
     await pool.query(
@@ -220,7 +238,7 @@ export async function DELETE(req: NextRequest) {
   if (auth instanceof NextResponse) return auth;
   const userId = auth;
   const body = await readBody(req);
-  const date = body.date ?? await runnerToday(userId);
+  const date = resolveValidatedDate(body.date, await runnerToday(userId));
 
   try {
     await pool.query(

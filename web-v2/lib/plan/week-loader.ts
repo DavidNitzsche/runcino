@@ -17,6 +17,7 @@ import { trainingWeekWindow } from '@/lib/notifications/week-window';
 import { runDaySql } from '@/lib/runs/run-shape';
 import { stripResearchCitations } from './strip-citations';
 import { renderRunnerInstruction } from './runner-instruction';
+import { resolveDateRangeDayStatus, type DayResolutionDetail } from '@/lib/execution/day-resolution';
 
 export interface PlanWeekDay {
   /** A plan day's IDENTITY is its row id, not its date. Null on a
@@ -39,6 +40,23 @@ export interface PlanWeekDay {
   completedRunId: string | null;
   done_mi: number | null;
   skipped: boolean;
+  /**
+   * FINDING-3 (2026-09-11) · the real fact about this date's prescription —
+   * completed / moved / skipped / missed / supplemental — from
+   * `lib/execution/day-resolution.ts`, the canonical resolver built on
+   * `day-resolver.ts` + `plan_reschedules` + `day_actions`. `null` when the
+   * date carries no non-rest prescription, or the prescription is still
+   * live (not past, or past but inside the sync-grace window — see
+   * `docs/design/missed-state-boundary-2026-09-11.md`).
+   *
+   * DELIBERATELY SEPARATE from `completedRunId`/`done_mi` above rather than
+   * replacing them (Rule 16 — two different questions keep two different
+   * names): those two answer "was there running that day" from raw
+   * mileage, with no opinion on whether it satisfies the prescription — the
+   * exact gap that let a supplemental, unrelated run paint a day "done" on
+   * the strip. This field is the one that has an opinion.
+   */
+  resolution: DayResolutionDetail;
   secondaryRun: {
     plan_workout_id: string | null;
     type: string;
@@ -132,6 +150,17 @@ export interface PlanWeekResult {
 /** Exported for `lib/plan/plan-snapshot.ts` (PLANSNAPSHOT-1) — the ONE
  *  scrub-and-render pass a day's note gets, reused rather than re-composed,
  *  per this file's own header on why the two calls are ordered as they are. */
+/** Plain date arithmetic, no timezone — `weekStart`/`weekEnd` are already
+ *  plain calendar-date strings by the time this file touches them. Named
+ *  distinctly from `shapePlanWeekDays`'s own closured `addDaysISO` below
+ *  since that one is intentionally local to keep that function a pure,
+ *  dependency-free seam. */
+function addDaysISOTop(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 export function dayNoteFor(raw: string | null | undefined): string | null {
   if (typeof raw !== 'string') return null;
   const scrubbed = renderRunnerInstruction(stripResearchCitations(raw))?.trim() ?? '';
@@ -370,11 +399,27 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
   // history in this function's git blame if the query itself is in question.
   const { skippedDates, failed: skipReadFailed } = await loadSkippedDates(userId, weekStart, weekEnd);
 
+  // FINDING-3 · one extra batch read for the whole week, same shape as the
+  // canonical-mileage and skip reads above. Degrades to "no resolution
+  // marker on any day" on failure rather than failing the whole week load —
+  // that fallback is the ORIGINAL Finding-3 defect's own behavior (every day
+  // rendered as a live prescription with no missed/moved/skipped fact), not
+  // a newly-dangerous one, so a display enhancement failing open here is not
+  // a Rule 11 violation of a safety mechanism. Logged, not silently eaten.
+  let resolutionByDate = new Map<string, DayResolutionDetail>();
+  try {
+    resolutionByDate = await resolveDateRangeDayStatus(userId, weekStart, addDaysISOTop(weekEnd, 1));
+  } catch (e) {
+    console.warn('[week-loader] day-resolution unreadable, week strip will carry no resolution marks:',
+      e instanceof Error ? e.message : e);
+  }
+
   const days = shapePlanWeekDays(rows as PlanWorkoutRow[], {
     weekStart,
     today,
     actualByDate,
     skippedDates,
+    resolutionByDate,
   });
 
   return {
@@ -432,9 +477,14 @@ export function shapePlanWeekDays(
     today: string;
     actualByDate: Map<string, { mi: number; id: string | null }>;
     skippedDates: Set<string>;
+    /** FINDING-3 · optional so every existing caller/fixture in this repo's
+     *  test suite (none of which predates this field) keeps compiling and
+     *  gets an honest `{ resolution: null }` default rather than a made-up
+     *  value. */
+    resolutionByDate?: Map<string, DayResolutionDetail>;
   },
 ): PlanWeekDay[] {
-  const { weekStart, today, actualByDate, skippedDates } = ctx;
+  const { weekStart, today, actualByDate, skippedDates, resolutionByDate } = ctx;
   const TYPE_PRIORITY: Record<string, number> = {
     race: 6, long: 5,
     intervals: 4, tempo: 4, threshold: 4, quality: 4, repetition: 4, fartlek: 4,
@@ -490,6 +540,7 @@ export function shapePlanWeekDays(
       completedRunId: actual?.id ?? null,
       done_mi: actual ? actual.mi : null,
       skipped: skippedDates.has(dISO),
+      resolution: resolutionByDate?.get(dISO) ?? { resolution: null },
       secondaryRun: secondary
         ? {
             plan_workout_id: secondary.id ?? null,

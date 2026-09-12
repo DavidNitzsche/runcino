@@ -539,6 +539,15 @@ struct V5Panel: Decodable, Equatable {
     var fill: PanelFill { quiet ? .quiet : .state(state) }
 }
 
+/// FINDING-3 · `V5DayResolutionWord` on the wire (`lib/faff/v5-today.ts`).
+/// Unknown/missing decodes to `nil` rather than failing, matching
+/// `V5Panel.state`'s own "ignored when the raw value is unrecognised" posture
+/// — an older or newer server value must never crash a build in between.
+func resolutionState(from raw: String?) -> V5.ResolutionState? {
+    guard let raw else { return nil }
+    return V5.ResolutionState(rawValue: raw)
+}
+
 struct V5WeekStripDay: Decodable, Equatable, Hashable, Identifiable {
     /// `plan_workout_id`, or `date:<iso>` for a synthesised rest day. The date
     /// is a lookup, never an identity.
@@ -550,13 +559,22 @@ struct V5WeekStripDay: Decodable, Equatable, Hashable, Identifiable {
     let isToday: Bool
     let isDone: Bool
     let isRest: Bool
+    /// FINDING-3 · see `V5.ResolutionState`'s own header for why this is a
+    /// dimension separate from `dayState` above rather than a seventh case
+    /// of it. Absent on an older server.
+    let resolution: String?
+    /// `moved` only.
+    let movedToISO: String?
+    /// `supplemental` only. Absent/empty on every other resolution.
+    let supplementalRunIds: [String]?
 
     var strip: WeekStripDayV5 {
         WeekStripDayV5(id: id, dateISO: dateISO,
                        letter: letter, weekday: Self.weekdayName(dateISO),
                        number: number,
                        state: V5.DayState(rawValue: dayState) ?? .easy,
-                       isToday: isToday, isDone: isDone, isRest: isRest)
+                       isToday: isToday, isDone: isDone, isRest: isRest,
+                       resolution: resolutionState(from: resolution))
     }
 
     /// "Thursday" from "2026-08-20". Speech only — the strip still draws the
@@ -587,6 +605,19 @@ struct V5WeekStripDay: Decodable, Equatable, Hashable, Identifiable {
         f.setLocalizedDateFormatFromTemplate("EEEE")
         return f
     }()
+}
+
+/// FINDING-3 · `V5Today.viewedDayResolution` on the wire
+/// (`lib/faff/v5-today.ts`'s `V5ViewedDayResolution`). Only ever present when
+/// the runner has stepped away from today AND the viewed day resolves to one
+/// of the four cases this screen has no existing hero for — see that type's
+/// own doc comment for why `completed`/still-live are both excluded.
+struct V5ViewedDayResolution: Decodable, Equatable {
+    let resolution: String
+    let movedToISO: String?
+    let supplementalRunIds: [String]?
+
+    var state: V5.ResolutionState? { resolutionState(from: resolution) }
 }
 
 struct V5Injury: Decodable, Equatable {
@@ -676,6 +707,14 @@ struct V5Today: Decodable, Equatable {
     let state: V5TodayState
     let panel: V5Panel
     let weekStrip: [V5WeekStripDay]
+    /// FINDING-3 (2026-09-11) · the viewed day's real resolution, for the
+    /// four cases this screen has no existing hero for (`completed` renders
+    /// through the existing `after_run`/`postRun` path; a live, still-open
+    /// prescription carries no resolution at all). Absent on an older server
+    /// and nil on every non-stepped Today load. See
+    /// `V5Today.viewedDayResolution` on the server (`lib/faff/v5-today.ts`)
+    /// for the full contract.
+    let viewedDayResolution: V5ViewedDayResolution?
     let groups: [V5Group]
     /// "Why this run".
     let why: String?
@@ -2707,6 +2746,7 @@ extension V5Today {
         case facts, win, conditionsNote, coachTip
         case hrAvg, hrMax, cadenceAvg, tempF, workoutType
         case hrAvgWork, cadenceAvgWork, paceWork
+        case viewedDayResolution
     }
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: K.self)
@@ -2715,6 +2755,12 @@ extension V5Today {
         state = c.opt(.state) ?? .beforeRun
         panel = try c.decode(V5Panel.self, forKey: .panel)
         weekStrip = c.list(.weekStrip)
+        // FINDING-3 · absent on an older server, and absent whenever the
+        // viewed day has nothing to say — `try?` so a malformed value (a
+        // server that starts sending a shape this build does not expect)
+        // degrades to "nothing to show" rather than losing the whole payload
+        // the way `thesis` above already does.
+        viewedDayResolution = try? c.decodeIfPresent(V5ViewedDayResolution.self, forKey: .viewedDayResolution)
         groups = c.list(.groups)
         why = c.opt(.why)
         thesis = try? c.decodeIfPresent(V5Thesis.self, forKey: .thesis)

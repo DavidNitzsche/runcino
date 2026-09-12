@@ -523,26 +523,57 @@ struct TodayHostV5: View {
                 // whatever Today's own cache last held (seeded from disk at
                 // cold launch, refreshed at launch/foreground) and is not
                 // re-fetched for this date.
-                inSharedShell(shellModel, fill: snapshotDay.fill, hero: {
-                    // `type` passed RAW (lowercase), same as `/api/v5/today`'s
-                    // own `ctx.type = prescriptionType` — `.faffDisplayV5`
-                    // applies `.textCase(.uppercase)` at this point size on
-                    // its own (`FontsV5.swift`), so uppercasing here would be
-                    // redundant, not wrong, and this way there is exactly one
-                    // place that decides display case.
-                    HeroDayPanelContentV5(
-                        kicker: snapshotDay.kicker,
-                        type: snapshotDay.type,
-                        dose: snapshotDay.dose?.value,
-                        stats: snapshotDay.stats.map { stat in
-                            PanelStat(stat.label, stat.value.value, ink: stat.toneValue.inkOverride)
-                        }
-                    )
-                }) {
-                    PlanSnapshotDayView(day: snapshotDay)
+                //
+                // SNAPSHOT-RESOLUTION-1 (2026-09-11 follow-up) · a day this
+                // gate has already decided renders from the LOCAL snapshot
+                // (never the network) must still be able to say moved/
+                // skipped/missed/supplemental honestly — a reviewer found
+                // that this branch drew `PlanSnapshotDayView`, the plain
+                // still-open-prescription card, for EVERY snapshot-covered
+                // day regardless of resolution, which is every missed/
+                // moved/skipped day by definition (`matched_run == nil` is
+                // exactly what makes a day eligible for this branch in the
+                // first place). `content(_:)`'s own FINDING-3 dispatcher
+                // below makes this same choice for the network path; this
+                // is its offline twin, fed from `snapshotDay` instead of a
+                // live `V5Today` — see `snapshotResolutionHero(for:)`'s own
+                // header for why the fields it reads never disagree with
+                // the live path's.
+                if let resolution = Self.snapshotResolutionHero(for: snapshotDay) {
+                    inSharedShell(shellModel, fill: .quiet) {
+                        PastDayResolutionHeroV5(
+                            dateLine: Self.dayName(snapshotDay.date_iso),
+                            dayISO: snapshotDay.date_iso,
+                            sessionLabel: snapshotDay.type.isEmpty ? nil : snapshotDay.type,
+                            resolution: resolution,
+                            onMarkSkipped: { await markPastDaySkipped(snapshotDay.date_iso) },
+                            onUndoSkip: { await undoPastDaySkip(snapshotDay.date_iso) }
+                        )
+                    }
+                    .id(snapshotDay.date_iso)
+                    .transition(.todayPanel(sign: navDirection))
+                } else {
+                    inSharedShell(shellModel, fill: snapshotDay.fill, hero: {
+                        // `type` passed RAW (lowercase), same as `/api/v5/today`'s
+                        // own `ctx.type = prescriptionType` — `.faffDisplayV5`
+                        // applies `.textCase(.uppercase)` at this point size on
+                        // its own (`FontsV5.swift`), so uppercasing here would be
+                        // redundant, not wrong, and this way there is exactly one
+                        // place that decides display case.
+                        HeroDayPanelContentV5(
+                            kicker: snapshotDay.kicker,
+                            type: snapshotDay.type,
+                            dose: snapshotDay.dose?.value,
+                            stats: snapshotDay.stats.map { stat in
+                                PanelStat(stat.label, stat.value.value, ink: stat.toneValue.inkOverride)
+                            }
+                        )
+                    }) {
+                        PlanSnapshotDayView(day: snapshotDay)
+                    }
+                    .id(snapshotDay.date_iso)
+                    .transition(.todayPanel(sign: navDirection))
                 }
-                .id(snapshotDay.date_iso)
-                .transition(.todayPanel(sign: navDirection))
             } else if let model = surface.model {
                 let wanted = wantedDate(given: model)
                 switch readiness(model: model, wanted: wanted, pendingDate: pendingDate) {
@@ -986,10 +1017,23 @@ struct TodayHostV5: View {
             let movedISO = Self.iso.string(from: moved)
             let number = String(cal.component(.day, from: moved))
             if let day = store.day(on: movedISO) {
+                // SNAPSHOT-RESOLUTION-1 · this function rebuilds a week
+                // strip entirely from the local snapshot for a week the
+                // live `model` did not itself load (see this function's own
+                // header) — before this, that reconstruction had no
+                // `resolution:` at all, so a missed/moved/skipped badge
+                // that renders correctly on the CURRENT week's own strip
+                // (fed straight from `model.weekStrip`'s `V5WeekStripDay
+                // .strip`, `DesignV5/APIV5.swift`) silently disappeared the
+                // moment the runner paged to a different week. Same field,
+                // same source (`PlanSnapshotDay.resolvedState`, computed by
+                // the identical server-side resolver `V5WeekStripDay
+                // .resolution` decodes) — not a second derivation.
                 return WeekStripDayV5(id: day.plan_workout_id ?? "date:\(movedISO)", dateISO: movedISO,
                                        letter: d.letter, weekday: d.strip.weekday, number: number,
                                        state: Self.dayState(for: day), isToday: movedISO == selected,
-                                       isDone: day.matched_run != nil, isRest: day.is_rest)
+                                       isDone: day.matched_run != nil, isRest: day.is_rest,
+                                       resolution: day.resolvedState)
             }
             // Outside the authored block (or no snapshot has ever synced far
             // enough) — an honest ghost, same as `neighbour(_:)` draws for
@@ -1035,8 +1079,42 @@ struct TodayHostV5: View {
         }
     }
 
+    /// FINDING-3 (2026-09-11) · a thin dispatcher in front of `legacyContent`
+    /// below, added rather than threaded into that switch, so its ~100 lines
+    /// of per-state branches (one edit away from every other screen in this
+    /// file) stay untouched. `model.viewedDayResolution` is non-nil ONLY for
+    /// the four resolution states this screen previously had no hero for —
+    /// see that field's own doc comment (`APIV5.swift`) — so a live,
+    /// still-open prescription (the ordinary case, `nil` here) falls straight
+    /// through to `legacyContent` exactly as it always has.
+    ///
+    /// This is the fix for the root-caused defect itself: `/api/v5/today
+    /// ?date=` used to compute every downstream fact as if the requested
+    /// past date were live "today", so `model.state` (before_run/after_run/
+    /// etc.) reflected a LIVE prescription reading for a day that had
+    /// already passed. Rendering `legacyContent` for one of these four cases
+    /// would still be that defect, now with a resolution fact sitting
+    /// unused on the payload.
     @ViewBuilder
     private func content(_ model: V5Today) -> some View {
+        if let resolution = model.viewedDayResolution {
+            inSharedShell(model, fill: panelFill(for: model)) {
+                PastDayResolutionHeroV5(
+                    dateLine: model.panel.dateLine,
+                    dayISO: model.dateISO,
+                    sessionLabel: model.panel.type.isEmpty ? nil : model.panel.type,
+                    resolution: resolution,
+                    onMarkSkipped: { await markPastDaySkipped(model.dateISO) },
+                    onUndoSkip: { await undoPastDaySkip(model.dateISO) }
+                )
+            }
+        } else {
+            legacyContent(model)
+        }
+    }
+
+    @ViewBuilder
+    private func legacyContent(_ model: V5Today) -> some View {
         switch model.state {
         case .notOnPhoneYet:
             inSharedShell(model) {
@@ -1696,6 +1774,36 @@ struct TodayHostV5: View {
         return day.matched_run == nil
     }
 
+    /// SNAPSHOT-RESOLUTION-1 (2026-09-11 follow-up) · which of the four
+    /// hero-worthy resolutions a snapshot day should render the past-day
+    /// resolution hero for — extracted as a pure, static function, same
+    /// reasoning as `shouldRenderFromSnapshot` above, so `body`'s decision
+    /// is directly testable rather than only observable through a live
+    /// navigation.
+    ///
+    /// `nil` for every day `shouldRenderFromSnapshot` did NOT already route
+    /// here (a live, still-open prescription) AND for `.completed` — a
+    /// completed day carries `matched_run`, and `body`'s own snapshot
+    /// branch is gated on `matched_run == nil` upstream of this function
+    /// entirely (RECAP-1), so `.completed` should never actually reach
+    /// here; guarded anyway rather than trusted, because a day this
+    /// function got wrong would silently fall back to
+    /// `PlanSnapshotDayView` — the exact bug this whole fix exists to
+    /// close, just moved one call site over.
+    ///
+    /// Built from the SAME wire fields `V5ViewedDayResolution` decodes on
+    /// the live path (`resolution`, `moved_to_iso`, the supplemental run
+    /// ids already on `supplemental_runs`) — never a second derivation of
+    /// what those fields mean, only a repackaging of ones the server
+    /// already computed with the canonical resolver
+    /// (`web-v2/lib/execution/day-resolution.ts`'s `resolveOneDay`).
+    static func snapshotResolutionHero(for day: PlanSnapshotDay) -> V5ViewedDayResolution? {
+        guard let state = day.resolvedState, state != .completed else { return nil }
+        return V5ViewedDayResolution(resolution: day.resolution ?? state.rawValue,
+                                      movedToISO: day.moved_to_iso,
+                                      supplementalRunIds: day.supplemental_runs.map { $0.runId })
+    }
+
     /// PLANSNAPSHOT-1 · the ONLY place that fetches the whole-block
     /// snapshot. Triggered by launch (`.task` below), foreground
     /// (`.v5ReloadOnForeground`), explicit Retry, a plan mutation, or a
@@ -2298,6 +2406,42 @@ struct TodayHostV5: View {
         await reloadIfLanded(await V5NiggleCheckIn.send(today))
     }
 
+    /// FINDING-3 (2026-09-11) · declared skip for an arbitrary PAST day.
+    /// `API.postSkip(date:)` already existed for a FUTURE day (from the
+    /// reschedule sheet) — the backend route itself has accepted any date in
+    /// its body since before this feature (`web-v2/app/api/today/skip/
+    /// route.ts`'s `body.date ?? runnerToday(userId)`). This is the same
+    /// call, reached from a new place: the past-day resolution hero, for a
+    /// day the resolver has already found unresolved.
+    ///
+    /// SNAPSHOT-RESOLUTION-1 · `settleAndReload` only refreshes the LIVE
+    /// `surface.model` (today's own cache), never the plan snapshot — but
+    /// `snapshotResolutionHero(for:)` can now be exactly what put this hero
+    /// on screen in the first place (a browsed day rendered from the
+    /// offline snapshot). Without also re-syncing the snapshot, marking a
+    /// day skipped from THAT hero would land the write and then keep
+    /// showing "Missed" until the next launch/foreground sync — the write
+    /// succeeded but the one thing the phone is allowed to read for this
+    /// date never learned about it. `.faffPlanMutated` is the same named
+    /// trigger `RescheduleV5.swift`/`DecisionsSectionV5.swift` already post
+    /// after a landed mutation, so this reuses `TodayHostV5.body`'s existing
+    /// `.onReceive` wiring rather than calling `syncPlanSnapshot()` directly.
+    private func markPastDaySkipped(_ dateISO: String) async -> V5WriteSettlement {
+        let settlement = await settleAndReload { try await API.postSkip(date: dateISO); return true }
+        if settlement == .landed { NotificationCenter.default.post(name: .faffPlanMutated, object: nil) }
+        return settlement
+    }
+
+    /// The undo half — `API.deleteSkip(date:)` already existed too. Reachable
+    /// from the past-day hero once a skip is recorded, mirroring `RS-6`'s own
+    /// "an Undo that stays reachable" rule for Move-a-Run. Same snapshot-resync
+    /// reasoning as `markPastDaySkipped` above.
+    private func undoPastDaySkip(_ dateISO: String) async -> V5WriteSettlement {
+        let settlement = await settleAndReload { try await API.deleteSkip(date: dateISO); return true }
+        if settlement == .landed { NotificationCenter.default.post(name: .faffPlanMutated, object: nil) }
+        return settlement
+    }
+
     private func reportSick(_ symptoms: [String], _ started: String, _ hasFever: Bool) async -> V5WriteSettlement {
         await settleAndReload {
             try await API.postSick(symptoms: symptoms, started: started, fever: hasFever)
@@ -2356,6 +2500,181 @@ struct TodayHostV5: View {
     private func pushStrava(_ model: V5Today) async {
         guard let runId = model.runId else { return }
         _ = try? await API.pushRunToStrava(runId: runId)
+    }
+}
+
+// MARK: - Past-day resolution hero (FINDING-3, 2026-09-11)
+//
+// The full card a runner sees when they step to a day whose prescription
+// resolved to one of moved/skipped/missed/supplemental — the four cases
+// `V5Today.viewedDayResolution` carries and this screen otherwise had no
+// hero for (`completed` already renders through `after_run`/`postRun`).
+//
+// Rendered by `TodayHostV5.content(_:)` as the shared shell's `content:`
+// slot (same header, week strip, account button as every other quiet-panel
+// Today state — `InjuryFlareV5`/`SickFlareV5`/`WeekOffV5` are the direct
+// siblings this view is modeled on, down to reusing `CoachSay`/`ListGroup`/
+// `ListRow`/`Alert`/`ErrorNote`/`V5RowWriteState` rather than inventing a
+// second write-state vocabulary).
+//
+// STATES ITS REAL RESOLUTION, NOT A LIVE PRESCRIPTION. That is the entire
+// point: the root-caused defect was `/api/v5/today?date=` computing a
+// before_run/after_run reading for a day that had already passed, so a
+// missed threshold session rendered as though it were still upcoming.
+//
+// SNAPSHOT-RESOLUTION-1 (2026-09-11 follow-up) · took a `model: V5Today`
+// originally, but the ONLY three things it actually read off that model
+// were the date line, the day's own ISO, and a display label for the
+// session type — none of which need a live `V5Today` to exist. Narrowed to
+// exactly those three plain fields so `TodayHostV5.body`'s SNAPSHOT branch
+// (`snapshotResolutionHero(for:)`) can feed this view from a
+// `PlanSnapshotDay` too, with no live model in hand for the browsed date —
+// `shellModel` in that branch supplies the shared shell's chrome only, and
+// was never a substitute for the browsed day's own facts. The live path
+// (`content(_:)` below) is unchanged in behavior, just passing its three
+// values explicitly instead of the whole model.
+struct PastDayResolutionHeroV5: View {
+    /// The browsed day's own formatted date line — `model.panel.dateLine`
+    /// on the live path, `TodayHostV5.dayName(_:)` on the snapshot path.
+    let dateLine: String
+    /// The browsed day's own ISO — `model.dateISO` on the live path,
+    /// `PlanSnapshotDay.date_iso` on the snapshot path. Only ever used to
+    /// address a write (`onMarkSkipped`/`onUndoSkip`, both already bound to
+    /// the right day by the caller) and to pass to `RescheduleEntryRowV5`.
+    let dayISO: String
+    /// The session's own type, raw and lowercase, for
+    /// `RescheduleEntryRowV5`'s copy — `model.panel.type` on the live path,
+    /// `PlanSnapshotDay.type` on the snapshot path. `nil` when empty, same
+    /// guard both call sites already applied before this was extracted.
+    let sessionLabel: String?
+    let resolution: V5ViewedDayResolution
+    /// Declared-skip write for THIS day (`POST /api/today/skip` with an
+    /// explicit date — the same route and mechanism today's own skip button
+    /// already used, extended to an arbitrary past day). A landed write
+    /// flips the resolution on the next reload — `lib/execution/
+    /// day-resolution.ts` recomputes live, so there is no local state here
+    /// to keep in sync by hand.
+    var onMarkSkipped: () async -> V5WriteSettlement = { .cancelled }
+    /// `RS-6`'s own rule, applied to skip: an undo that stays reachable.
+    var onUndoSkip: () async -> V5WriteSettlement = { .cancelled }
+
+    @State private var writeState: V5RowWriteState = .idle
+
+    private var state: V5.ResolutionState? { resolution.state }
+
+    private var headline: String {
+        switch state {
+        case .moved:        return "Moved"
+        case .skipped:      return "Skipped"
+        case .missed:       return "Missed"
+        case .supplemental: return "Needs a look"
+        case .completed, nil: return "Unresolved"
+        }
+    }
+
+    /// Coach voice: states the fact, never judges it (CLAUDE.md's own rule —
+    /// "a missed run is stated, never judged").
+    private var verdict: String {
+        switch state {
+        case .moved:
+            if let to = resolution.movedToISO {
+                return "This session moved to \(Self.dayWords(to))."
+            }
+            return "This session moved to another day."
+        case .skipped:
+            return "Marked skipped. A real choice, not a passive gap."
+        case .missed:
+            return "Nothing matched this prescription. No activity landed here."
+        case .supplemental:
+            let n = resolution.supplementalRunIds?.count ?? 0
+            return n > 1
+                ? "\(n) activities exist this day, but none match this session."
+                : "An activity exists this day, but it doesn't match this session."
+        case .completed, nil:
+            return "This day's resolution could not be read."
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+            VStack(alignment: .leading, spacing: V5.S.s2) {
+                Text(dateLine)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textSecondary)
+                Text(headline)
+                    .faffDisplayV5(TypeScaleV5.display44)
+                    .foregroundStyle(V5.textPrimary)
+            }
+
+            CoachSay(text: verdict, size: .md)
+
+            // MISSED/SUPPLEMENTAL · a real choice, not a passive label — the
+            // exact device-acceptance requirement (see the design note and
+            // the device acceptance test plan). `RescheduleEntryRowV5` is
+            // the fully-built Move-a-Run engine (`RescheduleV5.swift`),
+            // wired here to an actual UI affordance for the first time —
+            // previously reachable only via the `-faffReschedule` launch
+            // argument.
+            if state == .missed || state == .supplemental {
+                ListGroup(header: "What do you want to do") {
+                    RescheduleEntryRowV5(dateISO: dayISO,
+                                         phrasing: .moveThisWorkout,
+                                         sessionLabel: sessionLabel)
+                    ListRow(label: writeState.isSending ? "Marking skipped" : "Mark this day skipped",
+                            sub: "Stated as a deliberate skip, not left as a gap.",
+                            onTap: { markSkipped() })
+                }
+            }
+
+            // SKIPPED · the undo half, reachable from the day itself rather
+            // than only from wherever the skip was originally declared.
+            if state == .skipped {
+                ListGroup {
+                    ListRow(label: writeState.isSending ? "Undoing" : "Undo skip",
+                            sub: "This day goes back to unresolved.",
+                            onTap: { undoSkip() })
+                }
+            }
+
+            if let refusal = writeState.refusal {
+                Alert(text: refusal, tone: .attention)
+            }
+            if case .failed = writeState {
+                ErrorNote(text: "That didn't save. Try again.",
+                          onRetry: { state == .skipped ? undoSkip() : markSkipped() })
+            }
+        }
+    }
+
+    private func markSkipped() {
+        guard !writeState.isSending else { return }
+        writeState = .sending("mark_skip")
+        Task {
+            let settlement = await onMarkSkipped()
+            writeState = .settled(settlement, token: "mark_skip")
+        }
+    }
+
+    private func undoSkip() {
+        guard !writeState.isSending else { return }
+        writeState = .sending("undo_skip")
+        Task {
+            let settlement = await onUndoSkip()
+            writeState = .settled(settlement, token: "undo_skip")
+        }
+    }
+
+    /// "SAT 6" from "2026-09-06" — deliberately independent of
+    /// `RescheduleSheetV5.dayWords` (same shape, different owner) rather than
+    /// reaching across files for a three-line date formatter.
+    private static func dayWords(_ iso: String) -> String {
+        let shortNames = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"]
+        guard let d = ISO8601DateFormatter().date(from: "\(iso)T12:00:00Z") else { return iso }
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let dow = cal.component(.weekday, from: d) - 1
+        let day = cal.component(.day, from: d)
+        return "\(shortNames[dow]) \(day)"
     }
 }
 
