@@ -63,7 +63,7 @@ import {
   type RaceEntry,
   type RescheduleOption,
 } from '@/lib/plan/reschedule';
-import type { PlanShape } from '@/lib/plan/replan-scenarios';
+import { weekMiles, type PlanShape } from '@/lib/plan/replan-scenarios';
 import { findingsOf, verdictOf, READJUDICATION_CHECKS, type CheckOutcome } from '@/lib/coaching-contract/move-readjudication';
 
 const WEB = path.resolve(__dirname, '..', '..', '..');
@@ -350,6 +350,51 @@ describe('demand, recalculated across both affected weeks', () => {
     expect(out.state).toBe('refused');
     expect(refuseWhy(out)).toContain('could not be recalculated');
     expect(refuseWhy(out)).toContain('second answer to what a week costs');
+  });
+});
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3B · PRICEONEWEEK STAYS IN PARITY WITH weekMiles FOR A TUNE-UP WEEK
+ *      (RACEPROT-3)
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+describe('priceOneWeek excludes a B/C tune-up race, matching weekMiles (RACEPROT-3)', () => {
+  // A B-priority tune-up race is never the GOAL race, so `isRaceWeek` (the
+  // raw `plan_weeks.is_race_week` column, goal-only per its own doc comment
+  // in replan-scenarios.ts) is false on this week even though it plainly
+  // contains a race. `containsRace` is the field that says so. `weekMiles`
+  // (replan-scenarios.ts, fixed this branch as RACEPROT-2) already excludes
+  // the race row on `containsRace`; `priceOneWeek`'s own header comment here
+  // promises the identical convention. This proves the promise rather than
+  // asserting it by name.
+  const raceDay = day('2026-09-19', 'race', 6.2, { subLabel: 'Santa Monica 10k (B)' });
+  const tuneupDays = WEEK2_DAYS.map((d) => (d.dateISO === '2026-09-19' ? raceDay : d));
+  const tuneupWeek = {
+    id: 'wk2t', weekIdx: 2, startISO: '2026-09-14', endISO: '2026-09-20',
+    phase: 'QUALITY', isRaceWeek: false, isCutback: false, containsRace: true,
+    days: tuneupDays,
+  } as unknown as PlanShape['weeks'][number];
+  const tuneupShape = {
+    ...SHAPE, weeks: [SHAPE.weeks[0], tuneupWeek],
+  } as unknown as PlanShape;
+  const tl = timelineOf(tuneupShape);
+
+  it('excludes the tune-up race row from weekly mileage, matching weekMiles exactly', () => {
+    const priced = priceOneWeek(tuneupWeek, tl.byDate);
+    const viaReplan = weekMiles(tuneupWeek);
+    // Sanity: the race day's 6.2 mi genuinely changes the total if not
+    // excluded, so equality below is not a coincidence of the fixture.
+    const naiveSum = Math.round(tuneupDays.reduce((s, d) => s + d.distanceMi, 0) * 10) / 10;
+    expect(naiveSum).not.toBe(viaReplan);
+    expect(priced.weeklyMi).toBe(viaReplan);
+  });
+
+  it('a goal race week (isRaceWeek AND containsRace both true) is unaffected', () => {
+    const goalWeek = { ...tuneupWeek, isRaceWeek: true } as unknown as PlanShape['weeks'][number];
+    const goalShape = { ...SHAPE, weeks: [SHAPE.weeks[0], goalWeek] } as unknown as PlanShape;
+    const tl2 = timelineOf(goalShape);
+    const priced = priceOneWeek(goalWeek, tl2.byDate);
+    expect(priced.weeklyMi).toBe(weekMiles(goalWeek));
   });
 });
 

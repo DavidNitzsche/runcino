@@ -77,6 +77,7 @@ import { mutatePlan } from '@/lib/plan/mutate';
 import { weekDosingFindings, type DosingFinding, type DosingWeek } from '@/lib/plan/dosing';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { suppressDriftNearRace } from '@/lib/plan/drift-proposal-policy';
+import { weekContainsRace } from '@/lib/plan/race-week';
 
 // ── doctrine constants ───────────────────────────────────────────────────────
 
@@ -221,7 +222,7 @@ export type ApplyOutcome =
 
 // ── the live plan, as these scenarios need it ───────────────────────────────
 
-interface PlanDayRow {
+export interface PlanDayRow {
   id: string;
   weekId: string;
   dateISO: string;
@@ -235,14 +236,29 @@ interface PlanDayRow {
   spec: Record<string, unknown> | null;
 }
 
-interface PlanWeekShape {
+export interface PlanWeekShape {
   id: string;
   weekIdx: number;
   startISO: string;
   endISO: string;
   phase: string;
+  /**
+   * `plan_weeks.is_race_week`, verbatim. Per `race-week.ts`'s own header this
+   * marks the GOAL race's week ONLY — never a B/C tune-up's. Callers reasoning
+   * about the block's SHAPE (taper, peak, block end) want this one; callers
+   * asking "does the runner race this week, of any priority" want
+   * `containsRace` below instead (Rule 16 — one quantity, one name).
+   */
   isRaceWeek: boolean;
   isCutback: boolean;
+  /**
+   * `weekContainsRace({ isRaceWeek, days })`, computed once at load and reused
+   * everywhere in this module rather than re-derived per call site — the same
+   * discipline `mutate.ts`'s `rehydratePlan` and `dose-guard.ts` already keep.
+   * True for a GOAL week, a B tune-up, or a C controlled race; false only when
+   * the week has no race in it at all.
+   */
+  containsRace: boolean;
   days: PlanDayRow[];
 }
 
@@ -262,11 +278,21 @@ const roundHalf = (n: number): number => Math.round(n * 2) / 2;
 const addDaysISO = (iso: string, days: number): string =>
   new Date(Date.parse(`${iso}T12:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
 
-/** Weekly mileage, by the same rule `rehydratePlan` uses: day-sum, race excluded on race week. */
-function weekMiles(week: PlanWeekShape, override?: Map<string, number>): number {
+/**
+ * Weekly mileage, by the same rule `rehydratePlan` (`mutate.ts`) uses: day-sum,
+ * race excluded on any week that contains one.
+ *
+ * RACEPROT-2 · this used to gate the exclusion on `week.isRaceWeek`, the raw
+ * GOAL-only column, so a B/C tune-up's race distance counted straight into the
+ * week's mileage while the goal race's already didn't (Rule 16 — the same gap
+ * `mutate.ts`'s `rehydratePlan` carried until RACEPROT-VERIFY-1). Fixed to
+ * `containsRace`, computed once in `loadPlanShapeUncached` via the shared
+ * `weekContainsRace` detector rather than re-derived here.
+ */
+export function weekMiles(week: PlanWeekShape, override?: Map<string, number>): number {
   let sum = 0;
   for (const d of week.days) {
-    if (d.type === 'race' && week.isRaceWeek) continue;
+    if (d.type === 'race' && week.containsRace) continue;
     sum += override?.get(d.id) ?? d.distanceMi;
   }
   return round1(sum);
@@ -365,16 +391,23 @@ async function loadPlanShapeUncached(
     mode: String(plan.mode ?? 'race-prep'),
     raceId: plan.race_id,
     goalISO: isISO(plan.goal_iso) ? plan.goal_iso : null,
-    weeks: weeks.map((w) => ({
-      id: w.id,
-      weekIdx: Number(w.week_idx),
-      startISO: w.week_start_iso,
-      endISO: addDaysISO(w.week_start_iso, 6),
-      phase: String(w.phase ?? 'BASE').toUpperCase(),
-      isRaceWeek: w.is_race_week === true,
-      isCutback: w.is_cutback === true,
-      days: (byWeek.get(w.id) ?? []).slice().sort((a, b) => (a.dateISO < b.dateISO ? -1 : 1)),
-    })),
+    weeks: weeks.map((w) => {
+      const days = (byWeek.get(w.id) ?? []).slice().sort((a, b) => (a.dateISO < b.dateISO ? -1 : 1));
+      return {
+        id: w.id,
+        weekIdx: Number(w.week_idx),
+        startISO: w.week_start_iso,
+        endISO: addDaysISO(w.week_start_iso, 6),
+        phase: String(w.phase ?? 'BASE').toUpperCase(),
+        isRaceWeek: w.is_race_week === true,
+        isCutback: w.is_cutback === true,
+        // RACEPROT-2 · computed once here, from the day data this query already
+        // fetches, and reused everywhere below instead of re-checking the raw
+        // GOAL-only column per call site (Rule 16).
+        containsRace: weekContainsRace({ isRaceWeek: w.is_race_week, days }),
+        days,
+      };
+    }),
   };
 }
 
@@ -450,12 +483,26 @@ export function stimulusGapOk(days: PlanDayRow[]): boolean {
   return true;
 }
 
-/** The week as `lib/plan/dosing.ts` reads it, so a proposal can be priced before it is offered. */
-function dosingWeekOf(week: PlanWeekShape, edits: Map<string, RowEdit>): DosingWeek {
+/**
+ * The week as `lib/plan/dosing.ts` reads it, so a proposal can be priced
+ * before it is offered.
+ *
+ * RACEPROT-2 · `dosing.ts#contextOf` reads `isRaceWeek` to decide whether
+ * percentage dosing caps are ENFORCED (a training week) or only REPORTED (a
+ * race week's own largest number is the race, per the file's header). That is
+ * a `containsRace` question, not a goal-only one — `validate.ts`'s FATAL gate
+ * and `dose-guard.ts` both already pass `weekContainsRace(w)` into this exact
+ * field (RACEWEEK-2), so this module's PREDICTION of what those two will say
+ * has to agree, or it proposes a change the boundary then refuses (this
+ * file's own header, "a prediction made against a different number is worse
+ * than no prediction"). Passing the raw GOAL-only `isRaceWeek` here was
+ * exactly that mismatch on any B/C tune-up week.
+ */
+export function dosingWeekOf(week: PlanWeekShape, edits: Map<string, RowEdit>): DosingWeek {
   return {
     startISO: week.startISO,
     phase: week.phase,
-    isRaceWeek: week.isRaceWeek,
+    isRaceWeek: week.containsRace,
     days: week.days.map((d) => {
       const a = afterOf(d, edits);
       return { type: a.type, distanceMi: a.distanceMi, subLabel: a.subLabel, isLong: a.isLong };
@@ -541,7 +588,7 @@ function easyTemplateFor(
 
 // ── scenario · CUTBACK ──────────────────────────────────────────────────────
 
-interface CutbackPlanned {
+export interface CutbackPlanned {
   week: PlanWeekShape;
   edits: EditSet;
   milesBefore: number;
@@ -584,13 +631,29 @@ export function cutbackLongTarget(longBefore: number, nextLong: number): number 
   return best;
 }
 
-function planCutback(shape: PlanShape, weekIdx: number, todayISO: string): CutbackPlanned | { unavailable: string } {
+export function planCutback(shape: PlanShape, weekIdx: number, todayISO: string): CutbackPlanned | { unavailable: string } {
   const week = shape.weeks.find((w) => w.weekIdx === weekIdx);
   if (!week) return { unavailable: `There is no week ${weekIdx + 1} in this block.` };
   if (week.startISO <= todayISO) {
     return { unavailable: `Week ${weekIdx + 1} has already started. A cutback goes on a week you have not run yet.` };
   }
   if (week.isRaceWeek) return { unavailable: 'That is race week. It is already the easiest week in the block.' };
+  // RACEPROT-2 · `isRaceWeek` above is the GOAL race only, and its message is
+  // specifically about the taper ("already the easiest week"), which is true
+  // for a goal week and NOT true for a B/C tune-up (RACEWEEK-2's ruling: "NOT
+  // a goal-race taper, NOT an automatic whole-week easing"). But a "cutback"
+  // is a surgical percentage trim of a week's easy/long/quality volume, and
+  // that tool does not apply to a week whose largest stimulus is already a
+  // scheduled race, of ANY priority — there is no coherent "25% off" version
+  // of a week you are racing. So any remaining race (tune-up or controlled)
+  // is still blocked, with its own, accurate reason.
+  if (week.containsRace) {
+    return {
+      unavailable:
+        `Week ${weekIdx + 1} has a race in it. A cutback does not apply to a week you are racing. ` +
+        'Move the race date, or pick a different week.',
+    };
+  }
   if (week.phase === 'TAPER') return { unavailable: `Week ${weekIdx + 1} is a taper week. The taper is already a cutback, and cutting it again would leave you flat on race day.` };
   if (week.isCutback) return { unavailable: `Week ${weekIdx + 1} is already a cutback.` };
 
@@ -644,7 +707,12 @@ function planCutback(shape: PlanShape, weekIdx: number, todayISO: string): Cutba
     && !d.isLong && !kept.has(d.id));
 
   const fixedMi = week.days.reduce((s, d) => {
-    if (d.type === 'race' && week.isRaceWeek) return s;
+    // RACEPROT-2 · matches weekMiles' own exclusion. By this point `week.
+    // containsRace` is always false — the guard above now refuses any week
+    // that contains a race, of any priority, before this line runs — but the
+    // predicate is kept in step with weekMiles' rather than left as a stale
+    // copy of the pre-fix pattern (Rule 16).
+    if (d.type === 'race' && week.containsRace) return s;
     if (d.isLong && d.type !== 'race') return s + longAfter;
     if (kept.has(d.id)) return s + d.distanceMi;
     if (flexible.some((f) => f.id === d.id)) return s;
@@ -696,7 +764,7 @@ function planCutback(shape: PlanShape, weekIdx: number, todayISO: string): Cutba
 
 const DOW_NAME = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
 
-interface ExtraDayPlanned {
+export interface ExtraDayPlanned {
   edits: EditSet;
   weeks: PlanWeekShape[];
   dow: number;
@@ -706,7 +774,7 @@ interface ExtraDayPlanned {
   skipped: number;
 }
 
-function planExtraDay(
+export function planExtraDay(
   shape: PlanShape, dow: number, fromWeekIdx: number, todayISO: string,
 ): ExtraDayPlanned | { unavailable: string } {
   const edits = emptyEdits();
@@ -722,7 +790,12 @@ function planExtraDay(
     // The taper takes days OUT. Adding one to it would fight the taper the
     // validator is about to check, and the design's own copy says the runner
     // goes back to five days in the taper anyway.
-    if (week.isRaceWeek || week.phase === 'TAPER') continue;
+    //
+    // RACEPROT-2 · `isRaceWeek` was GOAL-only, so an extra rest-to-easy day
+    // could land inside a B/C tune-up's own week — the runner's rest day
+    // before or after a race he is actually running that week. `containsRace`
+    // skips any week with a race in it, of any priority.
+    if (week.containsRace || week.phase === 'TAPER') continue;
 
     const slot = week.days.find((d) => d.dow === dow);
     if (!slot || slot.type !== 'rest' || slot.distanceMi > 0) { skipped++; continue; }
@@ -794,7 +867,7 @@ function planExtraDay(
 
 const AWAY_LABEL = 'AWAY';
 
-interface TravelPlanned {
+export interface TravelPlanned {
   edits: EditSet;
   lostMi: number;
   clearedWeeks: PlanWeekShape[];
@@ -821,7 +894,7 @@ export function reentryCeilingMi(prevWeeks: number[], prevMi: number): number {
   return Math.max(prevMi + REENTRY_SMALL_STEP_MI, acwrLimit);
 }
 
-function planTravel(
+export function planTravel(
   shape: PlanShape, fromISO: string, toISO: string, todayISO: string,
 ): TravelPlanned | { unavailable: string } {
   if (fromISO <= todayISO) {
@@ -829,15 +902,16 @@ function planTravel(
   }
   const inWindow = (iso: string) => iso >= fromISO && iso <= toISO;
 
-  const raceWeek = shape.weeks.find((w) => w.isRaceWeek);
-  if (raceWeek && shape.weeks.some((w) => w.isRaceWeek && w.days.some((d) => inWindow(d.dateISO)))) {
+  // RACEPROT-2 · was gated on `isRaceWeek` (GOAL only), so travel could be
+  // booked straight over a B/C tune-up's own race day — the copy below never
+  // said "goal race", it already meant any race, the check just did not.
+  if (shape.weeks.some((w) => w.containsRace && w.days.some((d) => inWindow(d.dateISO)))) {
     return {
       unavailable:
         'That window covers race week. Being away then is not a plan change, it is a different race. ' +
         'Move the race date instead.',
     };
   }
-  void raceWeek;
 
   const edits = emptyEdits();
   const byId = new Map<string, RowEdit>();
@@ -897,6 +971,14 @@ function planTravel(
   // to be ramped or the validator refuses it. Walk forward from the first week
   // after the window, capping each against the weeks as they now stand.
   const reentry: Array<{ weekIdx: number; before: number; after: number }> = [];
+  // RACEPROT-2 · deliberately GOAL-only, not `containsRace`. This walk is a
+  // load-evaluation sequence (an injury guard, Rule 8's corollary), and
+  // RACEWEEK-2's ruling is explicit: never globally exclude a B/C week from
+  // load evaluation. The GOAL week alone is excluded because its own taper is
+  // evaluated separately and is not a step in an ordinary ramp; a tune-up or
+  // controlled week stays IN this sequence so its absorbed mileage still
+  // counts toward the chronic window — `weekMiles` above already strips just
+  // the race day's own distance out of its total, not the whole week.
   const nonRace = shape.weeks.filter((w) => !w.isRaceWeek);
   const mi = new Map<string, number>();
   const distOverride = new Map<string, number>(
@@ -1360,9 +1442,20 @@ const CHANGE_KEYS = [
 
 // ── the public entry point · PROPOSE ────────────────────────────────────────
 
-/** The next week the runner has not started yet · the default subject of a change. */
-function nextFutureWeekIdx(shape: PlanShape, todayISO: string): number | null {
-  const w = shape.weeks.find((x) => x.startISO > todayISO && !x.isRaceWeek);
+/**
+ * The next week the runner has not started yet · the default subject of a
+ * change, when the request does not name one (`cutback`'s `weekIdx`,
+ * `extra_day`'s `fromWeekIdx`).
+ *
+ * RACEPROT-2 · was `!isRaceWeek` (GOAL only), so the default could land on a
+ * B/C tune-up's own week. `planCutback` now refuses ANY week that contains a
+ * race, so leaving this GOAL-only would make the plain "cut back next week"
+ * request fail with an unavailable reason whenever the very next week happens
+ * to carry a tune-up, even though a perfectly good ordinary week may sit right
+ * after it. `containsRace` keeps the default in step with the guard it feeds.
+ */
+export function nextFutureWeekIdx(shape: PlanShape, todayISO: string): number | null {
+  const w = shape.weeks.find((x) => x.startISO > todayISO && !x.containsRace);
   return w ? w.weekIdx : null;
 }
 

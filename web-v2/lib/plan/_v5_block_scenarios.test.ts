@@ -41,7 +41,10 @@ function day(over: Partial<PlanShape['weeks'][number]['days'][number]> = {}) {
 function week(over: Partial<PlanShape['weeks'][number]> = {}): PlanShape['weeks'][number] {
   return {
     id: 'week-1', weekIdx: 0, startISO: '2026-08-31', endISO: '2026-09-06',
-    phase: 'BASE', isRaceWeek: false, isCutback: false, days: [],
+    // `containsRace` (RACEPROT-2) is irrelevant to every gate this file
+    // exercises — `anotherRaceBlockGate` never reads it — so a fixed `false`
+    // default satisfies the type without pretending to model race weeks here.
+    phase: 'BASE', isRaceWeek: false, isCutback: false, containsRace: false, days: [],
     ...over,
   };
 }
