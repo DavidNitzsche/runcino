@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		011470B3D3A9CFFB39CD089A /* PlanSnapshotDayHarnessV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6BC500398FAE6A21EF51EE5C /* PlanSnapshotDayHarnessV5.swift */; };
 		0326FC753B14C5D8D88F0047 /* StravaPushSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A3B4A49A291F2E6280DAC72 /* StravaPushSheet.swift */; };
 		037104D1F1956FCD28FA4915 /* TodayPreRunBodyV3.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6142CF93DF4BB8739EB299D /* TodayPreRunBodyV3.swift */; };
 		03E4A13F4A64C82FE77B80B5 /* BreakdownV5Samples.swift in Sources */ = {isa = PBXBuildFile; fileRef = D31431AEC8AB9E1581A6F66E /* BreakdownV5Samples.swift */; };
@@ -58,6 +59,7 @@
 		2D92791A3F6EEE6824DBACB3 /* StravaConnection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 309A3C38F033A266C6A92A5D /* StravaConnection.swift */; };
 		2F77D42466DF390C5F1F8F2F /* PlanSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF90E5509325856AF770BF0 /* PlanSnapshotStore.swift */; };
 		2F7E3D3A106458D3BC8791BD /* TreadmillPhaseSets.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5D371572E692F405659C13F0 /* TreadmillPhaseSets.swift */; };
+		2FAF0C57A0DD18E47DD6FA9B /* TodayAfterV5RoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8DB3ED038FD09A756A681D18 /* TodayAfterV5RoutingTests.swift */; };
 		2FFA12FF938E115A5971545D /* WatchWorkoutModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B95C6BA54C2018236C4EB2B /* WatchWorkoutModels.swift */; };
 		303AD12FAA2419ECDCF2D562 /* V5ContractTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE82F287C2BEA6D3A6A74D35 /* V5ContractTests.swift */; };
 		30E888D8A41D7AFE87EFE184 /* FaffApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3C2B62D9179AAC7D41426156 /* FaffApp.swift */; };
@@ -147,7 +149,6 @@
 		80FA82D609F4EE468280926E /* WireProbe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D70DA6E4F25CD4993251236D /* WireProbe.swift */; };
 		8207DC567E0A8DE57DBFB58B /* CoachPayloads.swift in Sources */ = {isa = PBXBuildFile; fileRef = C44CBB9357A15E48DAFCBEEA /* CoachPayloads.swift */; };
 		82507340C4146ED7B38C2832 /* V5PostRunSurfacesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04C367E8791B53FBF3C23ADD /* V5PostRunSurfacesTests.swift */; };
-		20BEFF80F7F4BA56DD9A7706 /* TodayAfterV5RoutingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A99C578D0F315A7E80EA6F5E /* TodayAfterV5RoutingTests.swift */; };
 		83B9F89A53AF34654F0DCC3D /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2600BF38DD79CB8A08592B03 /* Theme.swift */; };
 		841DE1DC82A6E3421EFCE494 /* V5RaceOnTodayDecodeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E3B5D87821AFCDAD52B70A /* V5RaceOnTodayDecodeTests.swift */; };
 		870C68D997241F93D1463F7A /* RunRecapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7DCC89200E2D445651FD810 /* RunRecapView.swift */; };
@@ -371,7 +372,6 @@
 		0165EB077E98C01384F34584 /* RunShoePickerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunShoePickerSheet.swift; sourceTree = "<group>"; };
 		0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRelayQueueTests.swift; sourceTree = "<group>"; };
 		04C367E8791B53FBF3C23ADD /* V5PostRunSurfacesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5PostRunSurfacesTests.swift; sourceTree = "<group>"; };
-		A99C578D0F315A7E80EA6F5E /* TodayAfterV5RoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAfterV5RoutingTests.swift; sourceTree = "<group>"; };
 		0743519D766EECA60297B74F /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		077BCED75F85013E9A6888E5 /* ProposalCardV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalCardV5.swift; sourceTree = "<group>"; };
 		081F3BDD4979D92FC6A19386 /* TodayRecoveryPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayRecoveryPanel.swift; sourceTree = "<group>"; };
@@ -485,6 +485,7 @@
 		66D5343ED9131EF5857DDCA4 /* SweepLedger.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SweepLedger.swift; sourceTree = "<group>"; };
 		6A73B3AC3DBBAEBE4A7A5E7C /* FacesFinishV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FacesFinishV5.swift; sourceTree = "<group>"; };
 		6AC24C8E4CE9F0ADF56DB2CB /* NotificationsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsV5.swift; sourceTree = "<group>"; };
+		6BC500398FAE6A21EF51EE5C /* PlanSnapshotDayHarnessV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanSnapshotDayHarnessV5.swift; sourceTree = "<group>"; };
 		6C80F049A1BE98B3445C2549 /* WatchThemeV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchThemeV5.swift; sourceTree = "<group>"; };
 		6D2418C21CF2BDF76B22187B /* HealthKitImporter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HealthKitImporter.swift; sourceTree = "<group>"; };
 		6E06A7E99186B27147ADDE22 /* API+Toolkit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "API+Toolkit.swift"; sourceTree = "<group>"; };
@@ -536,6 +537,7 @@
 		8C2A42FABAA22658215C406B /* WatchRouterV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchRouterV5.swift; sourceTree = "<group>"; };
 		8C67FC57A7AA49F34251FE7F /* RepBreakdownV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepBreakdownV5.swift; sourceTree = "<group>"; };
 		8CC881ECD5A5FD781AFD226A /* _SessionTimelineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = _SessionTimelineTests.swift; sourceTree = "<group>"; };
+		8DB3ED038FD09A756A681D18 /* TodayAfterV5RoutingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodayAfterV5RoutingTests.swift; sourceTree = "<group>"; };
 		8FCBEC856C1DF94056E0B70B /* TravelV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TravelV5.swift; sourceTree = "<group>"; };
 		8FCD25057781DAE979CCDBFC /* ShoesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoesView.swift; sourceTree = "<group>"; };
 		8FD04D91D8038BA91A4D9E20 /* ChartsV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ChartsV5.swift; sourceTree = "<group>"; };
@@ -662,7 +664,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_A88F9433-4D91-427D-BE03-652742B81FD8" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_D94DC65D-4A7B-43D9-AA5D-2150610FDBF1" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -730,7 +732,7 @@
 				15FB44D69A865618A457AB74 /* SignInFlowTests.swift */,
 				2BFF8099E7BDD8737F90BDE0 /* StuckConnectionTests.swift */,
 				441313B970A5874985154189 /* SurfaceCancellationTests.swift */,
-				A99C578D0F315A7E80EA6F5E /* TodayAfterV5RoutingTests.swift */,
+				8DB3ED038FD09A756A681D18 /* TodayAfterV5RoutingTests.swift */,
 				2186E706CECB42A380295C3E /* TodayNavigationTests.swift */,
 				54F7FD10DD9073D194489F29 /* TodayReliabilityTests.swift */,
 				A7B9E9BED1212B61FE573EE3 /* TreadmillStateMachineTests.swift */,
@@ -913,6 +915,7 @@
 				C3518819A569ED4E7C4F1E8F /* LiveRunWatchCompanionV5.swift */,
 				F8825DD5FD2222468737B3C2 /* OnboardingV5.swift */,
 				B2AB92DBD2E38DE9C55813DC /* PacesMovedV5.swift */,
+				6BC500398FAE6A21EF51EE5C /* PlanSnapshotDayHarnessV5.swift */,
 				A5AB7330728883C00212DCC3 /* PlanSnapshotDayView.swift */,
 				077BCED75F85013E9A6888E5 /* ProposalCardV5.swift */,
 				2D8EF3A93391C3A7C4D1BEC9 /* ProposalDetailV5.swift */,
@@ -1122,10 +1125,10 @@
 			path = FaffUITests;
 			sourceTree = "<group>";
 		};
-		"TEMP_F64B3A47-084F-4974-8249-49CAB51C7856" /* native-v2 */ = {
+		"TEMP_7280BF5F-B249-4704-B25E-2D195E50B902" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_A88F9433-4D91-427D-BE03-652742B81FD8" /* Secrets.xcconfig */,
+				"TEMP_D94DC65D-4A7B-43D9-AA5D-2150610FDBF1" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1450,7 +1453,7 @@
 				51674569B467B0092F1B5F1A /* SurfaceCancellationTests.swift in Sources */,
 				2CECC6E66207BE2B489E1660 /* SweepLedger.swift in Sources */,
 				2451806AE6B1A339E0700729 /* SweepPositiveControlTests.swift in Sources */,
-				20BEFF80F7F4BA56DD9A7706 /* TodayAfterV5RoutingTests.swift in Sources */,
+				2FAF0C57A0DD18E47DD6FA9B /* TodayAfterV5RoutingTests.swift in Sources */,
 				7C6B584C0413F7EBB09855E7 /* TodayNavigationTests.swift in Sources */,
 				D015F75F19467F2CC4F858F4 /* TodayReliabilityTests.swift in Sources */,
 				F5A3C78E3FBF5304D8B4C6A2 /* TreadmillStateMachineTests.swift in Sources */,
@@ -1560,6 +1563,7 @@
 				F36FFE86BA1F5C6A8215B496 /* PanelV5.swift in Sources */,
 				FFF338FB78E8EDB247A9B0D4 /* PhoneRunTracker.swift in Sources */,
 				69DC55B9E2B4A094BCF9B2D1 /* PhoneRunView.swift in Sources */,
+				011470B3D3A9CFFB39CD089A /* PlanSnapshotDayHarnessV5.swift in Sources */,
 				0681EB2D1E7C2464EEE8A63F /* PlanSnapshotDayView.swift in Sources */,
 				457429C6BEBA4D2FEA4AF0D7 /* PlanSnapshotModels.swift in Sources */,
 				2F77D42466DF390C5F1F8F2F /* PlanSnapshotStore.swift in Sources */,
@@ -1701,7 +1705,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_A88F9433-4D91-427D-BE03-652742B81FD8" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_D94DC65D-4A7B-43D9-AA5D-2150610FDBF1" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1930,7 +1934,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_A88F9433-4D91-427D-BE03-652742B81FD8" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_D94DC65D-4A7B-43D9-AA5D-2150610FDBF1" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;

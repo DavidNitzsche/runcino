@@ -228,6 +228,37 @@ struct FaffApp: App {
         #endif
     }
 
+    /// DEBUG-only Plan Snapshot day-view render harness, sibling of
+    /// `-faffRunDetail` and `-faffProposals`. See
+    /// `PlanSnapshotDayHarnessV5.swift`'s own header for why it exists.
+    ///
+    ///     xcrun simctl launch <udid> run.faff.app -faffPlanSnapshotDay santa-monica-10k.json
+    private static func planSnapshotDayFixtureIfAsked() -> PlanSnapshotDay? {
+        #if DEBUG
+        let args = ProcessInfo.processInfo.arguments
+        guard let i = args.firstIndex(of: "-faffPlanSnapshotDay"), i + 1 < args.count else { return nil }
+        let name = args[i + 1]
+        guard let dir = FileManager.default.urls(for: .documentDirectory,
+                                                 in: .userDomainMask).first else { return nil }
+        let url = dir.appendingPathComponent(name)
+        guard let data = try? Data(contentsOf: url) else {
+            NSLog("[faffPlanSnapshotDay] no file at \(url.path)")
+            return nil
+        }
+        do {
+            return try JSONDecoder().decode(PlanSnapshotDay.self, from: data)
+        } catch {
+            // LOUD, same reasoning as `-faffRunDetail`'s decode failure: a
+            // silent fall-through would produce a screenshot of the sign-in
+            // screen and an agent reporting the feature had been rendered.
+            NSLog("[faffPlanSnapshotDay] decode failed: \(error)")
+            return nil
+        }
+        #else
+        return nil
+        #endif
+    }
+
     private static func rescheduleDateIfAsked() -> String? {
         let args = ProcessInfo.processInfo.arguments
         guard let i = args.firstIndex(of: "-faffReschedule"), i + 1 < args.count else { return nil }
@@ -258,6 +289,10 @@ struct FaffApp: App {
                 // See `proposalFixtureIfAsked` for why this road exists.
                 ProposalHarnessV5(fixture: fixture)
                     .preferredColorScheme(.dark)
+            } else if let day = FaffApp.planSnapshotDayFixtureIfAsked() {
+                // One Plan Snapshot day, drawn from a server-shaped payload.
+                // See `PlanSnapshotDayHarnessV5.swift` for why this road exists.
+                PlanSnapshotDayHarnessV5(day: day)
             } else if let date = FaffApp.rescheduleDateIfAsked() {
                 // The rescheduling decision, opened straight onto one date, so
                 // it can be rendered and read on device without walking the
