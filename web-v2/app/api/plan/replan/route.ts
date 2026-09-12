@@ -58,6 +58,10 @@ import { mutatePlan } from '@/lib/plan/mutate';
 import { generatePlan } from '@/lib/plan/generate';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { applyChange } from '@/lib/plan/replan-scenarios';
+// RACEPROT-PROGRESSION-1 (2026-09-11) · the day-level race detector, not the
+// raw `is_race_week` column — see the sick-ladder loop below, the same gap
+// dose-guard.ts/adapt.ts/mutate.ts/progression-pass.ts were already fixed for.
+import { weekContainsRace } from '@/lib/plan/race-week';
 
 export const maxDuration = 120;
 export const dynamic = 'force-dynamic';
@@ -158,6 +162,27 @@ export async function POST(req: NextRequest) {
           WHERE plan_id = $1 ORDER BY week_idx ASC LIMIT ${LADDER.length}`,
         [newPlanId],
       )).rows;
+      // RACEPROT-PROGRESSION-1 (2026-09-11) · `is_race_week` marks only the
+      // GOAL race's week (race-week.ts's own header) — a B/C tune-up
+      // scheduled inside these first three weeks reads `is_race_week = false`
+      // and the header comment above ("Race-week rows are never touched by
+      // the ladder") is the invariant this closes: without this, the ladder
+      // would still scale its non-race days and, on week 1, convert its
+      // `race_week_tuneup`-typed shakeout/taper rows to a generic easy day.
+      // Same day-level detector as the other four sites; one extra read for
+      // the weeks the ladder actually touches, not per row.
+      const ladderWeekDayTypes = new Map<string, Array<{ type: string | null }>>();
+      if (weeks.length > 0) {
+        const dayRows = (await pool.query<{ week_id: string; type: string | null }>(
+          `SELECT week_id::text AS week_id, type FROM plan_workouts WHERE week_id = ANY($1::uuid[])`,
+          [weeks.map((w) => w.id)],
+        )).rows;
+        for (const d of dayRows) {
+          const bucket = ladderWeekDayTypes.get(d.week_id) ?? [];
+          bucket.push({ type: d.type });
+          ladderWeekDayTypes.set(d.week_id, bucket);
+        }
+      }
       // Routed through the plan mutation boundary (lib/plan/mutate.ts). The sick
       // ladder scales volume and strips quality from the first three weeks of a
       // freshly rebuilt plan — structural, and applied as one batch because a
@@ -183,7 +208,8 @@ export async function POST(req: NextRequest) {
         let applied = 0;
         for (let i = 0; i < weeks.length; i++) {
           const wk = weeks[i];
-          if (wk.is_race_week) continue; // never ladder race week
+          // Never ladder a week that carries a race — goal or B/C tune-up.
+          if (weekContainsRace({ isRaceWeek: wk.is_race_week, days: ladderWeekDayTypes.get(wk.id) ?? null })) continue;
           const { scale, dropQuality } = LADDER[i];
           // Volume scale on every run-type row (rest rows are 0 anyway).
           await client.query(
