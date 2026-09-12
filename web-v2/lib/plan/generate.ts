@@ -8937,13 +8937,15 @@ export function embedMidBlockRaces(
           // punishment.
           : `${race.name}. Run it at full effort. Recovery comes first, then training continues.`
       // NATURAL-COACHING-3 (2026-09-12) · dropped "C race" (internal tier
-      // label) and "quality session" (internal training-load term), same
-      // shape as the NATURAL-COACHING-1 fix above and the already-live
-      // `controlled_c_effort` copy on the Race Detail screen
-      // (`lib/race/race-page-layers.ts`: "The week's hard session, not a
-      // race. Take the work, not the result.") — same fact, matching words,
-      // per Rule 16 (one quantity, one name).
-      : `${race.name}. This is the week's hard session, not a race. Run it as the workout.`;
+      // label), same shape as the NATURAL-COACHING-1 fix above. "quality
+      // session" is KEPT, not replaced — grepping the wider app found it is
+      // the established, already-rendered term for this workout category
+      // (a literal Block-screen stat label, `v5-block.ts`'s "Quality
+      // sessions"; dozens of other coach sentences), so swapping in "hard
+      // session" here would have created a second name for the same thing
+      // (a Rule 16 violation in the other direction) rather than removed
+      // jargon. Only the tier label was ever the defect.
+      : `${race.name}. This is the week's quality session. Run it as the workout.`;
     // MIDGOAL-1 (2026-08-30) · STATE THE TARGET, AND SAY WHOSE IT IS.
     //
     // The row carried `raceGoalPaceSec` since MIDRACE-1 and the prose never
@@ -9611,8 +9613,15 @@ export function embedMidBlockRaces(
             `${g.longMi} miles the morning after ${race.name}. ${g.authoredPurpose} ` +
             'Easy the whole way. The distance is the work, not the pace.';
           designed.nl.d.notes = longNote;
+          // NATURAL-COACHING-3 (2026-09-12) · a second, textually-identical
+          // occurrence of the same jargon fixed in `embedMidBlockRaces`
+          // above — this is a different branch (the designed-race-weekend
+          // long-run-the-next-morning case), found by grepping for the
+          // exact literal after an independent review flagged the risk that
+          // more than one site carried it. "quality session" kept (see the
+          // sibling comment above) — only the "C race" label was jargon.
           slot.notes =
-            `${race.name}. C race · this is the week's quality session. Run it as the workout, ` +
+            `${race.name}. This is the week's quality session. Run it as the workout, ` +
             `controlled. Tomorrow's ${g.longMi}-mile long run is the other half of this weekend, ` +
             'and running today controlled is what buys it.';
         }

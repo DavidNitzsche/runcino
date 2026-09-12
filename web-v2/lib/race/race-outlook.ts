@@ -1001,8 +1001,13 @@ export async function composeRaceOutlook(
       // EXECTARGET-1 · the step now differs from the one before it by going
       // BACK to current evidence, and says so. The forecast above it is the
       // block's intent; this is what today's evidence carries.
+      // NATURAL-COACHING-3 (2026-09-12) · dropped "C race", same reasoning
+      // as the reasonVsExpected fix above in this same file: traced this
+      // field (differsFromPrevious → wire's `differs_from_previous`) and
+      // found no current render consumer on native or web, fixed anyway
+      // since it's fully computed and shipped over the wire today.
       differsFromPrevious: source === 'controlled_c_effort'
-        ? 'A C race is run as the week’s hard session, so it is priced as a controlled effort rather than as a race.'
+        ? 'This is run as the week’s hard session, so it is priced as a controlled effort rather than as a race.'
         : source === 'current_evidence'
           ? 'Today’s evidence, not the forecast above it. The block is built to move that forward; race day is not priced on training that has not happened yet.'
           : null,

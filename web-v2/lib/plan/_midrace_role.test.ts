@@ -188,12 +188,14 @@ describe("'C' priority · the race-role card never fires, so this is the only se
   it('race day carries the tune-up framing with no internal tier jargon', () => {
     const race = dayAt(composed, TURKEY_TROT.date)!;
     expect(race.day.type).toBe('race');
-    // NATURAL-COACHING-3 (2026-09-12) · dropped "C race" (internal tier
-    // label) and "quality session" (internal training-load term) — same
-    // shape as NATURAL-COACHING-1's fix to the sibling B-race default.
-    expect(race.day.notes).toContain("This is the week's hard session, not a race.");
+    // NATURAL-COACHING-3 (2026-09-12) · dropped only "C race" (internal
+    // tier label), same shape as NATURAL-COACHING-1's fix to the sibling
+    // B-race default. "quality session" is KEPT — it's the app's own
+    // established term for this workout category (a literal Block-screen
+    // stat label; see `v5-block.ts`), so replacing it would trade one
+    // Rule-16 violation for another rather than remove jargon.
+    expect(race.day.notes).toContain("This is the week's quality session.");
     expect(race.day.notes).not.toMatch(/C race/i);
-    expect(race.day.notes).not.toMatch(/quality session/i);
   });
 });
 

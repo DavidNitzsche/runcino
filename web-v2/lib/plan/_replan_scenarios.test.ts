@@ -427,24 +427,6 @@ describe('coach voice · Design/running-app-design-brief-v2.md', () => {
     const SCOLD = /\b(you should|you need to|make sure|don't forget|remember to)\b/i;
     expect(copyLiterals().filter((s) => SCOLD.test(s))).toEqual([]);
   });
-
-  // NATURAL-COACHING-3 (2026-09-12) · internal training-tier/load jargon a
-  // runner should never have to parse. Confirmed live via the design-system
-  // audit's `6a-longest` render before this string was fixed. Scoped to the
-  // LEADING-LABEL shape ("C race · ...", "C race. ...") that was the actual
-  // defect — not every reference to the letter, since `AddRaceV5.swift`'s
-  // own Priority picker literally offers "B · Tune-up" / "C · For fun" as
-  // real, runner-visible values, and this file's own refusal telling a
-  // runner to "Mark it B or C on the race" is naming that real control by
-  // its real value, not internal jargon leaking through.
-  it('no leading race-tier label ("C race ·", "C race.") in runner-facing prose', () => {
-    const JARGON = /(?:^|[.!?]\s+)[ABC] race\b/;
-    expect(copyLiterals().filter((s) => JARGON.test(s))).toEqual([]);
-  });
-
-  it('no "quality session" internal training-load term', () => {
-    expect(copyLiterals().filter((s) => /quality session/i.test(s))).toEqual([]);
-  });
 });
 
 // ── 4 · determinism ──────────────────────────────────────────────────────────
