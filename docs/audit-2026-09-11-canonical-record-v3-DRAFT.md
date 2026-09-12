@@ -1,22 +1,34 @@
 # faff.run — Canonical Record v3 (2026-09-11) — DRAFT
 
-> **DRAFT — NOT CANONICAL, updated 2026-09-11 (third pass). Brain and Coach packets remain
-> ACCEPTED AND CLOSED. Runner Data's own v2.1 source documents (plus its delta log) are now
-> read directly for the first time this pass — its findings are integrated below on the same
-> footing as Coach's (§1.15-§1.18) — but its dedicated-branch provenance receipt is a
-> SEPARATE, still-open gate, distinct from findings-acceptance (see §1.18; do not conflate
-> the two, per David's own explicit correction this round). Design-System Phase 2 is folded
-> into the 27-area table this pass (§6). None of this makes the document canonical: a live
-> integration wave (6 previously-held branches) is IN PROGRESS as this is written (§1.19),
-> Migration 166/170 remain unapplied pending a separate explicit approval even though
-> rollout/rollback evidence is being prepared concurrently (§1.20), the unauthorized-merge
-> disposition is now DECIDED but its corrective mechanism is still being built (§1.21), no
-> TestFlight candidate has been cut, and zero physical-device verification has occurred for
-> anything in this document. TestFlight build 290, wherever cited below (including inside
-> quoted source documents), is explicitly OBSOLETE — do not read it as reflecting current
-> `main` or any fix's shipped status. Do not cite this document as canonical v3. Do not use
-> it to authorize canonical v3 finalization, Migration 166/170 approval, the missing-pace
-> merge, or any TestFlight candidate.**
+> **DRAFT — NOT CANONICAL, updated 2026-09-11 (fourth pass — folds in this session's Wave 3
+> and Wave 4 integration handbacks, §1.24 onward; do not confuse "fourth pass" with a fourth
+> forensic-audit packet — Brain, Coach, and Runner Data remain the only three). Brain and
+> Coach packets remain ACCEPTED AND CLOSED. Runner Data's findings remain integrated per the
+> third pass (§1.15-§1.18); its dedicated-branch provenance receipt is STILL a separate,
+> open gate (§1.18) — this pass's confirmation that the missing-pace branch actually merged
+> (§1.26, row 65) does NOT retroactively close that receipt gate, since David's own framing
+> tied the two together by name; Main should reconcile that explicitly rather than assume it
+> lapsed. Design-System Phase 2 remains folded into the 27-area table (§6). This pass's own
+> direct git verification (§1.32) found ten more branches merged and live since the third
+> pass — the previously-IN-PROGRESS 6-branch wave (§1.19) plus a further 5-branch race-week/
+> CIM/missed-day wave, all confirmed ancestors of `origin/main` at fresh-fetched tip
+> `e13542763573e17561970b0d1e05ba37a57420e3` (§1.24) — and confirmed a genuinely new handback
+> file, `docs/audit-2026-09-11-handback-wave4.md`, had landed from a concurrent session
+> mid-task and treats it as authoritative over Wave 3 where the two differ (§1.24). None of
+> this makes the document canonical. Specifically still open: race-week canonicalization is
+> DISPATCHED but zero commits have landed on its branch as of this pass (§1.25); Lane A's fix
+> (row 75) is independently reviewed PASS across 3 rounds and rendered against David's real
+> data, but remains HELD pending his explicit merge authorization (§1.26), as does the
+> node_modules-gate scoping fix (§1.31) and `fix/decision-history-undo-display` (§1.29); the
+> Natural Coaching Experience role's first work product (§1.27) awaits a truth review and a UX
+> review that have not yet been structured; the Santa Monica rewrite it replaces stays
+> REJECTED and held (§1.27); Migration 166/170 remain unapplied pending a separate explicit
+> approval, unchanged from the third pass (§1.20); no TestFlight candidate has been cut; and
+> zero physical-device verification has occurred for anything in this document. TestFlight
+> build 290, wherever cited below (including inside quoted source documents), is explicitly
+> OBSOLETE and further behind than ever — do not read it as reflecting current `main` or any
+> fix's shipped status. Do not cite this document as canonical v3. Do not use it to authorize
+> canonical v3 finalization, Migration 166/170 approval, or any TestFlight candidate.**
 
 This document updates, and does not replace, `docs/audit-2026-09-10-canonical-record.md`
 ("v1"). Every row in v1's §7 ledger and §8 area table is carried forward; nothing is
@@ -792,6 +804,322 @@ actual current history, not relayed from a prior session's prose:
   §5's own carried-forward item. Merge status and review status are separate facts here, and
   neither substitutes for the other.
 
+### 1.24 Wave 3 and Wave 4 — ten more branches merged and live, confirmed directly
+
+**Source material for this pass:** `docs/audit-2026-09-11-handback-wave3.md` in full, plus
+`docs/audit-2026-09-11-handback-wave4.md` — a file that did **not** exist when this task began
+reading and appeared mid-task from a concurrent session (confirmed by file mtime,
+`Sep 11 18:43` versus wave 3's `Sep 11 17:21`). Per this task's own instruction to prefer the
+highest-numbered/most-recent handback as authoritative, Wave 4's account governs wherever it
+updates or supersedes Wave 3's (most notably: five of Wave 3's "awaiting your authorization"
+branches are, per Wave 4, now merged).
+
+**Every branch/merge-commit pair named in both handbacks was independently checked against a
+freshly-fetched `origin/main` this pass** — `git cat-file -t <sha>` to confirm the object is a
+real commit, `git merge-base --is-ancestor <sha> origin/main` to confirm it actually landed —
+rather than transcribed from the handbacks' own prose. **No discrepancy found**: every SHA
+named below as merged is a confirmed ancestor of `origin/main`; every SHA named below as still
+held is confirmed **not** an ancestor. `origin/main`'s fetched tip is
+`e13542763573e17561970b0d1e05ba37a57420e3`, matching both this task's own briefing and Wave
+4's own §1 claim exactly — no drift between the two.
+
+**Wave 3 (five branches, sequential, David-authorized):**
+
+| Branch @ tip | Merge commit | Confirmed ancestor of `origin/main`? |
+|---|---|---|
+| `feat/shipping-lock-and-artifact-mapping` @ `1050a48c7` | `952b40d0d` | Yes |
+| `fix/standing-recommendation-convergence-and-cutback-copy` @ `ab5a5eb7c` (Lane D) | `e32dde4a7` | Yes |
+| `fix/cold-open-cache-honesty` @ `2a8ee1d89` | `333f520f4` | Yes |
+| `fix/execution-identity-watch-matcher` @ `f4cbb67f8` | `6fd65a6f6` | Yes |
+| `fix/postrun-missing-pace-routing` @ `859ea18f3` | `4bfd69ad9` | Yes |
+
+`859ea18f3` is one commit past the `b92589fae` tip row 65 previously cited — `git merge-base
+--is-ancestor b92589fae 859ea18f3` confirms it — the extra commit being the
+`MILEFALLBACK-LABEL-1` em-dash fixup Wave 3 §1 describes. See §1.26 for row 65's update.
+
+**Wave 4 (five more branches, sequential, David-authorized — Wave 3's roster of "awaiting
+authorization" branches minus Lane A and the node_modules gate, per Wave 4 §1):**
+
+| Branch @ tip | Merge commit | Confirmed ancestor of `origin/main`? |
+|---|---|---|
+| `fix/cim-elevation-integrity` @ `1b31a55ae` | `6c7a99aa0` | Yes |
+| `fix/missed-skipped-moved-state` @ `6db2859d7` | `c97f1ec9f` | Yes |
+| `fix/progression-pass-race-week-protection` @ `ee6df002d` | `52eabd658` | Yes |
+| `fix/load-adaptation-week-ahead-race-detection` @ `3d382824c` | `9471b27ab` (after #3, dependency confirmed by this task's own `git log` read of the merge sequence) | Yes |
+| `fix/replan-scenarios-race-week-protection` @ `c57733696` | `8dff7892b` | Yes |
+
+`git log --oneline origin/main` (run directly this pass) confirms the tip commit is
+`e135427635`, one commit past `8dff7892b` — that final commit,
+`docs(verification): CIM elevation integrity merge acceptance evidence`, is the
+`acceptance-evidence.md` artifact Wave 4 §1 describes (see §1.26).
+
+**A real regression was caught and fixed during Wave 4's integration, not shipped silently:**
+`progression-pass.ts`'s new `priorWeekDayTypes` DB lookup (landed as part of branch #3 above)
+had a bare `.catch(() => ({rows: []}))` — on a DB failure this reads identically to "this week
+has no race," silently reopening the exact bug this session's whole race-week effort exists to
+close, in the new code meant to fix it. Caught by the `check-swallowed-failure` gate on the
+combined-gate run, fixed by routing through the existing `rowsOrEmpty` helper instead (commit
+`3192f7ac1`, confirmed present on `origin/main` immediately after merge #5 in the `git log`
+above), re-verified. New row 124 (§2.2).
+
+**Combined gate results on the fully-integrated tree, per Wave 4 §1 (relayed, not
+independently re-run by this writer — same discipline as this document's existing CI row in
+§4):** `npm run prebuild` clean, `tsc --noEmit` 0 errors, `next build` clean, `vitest run`
+12,112 passed / 1 pre-existing failure (named explicitly — see §1.30) / 205 skipped, native
+`FaffTests` 543/544 (1 expected fail, confirmed via `xcresulttool`), `check-watch.sh` OK (234
+cases, 22 boards).
+
+### 1.25 Race-week protection: 9 confirmed sites now, not "7, exhaustive" — canonicalization dispatched, not landed
+
+**Prior framing corrected.** This ledger's row 66 and v1 before it treated the original
+`adapt.ts`/`mutate.ts`/`dose-guard.ts` fix as resolving the `is_race_week`-raw-column bug
+exhaustively. Per Wave 3 §3, review work this session found the identical bug shape at four
+more sites, bringing the confirmed total to **9**, not 7:
+
+- `fix/progression-pass-race-week-protection` @ `ee6df002d` (merged, §1.24) — fixed
+  `progression-pass.ts`'s two sites plus `replan/route.ts`'s sick-ladder (confirmed the same
+  shape despite that file's own header comment claiming otherwise). Resolves row 97.
+- `fix/load-adaptation-week-ahead-race-detection` @ `3d382824c` (merged, §1.24) — a 4th site
+  feeding the Adaptation Engine's lever eligibility. Reviewed PASS WITH CONDITIONS, conditions
+  resolved: this branch does not compile against plain `main` (proven by an actual `tsc`
+  error) and had to merge after the branch above — confirmed in order by the `git log` read in
+  §1.24. Review also found the previously-cited reference example (Santa Monica 10K) is
+  actually protected by `is_cutback`, not this fix, at 3 of 4 sites; David's real Dodgers 10K
+  tune-up week is the correct real-data proof instead (confirmed flipping from buggy `null` to
+  correct `RACE_WEEK`).
+- `fix/replan-scenarios-race-week-protection` @ `c57733696` (merged, §1.24) — a 5th site
+  (`replan-scenarios.ts`, five call sites, nuanced per-site GOAL-only-vs-any-race decisions,
+  including one deliberately-correct non-fix backed by this project's own RACEWEEK-2
+  doctrine), plus a 6th site (`move-orchestrator.ts`) whose own doc comment claimed parity with
+  the just-fixed `weekMiles` value — a parity the fix had silently broken. The two surfaces
+  genuinely disagreed (47.2mi vs. 41mi for the same real tune-up-week shape) and now agree.
+- **Two more sites confirmed real but explicitly deferred at Wave 3 time, not yet dispatched
+  then:** `strategy-contracts.ts`'s week-role labeling, and several sites in the adjudication
+  layer (`adjudicate.ts`/`live-sequence.ts`), which already admits this exact blindness in its
+  own header comment.
+
+**Per Wave 4 §9, these two deferred sites (plus a fresh exhaustive search of every remaining
+raw `is_race_week`/`isRaceWeek` read across `web-v2`) are now DISPATCHED as
+`fix/race-week-canonicalization-final`**, per David's explicit instruction, now that the
+5-branch wave above is merged. The scope asks for named canonical predicates (race day / race
+week / post-race recovery / goal race / tune-up race), every consumer routed through the right
+one, doctrine-backed GOAL-only behavior preserved with citations, a ratcheted static regression
+gate so a 10th silent instance can't land again, and a complete call-site inventory as a
+required deliverable.
+
+**Checked directly this pass:** the branch exists (`git branch -a` lists
+`fix/race-week-canonicalization-final`, checked out in its own worktree), but
+`git log --oneline origin/main..fix/race-week-canonicalization-final` returns **zero commits**
+— the branch is still exactly at `origin/main`'s tip. **This confirms Wave 4's own framing
+precisely: dispatched, in progress, nothing landed yet.** New row 123 (§2.2). Do not cite
+race-week protection as closed at 9-or-any-number of sites until this branch's own inventory
+and gate land and are reviewed.
+
+### 1.26 Lane A and CIM — both holds resolved through real investigation and rendering, not re-review
+
+Per this task's own framing, both holds were closed out this wave by doing the work David's
+product-correctness challenge actually demanded, not by re-asserting the prior technical
+verdict.
+
+**Lane A (`fix/recovery-honesty-strides-grading`, underlying row 75) — independently reviewed
+PASS across 3 rounds, its exact literal runner-facing output rendered and delivered, still
+HELD pending David's explicit merge authorization; NOT merged this wave.** Confirmed directly:
+`git merge-base --is-ancestor 886d1529e origin/main` (the mechanism-fix commit) and the same
+check against `b13c2c59a` (the branch's own final tip per Wave 3 §2) both return **false** —
+neither is an ancestor of `origin/main`. Per Wave 3 §2 and Wave 4 §3, the work delivered this
+wave:
+
+- The mechanism fix (`886d1529e`) makes recovery-honesty grading reach strides workouts at
+  all — `resolveWorkoutVerdict()` now reads `strides_recovery_s`, not only `rep_rest_s`.
+- A real investigation into David's own real workout surfaced a genuine third state beyond the
+  four requested — a silent-short recovery with no wire signal distinguishing "chose to
+  advance" from anything else (a pre-existing watch-firmware gap, not fixable at this layer) —
+  and found the mechanism itself doesn't mislabel anything, but the "Coach's Read" composer
+  text did, falsely implying inconsistent *work* when only recovery timing varied. Fixed
+  (`b018980c1`) with neutral wording honest for both the "chose it" and "unknown reason" cases.
+- That fix then failed its own standard (a literal em dash) and surfaced that the coach-voice
+  gate doesn't scan `lib/postrun` at all — the same gate-scope-gap shape that already burned
+  this project once via `lib/plan` (CLAUDE.md Rule 20's own cited example). Both fixed
+  (`b13c2c59a`): em dash removed, `lib/postrun` added to the gate's scan targets (383 files
+  now scanned, up from 377) — which immediately surfaced two more pre-existing violations,
+  correctly reported rather than silently touched (one confirmed safe/server-only, one
+  confirmed genuinely runner-facing, flagged as a follow-up, not yet dispatched).
+- **Wave 4's own addition — rendered live against David's real workout, not reasoned about:**
+  the full literal answer was delivered in-chat — per-phase display (none of the 6 recoveries
+  carries any individual status at all, literally nothing, not "neutral"), the exact on-screen
+  Coach's Read card text, confirmation that "Plan unchanged" is genuinely zero effect (traced
+  to a real absence of any adaptation-reason row, not a suppressed one), a correction to the
+  earlier evidence-classification claim (excluded from *anchor-moving* evidence specifically,
+  not evidence generally — it IS classified for durability corroboration, and that
+  classification's own sentence is literally what appears under "Why" on the real card), and
+  confirmation "uneven" never reaches the runner's eyes and has zero effect on future training,
+  verified by tracing every consumer.
+
+Row 75 is updated below (§2.2) from "IMPLEMENTATION IN PROGRESS" to "IMPLEMENTATION COMPLETE,
+REVIEWED PASS (3 rounds), RENDERED — HELD, pending David's explicit merge authorization."
+
+**CIM elevation (`fix/cim-elevation-integrity`) — resolved two ways, MERGED and live.**
+Confirmed `1b31a55ae` (branch tip) and `6c7a99aa0` (merge commit) are both ancestors of
+`origin/main` (§1.24). Confirmed two ways per Wave 3/Wave 4: **structurally** — the choice
+card with an actionable "use my measurement" button is architecturally unreachable for ANY
+curated course, not incidentally not firing today, traced exhaustively through the confidence
+computation — and **by actual simulator render** in an earlier pass this same session
+(screenshot matched the confirmed payload character-for-character: one "Acknowledge" button,
+correct numbers, correct copy; the render process itself caught a real methodological trap, a
+stale `simctl install` that silently didn't replace the binary despite reporting success,
+caught via MD5 comparison before trusting the screenshot). Wave 4's own merge pass additionally
+committed the acceptance evidence as a permanent artifact,
+`docs/verification/2026-09-11-cim-elevation/acceptance-evidence.md` (the commit immediately
+following merge #5 in the `git log` read at §1.24) — this writer confirmed the file exists in
+the current working tree at that path. Wave 4 discloses honestly that no *new* live simulator
+screenshot was captured in the merge-time pass (simulator-panel access wasn't available then),
+though the merged Swift built clean and the real render path was exercised against CIM's actual
+traced numbers via a temporary, reverted preview edit — the earlier pass's actual on-device
+screenshot is what stands as the Rule 13 rendering evidence. New row 119 (§2.2).
+
+### 1.27 Santa Monica — rejected copy stays held; a new ownership role's first result is pending review
+
+**`fix/santa-monica-race-day-copy` @ `38d090ec8` remains REJECTED, held as a failed reference
+case, not merged.** Confirmed directly: not an ancestor of `origin/main`. David's critique of
+the original rewrite (per Wave 3 §2) was specific — repetitive phrasing, mechanical/threatening
+tone, a meaningless "yours to change" claim with no verified control behind it.
+
+**A new, dedicated "Natural Coaching Experience" ownership role now exists**, scoped to
+presentation language only, real rendered outputs across all 7 named surfaces, canonical facts
+rather than recomputed conclusions, David's real data, and this Santa Monica case as its first
+acceptance test. Its first work product,
+`natural-coaching/santa-monica-race-day-v2` @ `b0d7349e7`, is confirmed to exist (branch
+present, tip matches) and confirmed **not** an ancestor of `origin/main` — unmerged, as
+expected for work pending review. Per Wave 4 §7: it removed "yours to change" entirely (rather
+than patching it) after tracing that the real editable control lives on a different screen that
+already carries an honest version of that claim; kept the pace-band/target-pace distinction
+since both are genuinely real, separate facts; correctly scoped itself by finding and naming
+(not touching) two adjacent jargon issues in sibling code paths, and one string it honestly
+couldn't trace to a render site in its own time budget. **Pending David's truth review and UX
+review — not yet dispatched, since those review processes weren't fully defined as of Wave 4.**
+New row 127-128 (§2.2).
+
+### 1.28 Duplicate September 13 race rows — investigated this wave, confirmed benign
+
+**First surfaced as an incidental, unrelated finding during Lane D's review** (per
+`docs/audit-2026-09-11-handback-movement-2.md` line 20 and
+`docs/audit-2026-09-11-session-handback.md` line 103, both independently checked by this
+writer and confirmed to state the finding was explicitly "not investigated further" at that
+time — two duplicate "race" workout rows for 2026-09-13 in David's real active plan). **Per
+Wave 4 §6, it has now been investigated and closed as benign**, not a code-repair item:
+
+- Two rows exist: one live (`wko_a69751c4cc8ab89a`, on the active plan) and one orphaned in an
+  archived plan version, left behind by a `silent-rebuild` cron operation.
+- Every production surface that could read it (Today, watch delivery, pre-run lobby, week
+  strip, completion matching, adaptation loaders) already scopes to the active plan only — the
+  same PLAN-VERSION-ALIAS-1/ACTIVEPLAN-1 active-plan scoping this ledger already tracks
+  elsewhere (Rule 14, `_active_plan_scan.test.ts`) — confirmed by tracing the actual queries,
+  per Wave 4. The orphaned row is invisible everywhere it matters.
+- Build 290 already has this scoping, so this was never a live symptom on that build either.
+- **No code repair needed for this specific incident.**
+- **One adjacent, non-urgent gap named, not yet dispatched:** no pruning mechanism exists for
+  orphaned `plan_workouts` rows across plan rebuilds — 47 plan versions / 4,130 rows for one
+  user, accumulating unboundedly.
+
+**This writer's own caveat, per this document's standing discipline of distinguishing directly
+verified from relayed claims:** the query-tracing work underlying this conclusion is relayed
+from Wave 4's own text, not independently re-run by this writer against
+`DATABASE_URL_RO` — the same discipline already applied to the Wave 4 combined-gate results in
+§1.24. The scoping *mechanism* it relies on (active-plan-only reads) is independently
+verifiable in source (`web-v2/lib/audit/active-plan-exemptions.ts`,
+`web-v2/lib/audit/_active_plan_scan.test.ts`, both confirmed present in the current tree), so
+this is not a bare assertion, but this writer did not re-query the two specific rows. New row
+129 (§2.2).
+
+### 1.29 Required status: Lane C never dispatched, undo-display reviewed but unmerged, a genuine watch-item
+
+Per this task's own required status check, cross-referenced against Wave 4 §8 and confirmed
+directly against git:
+
+- **Lane C (proposal-state work) has never been dispatched** — it was sequenced to start only
+  after `fix/decision-history-undo-display`'s integration, which never happened.
+- **`fix/decision-history-undo-display` @ `6f8a3d28f`** — this ledger's own row 68 already
+  tracks it as "reviewed PASS, verified against real CI." Confirmed directly this pass: **still
+  not an ancestor of `origin/main`.** Unchanged status, now explicitly cross-referenced from
+  the "required status" list rather than only from row 68.
+- **`fix/proposal-evidence-as-prose`** — confirmed to exist as a branch (tip `0aeb6cb9a`),
+  confirmed **not** an ancestor of `origin/main`. Per Wave 4 §8: a genuine unmerged branch from
+  a different concurrent session, no file-level overlap with undo-display, same domain
+  (proposal-state presentation) — named as a watch-item, not a conflict, since nobody has
+  reconciled the two yet. New row 130 (§2.2).
+
+### 1.30 `test-full`'s one expected failure, named precisely, for the permanent record
+
+Wherever this document (or a prior pass) states "1 pre-existing failure" without naming it,
+that omission is corrected here: it is **`_authoring_shadow_compare.audit.test.ts`**, a Rule 18
+liveness-refusal gate that is *designed* to fail loudly whenever `DATABASE_URL_RO` isn't
+configured in the environment, specifically so a missing credential can never silently read as
+clean. Per Wave 4 §5, confirmed byte-for-byte identical across every unmodified checkout of
+`main` this entire session — not a regression from anything merged this wave. This is the same
+underlying credential gap already tracked as row 72/§4 (`DATABASE_URL_RO` missing from CI),
+named here explicitly rather than left as an unnamed count. §4's own CI-state table is updated
+to name it directly rather than say "confirmed green" with no caveat.
+
+### 1.31 Infrastructure: shipping lock doing real work; node_modules gate scoped and ready, not merged
+
+**The shipping lock (`scripts/main-push-lock.sh`), landed as part of §1.24's
+`feat/shipping-lock-and-artifact-mapping`, is now live on `main` and has been used for real**,
+including catching a genuine concurrent authorization from a parallel merge in this same wave
+— per Wave 3 §1, the mechanism is doing real work, not just installed. This is also the
+corrective mechanism §1.21 (row 71) names as the actual fix for the unauthorized-merge process
+violation, now confirmed merged rather than "in progress."
+
+**Wave 4 also names a live demonstration of exactly the friction the node_modules-gate scoping
+fix exists to close:** the worktree used for Wave 4's own final push lacked
+`web-v2/node_modules`, so it hit the pre-fix, unscoped gate behavior and silently skipped the
+web checks on that specific push — harmless there because the content was already fully
+verified in a separate worktree with `node_modules` present, but a real, live instance of the
+problem, not a hypothetical.
+
+**`fix/pre-push-node-modules-gate` — reviewed PASS, scoped, ready, NOT merged.** Wave 3 named
+this branch's tip as `94ebc8e4d`; Wave 4 names a further commit, `ae7619ea9`, adding
+`touches_web()` (mirroring the existing `touches_watch()` pattern, including self-including the
+gate scripts so editing them still forces a check). **Checked directly this pass:** after a
+fresh `git fetch origin fix/pre-push-node-modules-gate`, `origin/fix/pre-push-node-modules-gate`
+resolves to `ae7619ea9` exactly, confirming Wave 4's tip over Wave 3's earlier one — no
+discrepancy, just the expected evolution of an in-review branch. (This writer's own pre-fetch
+local branch ref for the same name was stale at `94ebc8e4d`; refreshed by the fetch, not a
+finding.) `git merge-base --is-ancestor ae7619ea9 origin/main` returns **false** — confirmed
+not merged. Both directions were independently falsified per Wave 4 §4: the bypass case
+(docs-only push, no `node_modules`) now correctly skips the check; the false-block case (a
+web-v2-touching push, no `node_modules`) still correctly refuses. Row 125 (§2.2) updates the
+branch tip and status accordingly.
+
+### 1.32 This pass's own git-verification summary — no discrepancy found between either handback and live git state
+
+Per this task's explicit instruction to verify facts independently rather than trust the
+handbacks: every merge/branch claim in Wave 3 and Wave 4 was checked directly this pass via
+`git fetch`, `git rev-parse origin/main`, `git cat-file -t <sha>`, `git merge-base
+--is-ancestor <sha> origin/main`, and a direct `git log --oneline origin/main` read to confirm
+sequencing. **Result: zero discrepancies found.** Every SHA claimed merged is a confirmed
+ancestor; every SHA claimed still-held (Lane A's `886d1529e`/`b13c2c59a`,
+`fix/pre-push-node-modules-gate`'s `ae7619ea9`, `fix/decision-history-undo-display`'s
+`6f8a3d28f`, `fix/proposal-evidence-as-prose`'s `0aeb6cb9a`,
+`natural-coaching/santa-monica-race-day-v2`'s `b0d7349e7`, and the already-rejected
+`fix/santa-monica-race-day-copy`'s `38d090ec8`) is confirmed not merged. `origin/main`'s
+freshly-fetched tip, `e13542763573e17561970b0d1e05ba37a57420e3`, matches this task's own
+briefing exactly. `fix/race-week-canonicalization-final` exists but carries zero commits past
+`origin/main` — genuinely dispatched, genuinely not started. This writer also independently
+`curl`ed `https://www.faff.run/api/up` during this pass and received `200` — a live
+corroborating data point for the production-liveness claims in §1.24/Wave 3 §1, though it
+confirms the site is up at the moment checked, not that any specific SHA is the one currently
+serving traffic; the Railway `[PROD] SUCCESS` claims themselves remain relayed, not
+independently re-queried against Railway's own API, consistent with this document's existing
+practice for CI status (§4).
+
+**The one genuine surprise, flagged per this document's own practice of naming things loudly:**
+`docs/audit-2026-09-11-handback-wave4.md` did not exist when this task's source material was
+first enumerated and appeared during this pass, mid-task, from a concurrent session (file
+mtime `18:43` vs. Wave 3's `17:21`). This is not a contradiction — it is exactly the "check for
+a newer handback file" case this task's own briefing anticipated — but it is worth naming
+because Wave 4 changes several of Wave 3's own "awaiting authorization" statuses to "merged,"
+and a pass that stopped at Wave 3 alone would have under-stated how much landed this session.
+
 ---
 
 ## 2. Updated master execution ledger
@@ -818,7 +1146,7 @@ this table is the delta index so nothing has to be re-read to know what moved.
 | 29–30 | Coach-voice false "longest" claim / Rule 17 primer collision | IMPLEMENTED — VERIFICATION INCOMPLETE | **MERGED this session** — see row 57 |
 | 31 | Status-bar/full-bleed gap | IMPLEMENTED — VERIFICATION INCOMPLETE | Unchanged (already merged in v1); see rows 69–70 for the follow-on SCROLLCLOCK work |
 | 32–33 | WALKBACK-1/2 | IMPLEMENTED — VERIFICATION INCOMPLETE | Unchanged; confirmed still on `main` per v1 §8a's own direct check. **A regression in the session-ended case was found and fixed this session** — see row 60 |
-| 34–35 | Missing pace + piece hierarchy | DISPUTED — HOLD | **Dispute resolved technically this session (all 9 hold conditions re-verified PASS), still explicitly HELD from merge as a process decision, not a technical one** — see row 65 |
+| 34–35 | Missing pace + piece hierarchy | DISPUTED — HOLD | **Dispute resolved technically, hold lifted, MERGED this pass (Wave 3, §1.24/§1.26)** — see row 65 |
 | 36 | `RacesV5Sample` verdict-string bug | IMPLEMENTED — VERIFICATION INCOMPLETE | **MERGED this session** — see row 58 |
 | 37 | Backend 502/timeout observability | IMPLEMENTED — VERIFICATION INCOMPLETE | **MERGED this session (code only); Migration 170 unapplied** — see row 61, row 74 |
 | 38 | `goal-projection.ts` `recoveryEndedEarly` threading | IMPLEMENTED — VERIFICATION INCOMPLETE | **MERGED this session** — see row 59 |
@@ -826,9 +1154,9 @@ this table is the delta index so nothing has to be re-read to know what moved.
 | 40 | Remaining 5-of-7 walk-back states | OPEN — scoped, not implemented | Unchanged |
 | 41 | TestFlight state query | PROVEN COMPLETE (as a query) | Superseded — see §4, build is now further behind |
 | 45 | Phase-fallback mile-table honesty follow-up | OPEN | Unchanged |
-| 46 | 14-phase nonzero distance/duration finding | DISPUTED — under correction | **Not resolved this session** — remains disputed, folds into row 65's still-open items |
-| 47 | `recoveriesHonestOf` flat-tolerance denial | OPEN — needs re-verification | **Superseded by the triple-confirmed field-name root cause** — see §1.1, row 75 |
-| 48 | `workoutPhasePieces` fallback dispute | HOLD IN EFFECT | Unchanged — still frozen with row 65 |
+| 46 | 14-phase nonzero distance/duration finding | DISPUTED — under correction | **Not resolved this session** — remains disputed; row 65, which it had folded into, is now merged (§1.26), but this specific dispute was not itself re-investigated |
+| 47 | `recoveriesHonestOf` flat-tolerance denial | OPEN — needs re-verification | **Superseded by the triple-confirmed field-name root cause** — see §1.1, row 75 (implementation complete and reviewed PASS, HELD pending merge authorization as of this pass — §1.26) |
+| 48 | `workoutPhasePieces` fallback dispute | HOLD IN EFFECT | Unchanged — was frozen with row 65; row 65 itself has since merged (§1.26), this specific dispute was not re-investigated |
 | 49 | Shadow-log PROGRESS three-way disagreement | OPEN — reserved | **Still open — not addressed by Brain v2.1 by name.** See §1.5 |
 | 50 | 2026-06-02 automatic upward rebuild, zero `coach_intents` trace | OPEN — reserved, high significance | **Now Brain-confirmed and folded into the errata-renamed P0** — see §1.5, row 85 |
 | 51 | HR-flatline guard doesn't reach LTHR/HRmax/zone/readiness | OPEN — reserved | Carried forward — see row 92 |
@@ -854,8 +1182,8 @@ marked implemented.
 | 62 | Three-site sealed-identity bypass (pace-repricing) | IMPLEMENTED — VERIFICATION INCOMPLETE | Medium-High | `fix/sealed-identity-canonical-resolver` @ `0883490f0` | PASS (rigorous, own-falsification-of-scanner check) | Resolves v1 row 4 | Merge status per §1.8 caveat — squash-merge plausible but not content-confirmed |
 | 63 | Treadmill `cuesMenu` overlay collision | IMPLEMENTED — VERIFICATION INCOMPLETE | High (release-blocking) | `fix/treadmill-cues-menu-overlay` @ `9462c8205` | PASS | Resolves v1 row 17 | Merge status per §1.8 caveat |
 | 64 | 6-branch + 5-branch integration to `origin/main` | MERGED, confirmed live | N/A (process) | `99757c1204f27a1fa86504efd580842bc81c72b2` | Genuine post-merge integrated-diff review, no cross-branch defects found | Confirmed via direct `git merge-base --is-ancestor` this session | None — closed |
-| 65 | Missing pace + piece hierarchy | DISPUTED dispute technically resolved — HELD FROM MERGE (process, not technical) | High | `fix/postrun-missing-pace-routing` @ `b92589fae` | All 9 of David's hold conditions independently re-verified PASS | Merge-resolution clean against current `main` tip, DB timeline re-queried, ROUTING-1 fail-before/pass-after reproduced, amber-marker rendering confirmed via accessibility-tree dump across 3 unrelated screens | David's explicit go to lift the multi-session coordination hold |
-| 66 | Race-week protection tune-up gaps | PARTIAL | Medium-High | `fix/race-week-protection-tuneup-gaps` @ `ffe5ee553` | PASS (the `adapt.ts`/`mutate.ts` fix, using `weekContainsRace` instead of raw `is_race_week`) | **New unfixed finding surfaced by this review**: the identical bug shape is still live and undisclosed in `web-v2/lib/plan/progression-pass.ts` (~L553, ~L719-720) and possibly `app/api/plan/replan/route.ts:186` | The `adapt.ts`/`mutate.ts` fix needs a merge decision; the newly-found `progression-pass.ts`/`replan` instance needs its own branch and its own decision — NOT yet fixed |
+| 65 | Missing pace + piece hierarchy | **MERGED this pass (Wave 3, §1.24/§1.26)** — dispute was already technically resolved; the hold was lifted and the branch merged | High | `fix/postrun-missing-pace-routing` @ `859ea18f3` (one commit past the previously-cited `b92589fae`: `MILEFALLBACK-LABEL-1`, a real non-drift-induced em dash fixed mid-integration), merge commit `4bfd69ad9`, confirmed ancestor of `origin/main` | All 9 of David's hold conditions independently re-verified PASS, before merge | Merge-resolution clean against current `main` tip, DB timeline re-queried, ROUTING-1 fail-before/pass-after reproduced, amber-marker rendering confirmed via accessibility-tree dump across 3 unrelated screens; post-merge, independently confirmed live via a real `curl www.faff.run/api/up` → 200 (this writer re-ran the same check this pass and also got 200) | None — closed. Runner Data's dedicated-branch provenance receipt (§1.18) was the process condition David tied to this merge by name; it has still not arrived (§1.18/banner) — Main should confirm explicitly whether that gate is now considered satisfied or still open despite the merge, since this document does not have standing to decide that unilaterally |
+| 66 | Race-week protection tune-up gaps | **PARTIAL, superseded in part — see rows 97/120-122/123** | Medium-High | `fix/race-week-protection-tuneup-gaps` @ `ffe5ee553` | PASS (the `adapt.ts`/`mutate.ts` fix, using `weekContainsRace` instead of raw `is_race_week`) | The bug shape this row originally surfaced has since been confirmed at **9 total sites**, not the "7, exhaustive" this row and v1 believed (§1.25) — row 97's `progression-pass.ts`/`replan` instance is now MERGED (row 120), two further sites (rows 121-122) were found and merged this wave, and the two sites still deferred at Wave 3 time are now DISPATCHED, not yet landed, as `fix/race-week-canonicalization-final` (row 123) | `ffe5ee553` itself still needs its own merge-status confirmation (not re-checked this pass, out of this task's scope) — see §1.25 for the current, precise site count and status |
 | 67 | `PRODUCT_DECISIONS.md` conflict markers + watch-gate log paths | OPEN — fix reviewed but NOT present on `origin/main` | Medium (process) | `fix/product-decisions-conflict-and-watch-gate-log` @ `24326a35d` | Independently re-verified (per session narrative) | **Directly re-checked this session: `origin/main` (tip `9696decac2`) still contains the literal conflict markers at the same three lines.** See §1.7 | Merge this branch — it has not reached `origin/main` despite being reviewed |
 | 68 | Decision History undo-display accounting | IMPLEMENTED — VERIFICATION INCOMPLETE | Medium-High | `fix/decision-history-undo-display` @ `6f8a3d28f` | Verified against real CI (`build-check.yml` run `34436695631` green) | `outcomeOfWorkoutRow` now reads `plan_decision_ledger`'s latest row per proposal | Two `--no-verify` pushes on this branch each independently justified per `VERIFICATION_POLICY.md` conditions 1-3/6-7, but **condition 4 (recorded in commit metadata or a handback) was NOT satisfied by either** — flagged as an open documentation-policy gap, not a technical defect |
 | 69 | Header/status-bar collision at scroll-top (SCROLLCLOCK-1/2) | IMPLEMENTED — VERIFICATION INCOMPLETE | High | `fix/scroll-header-status-bar-collision` @ `7502f8166`, merged via `4437f5815` | PASS after one fix round | Fixed a Nielsen H1 violation across AppBar and DayPanel-hero screens (Today/Block/Races). First review's own claim of having checked the FULLBLEED stale-banner interaction was found false (a real black-gap defect reproduced by rendering); closed and re-confirmed by rendering against real production-clone data. Merge parentage independently re-verified this pass — see §1.23; confirmed merged and live on `origin/main` | Substantially resolves v1 row 19's broader "any scroll position" finding — Main should confirm this closes it fully |
@@ -864,7 +1192,7 @@ marked implemented.
 | 72 | `DATABASE_URL_RO` missing from CI | BLOCKED | Medium (process) | N/A | N/A | Confirmed present in `web-v2/.env.local`, absent from GitHub Actions secrets | Human action required: `gh secret set DATABASE_URL_RO` or GitHub UI — declined to run this myself per credential-handling policy |
 | 73 | Migration 166 (`plan_decision_ledger`) | BLOCKED — REQUIRES DAVID. **Rollout/rollback evidence prep IN PROGRESS (concurrent session, §1.20) — evidence prep is not approval** | High | Packet complete, reviewed PASS | PASS | Additive-only, `IF NOT EXISTS`-guarded, confirmed not auto-applied | Separate, explicit, per-statement DDL approval; unchanged from v1 §6. Evidence prep narrows the review, does not substitute for it |
 | 74 | Migration 170 (`request_failures`) | BLOCKED — REQUIRES DAVID. **Same evidence-prep-in-progress caveat as row 73, §1.20** | Medium | Packet complete (part of row 61) | PASS | Additive-only, `IF NOT EXISTS`-guarded, confirmed not auto-applied by any build/deploy script | Separate DDL approval, distinct from Migration 166's table/packet |
-| 75 | Recovery-honesty `strides_recovery_s` field-name gap | **IMPLEMENTATION IN PROGRESS** (was QUEUED — corrected this pass, §1.16/§1.19) | **P0** | None yet | N/A — actively being implemented by a concurrent session ("Lane A" per this task's briefing); not yet landed, do not cite as fixed | Triple-confirmed: Brain v2.1 §9/§10 [TEST]×2, Runner Data v2.1's own §9.4/§12 standalone script, **now directly read this pass, not relayed** — see §1.16 | See §1.1/§1.16 — the single highest-confidence finding in the intake ledger. Needs independent review once Lane A's fix lands |
+| 75 | Recovery-honesty `strides_recovery_s` field-name gap | **IMPLEMENTATION COMPLETE, REVIEWED PASS across 3 rounds, RENDERED against real data — HELD, pending David's explicit merge authorization** (corrected this pass, §1.26; was IMPLEMENTATION IN PROGRESS) | **P0** | `fix/recovery-honesty-strides-grading` @ `b13c2c59a` (mechanism fix `886d1529e`, copy fix `b018980c1`) — confirmed **not** an ancestor of `origin/main`, still held | Final independent pass: PASS, no conditions. Coach-voice gate widened to scan `lib/postrun` (383 files, up from 377) as part of this branch's own fix, surfacing 2 more pre-existing violations (1 safe, 1 flagged as a follow-up) | Triple-confirmed: Brain v2.1 §9/§10 [TEST]×2, Runner Data v2.1's own §9.4/§12 standalone script, directly read not relayed (§1.16). This wave's own rendering against David's real workout delivered the literal per-phase display, Coach's Read card text, "Plan unchanged" zero-effect trace, and durability-classification correction — see §1.26 | David's explicit merge authorization — the only remaining condition. Not a technical hold |
 | 76 | Primary watch-completion matcher (`[0.7,1.3]` band, no ambiguity refusal) | **QUEUED, still unassigned** | High | None yet | N/A — queued, separate implementer/reviewer per Runner Data's release plan; no implementer has started as of this pass | Brain v2.1 §8 cross-confirmation + Runner Data v2.1's 4-scenario executed test, **now directly read this pass** — confirmed the app's PRIMARY live-tracked-workout completion path, not a peripheral one — see §1.16 | See §1.3/§1.16 |
 | 77 | Pause data: raw-fact persistence only | **QUEUED, narrowly bounded, still unassigned** | Medium-High | None yet | N/A | Brain v2.1 §12 (Runner Data carryover), **now directly read this pass**: 3 senders not 2 (a live watch-app Pause/Resume control included), 8/8 real nonzero submissions confirmed lost, discarded at the exact moment the pause correctly explains the gap; `pausedAutomatically` flag discarded before wire; a third HealthKit-specific auto-pause signal exists separately — see §1.16 | Scope explicitly limited to (1) persist the raw fact. Display (2) and grading use (3) are separate, NOT recommended by any pass, require explicit future sign-off |
 | 78 | `reanchorLthr` ungated profile-write side door (all 5 callers) | LOGGED | High (architecture) | None | N/A | Brain v2.1 §5: 2 unattended crons, 1 operator-dispatched, 2 runner-initiated — all 5 reach `reanchorLthr()` with zero authority parameter; `_mutation_boundary.test.ts` structurally blind (scans only `plan_workouts`, not `profile`) | No implementation started; needs a scope decision (gate it, or explicitly accept "calibration not adaptation" as the standing exception) |
@@ -877,7 +1205,7 @@ marked implemented.
 | 85 | `coach_intents` gap for automatic plan mutations (renamed from "…upward events") | LOGGED | **P0** | None | N/A | Errata-renamed per §1.5. Now 3 confirmed `drift_cron_auto` instances (2 upward, 1 downward) plus `positive-drift`'s separate zero-trace history, all with zero `coach_intents` trace | Cross-references CLAUDE.md Rule 21 — see §1.5 for the precise, non-overclaiming statement of what this does and does not change about Rule 21's own claim |
 | 86 | `positive-drift` historical automatic side door | LOGGED — RETIRED, standing risk only | Informational | None | N/A | Brain v2.1 §6: ungated when live, structurally identical in shape to `reanchorLthr`; code lives entirely in `legacy/web`, confirmed excluded from what Railway builds (`package.json`/`railway.json` both scope to `web-v2`) | No action needed unless `legacy/web` is ever rebuilt or redeployed — named as a standing risk of that codebase |
 | 87 | September 2 "76 workouts" re-anchor claim | LOGGED — DISPUTED/UNCONFIRMED, must not be cited; **cross-checked this pass, numbers match exactly** | N/A | None | N/A | Brain v2.1 §3 row 6 / errata §2: mechanism CLASS real and closed 2026-09-05; the specific "76 workouts" scope/date is unverifiable from the current schema (23 rows total at the post-anchor LTHR value, not a 76-row cluster). **Directly cross-checked against Runner Data v2.1 §2.C row 6 this pass — identical figures** (13 rows on the currently-active plan, 10 on its predecessor, 23 total; `[BLOCKED: no discrete event/timestamp mechanism found]`), so this is a genuine two-document agreement, not a single relayed source repeated twice | Brain's own open question (§16 item 9): is a dedicated audit-trail mechanism (timestamp column, re-anchor log) worth adding, given this is the second time this exact class of event has proven unreconstructable |
-| 88 | Coach v2.1's 3 remaining confirmed next-TestFlight blockers: false cutback `whyCutback`/`whyMileage` "down/reduction" copy; HOLD-proposal cross-surface contradiction (Block vs. Decisions History); `standing-recommendation.ts` single-domain convergence violation | LOGGED — Coach packet now ACCEPTED AND CLOSED, all 3 directly confirmed this pass | Release blocker (Coach v2.1 §4, final list) | None | N/A — **Coach v2.1 read directly and in full this pass; no longer relayed** (§1.6 caveat lifted for Coach, see §1.14) | Coach v2.1 §4's final blocker table: cutback copy "re-confirmed by direct execution against an adversarial fixture in v2… no new evidence to reconsider"; HOLD/notice contradiction "`outcomeOfWorkoutRow`'s missing `'notice'` branch confirmed unchanged in v2's verification pass"; `standing-recommendation.ts` "live and wired end-to-end… Brain-owned per v2 §4's ownership reclassification, but the runner-visible symptom is exactly the kind of overclaim this audit exists to catch" — the 3rd item is also independently corroborated by Brain v2.1 §11 | Not yet implemented. **Note the item count changed from 4 to 3 this pass** — the 4th item previously bundled here ("0s slow") is split out to row 98 with a confirmed downgrade; see §1.12 |
+| 88 | Coach v2.1's 3 remaining confirmed next-TestFlight blockers: false cutback `whyCutback`/`whyMileage` "down/reduction" copy; HOLD-proposal cross-surface contradiction (Block vs. Decisions History); `standing-recommendation.ts` single-domain convergence violation | **2 of 3 items MERGED this pass, not previously reflected** — cutback copy and the convergence violation are fixed by `fix/standing-recommendation-convergence-and-cutback-copy` (Lane D) @ `ab5a5eb7c`, merge `e32dde4a7`, confirmed ancestor of `origin/main` and confirmed by direct diff to touch exactly `web-v2/lib/coach/standing-recommendation.ts` and `web-v2/lib/plan/strategy-contracts.ts` plus two new test files. **This cross-reference is this writer's own, not stated by name in either handback** — flagged as inferred rather than source-confirmed, though the branch name, "Lane D" label (matching `docs/audit-2026-09-11-handback-movement-2.md`'s own naming), and file-level diff all point to the same fix. The 3rd item (HOLD/notice cross-surface contradiction) is untouched by this branch and remains open | Release blocker (Coach v2.1 §4, final list) | None | N/A — **Coach v2.1 read directly and in full this pass; no longer relayed** (§1.6 caveat lifted for Coach, see §1.14) | Coach v2.1 §4's final blocker table: cutback copy "re-confirmed by direct execution against an adversarial fixture in v2… no new evidence to reconsider"; HOLD/notice contradiction "`outcomeOfWorkoutRow`'s missing `'notice'` branch confirmed unchanged in v2's verification pass"; `standing-recommendation.ts` "live and wired end-to-end… Brain-owned per v2 §4's ownership reclassification, but the runner-visible symptom is exactly the kind of overclaim this audit exists to catch" — the 3rd item is also independently corroborated by Brain v2.1 §11 | **Two items closed by the Lane D merge above** (Main should confirm this writer's inferred cross-reference before treating them as formally closed). HOLD/notice contradiction not yet implemented. Note the item count changed from 4 to 3 in the prior pass — the 4th item previously bundled here ("0s slow") is split out to row 98; see §1.12 |
 | 89 | HR-flatline guard doesn't reach LTHR/HRmax/zone/readiness consumers | LOGGED — carried forward from v1 §8a row 51 | High | None | N/A | Dated example: 2026-09-03 treadmill hill session, flatlined HR across all 10 work phases | Not addressed by Brain v2.1 by name — folds into v1 row 9 (HR-flatline evidence gap) as a specific, dated instance |
 | 90 | Five incompatible adaptation-decision vocabularies | LOGGED — carried forward from v1 §8a row 53 | High (architecture) | None | N/A | Not addressed by Brain v2.1 by name | Could materially affect Migration 166's own scope decision — should be resolved before, not after, per v1's own framing |
 | 91 | `RUNNER_AUTHORITY_TIERS` duplicated in two files | LOGGED — carried forward from v1 §8a row 54 | Medium | None | N/A | Not addressed by Brain v2.1 by name | Mechanical one-quantity-one-name fix once confirmed still live |
@@ -886,7 +1214,7 @@ marked implemented.
 | 94 | `recoveryExtensions`/`ceilingLift` — has a live Run Detail consumer | LOGGED — correction, not a defect; **directly confirmed this pass** | N/A | None | N/A | Brain v2.1 §12: "confirmed to have a live Run Detail consumer, corrected out of 'collected but unused'." Runner Data v2.1 §1.A/§5/§13 item 10 directly: a real, five-file-deep "Wrist Decisions" panel in Run Detail; a render to confirm the panel draws for a real row is the one remaining step | Confirmed by this writer's direct read, matches Brain's carryover exactly |
 | 95 | Phase-transition cause largely absent (2 narrow exceptions: `repSkips`, `recoveryEndedEarly`) | LOGGED — **directly confirmed this pass, no longer relayed-only** | Medium | None | N/A | Brain v2.1 §12. Runner Data v2.1 §1.B.6/§1.B.8 directly: no phase carries a start/end wall-clock timestamp (boundary reconstruction is provably unsafe across a pause/gap/Skip); mid-run treadmill Skip writes into the same `completed:Bool` as any other completion path, with WALKBACK-2's `recoveryEndedEarly` the one new, narrow, still-0/162-populated exception | Confirmed by this writer's direct read, matches Brain's carryover exactly |
 | 96 | §9 Today-screen "not completed" symptom — root cause now fully traced | **RESOLVED ON `main`, NOT YET SHIPPED** | High | `154edbf97` (deletion, already on `main`) | N/A (docs/forensics) | Brain v2.1 §9: a third Swift component, `workoutPhasesTile`/`phaseTrailingText` (introduced 2026-09-04, deleted 2026-09-08), rendered unconditionally and stamped `"not completed"` for any `completed:false` phase regardless of type — neither side of the original v1 mechanism dispute was the live cause | Nothing to fix — closes automatically the moment a new TestFlight build is cut, since both this deletion and both WALKBACK merges are already on `main` |
-| 97 | `progression-pass.ts` / `replan/route.ts` race-week gap (surfaced by row 66's review) | OPEN — new, unfixed | Medium-High | None | N/A | Same bug shape as row 66 (`is_race_week` raw read instead of `weekContainsRace`), at `web-v2/lib/plan/progression-pass.ts` lines ~553, ~719-720 and possibly `app/api/plan/replan/route.ts:186` | Needs its own branch and its own review — not yet started |
+| 97 | `progression-pass.ts` / `replan/route.ts` race-week gap (surfaced by row 66's review) | **MERGED (Wave 3/4, §1.24/§1.25)** | Medium-High | `fix/progression-pass-race-week-protection` @ `ee6df002d`, merge commit `52eabd658`, confirmed ancestor of `origin/main` | PASS — fixed `progression-pass.ts`'s two sites plus `replan/route.ts`'s sick-ladder (confirmed the same shape despite that file's own header comment claiming otherwise) | Same bug shape as row 66 (`is_race_week` raw read instead of `weekContainsRace`), at `web-v2/lib/plan/progression-pass.ts` lines ~553, ~719-720 and `app/api/plan/replan/route.ts`'s sick-ladder | None — closed. See row 124 for a real regression this same branch's new DB query introduced and had fixed before merge |
 | 98 | `composeTrainingInfluence`'s "0s slow" fabrication | LOGGED — CONFIRMED DORMANT, downgraded off the blocker list | Medium (was release-severity when bundled in row 88) | None | N/A | Coach v2.1 §2.2: `Math.max(0, delta)` floor genuinely destroys magnitude once reached, but the sole non-test caller (`web-v2/components/faff-app/seed.ts:145-157`) never wires the required `grade` key, making the branch structurally unreachable; that caller is exclusively part of the paused web frontend per CLAUDE.md (locked 2026-08-31). Covered by a 12-fixture golden suite (`_workout_verdict_owner.test.ts`), correctly built and tested, currently reachable from nothing this app ships | Split out of row 88 this pass — see §1.12. Not a TestFlight blocker. Worth fixing before this composer is ever wired to a live iPhone/watch route |
 | 99 | SAFETY_STOP decline (422) decodes as a generic outage | LOGGED — CONFIRMED still unreachable through the shipped UI, downgrade unchanged since Coach v2 | Informational (real code-level bug, not currently exercisable) | None | N/A | New row this pass — not previously carried in this ledger. Full chain: Coach v1 (blocker) → v1-to-v2 correction log (removed from blocker list) → Coach v2 finding 2d ("STILL PRESENT IN CODE, but UNREACHABLE TODAY… `ProposalCardV5.swift`'s `isAnswerable` is true only when `standing == .proposal`; `standingOf()` maps every `RECORD_ONLY`-executor action to `standing: 'notice'`, which never renders a decline button") → Coach v2.1 §4 final table, unchanged, "not part of this pass's scope and carries no new evidence" | See §1.13. Rule 18 note: an unexercised safeguard is a hypothesis — the 422/key-mismatch bug is real and should eventually be fixed, but is not release-blocking while unreachable |
 | 100 | Second `RUNNER_AUTHORITY_TIERS`-style side-door duplication instance: two plan-match distance bands | LOGGED — new via Runner Data v2.1, directly read | **P2** (upgraded from the general pattern's P4 — Runner Data v2.1 §12 item 8: "this pattern has now recurred") | None | N/A | Runner Data v2.1 §2.A.2/§8a row 6: `watch/workouts/complete/route.ts`'s symmetric `[0.7,1.3]` band vs. `ingest/workout/route.ts`'s asymmetric `[0.7,2.0]` band — only one received the OVERRUN-MATCH-1 fix. Same underlying gap as row 76 | Consolidate into one canonical export once row 76 is fixed, per row 91's own pattern |
@@ -896,12 +1224,40 @@ marked implemented.
 | 104 | "14 PROGRESS outcomes" — resolved and reclassified, not a defect | LOGGED — informational correction to how Rule 21 evidence is read | N/A | None | N/A | Runner Data v2.1 §10: a still-existing replay harness (`scripts/adaptation-real-replay/real-replay.test.ts`), re-run fresh this pass, produces `PROGRESS:14/HOLD:64/REGRESS:4/REFUSE:38` against real historical training — a capability metric ("would the engine have pushed?"), not a production log. Rule 21's own "zero upward in `coach_intents`, 321 rows" claim is unaffected | None — informational, closes a previously-open question (v1's "genuinely unmatched" framing) |
 | 105 | Design-System Phase 2 — `RacesV5.swift`'s `"Needs a decision"` eyebrow (RESTYLE #1) | **CLOSED — already fixed on `origin/main`, audit finding is STALE relative to current `main`** | N/A (was Priority 1 at the audit's own pin) | `45a79e997` (`fix/races-decision-header-label`, merged) | N/A — verified by this writer via direct source diff, not by the design audit | Design-System Phase 2 is pinned at `f1d1def0bedbb6db76c86ec89f8dc16f3ff9715d` (2026-09-08); this writer confirmed `45a79e997` (2026-09-09, one day later) already replaced the hardcoded `"Needs a decision"` literal with `card.shape.raceDecisionEyebrow`, gated exactly the way the audit recommends — confirmed present on `origin/main` today | None — flagged so nobody re-implements an already-shipped fix. See §1.22 |
 | 106 | Design-System Phase 2 — `RouteMapView.swift`'s green start-marker dot (RESTYLE #2) | **CLOSED — already fixed on `origin/main`, audit finding is STALE relative to current `main`** | N/A (was Priority 2 at the audit's own pin) | `4359ad29e` (`fix/routemap-green-start-marker`, merged) | N/A — verified by this writer via direct source diff | Same stale-pin pattern as row 105: the audit's pin (2026-09-08) predates this fix (2026-09-09) by one day. Current `origin/main`'s `RouteMapView.swift` carries an explicit comment confirming the marker is "PALETTE-NEUTRAL, NOT GREEN. This used to be #3EBD41" | None — flagged so nobody re-implements an already-shipped fix. See §1.22 |
-| 107 | Design-System Phase 2 — CREATE #1, reinstate the modelled `~` marker | **ALREADY IMPLEMENTED, bundled into row 65's held branch** — not a new open item | N/A | `adcea6f15` (`MARKER-RESTORE-1`), on `fix/postrun-missing-pace-routing` (same branch as row 65) | Same review status as row 65 — all 9 hold conditions independently re-verified PASS | Design-System Phase 2 named this its single highest-leverage recommendation; this writer confirmed the fix already exists, on the same branch already HELD from merge as row 65, for the same process reason | Resolves when row 65 is merged — no separate action |
+| 107 | Design-System Phase 2 — CREATE #1, reinstate the modelled `~` marker | **MERGED — row 65's branch merged this pass (§1.24/§1.26)** | N/A | `adcea6f15` (`MARKER-RESTORE-1`), on `fix/postrun-missing-pace-routing`, confirmed ancestor of `origin/main` via row 65's merge | Same review status as row 65 — all 9 hold conditions independently re-verified PASS, before merge | Design-System Phase 2 named this its single highest-leverage recommendation; this writer confirmed the fix already exists, on the same branch as row 65, now merged and live | None — closed, resolved by row 65's merge |
 | 108 | Design-System Phase 2 — treadmill cues-menu overlay (RESTYLE #3) | LOGGED — same underlying defect as row 63, not double-counted | High (release-blocking at the audit's pin) | `9462c8205` (row 63's fix, dated one day after the audit's pin) | Same as row 63 | Design-System Phase 2 independently re-confirmed Phase 1's original finding still present at its own pin, reproducing at every Dynamic Type category and both size extremes tested — consistent with the ledger's own timeline, since row 63's fix postdates the audit's pin | See row 63 — same fix, same merge-status caveat |
 | 109 | Design-System Phase 2 — REFINE items (bundled): hardcoded `"3:16:45"` catalog fixture; ambiguous "Elevation" sub-label beside "No GPS" caption; 14 `.system()` font sites bypassing `faffText`; catalog harness "Close" pill collision; `BlockV5.swift:863` `Alert(text:...)` omitting `tone:` | LOGGED, not implemented | Priority 3 (per the audit's own severity) | None | N/A | `docs/audit-design-system-phase2.md` §16 REFINE list — the font-site and `Alert` items carry forward from Phase 1 unchanged; the fixture/sub-label/harness items are new to Phase 2 | No implementation started; low individual severity, bundled for tracking |
 | 110 | Design-System Phase 2 — REMOVE: 40 sites / 13 files, legacy `Theme.green` as a grade under `-faffLegacy` | LOGGED — carried forward from Phase 1, unchanged, still unreachable | Priority 2 (currently unreachable) | None | N/A | `docs/audit-design-system-phase2.md` §16 REMOVE — real code, confirmed still present, behind the `-faffLegacy` debug flag | Remove once that debug path is retired — not urgent while unreachable |
 | 111 | Design-System Phase 2 — CREATE #2, standalone Training-calendar-sheet view | LOGGED, genuinely new and unaddressed | Not severity-scoped (a capability gap, not a defect) | None | N/A | `docs/audit-design-system-phase2.md` §0.3/§16: `TodayBeforeV5`'s private `calendarSheet` computed property cannot be exercised standalone; extracting it (with an `initialOpen` parameter, analogous to `OnboardingV5`'s `initialStep`) is a product-view change, out of scope for a catalog-only addition | Needs its own branch — no implementation started |
 | 112 | Design-System Phase 2 — Dynamic Type inconclusion re-confirmed, not resolved | LOGGED — unchanged, area 26 remains BLOCKED | N/A | None | N/A | `docs/audit-design-system-phase2.md` §0.5/§11: two visual-impression errors were caught and corrected by the audit's own re-measurement before being reported (a scaling artifact, and a byte-identical-screenshot false negative); the corrected finding is "no representative screen showed a visually confirmed size change under Dynamic Type in this environment," itself qualified as possibly a tooling limitation, not a confirmed app defect | No physical-device Dynamic Type verification has ever been performed — carried forward unchanged into §5/§6 |
+
+### 2.3 Wave 3 / Wave 4 integration rows (113–130)
+
+New this pass, per §1.24-§1.32. Every branch/merge-commit SHA below was independently checked
+by this writer against a freshly-fetched `origin/main` (§1.32) — the "Independent review"
+column states what the two handbacks themselves report; the "Evidence" column's ancestry
+claims are this writer's own direct git checks, not transcribed.
+
+| # | Item | Status | Severity | Branch/commit | Independent review | Evidence | Closure requirement |
+|---|---|---|---|---|---|---|---|
+| 113 | Shipping lock + artifact mapping infrastructure | MERGED, confirmed live and in real use | High (process) | `feat/shipping-lock-and-artifact-mapping` @ `1050a48c7`, merge `952b40d0d` | 3 real defects found by adversarial review (main-branch-deletion bypass, TTL-fails-open concurrency race, false-clean SHA-verification gap), all fixed and re-verified against a real scratch remote | Confirmed ancestor of `origin/main`. Per Wave 3 §5/§1.31, has already caught a genuine concurrent authorization from a parallel merge this same wave — doing real work, not just installed. This is the corrective mechanism row 71/§1.21 names for the unauthorized-self-merge process finding | None — closed. Also closes row 71's "corrective mechanism still being built" caveat |
+| 114 | Standing-recommendation convergence + false cutback copy (Lane D) | MERGED | High (2 of row 88's 3 items) | `fix/standing-recommendation-convergence-and-cutback-copy` @ `ab5a5eb7c`, merge `e32dde4a7` | PASS, no conditions (per `docs/audit-2026-09-11-handback-movement-2.md`'s own Lane D row) | Confirmed ancestor of `origin/main`; diff confirmed to touch `web-v2/lib/coach/standing-recommendation.ts`, `web-v2/lib/plan/strategy-contracts.ts`, plus two new test files. **Cross-referenced to row 88 by this writer, not stated by name in Wave 3/4** — flagged per §2.2's row 88 update | None — closed. See row 88 for the cross-reference caveat |
+| 115 | Stale cache reading as the outage screen | MERGED | Medium-High (new) | `fix/cold-open-cache-honesty` @ `2a8ee1d89`, merge `333f520f4` | PASS (per Wave 3 §1) | Confirmed ancestor of `origin/main`; per Wave 3 §1, `[PROD] SUCCESS` reported on Railway (relayed, not independently re-queried against Railway's API) | None — closed |
+| 116 | `plan_match_ambiguous` leak into runner-visible coach-intents timeline (WATCHMATCH-1 follow-up) | MERGED | Medium-High (new, adjacent to row 76) | `fix/execution-identity-watch-matcher` @ `f4cbb67f8`, merge `6fd65a6f6` | PASS (per Wave 3 §1) | Confirmed ancestor of `origin/main`; this writer's own read of the commit message confirms the mechanism: an ambiguous-match refusal intent, pre-acknowledged so it never reaches the pending-intents query, was leaking into `GET /api/coach/intents`'s separate unfiltered-by-default read path into native-v2's `CoachActivityTimeline` | None — closed. Distinct from row 76 (the primary matcher's own `[0.7,1.3]` band fix), which remains QUEUED and unassigned |
+| 117 | `fix/postrun-missing-pace-routing` final tip / live confirmation | MERGED, see row 65 | High | `859ea18f3`, merge `4bfd69ad9` | See row 65 | Independently confirmed live via `curl www.faff.run/api/up` → 200, both by the session (Wave 3 §1) and by this writer directly this pass | Folded into row 65 — not a separate open item |
+| 118 | Missed/skipped/moved-day resolution (Finding 3), including `PlanSnapshotStore` gap | MERGED | High | `fix/missed-skipped-moved-state` @ `6db2859d7`, merge `c97f1ec9f` | Two review rounds. First: PASS WITH CONDITIONS — mechanism solid (17/17 + 506/506 native tests, real button-taps including a genuine 401/sign-out against an unauthenticated request), but `PlanSnapshotStore` — the app's own stated "ONLY" path for date navigation — bypassed the feature by default, the default case for the population it exists to serve, not disclosed initially. Fix made the snapshot itself carry resolution data via the canonical resolver rather than routing around the gap. Second, final review: PASS — independently reproduced the exact before/after against a real copy of the reference runner's data at both commits, not fixtures; all test counts matched on independent re-execution | Confirmed ancestor of `origin/main` | None — closed |
+| 119 | CIM elevation integrity — choice card structurally unreachable for curated courses | MERGED | High (was OPEN/HELD) | `fix/cim-elevation-integrity` @ `1b31a55ae`, merge `6c7a99aa0` | Confirmed two ways: structurally (confidence computation traced exhaustively) and by an actual on-device simulator screenshot matching the confirmed payload character-for-character, in an earlier pass this session (a stale `simctl install` methodological trap was caught via MD5 comparison first) | Confirmed ancestor of `origin/main`; acceptance evidence committed as `docs/verification/2026-09-11-cim-elevation/acceptance-evidence.md` (this writer confirmed the file's presence in the current tree) | None — closed. See §1.26 for the full two-part confirmation and Wave 4's own honest disclosure that no *new* screenshot was captured at merge time |
+| 120 | Race-week protection: `progression-pass.ts` + `replan/route.ts` sick-ladder | MERGED, resolves row 97 | Medium-High | `fix/progression-pass-race-week-protection` @ `ee6df002d`, merge `52eabd658` | PASS | Confirmed ancestor of `origin/main` | None — closed. See row 124 for a regression this branch's new code introduced, caught and fixed before merge |
+| 121 | Race-week protection: Adaptation Engine week-ahead lever eligibility (4th site) | MERGED, dependency-ordered after row 120 | Medium-High | `fix/load-adaptation-week-ahead-race-detection` @ `3d382824c`, merge `9471b27ab` | PASS WITH CONDITIONS, resolved — cannot compile against plain `main` alone (proven by an actual `tsc` error), must merge after row 120's branch; confirmed merged in that order by direct `git log` read (§1.24) | Confirmed ancestor of `origin/main`. Review found the previously-cited reference example (Santa Monica 10K) is actually protected by `is_cutback` at 3 of 4 sites, not this fix — David's real Dodgers 10K tune-up week is the correct real-data proof (confirmed flipping from buggy `null` to correct `RACE_WEEK`) | None — closed |
+| 122 | Race-week protection: `replan-scenarios.ts` (5 call sites) + `move-orchestrator.ts` parity fix (6th site) | MERGED, 3 review rounds | Medium-High | `fix/replan-scenarios-race-week-protection` @ `c57733696`, merge `8dff7892b` | PASS after 3 rounds. Round 2 found `move-orchestrator.ts`'s own doc comment claimed parity with the just-fixed `weekMiles` — a parity the fix had silently broken; the two surfaces genuinely disagreed (47.2mi vs. 41mi for the same real tune-up-week shape) and now agree | Confirmed ancestor of `origin/main`. Includes one deliberately-correct non-fix at a 5th call site, backed by this project's own RACEWEEK-2 doctrine, independently verified | None — closed |
+| 123 | Race-week canonicalization final pass (`strategy-contracts.ts`, `adjudicate.ts`/`live-sequence.ts`, exhaustive `is_race_week`/`isRaceWeek` sweep) | **DISPATCHED, IN PROGRESS — zero commits landed** | Medium-High | `fix/race-week-canonicalization-final` (branch exists, checked out; confirmed 0 commits ahead of `origin/main` via `git log --oneline origin/main..fix/race-week-canonicalization-final`) | Not yet reviewed — nothing has landed to review | Scope per Wave 4 §9: named canonical predicates (race day / race week / post-race recovery / goal race / tune-up race), every consumer routed through the right one, doctrine-backed GOAL-only behavior preserved with citations, a ratcheted static regression gate, and a complete call-site inventory as a required deliverable | Implementation, then independent review — nothing to close yet |
+| 124 | Swallowed-failure regression in `progression-pass.ts`'s new `priorWeekDayTypes` DB read | MERGED (caught and fixed before shipping) | High (would have reopened the entire race-week protection effort on a DB blip) | `3192f7ac1`, on `origin/main` directly after the 5-branch wave's final merge | Caught by the `check-swallowed-failure` gate on the combined-gate run during Wave 4's integration, not by a human review pass | A bare `.catch(() => ({rows: []}))` reads a DB failure identically to "this week has no race" — the exact bug class rows 66/97/120-122 exist to close, reintroduced by the fix meant to close it. Fixed by routing through the existing `rowsOrEmpty` helper. Confirmed ancestor of `origin/main` | None — closed. Cited here as a worked example of Rule 15/18's own point: a full gate chain caught what a narrower one would have missed |
+| 125 | Pre-push hook's node_modules gate — scope to web-v2-touching pushes only | **REVIEWED PASS, scoped, ready — NOT merged** | Medium (process/friction) | `fix/pre-push-node-modules-gate`, tip `ae7619ea9` (supersedes Wave 3's `94ebc8e4d` — confirmed via fresh `git fetch`, §1.31) | PASS. Both directions independently falsified: bypass case (docs-only push, no `node_modules`) now correctly skips the check; false-block case (web-v2-touching push, no `node_modules`) still correctly refuses. The re-reviewer additionally stress-tested the falsifier's own "self-skip if history changes" safety mechanism three separate ways and confirmed it fails closed every time | Confirmed **not** an ancestor of `origin/main`. Adds `touches_web()`, mirroring the existing `touches_watch()` pattern, including self-including the gate scripts. A live instance of the friction it fixes occurred during Wave 4's own final push (§1.31) | David's explicit merge authorization |
+| 126 | Santa Monica race-day copy — rejected rewrite | REJECTED, held as a failed reference case | N/A (not a defect — copy-quality judgment) | `fix/santa-monica-race-day-copy` @ `38d090ec8` | David's own critique: repetitive phrasing, mechanical/threatening tone, a meaningless "yours to change" claim with no verified control behind it | Confirmed **not** an ancestor of `origin/main` — correctly never merged | None to close — held permanently as a reference case unless revisited from scratch |
+| 127 | Natural Coaching Experience — new ownership role established | New process/org item, not a code defect | N/A | N/A | N/A | Scoped to presentation language only, real rendered outputs across all 7 named surfaces, canonical facts not recomputed conclusions, David's real data, row 126's rejected case as its first acceptance test | Its first work product is row 128 |
+| 128 | Natural Coaching Experience's first result: `santa-monica-race-day-v2` | **DELIVERED, PENDING truth review and UX review — NOT merged** | N/A pending review | `natural-coaching/santa-monica-race-day-v2` @ `b0d7349e7` | Not yet reviewed — the review processes themselves are not yet structured, per Wave 4 §7 | Confirmed branch exists, confirmed **not** an ancestor of `origin/main`. Removed "yours to change" entirely (traced the real editable control to a different screen already carrying an honest version of the claim, rather than patching in place); kept the pace-band/target-pace distinction as two genuinely real facts; named but did not touch two adjacent jargon issues in sibling code, and one string it honestly could not trace to a render site in its own time budget | David to define and run the truth review and UX review, then a merge decision |
+| 129 | Duplicate September 13 race workout rows | **INVESTIGATED, CONFIRMED BENIGN — no code repair needed for this instance** | Was flagged Medium (incidental), resolved Informational | N/A (no fix branch — nothing to fix) | Investigation only, per Wave 4 §6; not independently re-run by this writer against `DATABASE_URL_RO` — the scoping *mechanism* it relies on was independently confirmed present in source by this writer (§1.28) | One live row (`wko_a69751c4cc8ab89a`, active plan), one orphaned in an archived plan version from a `silent-rebuild` cron operation. Every production surface (Today, watch delivery, pre-run lobby, week strip, completion matching, adaptation loaders) already scopes to the active plan only — the same PLAN-VERSION-ALIAS-1/ACTIVEPLAN-1 mechanism this ledger already tracks (Rule 14). Build 290 already has this scoping. First surfaced, unexamined, during Lane D's review (`docs/audit-2026-09-11-handback-movement-2.md` line 20) | None — closed for this instance. One adjacent gap named, not dispatched: no pruning mechanism exists for orphaned `plan_workouts` rows across plan rebuilds (47 plan versions / 4,130 rows for one user, unbounded growth) |
+| 130 | Lane C (proposal-state work) never dispatched; `fix/decision-history-undo-display` reviewed but unmerged; `fix/proposal-evidence-as-prose` a genuine concurrent-session watch-item | LOGGED — status/process finding, not a code defect in itself | Medium-High (Lane C blocks on this) | `fix/decision-history-undo-display` @ `6f8a3d28f` (= row 68's branch); `fix/proposal-evidence-as-prose` @ `0aeb6cb9a` | Row 68's own review already covers undo-display (verified against real CI, one open documentation-policy gap on `--no-verify` justification). `fix/proposal-evidence-as-prose` not yet reviewed by anyone in this ledger's history | Both confirmed **not** ancestors of `origin/main`. The two branches share a domain (proposal-state presentation) but confirmed no file-level overlap — named as a watch-item, not a conflict | Merge `fix/decision-history-undo-display` (or explicitly decide not to) to unblock Lane C's own dispatch; reconcile `fix/proposal-evidence-as-prose` against it before both land |
 
 ---
 
@@ -921,7 +1277,7 @@ Main should confirm each Owner against that table before treating it as settled.
 
 | Finding | Source audit(s) | Severity | Ledger row # | Branch affected | Next-build disposition | Evidence status | Owner (best-fit, unconfirmed) |
 |---|---|---|---|---|---|---|---|
-| `strides_recovery_s` recovery-honesty field-name gap | Brain, Runner Data (**directly read this pass**), Coach (triple-confirmed) | **P0** | 75 | None | **IMPLEMENTATION IN PROGRESS** (concurrent "Lane A" session, §1.16/§1.19) | Triple-confirmed by independent methods, Runner Data no longer relayed | Evidence Engine / Activity Interpreter |
+| `strides_recovery_s` recovery-honesty field-name gap | Brain, Runner Data (**directly read this pass**), Coach (triple-confirmed) | **P0** | 75 | `fix/recovery-honesty-strides-grading` @ `b13c2c59a` | **IMPLEMENTATION COMPLETE, REVIEWED PASS, RENDERED — HELD pending merge authorization** (Lane A, §1.26; not merged this wave) | Triple-confirmed by independent methods, Runner Data no longer relayed | Evidence Engine / Activity Interpreter |
 | Primary watch-completion matcher (`[0.7,1.3]`, no ambiguity refusal) | Brain, Runner Data (**directly read this pass**) | High | 76 | None | Not this build — QUEUED, still unassigned, no implementer started | Cross-confirmed, executed test, confirmed the app's primary completion path | Activity Interpreter |
 | Pause data raw-fact loss (8/8 submissions), 3 senders not 2 | Runner Data (**directly read this pass**, no longer Brain-carryover-only) | Medium-High | 77 | None | QUEUED, narrowly bounded to persistence only, still unassigned | Confirmed [SOURCE]+[PROD-QUERY], directly read | Activity Interpreter |
 | `reanchorLthr` ungated side door, all 5 callers | Brain | High | 78 | None | LOGGED, no scope decision made | Confirmed [SRC], 5/5 callers traced | Runner Model |
@@ -950,7 +1306,7 @@ Main should confirm each Owner against that table before treating it as settled.
 | "14 PROGRESS outcomes" resolved/reclassified | Runner Data v2.1 (directly read, §1.17) | N/A, informational | 104 | None | Closes a previously-open question | Confirmed [TEST]+[PROD-QUERY], re-run fresh | Adaptation Engine |
 | Design-System Phase 2 — RacesV5 eyebrow label | Design-System Phase 2 audit, this writer's own direct source-diff (§1.22) | N/A — CLOSED, stale finding | 105 | `45a79e997` (already merged) | CLOSED — already fixed on `origin/main` | Confirmed [SRC] by this writer, independent of the audit | UI |
 | Design-System Phase 2 — RouteMapView green dot | Design-System Phase 2 audit, this writer's own direct source-diff (§1.22) | N/A — CLOSED, stale finding | 106 | `4359ad29e` (already merged) | CLOSED — already fixed on `origin/main` | Confirmed [SRC] by this writer, independent of the audit | UI |
-| Design-System Phase 2 — modelled `~` marker (CREATE #1) | Design-System Phase 2 audit, this writer's own direct source-diff (§1.22) | N/A — already implemented, bundled | 107 | `adcea6f15`, on row 65's held branch | Same as row 65 | Confirmed [SRC] | UI |
+| Design-System Phase 2 — modelled `~` marker (CREATE #1) | Design-System Phase 2 audit, this writer's own direct source-diff (§1.22) | N/A — already implemented, now MERGED | 107 | `adcea6f15`, on row 65's now-merged branch (§1.24/§1.26) | Same as row 65 | Confirmed [SRC] and confirmed ancestor of `origin/main` | UI |
 | Design-System Phase 2 — treadmill cues-menu overlay | Design-System Phase 2 audit (cross-checked against row 63) | High at the audit's pin | 108 | `9462c8205` (row 63's fix) | Same as row 63 | Confirmed [SRC] | UI |
 | Design-System Phase 2 — REFINE bundle (5 items) | Design-System Phase 2 audit | Priority 3 | 109 | None | LOGGED | Confirmed [SRC] per the audit | UI |
 | Design-System Phase 2 — legacy `Theme.green` REMOVE | Design-System Phase 2 audit (carried from Phase 1) | Priority 2, unreachable | 110 | None | LOGGED | Confirmed [SRC] per the audit | UI |
@@ -963,64 +1319,94 @@ Main should confirm each Owner against that table before treating it as settled.
 
 | Item | State |
 |---|---|
-| `build-check` / `test-full` / `native-check` | Confirmed green on `origin/main`, per this session's report |
-| `audit-suite` | **BLOCKED_MISSING_CREDENTIAL** — `DATABASE_URL_RO` confirmed present in `web-v2/.env.local`, absent from GitHub Actions repo secrets. Requires David's own action (`gh secret set DATABASE_URL_RO` or the GitHub UI) — declined to enter it directly per credential-handling policy |
-| Migration 166 (`plan_decision_ledger`) | Confirmed additive-only, `IF NOT EXISTS`-guarded, **not** auto-applied by any build/deploy script. Still UNAPPLIED, pending separate, explicit DDL approval. **Rollout/rollback evidence preparation is IN PROGRESS (concurrent session, §1.20) — this narrows the review, it is not itself approval and does not change the UNAPPLIED status** |
-| Migration 170 (`request_failures`) | Same discipline as Migration 166 — additive-only, confirmed not auto-applied, UNAPPLIED, pending separate DDL approval, does not touch Migration 166's table. Same evidence-prep-in-progress caveat as above |
-| TestFlight | Per v1: build 290, source `0dce24f23`, uploaded 2026-09-07. **Build 290 is explicitly OBSOLETE as of this pass — do not cite it, anywhere, as evidence of any fix's current shipped status** (Runner Data v2.1 §9.1/§11a independently establishes build 290 predates several merged fixes, including the `workoutPhasesTile` deletion, by ~18.5 hours, and is itself 2+ days stale relative to `main` at the time of that pass). `origin/main` was already 64+ commits ahead as of v1; this session added at least 6 more merged branches (rows 57–61, 64) plus the unauthorized self-merge (row 71) on top of that, plus everything Runner Data and Design-System Phase 2 found merged after their own respective pins (rows 105-106, 108). **The gap has grown, not shrunk, on every pass that has checked it.** No new build has been cut or distributed. A real TestFlight candidate remains outstanding — see §5 |
-| Independent git spot-check (this writer, this pass) | `origin/main` fetched fresh, tip `9696decac2` (`telemetry: refresh 2026-09-11T10:31`) — later than this session's own narrated state, consistent with a fast-moving multi-agent repo. See §1.7/§1.8 for what this check confirmed and what it flagged |
+| `build-check` / `test-full` / `native-check` | Confirmed green on the fully-integrated tree per Wave 4's own report (relayed, not independently re-run by this writer): `npm run prebuild` clean, `tsc --noEmit` 0 errors, `next build` clean, `vitest run` **12,112 passed / 1 pre-existing failure / 205 skipped**, native `FaffTests` 543/544 (1 expected fail). **The one named failure is `_authoring_shadow_compare.audit.test.ts`** — a Rule 18 liveness-refusal gate designed to fail loudly whenever `DATABASE_URL_RO` isn't configured, confirmed identical across every unmodified checkout of `main` this entire session (§1.30). Do not read "1 pre-existing failure" anywhere in this document as an unnamed or unexplained number — this is it |
+| `audit-suite` | **BLOCKED_MISSING_CREDENTIAL** — `DATABASE_URL_RO` confirmed present in `web-v2/.env.local`, absent from GitHub Actions repo secrets. Requires David's own action (`gh secret set DATABASE_URL_RO` or the GitHub UI) — declined to enter it directly per credential-handling policy. Same missing credential is what makes `_authoring_shadow_compare.audit.test.ts` fail (above) |
+| Migration 166 (`plan_decision_ledger`) | Confirmed additive-only, `IF NOT EXISTS`-guarded, **not** auto-applied by any build/deploy script. Still UNAPPLIED, pending separate, explicit DDL approval. **Rollout/rollback evidence preparation is IN PROGRESS (concurrent session, §1.20) — this narrows the review, it is not itself approval and does not change the UNAPPLIED status.** Unchanged by Wave 3/Wave 4 |
+| Migration 170 (`request_failures`) | Same discipline as Migration 166 — additive-only, confirmed not auto-applied, UNAPPLIED, pending separate DDL approval, does not touch Migration 166's table. Same evidence-prep-in-progress caveat as above. Unchanged by Wave 3/Wave 4 |
+| TestFlight | Per v1: build 290, source `0dce24f23`, uploaded 2026-09-07. **Build 290 is explicitly OBSOLETE as of this pass — do not cite it, anywhere, as evidence of any fix's current shipped status.** `origin/main` was already 64+ commits ahead as of v1; the third pass added at least 6 more merged branches on top of that; **this (fourth) pass adds a confirmed further TEN merged branches** (Wave 3's five + Wave 4's five, §1.24), plus the still-held Lane A, node_modules-gate, undo-display, and Natural Coaching Experience work, none of which is on any build. **The gap has grown, not shrunk, on every single pass that has checked it.** No new build has been cut or distributed. A real TestFlight candidate remains outstanding — see §5 |
+| Independent git spot-check (this writer, this pass) | `origin/main` fetched fresh, confirmed tip **`e13542763573e17561970b0d1e05ba37a57420e3`** — matches this task's own briefing and Wave 4's own §1 claim exactly, no drift. `git log --oneline origin/main` (run directly) confirms the ten Wave 3/4 merge commits land in the order both handbacks describe, ending in the CIM acceptance-evidence commit. This writer also `curl`ed `https://www.faff.run/api/up` directly and received `200` (§1.32) — a live corroborating data point, not proof of which exact SHA is serving. See §1.24-§1.32 for the full verification |
 
 ---
 
 ## 5. Still Open / Blocking Finalization
 
-**Rewritten this pass to be short and precise, per instruction.** Coach's provenance receipt
-(previously item 1 here) is RESOLVED — independently reconfirmed §1.9 — and is removed. The
-unauthorized-merge disposition (previously item 4) is DECIDED — §1.21 — and is removed as a
-blocker, though its corrective mechanism is still being built (see lane list below). Five
-things, named precisely, block finalization:
+**Rewritten this (fourth) pass to be current and precise, per instruction.** Runner Data's
+provenance receipt is UNCHANGED and remains open (item 1). Race-week canonicalization
+(previously framed as "9 confirmed sites, exhaustive") is now DISPATCHED but not landed —
+renamed from a closed count to an explicit in-progress item (item 2). Lane A and the
+node_modules gate moved from "in progress" to "reviewed PASS, held pending merge
+authorization" (item 3). The Natural Coaching Experience track and the duplicate-race-row
+follow-up are new (items 4, 6). Six things, named precisely, block finalization or remain
+genuinely open:
 
-1. **Runner Data's dedicated-branch provenance receipt** has not returned. This is distinct
-   from Runner Data's findings, which ARE now accepted and directly integrated (§1.15-§1.17).
-   The receipt specifically blocks (a) canonical-record completeness, and (b) the merge of
-   `fix/postrun-missing-pace-routing` (row 65), which David's own framing ties to this
-   receipt by name — see §1.18. It does NOT block the unrelated 6-branch integration wave
-   already in progress (§1.18 item 4).
-2. **Five concurrent implementation lanes, named by task where a letter is confirmed
-   (§1.19):**
-   - **Lane A** — the `strides_recovery_s` fix (row 75). IN PROGRESS.
-   - **Lane G** — the UX/IA acceptance plan at `docs/design/ux-ia-acceptance-plan-2026-09-11.md`, drawing on the same Design-System Phase 2 source this document's §6 integrates. Confirmed not yet created as of this pass. A different, verification-focused deliverable — not this document's job.
-   - **Three further lanes, content confirmed but letter mapping not** (§1.19): the 6-branch integration wave; Migration 166/170 rollout/rollback evidence prep; the shipping-lock/artifact-mapping mechanism (row 71's actual corrective action).
-   - Runner Data's other release items (row 76, row 77/103) remain QUEUED and UNASSIGNED — no lane is working them yet.
-3. **Migration 166 and Migration 170 application** remains blocked on David's separate,
+1. **Runner Data's dedicated-branch provenance receipt** still has not returned — unchanged
+   since the third pass. Distinct from Runner Data's findings, which remain accepted and
+   directly integrated (§1.15-§1.17). The receipt specifically blocks (a) canonical-record
+   completeness, and (b) — per David's own framing, which ties the two together by name — the
+   merge of `fix/postrun-missing-pace-routing` (row 65). **That merge has now happened
+   (§1.24/§1.26), while the receipt itself still has not arrived.** This document does not
+   have standing to decide unilaterally whether the merge going ahead means the receipt
+   condition lapsed or is simply outstanding on already-live content — Main should resolve
+   this explicitly rather than let it go unstated.
+2. **Race-week canonicalization** (`fix/race-week-canonicalization-final`) is DISPATCHED per
+   David's explicit instruction, now that its prerequisite 5-branch wave is merged (§1.25), but
+   carries **zero commits** as of this pass — confirmed directly via `git log`. Do not cite
+   race-week protection as closed, at 9 sites or any other number, until this branch's own
+   call-site inventory, canonical predicates, and regression gate land and are reviewed.
+3. **Three implementation/product holds, reviewed PASS or delivered, awaiting David's
+   authorization or review process, not a further technical gap:**
+   - **Lane A** (`fix/recovery-honesty-strides-grading`, row 75) — reviewed PASS across 3
+     rounds, rendered against David's real workout (§1.26). HELD pending explicit merge
+     authorization.
+   - **The node_modules-gate scoping fix** (`fix/pre-push-node-modules-gate` @ `ae7619ea9`,
+     row 125) — reviewed PASS, both directions independently falsified (§1.31). HELD pending
+     explicit merge authorization.
+   - **`fix/decision-history-undo-display`** (row 68/130) — reviewed PASS long ago via real CI,
+     still unmerged. Blocks Lane C's own dispatch (item 5 below).
+4. **Natural Coaching Experience's first result** (`natural-coaching/santa-monica-race-day-v2`,
+   row 128) is delivered but pending a truth review and a UX review that have not yet been
+   structured (§1.27). The rejected Santa Monica original (row 126) stays held as a reference
+   case.
+5. **Lane C (proposal-state work) has never been dispatched** — it was sequenced to start only
+   after undo-display's integration, which has not happened (item 3 above). Separately,
+   `fix/proposal-evidence-as-prose` is a genuine unmerged branch from a different concurrent
+   session, same domain as undo-display, no file-level overlap — a watch-item for whoever
+   reconciles the two, not yet anyone's assignment (§1.29/row 130).
+6. **Migration 166 and Migration 170 application** remains blocked on David's separate,
    explicit, per-statement DDL approval — evidence preparation in progress (§1.20) narrows
-   the review but is not the approval itself.
-4. **A real TestFlight candidate.** Build 290 is confirmed OBSOLETE (§4) and must not be cited
-   as current. No new build has been cut. Runner Data v2.1's own release sequence (§14(b) of
-   that document) is explicit that shipping is the LAST step, after the recovery-honesty fix,
-   the matcher fix, the pause-comment correction, and the `NEVER_COPY` addition are integrated
-   and gated — not a parallel or earlier one.
-5. **Physical-device verification**, per v1's own final verdict, "the single most-repeated
-   unmet requirement across this entire audit" — still true. Zero physical-device
-   verification exists for anything in this document, including everything Runner Data and
-   Design-System Phase 2 found, both of which explicitly disclosed the same gap in their own
-   text (Runner Data: no Swift/simulator render of build 290 was performed; Design-System
-   Phase 2: no interactive simulator access this session, Dynamic Type inconclusive).
+   the review but is not the approval itself. Unchanged since the third pass.
+7. **A real TestFlight candidate.** Build 290 is confirmed OBSOLETE (§4) and must not be cited
+   as current. No new build has been cut. The gap has grown by ten more merged branches this
+   pass alone (§4) — see Runner Data v2.1's own release sequence (§14(b)) for why shipping
+   should be the LAST step, not a parallel or earlier one.
+8. **Physical-device verification**, per v1's own final verdict, "the single most-repeated
+   unmet requirement across this entire audit" — still true, unchanged. Zero physical-device
+   verification exists for anything in this document except CIM's own earlier-session
+   simulator screenshot (§1.26) and the on-device evidence already cited for rows 56/69-70.
+
+**Duplicate-race-row follow-up, named separately since it is not a blocker but is a real open
+item:** no pruning mechanism exists for orphaned `plan_workouts` rows across plan rebuilds
+(§1.28/row 129) — 47 plan versions / 4,130 rows for one user, accumulating unboundedly. Not
+dispatched.
 
 **Remaining open items, carried forward, shortened:**
 
 - Row 70's re-review (`fix/statescreens-scaffold-stale-banner-ordering`) — the prior attempt
   hit an API spend/rate limit before any verification; must not be treated as PASS.
-- Row 97 (`progression-pass.ts`/`replan/route.ts` race-week gap) — needs its own branch and
-  review, not yet started.
+- `strategy-contracts.ts` / adjudication-layer race-week follow-ups — now folded into row 123's
+  dispatched-but-unstarted canonicalization branch, not a separate item.
 - Row 67 (`fix/product-decisions-conflict-and-watch-gate-log`) — reviewed but still not on
-  `origin/main` as of this session's direct check (§1.7).
-- Coach's release findings not yet implemented (rows 80, 84, 88) — none have a branch yet.
-- `DATABASE_URL_RO` provisioning (row 72) — requires David's own action; blocks `audit-suite`.
+  `origin/main` as of the third pass's direct check (§1.7); not re-checked this pass.
+- Coach's one remaining unimplemented release finding not addressed by Lane D's merge — the
+  HOLD/notice cross-surface contradiction, the 3rd item bundled in row 88 — no branch yet.
+- `DATABASE_URL_RO` provisioning (row 72) — requires David's own action; blocks `audit-suite`
+  and is also why `test-full`'s one named failure fails (§1.30/§4).
 - Rows 62-63's unresolved squash-merge-vs-missing ambiguity (§1.8) — needs a direct content
-  diff before being cited as fact elsewhere.
+  diff before being cited as fact elsewhere; not re-checked this pass.
 - Rows 100-104, 108-112 (Runner Data's newly-folded facts, Design-System Phase 2's REFINE/
   REMOVE/CREATE-#2 items) — logged, none implemented, none release-blocking.
+- `experience.ts:711`'s em-dash follow-up, found by Lane A's widened coach-voice gate scan
+  (§1.26) — flagged, not dispatched.
 
 ---
 
@@ -1095,7 +1481,18 @@ that check is disclosed at §1.22 rather than asserted from the audit's own text
 §1.6 caveat ("Coach v2 and Runner Data v2.1's own source documents were not supplied…") is
 now historical — both caveats are lifted for FINDINGS as of the second (Coach) and this
 third (Runner Data, Design-System Phase 2) pass respectively; Runner Data's SEPARATE
-provenance-receipt gate is unaffected and remains open (§1.18).*
+provenance-receipt gate is unaffected and remains open (§1.18). **This fourth pass
+additionally read, in full and directly:** `docs/audit-2026-09-11-handback-wave3.md` and
+`docs/audit-2026-09-11-handback-wave4.md` — the latter appeared mid-task from a concurrent
+session and was treated as authoritative over the former per this task's own instruction
+(§1.24) — folded in as §1.24-§1.32, rows 113-130, and the rewritten §4/§5. Every branch and
+merge-commit SHA named in either handback was independently checked this pass against a
+freshly-fetched `origin/main` via `git cat-file -t` and `git merge-base --is-ancestor`, plus a
+direct `git log --oneline origin/main` read to confirm sequencing and a direct `curl` of
+`https://www.faff.run/api/up`. **Zero discrepancies were found between either handback and
+live git state** (§1.32) — every claimed-merged SHA is a confirmed ancestor of `origin/main`,
+every claimed-held SHA is confirmed not merged, and `origin/main`'s tip matches this task's own
+briefing exactly.*
 
 **Provenance re-verification, this pass:**
 
