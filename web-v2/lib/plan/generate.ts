@@ -71,6 +71,7 @@ import {
   resolveMarathonSpecificLadder,
   MP_LADDER_MIN_GAP_WEEKS,
   MP_LONG_COUNTS_AS_QUALITY_MI,
+  MP_PEAK_STIMULUS_WINDOW_DAYS,
   type MarathonSpecificLadder,
   type MarathonSpecificRung,
 } from './marathon-specific-ladder';
@@ -11263,7 +11264,15 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
           if (r.priority !== 'B') continue;
           if (!noLongRunWeeks.has(r.weekIdx)) continue;   // must own the long-run slot
           const d = daysBetween(r.date, input.raceDateISO);
-          if (d < 24 || d > 42) continue;                  // MP_PEAK_STIMULUS_WINDOW_DAYS
+          // PLANQUALITY-1 (2026-09-12) · this used to hardcode [24, 42], its own
+          // comment pointing at MP_PEAK_STIMULUS_WINDOW_DAYS without importing
+          // it. MPLADDER-2 moved the real constant to [28, 42]; this literal
+          // was never updated, so a B race 24-27 days out could win the
+          // peak-stimulus role outside the window the doctrine claim
+          // (MPLADDER.a-large-session-belongs-where-doctrine-puts-one) actually
+          // certifies. Reading the exported constant makes the two structurally
+          // unable to diverge again.
+          if (d < MP_PEAK_STIMULUS_WINDOW_DAYS[0] || d > MP_PEAK_STIMULUS_WINDOW_DAYS[1]) continue;
           if (best == null || r.weekIdx > best) best = r.weekIdx;
         }
         return best;
