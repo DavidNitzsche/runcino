@@ -8908,7 +8908,13 @@ export function embedMidBlockRaces(
     });
     slot.notes = race.priority === 'B'
       ? role === 'b_effort'
-        ? `${race.name}. B effort. Hard, not all out. It feeds your goal pacing and leaves the build intact.`
+        // NATURAL-COACHING-3 (2026-09-12) · dropped the "B effort" internal
+        // tier label, same pattern as the sibling default branch below (and
+        // the already-accepted NATURAL-COACHING-1 fix): the sentence already
+        // states the instruction in full ("Hard, not all out"), so the label
+        // added a term the runner has to parse for no information the rest
+        // of the sentence doesn't already carry.
+        ? `${race.name}. Hard, not all out. It feeds your goal pacing and leaves the build intact.`
         : role === 'race'
           ? `${race.name}. Race it honestly. Full effort; full recovery follows before quality resumes.`
           // NATURAL-COACHING-1 (2026-09-11) · this default fires when the
@@ -8930,7 +8936,14 @@ export function embedMidBlockRaces(
           // now say so plainly and end on a neutral fact, not an implied
           // punishment.
           : `${race.name}. Run it at full effort. Recovery comes first, then training continues.`
-      : `${race.name}. C race · this is the week's quality session. Run it as the workout.`;
+      // NATURAL-COACHING-3 (2026-09-12) · dropped "C race" (internal tier
+      // label) and "quality session" (internal training-load term), same
+      // shape as the NATURAL-COACHING-1 fix above and the already-live
+      // `controlled_c_effort` copy on the Race Detail screen
+      // (`lib/race/race-page-layers.ts`: "The week's hard session, not a
+      // race. Take the work, not the result.") — same fact, matching words,
+      // per Rule 16 (one quantity, one name).
+      : `${race.name}. This is the week's hard session, not a race. Run it as the workout.`;
     // MIDGOAL-1 (2026-08-30) · STATE THE TARGET, AND SAY WHOSE IT IS.
     //
     // The row carried `raceGoalPaceSec` since MIDRACE-1 and the prose never

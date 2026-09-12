@@ -89,9 +89,27 @@ export function raceTargetSentence(
  * separate change is making role and priority shape it. Matching on shape
  * means the target clause keeps repricing correctly no matter how the purpose
  * text moves.
+ *
+ * NATURAL-COACHING-2 (2026-09-12) · RECOGNISES ITS OWN PRIOR FORMAT TOO.
+ * `raceTargetSentence`'s coach-voice branch changed wording under
+ * NATURAL-COACHING-1 (dropped the false "Yours to change." claim), but this
+ * regex only ever matched the sentence the composer writes TODAY. A row
+ * authored before that change — `plan_workouts.notes` is persisted prose,
+ * written once by `embedMidBlockRaces` and never rewritten wholesale after —
+ * still carries the old sentence verbatim, and `hasRaceTargetSentence`
+ * returned false against it, so `repriceRaceNote` silently no-op'd
+ * (`unchanged`) instead of ever stripping or replacing the stale text.
+ * Found against the owner's own live Santa Monica row the day before that
+ * race. The fix is additive: keep matching every prior literal format this
+ * sentence has ever shipped in, so a rename here is what future repricing
+ * needs to keep working on old rows, not a second migration. Only ONE
+ * pattern is ever composed going forward (`raceTargetSentence`'s current
+ * output); the rest are recognise-and-replace only.
  */
 const TARGET_SENTENCE_SOURCE =
-  '\\s*(?:Coach target \\d+:\\d{2}\\/mi, based on your current fitness\\.|Target \\d+:\\d{2}\\/mi\\.)';
+  '\\s*(?:Coach target \\d+:\\d{2}\\/mi, based on your current fitness\\.'
+  + '|Coach target \\d+:\\d{2}\\/mi, set from your current fitness\\. Yours to change\\.'
+  + '|Target \\d+:\\d{2}\\/mi\\.)';
 
 /** A fresh regex per call. A module-scoped /g regex carries `lastIndex`
  *  between calls, which is how a shared matcher starts skipping every second

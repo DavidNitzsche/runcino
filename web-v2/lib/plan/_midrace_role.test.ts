@@ -88,6 +88,11 @@ const MALIBU = {
   distanceMi: 13.1, goalPaceSec: 412, priority: 'B' as const,
 };
 
+const TURKEY_TROT = {
+  slug: 'turkey-trot', name: 'Turkey Trot 10K', date: '2026-11-08',
+  distanceMi: 6.2, goalPaceSec: null, priority: 'C' as const,
+};
+
 const embeddedOf = (composed: ReturnType<typeof build>): EmbeddedRaceSummary[] =>
   ((composed.authoredState as Record<string, unknown>).embedded_races ?? []) as EmbeddedRaceSummary[];
 
@@ -98,7 +103,12 @@ describe("'b_effort' · the answered role shapes race day and the recovery windo
     const race = dayAt(composed, MALIBU.date)!;
     expect(race.day.type).toBe('race');
     expect(race.day.subLabel).toBe('RACE · B EFFORT');
-    expect(race.day.notes).toContain('B effort. Hard, not all out.');
+    // NATURAL-COACHING-3 (2026-09-12) · dropped "B effort." internal tier
+    // label from the sentence itself (the subLabel above still carries the
+    // classification for the UI's own badge use) — the instruction already
+    // said "Hard, not all out" without it.
+    expect(race.day.notes).toContain('Hard, not all out.');
+    expect(race.day.notes).not.toContain('B effort.');
   });
 
   it("the post-race window is 00b's B scale (7 days), not the default 4", () => {
@@ -169,6 +179,21 @@ describe("'mp_workout' · the race becomes the week's MP long", () => {
       if (d && d.day.type !== 'race') window.push(Boolean(d.day.isQuality || d.day.isLong));
     }
     expect(window.some(Boolean)).toBe(true);
+  });
+});
+
+describe("'C' priority · the race-role card never fires, so this is the only sentence a C-race runner ever sees", () => {
+  const composed = build([{ ...TURKEY_TROT }]);
+
+  it('race day carries the tune-up framing with no internal tier jargon', () => {
+    const race = dayAt(composed, TURKEY_TROT.date)!;
+    expect(race.day.type).toBe('race');
+    // NATURAL-COACHING-3 (2026-09-12) · dropped "C race" (internal tier
+    // label) and "quality session" (internal training-load term) — same
+    // shape as NATURAL-COACHING-1's fix to the sibling B-race default.
+    expect(race.day.notes).toContain("This is the week's hard session, not a race.");
+    expect(race.day.notes).not.toMatch(/C race/i);
+    expect(race.day.notes).not.toMatch(/quality session/i);
   });
 });
 

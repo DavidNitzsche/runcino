@@ -240,12 +240,20 @@ function describeImpactDelta(detail: V5CourseElevationDetailOut): string {
 const NO_VERIFICATION_DATE_NOTE = ' No verification date is on record for either source.';
 
 function courseChangedInformationalCopy(raceName: string, detail: V5CourseElevationDetailOut): string {
-  return `${raceName}'s course record on file did not match your own GPS upload. Your upload is dense enough to trust, so we've corrected it. See the numbers below.${describeImpactDelta(detail)}${NO_VERIFICATION_DATE_NOTE}`;
+  // NATURAL-COACHING-3 (2026-09-12) · "we've corrected it" was the only
+  // first-person-plural ("we"/"us") phrasing found in any runner-facing
+  // string across `lib/training`, `lib/race`, `lib/faff`, `lib/coach`
+  // (every other hit for that pattern is a developer-facing code comment) —
+  // an app-voice slip in a file whose own established voice states facts in
+  // second person or plain declaration, never as something "we" did.
+  return `${raceName}'s course record on file did not match your own GPS upload. Your upload is dense enough to trust, so this is corrected below.${describeImpactDelta(detail)}${NO_VERIFICATION_DATE_NOTE}`;
 }
 
 function courseChangedChoiceCopy(raceName: string, detail: V5CourseElevationDetailOut): string {
   const reason = detail.reasons[0] ? ` (${detail.reasons[0]})` : '';
-  return `${raceName}'s course record on file and your own GPS upload disagree, and the upload isn't dense enough for us to trust it over the record${reason}. Your call.${NO_VERIFICATION_DATE_NOTE}`;
+  // NATURAL-COACHING-3 (2026-09-12) · dropped "for us" — same app-voice
+  // slip as the sibling fact-card copy above.
+  return `${raceName}'s course record on file and your own GPS upload disagree, and the upload isn't dense enough to trust over the record${reason}. Your call.${NO_VERIFICATION_DATE_NOTE}`;
 }
 
 /** The race happened, but its finish time is a Strava/watch match, not a

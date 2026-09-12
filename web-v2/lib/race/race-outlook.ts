@@ -820,9 +820,17 @@ export async function composeRaceOutlook(
       // A slower stated goal is honoured; a faster one is echoed and not run to.
       targetSec = roundRaceTargetSec(goalSec != null ? Math.max(ceilingSec, goalSec) : ceilingSec);
       source = 'controlled_c_effort';
+      // NATURAL-COACHING-3 (2026-09-12) \u00b7 dropped the "C race" internal tier
+      // label \u2014 traced this field (`execution.reasonVsExpected` /
+      // `race_execution.reason` on the wire) and found it reaches no current
+      // render surface (not `race-page-layers.ts`'s own `note` for this same
+      // `controlled_c_effort` case, not `race-on-today.ts`, not any native
+      // or web component); fixed anyway since it's fully computed and
+      // shipped over the wire today, so it is one un-guarded regression away
+      // from becoming visible with the jargon still in it.
       reasonVsExpected = goalSec != null && goalSec < ceilingSec
-        ? `C race. Run it as the week's hard session, not as a race. Your ${fmtTime(goalSec)} goal stays yours; ${fmtTime(targetSec)} is what this day is for.`
-        : 'C race. Run it as the week\u2019s hard session, controlled, and take the day\u2019s work rather than the result.';
+        ? `Run it as the week's hard session, not as a race. Your ${fmtTime(goalSec)} goal stays yours; ${fmtTime(targetSec)} is what this day is for.`
+        : 'Run it as the week\u2019s hard session, controlled. Take the day\u2019s work rather than the result.';
     }
   } else if (currentProjection.expectedSec != null) {
     /* ── EXECTARGET-1 (2026-09-03) · THE ACTIVE NUMBER IS THE CURRENT-EVIDENCE

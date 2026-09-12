@@ -303,6 +303,11 @@ describe('race-card', () => {
       expect(card.question.toLowerCase()).toContain('course chunk');
       // The honestly-disclosed schema gap (trace doc §5) — no invented date.
       expect(card.question).toContain('No verification date is on record');
+      // NATURAL-COACHING-3 (2026-09-12) · coach voice states facts; it does
+      // not speak as "we"/"us" doing something to the runner. This was the
+      // only first-person-plural phrasing found across `lib/training`,
+      // `lib/race`, `lib/faff` and `lib/coach`'s runner-facing strings.
+      expect(card.question).not.toMatch(/\bwe\b|\bus\b/i);
     });
   });
 });

@@ -143,6 +143,13 @@ describe('CEFFORT-1 · a C race is priced as a controlled effort', () => {
     expect(c.execution.hr?.reasons).toContain('CONTROLLED_C_EFFORT_BAND');
     // Coach voice on the sentence the runner reads.
     expect(c.execution.reasonVsExpected).not.toMatch(/[!—]/);
+    // NATURAL-COACHING-3 (2026-09-12) · "C race" is the internal tier label
+    // this file's own effortCharacter/source fields already carry
+    // (`controlled_c_effort`) — the runner-facing sentence should not repeat
+    // it. Traced this field reaches no current render surface, but it is
+    // fully computed and shipped over the wire, so pinning it here closes
+    // off the jargon regardless of whether/when a surface starts reading it.
+    expect(c.execution.reasonVsExpected).not.toMatch(/C race/i);
   });
 
   it('a SLOWER stated goal is still honoured · the runner may ask for less', async () => {

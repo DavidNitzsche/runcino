@@ -1346,7 +1346,7 @@ async function planAnotherRace(
     priority,
     week,
     weeksToTarget,
-    displacedQuality: displaced ? (QUALITY_NOUN[displaced.type] ?? 'quality session') : null,
+    displacedQuality: displaced ? (QUALITY_NOUN[displaced.type] ?? 'hard session') : null,
     targetSlug: shape.raceId,
   };
 }
@@ -1481,7 +1481,7 @@ export async function proposeChange(
       (p.longAfter < p.longBefore ? ` and the long from ${mi(p.longBefore)} to ${mi(p.longAfter)}` : '') +
       ` · that is ${Math.round(p.achievedCutPct)}% off the week.`);
     const second: string[] = [];
-    if (p.demoted) second.push('the second quality session becomes an easy run');
+    if (p.demoted) second.push('the second hard session becomes an easy run');
     if (p.finishStripped) second.push(`the ${p.finishStripped}-pace finish comes off the long`);
     if (second.length) parts.push(`${cap(joinList(second))}.`);
     // Only when there was a hard week to lose. Said unconditionally, this
@@ -1534,7 +1534,7 @@ export async function proposeChange(
       `From ${weekNo(p.fromWeekIdx)} you run ${runDays + 1} days instead of ${runDays}.`,
       `The weeks keep their miles, so they come off the runs you already have: your easy days go from ` +
         `${mi(p.perDayBefore)} to ${mi(p.perDayAfter)} and ${dayName} picks up ${mi(p.perDayAfter)}.`,
-      'The long run and the quality sessions are untouched.',
+      'The long run and the hard sessions are untouched.',
       'There is one fewer rest day to absorb a bad night.',
     ];
     if (p.skipped > 0) {
@@ -1670,7 +1670,14 @@ export async function proposeChange(
     `${p.name} on ${dateWords(p.dateISO)} lands in ${weekNo(p.week.weekIdx)}.`,
   ];
   if (p.priority === 'C') {
-    parts.push('It becomes that week\'s quality session and the days either side go easy.');
+    // NATURAL-COACHING-3 (2026-09-12) · "hard session" replaces "quality
+    // session" — the internal training-load term this project already
+    // replaced with plain language everywhere else this same fact is said
+    // (`lib/race/race-page-layers.ts`'s controlled-effort note,
+    // `lib/plan/generate.ts`'s C-race default sentence). Render-confirmed
+    // live on this exact string via the design-system audit's `6a-longest`
+    // screenshot (`docs/audit-design-system-phase2.md`) before this edit.
+    parts.push('It becomes that week’s hard session, and the days either side go easy.');
   } else {
     parts.push('The two days before it ease off and the days after it stay easy until you have recovered, so that week reads as a cutback.');
   }
@@ -1719,7 +1726,7 @@ export async function proposeChange(
       },
       changed: {
         label: `${p.name} in ${weekNo(p.week.weekIdx)}`,
-        sub: p.displacedQuality ? 'Replaces the quality session' : 'Added to the block',
+        sub: p.displacedQuality ? 'Replaces the hard session' : 'Added to the block',
       },
     },
   };
