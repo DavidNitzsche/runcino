@@ -8911,7 +8911,25 @@ export function embedMidBlockRaces(
         ? `${race.name}. B effort. Hard, not all out. It feeds your goal pacing and leaves the build intact.`
         : role === 'race'
           ? `${race.name}. Race it honestly. Full effort; full recovery follows before quality resumes.`
-          : `${race.name}. B race · race effort. Recovery days follow before quality resumes.`
+          // NATURAL-COACHING-1 (2026-09-11) · this default fires when the
+          // runner has not answered the race-role card, so it is the copy
+          // most runners on a B race actually see — David's Santa Monica
+          // 10K among them (MIDGOAL-1's own comment above names it the one
+          // race in his calendar with an empty goal field, which is exactly
+          // what routes it here). It used to read "B race · race effort.
+          // Recovery days follow before quality resumes." — internal
+          // classification language ("B race") a runner should never have
+          // to parse, "race effort" stated twice over (once as the label,
+          // once as the instruction), and no clearer for it. A held rewrite
+          // (`fix/santa-monica-race-day-copy`, 38d090ec8, NOT merged) tried
+          // "Race it, full effort. Recovery follows, then harder training
+          // returns." — still repetitive ("Race it" + "full effort" say the
+          // same thing twice), and "harder training returns" reads as a
+          // threat rather than a fact. Same execution as the 'race' branch
+          // above (full effort, embedded as the day's quality); the words
+          // now say so plainly and end on a neutral fact, not an implied
+          // punishment.
+          : `${race.name}. Run it at full effort. Recovery comes first, then training continues.`
       : `${race.name}. C race · this is the week's quality session. Run it as the workout.`;
     // MIDGOAL-1 (2026-08-30) · STATE THE TARGET, AND SAY WHOSE IT IS.
     //
