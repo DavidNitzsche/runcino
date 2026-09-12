@@ -214,6 +214,12 @@ export async function POST(
       console.error(
         `[workout-proposals/accept] reprice ${proposalId} carries no readable payload · nothing applied`,
       );
+      // Found by independent review, 2026-09-12: `acceptProposal` above already
+      // stamped this row 'accepted' before this branch runs, same as every
+      // other failure path in this route — an unreadable payload leaves the
+      // plan untouched exactly like `apply_refused`/`apply_failed` below, and
+      // owes the runner the same reopen.
+      await sayIfTheCardCouldNotBePutBack(userId, proposalId);
       return NextResponse.json({ ok: false, error: 'invalid_payload' }, { status: 400 });
     }
     const [{ applyReanchorProposal }, { runnerToday }] = await Promise.all([

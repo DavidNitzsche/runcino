@@ -199,19 +199,29 @@ export async function runActionProposalLane(
   /* ── 2b · THE DURATION ACCELERATE OFFER · DURATIONOFFER-1 (2026-09-12) ────
    *
    * Propose-only exception to the 2026-09-02 reshape ruling, scoped to
-   * exactly one axis (interval_duration) and exactly one direction
-   * (ACCELERATE). See `action.ts`'s doc comment on `DURATION_PROGRESS_OFFER`
-   * and `docs/`-mirrored handback `08-adaptation-vertical-slice/
-   * 02-duration-lever-semantic-mapping.md` for the full ruling and mapping.
+   * exactly one axis (interval_duration) and exactly one verdict
+   * (ACCELERATE) — the owner's own explicit ruling, in conversation with the
+   * implementing session, not a file in this tree (see `action.ts`'s doc
+   * comment on `DURATION_PROGRESS_OFFER`, and Rule 20 on why this comment
+   * does not cite a path).
    *
    * Same shape as the HOLD raise immediately above: reads the SAME `actions`
    * array (no re-detection, Rule 16), translates via the SAME
    * `actionFromAdaptation` the per-workout writer and the HOLD raise both use,
-   * and re-labels the result into the non-mutating offer kind. Every
-   * eligibility check (compromised-runner fail-closed, band==='strong',
-   * doctrine caps, sealed-day exclusion, race/taper/recovery-week exclusion)
-   * already ran upstream, inside `resolveWeekProgression`/`detectAdaptations`
-   * — nothing here re-derives or loosens any of them. */
+   * and re-labels the result into the non-mutating offer kind.
+   *
+   * `firstDurationAccelerate` gates on `resolution.action === 'ACCELERATE'`
+   * directly (DURATIONOFFER-2, corrected after independent review — see that
+   * function's own doc comment for the discriminator bug this replaced).
+   * That check is what actually guarantees `band === 'strong'`:
+   * `resolveProgressionStep` (`progression-gate.ts`) returns `ACCELERATE`
+   * from exactly one branch, `case 'strong':`, and no other — so reading the
+   * verdict IS reading the band, not a separate claim about it. Every other
+   * eligibility check (compromised-runner fail-closed, doctrine caps inside
+   * `advanceShape`, sealed-day exclusion, race/taper/recovery-week exclusion
+   * via `non-building-week.ts`) ran upstream inside
+   * `resolveWeekProgression`/`detectAdaptations`, and nothing here re-derives
+   * or loosens any of them. */
   const accelerated = firstDurationAccelerate(actions);
   if (accelerated === null) {
     withheld.push('the progression pass raised no interval-duration ACCELERATE this run');
@@ -305,17 +315,33 @@ function firstHold(
  * The first interval-duration ACCELERATE the progression pass produced, as an
  * OFFER — DURATIONOFFER-1 (2026-09-12).
  *
- * `actionFromAdaptation`/`actionFromProgression` translate a genuine
- * ACCELERATE-on-interval_duration resolution into `DURATION_CHANGE` with
- * `direction: 'MORE'` — that translation is not re-derived here, it is READ,
- * exactly as `firstHold` above reads the same translator's `HOLD` output.
- * `direction === 'MORE'` is a safe, sufficient discriminator on its own:
- * `resolveProgressionStep` (`progression-gate.ts`) sets `direction: 'MORE'`
- * ONLY inside its `harder = action === 'TAKE' || action === 'ACCELERATE'`
- * branch, and TAKE always carries `changed: false` (so it resolves to `HOLD`
- * one line earlier in `actionFromProgression`, never reaching this kind) —
- * so a `DURATION_CHANGE` with `direction: 'MORE'` reaching this function is
- * necessarily a real ACCELERATE, never a TAKE or a BACK_OFF.
+ * `actionFromAdaptation`/`actionFromProgression` translate the resolution into
+ * `DURATION_CHANGE` with `direction: 'MORE'` — that translation is not
+ * re-derived here, it is READ, exactly as `firstHold` above reads the same
+ * translator's `HOLD` output.
+ *
+ * ── DURATIONOFFER-2 (2026-09-12) · `direction: 'MORE'` IS NOT A SAFE
+ * DISCRIMINATOR ON ITS OWN, CORRECTED AFTER INDEPENDENT REVIEW ──────────────
+ *
+ * The original cut of this function filtered on `translated.kind ===
+ * 'DURATION_CHANGE' && translated.direction === 'MORE'` alone, reasoning that
+ * TAKE always carries `changed: false` and so resolves to HOLD one line
+ * earlier — true of `resolveProgressionStep`'s OWN `changed` field
+ * (progression-gate.ts), but `resolveWeekProgression` (progression-pass.ts)
+ * does not use that field: it recomputes `changed = !sameShape(shape,
+ * target.current)` independently (progression-pass.ts:298), specifically so a
+ * TAKE that RESUMES a previously-held ladder reports `changed: true` — see
+ * that file's own "resume the paused ladder" case (progression-pass.ts:26-45,
+ * 309-316: "A TAKE that CHANGES the row is the resume case"). A resumed TAKE
+ * therefore translates to the identical `{kind: 'DURATION_CHANGE', direction:
+ * 'MORE'}` shape a genuine strong-evidence ACCELERATE does, and the original
+ * filter could not tell them apart — confirmed by direct construction during
+ * independent review, not merely by reading.
+ *
+ * The fix reads the actual verdict instead of inferring it: `resolution.action`
+ * (`ProgressionResolution.action`, progression-pass.ts:296) is the real
+ * TAKE/ACCELERATE/HOLD/BACK_OFF word the gate decided, untouched by any later
+ * `changed`/`direction` derivation, and is checked directly.
  *
  * The kind is re-labelled to `DURATION_PROGRESS_OFFER` — never `DURATION_CHANGE`
  * itself — so the card can never reach `DURATION_CHANGE`'s mutating executor
@@ -328,6 +354,10 @@ export function firstDurationAccelerate(
 ): { readonly action: BrainAction; readonly why: string } | null {
   for (const a of actions) {
     if (a.kind !== 'reshape') continue;
+    // THE authoritative gate. Read the gate's own verdict, not an inference
+    // from a downstream field two independent translators each recompute for
+    // their own purposes.
+    if (a.reshape?.resolution.action !== 'ACCELERATE') continue;
     const wid = a.workoutIds?.[0];
     if (wid === undefined) continue;
     const translated = actionFromAdaptation(a, {

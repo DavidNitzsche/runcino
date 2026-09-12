@@ -166,6 +166,26 @@ describe('workout-proposals accept · reopen on Apply failure (modern lanes)', (
     expect(res.status).toBe(409);
   });
 
+  it('REANCHORPROPOSES-1 (reprice) lane: reopens the card when the payload is unreadable (found by independent review)', async () => {
+    vi.mocked(loadPendingProposalById).mockResolvedValue({
+      ok: true,
+      proposal: { planWorkoutId: 'w1', actionKind: 'reprice' },
+    } as any);
+    vi.mocked(acceptProposal).mockResolvedValue({
+      actionKind: 'reprice',
+      actionPayload: { reprice: { garbage: true } },
+    } as any);
+    vi.mocked(asRepricePayload).mockReturnValue(null); // unreadable payload
+
+    const { req, ctx } = acceptRequest();
+    const res = await POST(req, ctx);
+
+    expect(reopenProposal, 'an unreadable reprice payload leaves the plan untouched and owes the same reopen as apply_refused/apply_failed').toHaveBeenCalledWith(USER, PROPOSAL_ID);
+    expect(res.status).toBe(400);
+    const json = await res.json();
+    expect(json).toEqual({ ok: false, error: 'invalid_payload' });
+  });
+
   it('REANCHORPROPOSES-1 (reprice) lane: does NOT reopen on success (positive control)', async () => {
     vi.mocked(loadPendingProposalById).mockResolvedValue({
       ok: true,

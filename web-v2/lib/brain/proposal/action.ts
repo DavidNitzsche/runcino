@@ -152,15 +152,20 @@ export type BrainAction =
    * unconditionally `RECORD_ONLY` (see `executor-map.ts`); `plannedWrites`
    * answers `nonMutating: true, writes: []` for the same reason HOLD does.
    *
-   * Scoped narrowly, by explicit product ruling (2026-09-12, propose-only
-   * exception to the 2026-09-02 reshape ruling, transferred from an initial
-   * PACE framing once `progression-gate.ts`'s own doctrine — "it does not
-   * touch pace" — showed that mislabeling): this is the ONE session-geometry
-   * axis visible to the runner as an offer this milestone. Rep-count,
-   * recovery-interval and quality-dose ACCELERATE resolutions remain fully
-   * withheld, exactly as before — see `docs/` handback
-   * `08-adaptation-vertical-slice/02-duration-lever-semantic-mapping.md` for
-   * the full mapping, evidence requirements and refusal cases.
+   * Scoped narrowly, by the owner's explicit ruling in conversation with the
+   * implementing session (2026-09-12) — not a file in this repository, named
+   * here so a future reader does not go looking for one (Rule 20: a claim
+   * either resolves against the actual tree or it is not made). The ruling:
+   * a propose-only exception to the 2026-09-02 reshape ruling, transferred
+   * from an initial PACE framing once `progression-gate.ts`'s own doctrine —
+   * "it does not touch pace" — showed that mislabeling. This is the ONE
+   * session-geometry axis visible to the runner as an offer, on exactly one
+   * verdict (ACCELERATE, read from `resolution.action` directly — see
+   * `firstDurationAccelerate` in `lib/plan/action-proposal-lane.ts` for why
+   * that must be read rather than inferred). Rep-count, recovery-interval and
+   * quality-dose ACCELERATE resolutions remain fully withheld, exactly as
+   * before. Extending this exception to any other lever is a separate ruling,
+   * not an engineering decision.
    */
   | (ActionBase & { kind: 'DURATION_PROGRESS_OFFER'; to: Quantity })
   | (ActionBase & { kind: 'REPETITION_CHANGE'; to: Quantity })
