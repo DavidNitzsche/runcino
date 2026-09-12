@@ -331,6 +331,22 @@ export const GENERATOR_REGISTRY: Readonly<Record<ActionKind, GeneratorRef | null
     liveCaller: 'app/api/cron/run-adaptations/route.ts',
     when: 'the weekly progression gate looks at a session and decides not to move it',
   },
+  /* DURATIONOFFER-1 (2026-09-12) · unlike HOLD above, this kind is not what
+   * `actionFromProgression` itself produces (it emits `DURATION_CHANGE`) —
+   * this lane's own `firstDurationAccelerate` is the true translation edge,
+   * re-labelling an ACCELERATE-on-interval_duration `DURATION_CHANGE` into the
+   * non-mutating offer kind before it ever reaches `writeActionProposal`. Named
+   * honestly here rather than pointing at `from-progression.ts` the way HOLD
+   * does, since HOLD IS that function's direct output and this is not
+   * (Rule 19 — point at the real edge, not the nearest plausible one). */
+  DURATION_PROGRESS_OFFER: {
+    module: 'lib/plan/action-proposal-lane.ts',
+    symbol: 'firstDurationAccelerate',
+    callSite: 'lib/plan/action-proposal-lane.ts',
+    liveCaller: 'app/api/cron/run-adaptations/route.ts',
+    when: 'the weekly progression gate ACCELERATEs a session\'s interval duration, evidence band '
+      + 'is strong, the runner is not compromised, and the day is unsealed',
+  },
   REFUSAL: {
     module: 'lib/brain/proposal/generate/from-seal.ts',
     symbol: 'refusalFromSeal',
@@ -396,6 +412,10 @@ export const PROPOSAL_WRITER_REGISTRY: Readonly<Record<ActionKind, WriterRef | n
   /* ── THE TWO THIS FACET WAS ADDED FOR ─────────────────────────────────── */
   HOLD: ACTION_WRITER('the progression gate held a session and the lane raises one notice card'),
   SAFETY_STOP: ACTION_WRITER('the safety owner returned STOP and the lane raises a notice card'),
+  DURATION_PROGRESS_OFFER: ACTION_WRITER(
+    'the progression gate accelerated a session\'s interval duration and the lane raises an offer '
+    + 'card, record-only',
+  ),
 
   DURATION_CHANGE: null,
   REPETITION_CHANGE: null,

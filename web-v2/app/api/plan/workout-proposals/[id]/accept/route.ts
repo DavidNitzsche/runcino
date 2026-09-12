@@ -161,6 +161,15 @@ export async function POST(
     });
     if (!outcome.ok) {
       console.error('[proposal/accept] applyBrainAction refused', { proposalId, outcome });
+      // ZEROACCEPT-1, extended to this lane · `acceptProposal` above already
+      // stamped this row 'accepted'. Every member of AcceptOutcome's error
+      // union ('invalid' | 'unsupported' | 'missing_context' | 'apply_failed'
+      // | 'rejected') means the same thing here: the change did not land. A
+      // stale 'accepted' status with no reopen is exactly the state the
+      // legacy lane below already refuses to leave behind for its own
+      // 'unsupported' and zero-applied cases — this lane owed the runner the
+      // same card back.
+      await sayIfTheCardCouldNotBePutBack(userId, proposalId);
       const status = outcome.error === 'unsupported' ? 422
         : outcome.error === 'apply_failed' ? 500 : 409;
       return NextResponse.json({ ok: false, error: outcome.error, detail: outcome.detail }, { status });
@@ -221,6 +230,11 @@ export async function POST(
       return null;
     });
     if (res == null) {
+      // Same fact as the branch above: `acceptProposal` already stamped this
+      // row 'accepted' before the reprice apply ran (or threw). A refused or
+      // thrown reprice is a change that did not land, on a card the runner
+      // has no way to retry without this — see `sayIfTheCardCouldNotBePutBack`.
+      await sayIfTheCardCouldNotBePutBack(userId, proposalId);
       return NextResponse.json({ ok: false, error: 'apply_refused' }, { status: 409 });
     }
     await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});

@@ -192,6 +192,11 @@ export function undoWritesFor(action: BrainAction): UndoPlan {
     case 'REFUSAL':
       return { kind: 'nothing_to_undo', because: action.because };
 
+    /* DURATIONOFFER-1 · nothing was ever written (RECORD_ONLY executor), so
+     * there is nothing for an undo to put back. */
+    case 'DURATION_PROGRESS_OFFER':
+      return { kind: 'nothing_to_undo', because: 'this was an offer, not an applied change; accepting it wrote no session geometry' };
+
     /* Deliberately not undoable, and this is the one entry where that is a
      * SAFETY property rather than a data limitation. A stop is lifted by the
      * signal that raised it clearing, never by a button that puts the training

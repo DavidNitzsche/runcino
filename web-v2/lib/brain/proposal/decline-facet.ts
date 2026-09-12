@@ -88,6 +88,7 @@ export function declineBehaviorOf(action: BrainAction): DeclineBehavior {
     case 'PACE_CHANGE':
     case 'DISTANCE_CHANGE':
     case 'DURATION_CHANGE':
+    case 'DURATION_PROGRESS_OFFER':
     case 'REPETITION_CHANGE':
     case 'RECOVERY_INTERVAL_CHANGE':
     case 'QUALITY_DOSE_CHANGE':

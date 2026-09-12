@@ -50,6 +50,7 @@ const SPECIMENS: Record<ActionKind, BrainAction> = {
   PACE_CHANGE: { ...base, kind: 'PACE_CHANGE', direction: 'MORE', lever: 'THRESHOLD', to: { unit: 'sec_per_mi', value: 424 } },
   DISTANCE_CHANGE: { ...base, kind: 'DISTANCE_CHANGE', direction: 'MORE', to: { unit: 'mi', value: 11 } },
   DURATION_CHANGE: { ...base, kind: 'DURATION_CHANGE', direction: 'LESS', to: { unit: 'min', value: 50 } },
+  DURATION_PROGRESS_OFFER: { ...base, kind: 'DURATION_PROGRESS_OFFER', direction: 'MORE', to: { unit: 'min', value: 5 } },
   REPETITION_CHANGE: { ...base, kind: 'REPETITION_CHANGE', direction: 'MORE', to: { unit: 'reps', value: 6 } },
   RECOVERY_INTERVAL_CHANGE: { ...base, kind: 'RECOVERY_INTERVAL_CHANGE', direction: 'LESS', to: { unit: 'min', value: 2 } },
   QUALITY_DOSE_CHANGE: { ...base, kind: 'QUALITY_DOSE_CHANGE', direction: 'MORE', lever: 'THRESHOLD', to: { unit: 'mi', value: 6 } },

@@ -150,6 +150,7 @@ export function validateAction(action: BrainAction): ActionValidation {
       break;
 
     case 'DURATION_CHANGE':
+    case 'DURATION_PROGRESS_OFFER':
       bad.push(...quantity(action.to, 'min', DURATION_ENVELOPE_MIN, 'the new duration'));
       break;
 

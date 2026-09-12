@@ -196,6 +196,30 @@ export async function runActionProposalLane(
     if (out === null) raised += 1; else withheld.push(`HOLD: ${out}`);
   }
 
+  /* ── 2b · THE DURATION ACCELERATE OFFER · DURATIONOFFER-1 (2026-09-12) ────
+   *
+   * Propose-only exception to the 2026-09-02 reshape ruling, scoped to
+   * exactly one axis (interval_duration) and exactly one direction
+   * (ACCELERATE). See `action.ts`'s doc comment on `DURATION_PROGRESS_OFFER`
+   * and `docs/`-mirrored handback `08-adaptation-vertical-slice/
+   * 02-duration-lever-semantic-mapping.md` for the full ruling and mapping.
+   *
+   * Same shape as the HOLD raise immediately above: reads the SAME `actions`
+   * array (no re-detection, Rule 16), translates via the SAME
+   * `actionFromAdaptation` the per-workout writer and the HOLD raise both use,
+   * and re-labels the result into the non-mutating offer kind. Every
+   * eligibility check (compromised-runner fail-closed, band==='strong',
+   * doctrine caps, sealed-day exclusion, race/taper/recovery-week exclusion)
+   * already ran upstream, inside `resolveWeekProgression`/`detectAdaptations`
+   * — nothing here re-derives or loosens any of them. */
+  const accelerated = firstDurationAccelerate(actions);
+  if (accelerated === null) {
+    withheld.push('the progression pass raised no interval-duration ACCELERATE this run');
+  } else {
+    const out = await raise(userUuid, todayISO, anchor, accelerated.action, accelerated.why);
+    if (out === null) raised += 1; else withheld.push(`DURATION_PROGRESS_OFFER: ${out}`);
+  }
+
   /* ── 3 · THE LONG RUN'S OWN AXIS · LONGRUNSTRUCTURE-1 (2026-09-06) ────────
    *
    * `lib/brain/proposal/evidence/long-run-structure.ts` is the reader
@@ -273,6 +297,48 @@ function firstHold(
     });
     if (translated === null || translated.kind !== 'HOLD') continue;
     return { action: translated, why: translated.because };
+  }
+  return null;
+}
+
+/**
+ * The first interval-duration ACCELERATE the progression pass produced, as an
+ * OFFER — DURATIONOFFER-1 (2026-09-12).
+ *
+ * `actionFromAdaptation`/`actionFromProgression` translate a genuine
+ * ACCELERATE-on-interval_duration resolution into `DURATION_CHANGE` with
+ * `direction: 'MORE'` — that translation is not re-derived here, it is READ,
+ * exactly as `firstHold` above reads the same translator's `HOLD` output.
+ * `direction === 'MORE'` is a safe, sufficient discriminator on its own:
+ * `resolveProgressionStep` (`progression-gate.ts`) sets `direction: 'MORE'`
+ * ONLY inside its `harder = action === 'TAKE' || action === 'ACCELERATE'`
+ * branch, and TAKE always carries `changed: false` (so it resolves to `HOLD`
+ * one line earlier in `actionFromProgression`, never reaching this kind) —
+ * so a `DURATION_CHANGE` with `direction: 'MORE'` reaching this function is
+ * necessarily a real ACCELERATE, never a TAKE or a BACK_OFF.
+ *
+ * The kind is re-labelled to `DURATION_PROGRESS_OFFER` — never `DURATION_CHANGE`
+ * itself — so the card can never reach `DURATION_CHANGE`'s mutating executor
+ * regardless of what happens downstream (Rule 16: one quantity, two names on
+ * purpose here, because the two carry different consent/write guarantees and
+ * must never be confused for one another).
+ */
+export function firstDurationAccelerate(
+  actions: readonly AdaptationAction[],
+): { readonly action: BrainAction; readonly why: string } | null {
+  for (const a of actions) {
+    if (a.kind !== 'reshape') continue;
+    const wid = a.workoutIds?.[0];
+    if (wid === undefined) continue;
+    const translated = actionFromAdaptation(a, {
+      planWorkoutId: wid,
+      dateISO: a.reshape?.resolution.dateISO ?? '',
+      type: a.reshape?.row.type ?? '',
+      distanceMi: a.reshape?.row.distanceMi ?? null,
+    });
+    if (translated === null || translated.kind !== 'DURATION_CHANGE' || translated.direction !== 'MORE') continue;
+    const offer: BrainAction = { ...translated, kind: 'DURATION_PROGRESS_OFFER' };
+    return { action: offer, why: a.why };
   }
   return null;
 }

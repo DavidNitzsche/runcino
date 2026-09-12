@@ -108,6 +108,10 @@ export const EVIDENCE_REGISTRY: Readonly<Record<ActionKind, EvidenceRef | null>>
       + 'finding headroom for a bump',
   },
   DURATION_CHANGE: PROGRESSION('the rep length the weekly gate resolved for this session'),
+  DURATION_PROGRESS_OFFER: PROGRESSION(
+    'the rep length the weekly gate resolved to ACCELERATE for this session, offered to the '
+    + 'runner rather than applied',
+  ),
   REPETITION_CHANGE: PROGRESSION('the rep count the weekly gate resolved for this session'),
   RECOVERY_INTERVAL_CHANGE: PROGRESSION('the jog between reps the weekly gate resolved'),
   QUALITY_DOSE_CHANGE: PROGRESSION('total minutes at pace, as the weekly gate resolved them'),

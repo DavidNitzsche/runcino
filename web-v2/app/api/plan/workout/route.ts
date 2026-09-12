@@ -46,9 +46,12 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'plan_id + date_iso required' }, { status: 400 });
   }
 
-  // Resolve plan + auth (the row must belong to the user)
+  // Resolve plan + auth (the row must belong to the user, and must be the
+  // live plan — an archived plan is not a valid PATCH target even if the
+  // caller still holds its id; see 142_active_plan_unique.sql for the
+  // archived_iso convention this follows).
   const plan = (await pool.query(
-    `SELECT id FROM training_plans WHERE id = $1 AND user_uuid = $2`,
+    `SELECT id FROM training_plans WHERE id = $1 AND user_uuid = $2 AND archived_iso IS NULL`,
     [body.plan_id, userId]
   )).rows[0];
   if (!plan) return NextResponse.json({ error: 'plan not found' }, { status: 404 });

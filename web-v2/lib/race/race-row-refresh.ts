@@ -608,11 +608,24 @@ async function refreshRaceRowsCore(
   // Sealed is now resolved through the SAME canonical predicate
   // isPrescriptionSealed/isDaySealed use — lib/plan/seal.ts's
   // `sealedWorkoutIdsForRange`.
+  // BINDCOUNT-1 (2026-09-12) · this query text referenced only `$1` while the
+  // call passed [planId, userUuid] — a two-value bind against a one-parameter
+  // statement, which node-postgres refuses outright (SQLSTATE 08P01) rather
+  // than silently dropping the extra value. Every caller of
+  // `refreshRaceRowsForPlan`/`refreshRaceRowsCore` crashed on this, unconditionally
+  // — found by real-DB falsification of the reprice (PACE) accept lifecycle,
+  // independent of Migration 166. `userUuid` was already a real parameter to
+  // this function; the fix is to actually spend it as the Rule 14 ownership
+  // scope it was clearly meant to be, joining `training_plans` the same way
+  // `lib/plan/action-proposal-lane.ts`'s `nextSessionFor` already does, rather
+  // than merely dropping the unused value.
   const rows = (await client.query<RaceRow>(
     `SELECT pw.id::text AS id, pw.date_iso::text AS date_iso, pw.type, pw.pace_target_s_per_mi, pw.distance_mi, pw.workout_spec,
             pw.notes, pw.sub_label
        FROM plan_workouts pw
-      WHERE pw.plan_id = $1 AND pw.type IN ('race', 'race_week_tuneup')
+       JOIN training_plans tp ON tp.id = pw.plan_id
+      WHERE pw.plan_id = $1 AND tp.user_uuid = $2::uuid AND tp.archived_iso IS NULL
+        AND pw.type IN ('race', 'race_week_tuneup')
       ORDER BY pw.date_iso::date ASC`,
     [planId, userUuid],
   )).rows;

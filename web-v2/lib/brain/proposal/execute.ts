@@ -102,6 +102,13 @@ export function plannedWrites(action: BrainAction): WritePlan {
     case 'DURATION_CHANGE':
       return upd([{ id: one, set: { duration_min: action.to.value } }]);
 
+    /* DURATIONOFFER-1 · an offer, never a write. The same discipline as
+     * HOLD/REFUSAL below — `nonMutating: true` here is what makes the
+     * RECORD_ONLY executor honest rather than a promise a future edit could
+     * break; see `action.ts`'s own doc comment on this kind. */
+    case 'DURATION_PROGRESS_OFFER':
+      return { writes: [], nonMutating: true, because: 'an offered step, not yet accepted or applied' };
+
     /* Reps, recovery intervals and quality dose all live in the session's
      * prescription rather than in a scalar column, so they are expressed as a
      * spec edit carried on notes + distance. The spec re-derivation inside

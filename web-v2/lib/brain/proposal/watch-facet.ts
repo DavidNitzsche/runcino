@@ -79,6 +79,10 @@ export function watchBehaviorOf(action: BrainAction): WatchEffect {
       return reload('the wrist counts down the prescribed distance');
     case 'DURATION_CHANGE':
       return reload('the wrist counts down the prescribed duration');
+    /* DURATIONOFFER-1 · never written, so the wrist is never stale — same
+     * posture as HOLD, and for the same reason. */
+    case 'DURATION_PROGRESS_OFFER':
+      return none('nothing was written, so the wrist is already correct');
     case 'REPETITION_CHANGE':
       return reload('the rep count is the session structure the wrist steps through');
     case 'RECOVERY_INTERVAL_CHANGE':
@@ -145,7 +149,8 @@ export function watchBehaviorOf(action: BrainAction): WatchEffect {
 /** Does the wrist care about this kind at all? Used by the completeness gate. */
 export function watchIsApplicable(kind: ActionKind): boolean {
   return kind !== 'HOLD' && kind !== 'REFUSAL' && kind !== 'CONDITIONAL'
-    && kind !== 'TAPER_CHANGE' && kind !== 'RECOVERY_CHANGE';
+    && kind !== 'TAPER_CHANGE' && kind !== 'RECOVERY_CHANGE'
+    && kind !== 'DURATION_PROGRESS_OFFER';
 }
 
 const reload = (because: string): WatchEffect => ({ kind: 'RELOAD_IF_TODAY', because });
