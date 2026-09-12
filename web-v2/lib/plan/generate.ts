@@ -5348,10 +5348,31 @@ function layoutWeek(input: LayoutWeekInput): DayPlan[] {
   //   5k/10k/hm — share of the week (Research/00a:184, ≤25-30%); weeklyMi × longShare
   //     already lands inside the tier's peakLongMiBand, so keep it.
   //   marathon/ultra — DISTANCE-driven toward the doctrine peak (Research/22:219-275 ·
-  //     marathon peak long 20-24mi). The marathon long is 45-67% of the week at peak — the
-  //     EXPLICIT exemption from the % cap, bounded by TIME not distance (Research/00a:217
-  //     "<3-3.5h for marathoners; ultra athletes go longer"). Scale it to REACH
-  //     peakLongMiBand[1] exactly when weekly volume peaks, ramping with the volume curve;
+  //     marathon peak long 20-24mi), not share-driven.
+  //
+  //     PLANQUALITY-2 (2026-09-12) · CITATION CORRECTED. This comment used to claim
+  //     "the marathon long is 45-67% of the week at peak — the EXPLICIT exemption from
+  //     the % cap ... Research/00a:217", as if that figure were stated doctrine. It is
+  //     not: Research/00a:217 reads "Long-run cap | ≤25-30% of weekly volume (or by
+  //     absolute time: <3.0-3.5h for marathoners; ultra athletes go longer)" — the SAME
+  //     25-30% cap as every other distance, with an absolute-time restatement offered
+  //     alongside it, not a wider marathon-specific percentage. No Research/ doc states
+  //     45-67%; a full-text search found nothing close. That number is an artifact of
+  //     this formula's own output (empirically, roughly what a distance-driven long run
+  //     comes out to as a % of peak weekly volume for typical marathon peak bands), not
+  //     an independent doctrine target — presenting it as an "EXPLICIT exemption" was
+  //     Rule 20's exact failure mode: a claim nothing verified.
+  //
+  //     The design choice to size marathon/ultra long runs by DISTANCE rather than
+  //     %-share is still defensible on its own terms — 00a's own alternative absolute-
+  //     time framing exists precisely because a fixed %-share cap fits marathon long
+  //     runs poorly (a runner training below very high weekly volumes cannot both hit a
+  //     doctrine-cited peak-long-run distance AND stay under 25-30% share of a modest
+  //     week). The REAL governing safety constraint here is `LONG_RUN_MAX_HOURS` below
+  //     (correctly cited to the same 00a:217 line), which caps the long run in absolute
+  //     time regardless of what % share that produces — that check is what should be
+  //     read as "the marathon exemption," not a percentage this comment invented.
+  //     Scale it to REACH peakLongMiBand[1] exactly when weekly volume peaks, ramping with the volume curve;
   //     weeklyMi × longShare alone tops out ~5mi short of the doctrine peak.
   // DIST-1 · marathon/ultra are distance-driven to peakLongMiBand[1]. RC2-2 (2026-06-23) · HM-advanced
   // (longShare 0.25, peak ~56) reaches only 14 < band[0]=15 via the share path — so for 5k/10k/hm, when
@@ -9837,15 +9858,30 @@ export function enforceRampCeilingAfterEmbedding(
   // RACEROLE-1 · an mp_workout conversion is a full training week (the race
   // day IS the week's long), not a mini-tapered cutback — it is neither a
   // distorted reference week nor a week anything needs to ramp-guard after.
-  const bRaceWeeks = new Set(
-    embedded.filter((e) => e.priority === 'B' && e.plannedRole !== 'mp_workout').map((e) => e.weekIdx),
+  //
+  // PLANQUALITY-2 (2026-09-12) · WAS `e.priority === 'B'` — ANY EMBEDDED RACE,
+  // NOT JUST B. This is an absorbed-tissue-load guard (Rule 8's corollary: "a
+  // ramp check measured against a pre-taper self waves through a jump the legs
+  // have not been prepared for"), not a habit/normalcy reader — Rule 8 says
+  // filter what a runner NORMALLY does, never what the tissue just absorbed.
+  // Gating it on priority meant a week following a raced C effort got NO ramp-
+  // ceiling protection at all (unlike the identical shape after a B race), and
+  // a race-inflated C week could itself be picked as the "undistorted"
+  // reference for a LATER week's ceiling — both directions of the same defect.
+  // `postRaceNoQualityDaysImpl`/`effectiveRecoveryPriorityImpl` below already
+  // scale correctly for any priority (a C race's own window is short, often
+  // zero at the finish-suppression sub-check below since most C races are
+  // under the `>= 12` half-marathon threshold that check applies at) — nothing
+  // downstream needed a priority split, only this participation gate did.
+  const raceWeeksNeedingRampGuard = new Set(
+    embedded.filter((e) => e.plannedRole !== 'mp_workout').map((e) => e.weekIdx),
   );
   for (const e of embedded) {
-    if (e.priority !== 'B' || e.plannedRole === 'mp_workout') continue;
+    if (e.plannedRole === 'mp_workout') continue;
     const wi = e.weekIdx + 1;
     const w = weeks[wi];
     const prev = weeks[wi - 1];
-    if (!w || !prev || w.isRaceWeek || bRaceWeeks.has(wi)) continue;
+    if (!w || !prev || w.isRaceWeek || raceWeeksNeedingRampGuard.has(wi)) continue;
     // Race-pace finish inside the post-race no-quality window (half+ only).
     // MIDRACE-WINDOW-1 · measured in days from race day, priority-scaled.
     if (e.distanceMi >= 12) {
@@ -9862,7 +9898,7 @@ export function enforceRampCeilingAfterEmbedding(
     const priorPeak = Math.max(seedMi, ...weeks.slice(0, wi).map((x) => x.weeklyMi ?? 0));
     let refMi = 0;
     for (let k = wi - 1; k >= 0; k--) {
-      if (bRaceWeeks.has(k) || weeks[k].isCutback || weeks[k].isRaceWeek) continue;
+      if (raceWeeksNeedingRampGuard.has(k) || weeks[k].isCutback || weeks[k].isRaceWeek) continue;
       refMi = weeks[k].weeklyMi ?? 0;
       break;
     }

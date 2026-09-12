@@ -302,3 +302,85 @@ describe('BYTE-SAFETY · a plan with no mid-block races is untouched', () => {
     expect(JSON.stringify(withEmpty.weeks)).toBe(JSON.stringify(withAbsent.weeks));
   });
 });
+
+/**
+ * PLANQUALITY-2 (2026-09-12) · RAMP CEILING AFTER A C RACE, NOT JUST A B RACE.
+ *
+ * `enforceRampCeilingAfterEmbedding` used to gate its whole participation
+ * check on `e.priority === 'B'`, so a week following a raced C effort (e.g.
+ * Dodgers, a 6.2mi hard-workout-substitute per Research/00b) got NO ramp-
+ * ceiling protection at all, and a C-race-inflated week could itself be
+ * picked as the "undistorted" reference for a LATER week's ceiling — the same
+ * defect the RAMP CEILING describe block above exists to hold for B races,
+ * just never extended to C. This is an absorbed-tissue-load guard (Rule 8's
+ * corollary), not a habit reader, so it must not discriminate on race
+ * priority — any raced effort is real load the following week's ramp must
+ * respect.
+ *
+ * Unit-level (not through the full composer): `enforceRampCeilingAfterEmbedding`
+ * is exported specifically so its contract can be tested directly against a
+ * hand-built week array, isolating this fix from the volume curve's own
+ * smoothing, which would otherwise make it hard to force a clean overshoot.
+ */
+import { enforceRampCeilingAfterEmbedding, type ComposedWeek, type EmbeddedRaceSummary } from './generate';
+
+function day(over: Partial<import('./generate').DayPlan>): import('./generate').DayPlan {
+  return {
+    dow: 1, type: 'easy', distanceMi: 0, isQuality: false, isLong: false,
+    subLabel: null, notes: '', ...over,
+  } as import('./generate').DayPlan;
+}
+
+function week(weeklyMi: number, days: import('./generate').DayPlan[], over: Partial<ComposedWeek> = {}): ComposedWeek {
+  return { startISO: '2026-01-01', phase: 'QUALITY', weeklyMi, days, isRaceWeek: false, ...over };
+}
+
+describe('RAMP CEILING · a raced C effort protects the following week exactly like a B race does', () => {
+  const DODGERS: EmbeddedRaceSummary = {
+    slug: 'dodgers', name: 'Dodgers', date: '2026-09-26', distanceMi: 6.21,
+    priority: 'C', plannedRole: null,
+  } as EmbeddedRaceSummary;
+
+  it('trims an oversized week that follows a C race, the same as it would after a B race', () => {
+    const weeks: ComposedWeek[] = [
+      week(40, [day({ type: 'easy', distanceMi: 40 })]),                 // wi0 · clean reference, 40mi
+      week(45, [day({ type: 'race', distanceMi: 6.21, isQuality: true })]), // wi1 · the Dodgers week itself
+      week(55, [
+        day({ type: 'easy', distanceMi: 10 }),
+        day({ type: 'easy', distanceMi: 10 }),
+        day({ type: 'easy', distanceMi: 10 }),
+        day({ type: 'long', distanceMi: 20, isLong: true, dow: 0 }),
+        day({ type: 'rest', distanceMi: 0 }),
+      ]),                                                                 // wi2 · the week AFTER Dodgers, oversized
+    ];
+    const vols = weeks.map((w) => w.weeklyMi);
+    const embedded: EmbeddedRaceSummary[] = [{ ...DODGERS, weekIdx: 1 } as EmbeddedRaceSummary];
+
+    enforceRampCeilingAfterEmbedding(weeks, vols, embedded);
+
+    // ceiling = WEEKLY_STEP_GROWTH (1.15) × the last undistorted week (wi0, 40mi) = 46mi.
+    // wi1 (the race week itself) must not be used as the reference — it is not "undistorted".
+    expect(weeks[2].weeklyMi, 'the oversized week after a C race must be trimmed to the ramp ceiling').toBeLessThanOrEqual(46 + 0.05);
+    expect(weeks[2].weeklyMi).toBeLessThan(55);
+  });
+
+  it('control: an mp_workout conversion is a full training week, never ramp-guarded (unchanged by this fix)', () => {
+    const weeks: ComposedWeek[] = [
+      week(40, [day({ type: 'easy', distanceMi: 40 })]),
+      week(45, [day({ type: 'race', distanceMi: 6.21, isQuality: true })]),
+      week(55, [
+        day({ type: 'easy', distanceMi: 10 }),
+        day({ type: 'easy', distanceMi: 10 }),
+        day({ type: 'easy', distanceMi: 10 }),
+        day({ type: 'long', distanceMi: 20, isLong: true, dow: 0 }),
+        day({ type: 'rest', distanceMi: 0 }),
+      ]),
+    ];
+    const vols = weeks.map((w) => w.weeklyMi);
+    const mpWorkoutRace: EmbeddedRaceSummary = {
+      ...DODGERS, weekIdx: 1, plannedRole: 'mp_workout',
+    } as EmbeddedRaceSummary;
+    enforceRampCeilingAfterEmbedding(weeks, vols, [mpWorkoutRace]);
+    expect(weeks[2].weeklyMi, 'an mp_workout conversion is a full training week, never ramp-guarded').toBe(55);
+  });
+});
