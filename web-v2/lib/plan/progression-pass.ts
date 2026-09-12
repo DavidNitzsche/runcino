@@ -88,6 +88,7 @@ import { weekContainsRace } from './race-week';
 import type { AdaptationVerdict } from '@/lib/adaptation/adaptation-model';
 import { trainingWeekWindow } from '@/lib/notifications/week-window';
 import { pool } from '@/lib/db/pool';
+import { rowsOrEmpty } from '@/lib/db/read';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { loadSettings } from '@/lib/coach/settings';
 import {
@@ -809,10 +810,20 @@ export async function diagnoseProgressionWeek(userId: string): Promise<Progressi
   )];
   const priorWeekDayTypes = new Map<string, Array<{ type: string | null }>>();
   if (priorWeekIds.length > 0) {
-    const dayRows = (await pool.query<{ week_id: string; type: string | null }>(
-      `SELECT week_id::text AS week_id, type FROM plan_workouts WHERE week_id = ANY($1::uuid[])`,
-      [priorWeekIds],
-    ).catch(() => ({ rows: [] }))).rows;
+    // Rule 11 / check-swallowed-failure: a bare `.catch(() => ({rows: []}))`
+    // here would silently fail this exact fix OPEN — an empty
+    // `priorWeekDayTypes` reads to `priorLookbackEligible` as "no race in this
+    // week", the failure-open reading `weekContainsRace` exists to prevent.
+    // `rowsOrEmpty` keeps the same fallback shape but logs the failure
+    // distinctly, so a DB outage never looks identical to a genuinely
+    // race-free week.
+    const dayRows = await rowsOrEmpty<{ week_id: string; type: string | null }>(
+      'progression-pass.priorWeekDayTypes',
+      pool.query(
+        `SELECT week_id::text AS week_id, type FROM plan_workouts WHERE week_id = ANY($1::uuid[])`,
+        [priorWeekIds],
+      ),
+    );
     for (const d of dayRows) {
       const bucket = priorWeekDayTypes.get(d.week_id) ?? [];
       bucket.push({ type: d.type });
