@@ -194,8 +194,12 @@ describe("'C' priority · the race-role card never fires, so this is the only se
     // established term for this workout category (a literal Block-screen
     // stat label; see `v5-block.ts`), so replacing it would trade one
     // Rule-16 violation for another rather than remove jargon.
-    expect(race.day.notes).toContain("This is the week's quality session.");
+    // NATURAL-COACHING-4 (2026-09-12) · "Run it as the workout." (vague,
+    // no antecedent) replaced with the same "not a race... controlled"
+    // instruction race-outlook.ts already states for this effort class.
+    expect(race.day.notes).toContain("This is the week's quality session, not a race. Run it controlled.");
     expect(race.day.notes).not.toMatch(/C race/i);
+    expect(race.day.notes).not.toMatch(/run it as the workout/i);
   });
 });
 

@@ -8945,7 +8945,14 @@ export function embedMidBlockRaces(
       // session" here would have created a second name for the same thing
       // (a Rule 16 violation in the other direction) rather than removed
       // jargon. Only the tier label was ever the defect.
-      : `${race.name}. This is the week's quality session. Run it as the workout.`;
+      //
+      // NATURAL-COACHING-4 (2026-09-12) · "Run it as the workout." named no
+      // antecedent ("the workout" — which one?) and added no instruction
+      // "quality session" hadn't already implied. The actual missing fact
+      // is the one `race-outlook.ts`'s sibling sentence for this same
+      // effort class already states: it is priced/run CONTROLLED, not
+      // raced. Restated here in the same terms for cross-file consistency.
+      : `${race.name}. This is the week's quality session, not a race. Run it controlled.`;
     // MIDGOAL-1 (2026-08-30) · STATE THE TARGET, AND SAY WHOSE IT IS.
     //
     // The row carried `raceGoalPaceSec` since MIDRACE-1 and the prose never
@@ -9620,9 +9627,18 @@ export function embedMidBlockRaces(
           // exact literal after an independent review flagged the risk that
           // more than one site carried it. "quality session" kept (see the
           // sibling comment above) — only the "C race" label was jargon.
+          //
+          // NATURAL-COACHING-4 (2026-09-12) · the original also said
+          // "controlled" twice in one paragraph ("Run it as the workout,
+          // controlled." and, two sentences later, "running today
+          // controlled is what buys it") — Rule 17, a fact said twice.
+          // Dropped the first, vaguer instance ("the workout" named no
+          // antecedent either); the second already carries the instruction
+          // AND ties it to why (buys tomorrow's long run), so nothing is
+          // lost by keeping only it.
           slot.notes =
-            `${race.name}. This is the week's quality session. Run it as the workout, ` +
-            `controlled. Tomorrow's ${g.longMi}-mile long run is the other half of this weekend, ` +
+            `${race.name}. This is the week's quality session, not a race. ` +
+            `Tomorrow's ${g.longMi}-mile long run is the other half of this weekend, ` +
             'and running today controlled is what buys it.';
         }
         compromises.push({

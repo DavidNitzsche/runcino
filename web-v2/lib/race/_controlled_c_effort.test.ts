@@ -150,6 +150,20 @@ describe('CEFFORT-1 · a C race is priced as a controlled effort', () => {
     // fully computed and shipped over the wire, so pinning it here closes
     // off the jargon regardless of whether/when a surface starts reading it.
     expect(c.execution.reasonVsExpected).not.toMatch(/C race/i);
+    // NATURAL-COACHING-4 (2026-09-12) · "hard session" -> "quality session",
+    // for cross-file consistency with generate.ts's sibling sentence for
+    // this same effort class (both name the C-race's own workout category).
+    expect(c.execution.reasonVsExpected).toMatch(/quality session/i);
+    expect(c.execution.reasonVsExpected).not.toMatch(/hard session/i);
+    // Same fix, same file, second field: the bridge's own
+    // `differsFromPrevious` for the execution_target step said "This is
+    // run as..." (passive, and once "C race" dropped, no subject at all)
+    // and "hard session". Now active and consistent with the sentence
+    // above.
+    const executionStep = c.bridge.find((s) => s.step === 'execution_target');
+    expect(executionStep?.differsFromPrevious).not.toMatch(/C race/i);
+    expect(executionStep?.differsFromPrevious).toMatch(/quality session/i);
+    expect(executionStep?.differsFromPrevious).not.toMatch(/^This is run as/i);
   });
 
   it('a SLOWER stated goal is still honoured · the runner may ask for less', async () => {

@@ -828,9 +828,15 @@ export async function composeRaceOutlook(
       // or web component); fixed anyway since it's fully computed and
       // shipped over the wire today, so it is one un-guarded regression away
       // from becoming visible with the jargon still in it.
+      // NATURAL-COACHING-4 (2026-09-12) \u00b7 "hard session" \u2192 "quality
+      // session", for consistency with `generate.ts`'s sibling sentence for
+      // this same effort class (both fixed under the same review). Neither
+      // word was ever wrong on its own; having both live in sentences that
+      // describe the identical fact read as two different things to a
+      // reader comparing them.
       reasonVsExpected = goalSec != null && goalSec < ceilingSec
-        ? `Run it as the week's hard session, not as a race. Your ${fmtTime(goalSec)} goal stays yours; ${fmtTime(targetSec)} is what this day is for.`
-        : 'Run it as the week\u2019s hard session, controlled. Take the day\u2019s work rather than the result.';
+        ? `Run it as the week's quality session, not as a race. Your ${fmtTime(goalSec)} goal stays yours; ${fmtTime(targetSec)} is what this day is for.`
+        : 'Run it as the week\u2019s quality session, controlled. Take the day\u2019s work rather than the result.';
     }
   } else if (currentProjection.expectedSec != null) {
     /* ── EXECTARGET-1 (2026-09-03) · THE ACTIVE NUMBER IS THE CURRENT-EVIDENCE
@@ -1006,8 +1012,14 @@ export async function composeRaceOutlook(
       // field (differsFromPrevious → wire's `differs_from_previous`) and
       // found no current render consumer on native or web, fixed anyway
       // since it's fully computed and shipped over the wire today.
+      //
+      // NATURAL-COACHING-4 (2026-09-12) · "This is run as..." was passive
+      // and, once "C race" was dropped, no longer named a subject at all.
+      // Restated as a direct, active claim about the quality session
+      // itself; "hard session" → "quality session" for the same
+      // cross-file consistency as the reasonVsExpected fix above.
       differsFromPrevious: source === 'controlled_c_effort'
-        ? 'This is run as the week’s hard session, so it is priced as a controlled effort rather than as a race.'
+        ? 'The quality session is priced as a controlled effort, not a race.'
         : source === 'current_evidence'
           ? 'Today’s evidence, not the forecast above it. The block is built to move that forward; race day is not priced on training that has not happened yet.'
           : null,
