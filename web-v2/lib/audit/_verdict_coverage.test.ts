@@ -315,7 +315,18 @@ const PAIRS: readonly Pair[] = [
     // `_v5_proposals.test.ts` now asserts the upward direction reaches the wire
     // as `push` rather than as a word this app invented. The imbalance is still
     // over three to one and still a defect; it is one notch less of one.
-    measuredRatio: 3.27,
+    //
+    // TIGHTENED AGAIN 3.27 -> 2.61, ROUND3-FIX (2026-09-12). The DURATION_
+    // PROGRESS_OFFER vertical slice added `_duration_progress_offer.db.test.ts`,
+    // `_duration_accelerate_discriminator.test.ts` and
+    // `_workout_proposal_accept_reopen.test.ts`, all of which drive `reshape`
+    // (a push-side verdict for this pair) end to end. 18 push files against 47
+    // pull-back, measured directly from `reports the distribution` with
+    // VERDICT_COVERAGE_OUT set. The ratchet demanded the tightening: leaving
+    // the pin at 3.27 against a measured 2.61 is exactly the "gate that has
+    // quietly stopped holding" this test's own comment warns about. Still a
+    // real imbalance, still not blessed as a ceiling.
+    measuredRatio: 2.61,
   },
 ];
 
