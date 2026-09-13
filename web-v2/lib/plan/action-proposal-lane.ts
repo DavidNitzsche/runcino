@@ -196,6 +196,64 @@ export async function runActionProposalLane(
     if (out === null) raised += 1; else withheld.push(`HOLD: ${out}`);
   }
 
+  /* ── 2b · THE DURATION ACCELERATE OFFER · DURATIONOFFER-1 (2026-09-12) ────
+   *
+   * Propose-only exception to the 2026-09-02 reshape ruling, scoped to
+   * exactly one axis (interval_duration) and exactly one verdict
+   * (ACCELERATE) — the owner's ruling, recorded in full at
+   * `docs/PRODUCT_DECISIONS.md` under "2026-09-12 · DURATIONOFFER-1" (see
+   * `action.ts`'s doc comment on `DURATION_PROGRESS_OFFER` for the same
+   * citation and the test that keeps it resolvable).
+   *
+   * Same shape as the HOLD raise immediately above: reads the SAME `actions`
+   * array (no re-detection, Rule 16), translates via the SAME
+   * `actionFromAdaptation` the per-workout writer and the HOLD raise both use,
+   * and re-labels the result into the non-mutating offer kind.
+   *
+   * `firstDurationAccelerate` gates on `resolution.action === 'ACCELERATE'`
+   * directly (DURATIONOFFER-2, corrected after independent review — see that
+   * function's own doc comment for the discriminator bug this replaced).
+   * That check is what actually guarantees `band === 'strong'`:
+   * `resolveProgressionStep` (`progression-gate.ts`) returns `ACCELERATE`
+   * from exactly one branch, `case 'strong':`, and no other — so reading the
+   * verdict IS reading the band, not a separate claim about it. Every other
+   * eligibility check (compromised-runner fail-closed, doctrine caps inside
+   * `advanceShape`, sealed-day exclusion, race/taper/recovery-week exclusion
+   * via `non-building-week.ts`) ran upstream inside
+   * `resolveWeekProgression`/`detectAdaptations`, and nothing here re-derives
+   * or loosens any of them. */
+  const accelerated = firstDurationAccelerate(actions);
+  if (accelerated === null) {
+    withheld.push('the progression pass raised no interval-duration ACCELERATE this run');
+  } else {
+    /* DURATIONOFFER-3 (2026-09-12, second independent review): this card is an
+     * offer about ONE specific session — the one the progression gate actually
+     * accelerated — not a whole-runner judgement like SAFETY_STOP or HOLD
+     * above, which is why `firstHold`'s "the card is anchored to
+     * nextSessionFor's row, not to this one" reasoning does not transfer here.
+     * `nextSessionFor` returns whatever is chronologically next in the whole
+     * plan, which can be a DIFFERENT session than the one this resolution is
+     * about (a different day, a different type, a different distance) —
+     * exactly the LONG_RUN_STRUCTURE case below already recognises: "a card
+     * about the long run that hangs on Tuesday's tempo would be the wrong fact
+     * attached to the right sentence (Rule 16)". Same fix, same shape: re-read
+     * the accelerated session LIVE (Rule 10 — the detection-time row can be
+     * stale by the time this cron reaches it) and anchor to THAT row.
+     */
+    const live = await readLiveRows(userUuid, [accelerated.workoutId]);
+    const row = live.get(accelerated.workoutId);
+    if (row === undefined) {
+      withheld.push('DURATION_PROGRESS_OFFER: the accelerated session is no longer live');
+    } else {
+      const durationAnchor: AnchorRow = {
+        planWorkoutId: row.planWorkoutId, dateISO: row.dateISO,
+        type: row.type, distanceMi: row.distanceMi,
+      };
+      const out = await raise(userUuid, todayISO, durationAnchor, accelerated.action, accelerated.why);
+      if (out === null) raised += 1; else withheld.push(`DURATION_PROGRESS_OFFER: ${out}`);
+    }
+  }
+
   /* ── 3 · THE LONG RUN'S OWN AXIS · LONGRUNSTRUCTURE-1 (2026-09-06) ────────
    *
    * `lib/brain/proposal/evidence/long-run-structure.ts` is the reader
@@ -273,6 +331,76 @@ function firstHold(
     });
     if (translated === null || translated.kind !== 'HOLD') continue;
     return { action: translated, why: translated.because };
+  }
+  return null;
+}
+
+/**
+ * The first interval-duration ACCELERATE the progression pass produced, as an
+ * OFFER — DURATIONOFFER-1 (2026-09-12).
+ *
+ * `actionFromAdaptation`/`actionFromProgression` translate the resolution into
+ * `DURATION_CHANGE` with `direction: 'MORE'` — that translation is not
+ * re-derived here, it is READ, exactly as `firstHold` above reads the same
+ * translator's `HOLD` output.
+ *
+ * ── DURATIONOFFER-2 (2026-09-12) · `direction: 'MORE'` IS NOT A SAFE
+ * DISCRIMINATOR ON ITS OWN, CORRECTED AFTER INDEPENDENT REVIEW ──────────────
+ *
+ * The original cut of this function filtered on `translated.kind ===
+ * 'DURATION_CHANGE' && translated.direction === 'MORE'` alone, reasoning that
+ * TAKE always carries `changed: false` and so resolves to HOLD one line
+ * earlier — true of `resolveProgressionStep`'s OWN `changed` field
+ * (progression-gate.ts), but `resolveWeekProgression` (progression-pass.ts)
+ * does not use that field: it recomputes `changed = !sameShape(shape,
+ * target.current)` independently (progression-pass.ts:298), specifically so a
+ * TAKE that RESUMES a previously-held ladder reports `changed: true` — see
+ * that file's own "resume the paused ladder" case (progression-pass.ts:26-45,
+ * 309-316: "A TAKE that CHANGES the row is the resume case"). A resumed TAKE
+ * therefore translates to the identical `{kind: 'DURATION_CHANGE', direction:
+ * 'MORE'}` shape a genuine strong-evidence ACCELERATE does, and the original
+ * filter could not tell them apart — confirmed by direct construction during
+ * independent review, not merely by reading.
+ *
+ * The fix reads the actual verdict instead of inferring it: `resolution.action`
+ * (`ProgressionResolution.action`, progression-pass.ts:296) is the real
+ * TAKE/ACCELERATE/HOLD/BACK_OFF word the gate decided, untouched by any later
+ * `changed`/`direction` derivation, and is checked directly.
+ *
+ * The kind is re-labelled to `DURATION_PROGRESS_OFFER` — never `DURATION_CHANGE`
+ * itself — so the card can never reach `DURATION_CHANGE`'s mutating executor
+ * regardless of what happens downstream (Rule 16: one quantity, two names on
+ * purpose here, because the two carry different consent/write guarantees and
+ * must never be confused for one another).
+ */
+export function firstDurationAccelerate(
+  actions: readonly AdaptationAction[],
+): { readonly action: BrainAction; readonly why: string; readonly workoutId: string } | null {
+  for (const a of actions) {
+    if (a.kind !== 'reshape') continue;
+    // THE authoritative gate. Read the gate's own verdict, not an inference
+    // from a downstream field two independent translators each recompute for
+    // their own purposes.
+    if (a.reshape?.resolution.action !== 'ACCELERATE') continue;
+    const wid = a.workoutIds?.[0];
+    if (wid === undefined) continue;
+    const translated = actionFromAdaptation(a, {
+      planWorkoutId: wid,
+      dateISO: a.reshape?.resolution.dateISO ?? '',
+      type: a.reshape?.row.type ?? '',
+      distanceMi: a.reshape?.row.distanceMi ?? null,
+    });
+    if (translated === null || translated.kind !== 'DURATION_CHANGE' || translated.direction !== 'MORE') continue;
+    const offer: BrainAction = { ...translated, kind: 'DURATION_PROGRESS_OFFER' };
+    // `workoutId` is returned alongside the translated action so the caller can
+    // anchor the card to the SESSION ACTUALLY BEING ACCELERATED — DURATIONOFFER-3
+    // (2026-09-12, second independent review). See the caller's own comment for
+    // the bug this closes: `wid` here is exactly `a.workoutIds[0]`, the plan
+    // row this resolution is about, which is not necessarily the chronologically
+    // next session the runner meets (that is `nextSessionFor`'s job, a different
+    // question, used by SAFETY/HOLD immediately above for a reason stated at
+    // `firstHold`).
+    return { action: offer, why: a.why, workoutId: wid };
   }
   return null;
 }

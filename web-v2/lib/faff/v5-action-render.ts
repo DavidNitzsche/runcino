@@ -96,6 +96,7 @@ const DRAWING_RULE: Readonly<Record<ActionKind, DrawingRule>> = {
   PACE_CHANGE: 'FROM_DIRECTION',
   DISTANCE_CHANGE: 'FROM_DIRECTION',
   DURATION_CHANGE: 'FROM_DIRECTION',
+  DURATION_PROGRESS_OFFER: 'FROM_DIRECTION',
   REPETITION_CHANGE: 'FROM_DIRECTION',
   RECOVERY_INTERVAL_CHANGE: 'FROM_DIRECTION',
   QUALITY_DOSE_CHANGE: 'FROM_DIRECTION',
@@ -131,6 +132,10 @@ export function actionHeadline(action: BrainAction, dayName: string): string {
     }
     case 'DURATION_CHANGE':
       return `${dayName} goes to ${Math.round(action.to.value)} minutes`;
+    /* DURATIONOFFER-1 · "could go to", not "goes to" — this is an offer, not
+     * an applied change, and the two must not read identically (Rule 16). */
+    case 'DURATION_PROGRESS_OFFER':
+      return `${dayName} could go to ${Math.round(action.to.value)} minutes`;
     case 'REPETITION_CHANGE':
       return `${dayName} goes to ${Math.round(action.to.value)} reps`;
     case 'RECOVERY_INTERVAL_CHANGE':

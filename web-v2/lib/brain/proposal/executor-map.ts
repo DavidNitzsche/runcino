@@ -91,6 +91,16 @@ export function executorFor(action: BrainAction): ExecutorRef {
     case 'DURATION_CHANGE':
       return pipeline('the reshape limb writes spec, sub_label and pace together from one rendered shape');
 
+    /* DURATIONOFFER-1 (2026-09-12) · a DISTINCT kind from `DURATION_CHANGE`
+     * immediately above, deliberately never routed to the reshape pipeline.
+     * The 2026-09-02 ruling withholds the session-geometry levers from any
+     * WRITE; this kind exists so the same ACCELERATE evidence can be OFFERED
+     * without ever being able to reach that write, structurally — accepting
+     * it records the runner's answer and nothing else, exactly like HOLD and
+     * SAFETY_STOP below. */
+    case 'DURATION_PROGRESS_OFFER':
+      return record('an offered duration step; accepting it records the runner\'s answer and writes no session geometry');
+
     /* A repricing is one decision over the block and cannot be replayed as N
      * row writes: the arms re-resolve canonical anchors at accept time, so the
      * applied answer is the current one rather than the one the card promised. */

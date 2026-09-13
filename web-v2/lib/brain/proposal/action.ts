@@ -141,6 +141,33 @@ export type BrainAction =
    */
   | (ActionBase & { kind: 'DISTANCE_CHANGE'; to: Quantity | null; ofBefore?: number })
   | (ActionBase & { kind: 'DURATION_CHANGE'; to: Quantity })
+  /**
+   * DURATIONOFFER-1 (2026-09-12) · the progression gate's ACCELERATE on the
+   * interval_duration axis, OFFERED to the runner rather than applied.
+   *
+   * A DISTINCT kind from `DURATION_CHANGE`, not a flag on it — `DURATION_CHANGE`
+   * carries real mutating semantics (its executor is `ADAPTATION_PIPELINE`,
+   * `plannedWrites` sets `duration_min`) and this kind must never be able to
+   * reach that path, structurally, regardless of caller. Its executor is
+   * unconditionally `RECORD_ONLY` (see `executor-map.ts`); `plannedWrites`
+   * answers `nonMutating: true, writes: []` for the same reason HOLD does.
+   *
+   * Scoped narrowly, by the owner's explicit ruling — recorded in full,
+   * quoted verbatim, at `docs/PRODUCT_DECISIONS.md` under
+   * "2026-09-12 · DURATIONOFFER-1" (`_duration_offer_ruling_citation.test.ts`
+   * asserts that anchor still resolves). The ruling: a propose-only exception
+   * to the 2026-09-02 reshape ruling, transferred
+   * from an initial PACE framing once `progression-gate.ts`'s own doctrine —
+   * "it does not touch pace" — showed that mislabeling. This is the ONE
+   * session-geometry axis visible to the runner as an offer, on exactly one
+   * verdict (ACCELERATE, read from `resolution.action` directly — see
+   * `firstDurationAccelerate` in `lib/plan/action-proposal-lane.ts` for why
+   * that must be read rather than inferred). Rep-count, recovery-interval and
+   * quality-dose ACCELERATE resolutions remain fully withheld, exactly as
+   * before. Extending this exception to any other lever is a separate ruling,
+   * not an engineering decision.
+   */
+  | (ActionBase & { kind: 'DURATION_PROGRESS_OFFER'; to: Quantity })
   | (ActionBase & { kind: 'REPETITION_CHANGE'; to: Quantity })
   | (ActionBase & { kind: 'RECOVERY_INTERVAL_CHANGE'; to: Quantity })
   | (ActionBase & { kind: 'QUALITY_DOSE_CHANGE'; to: Quantity; lever: 'THRESHOLD' | 'MARATHON' | 'INTERVAL' })
@@ -188,7 +215,8 @@ export interface ActionShape {
 
 /** Every kind, so a gate can assert a renderer and an executor exist for each. */
 export const ALL_ACTION_KINDS: readonly ActionKind[] = [
-  'PACE_CHANGE', 'DISTANCE_CHANGE', 'DURATION_CHANGE', 'REPETITION_CHANGE',
+  'PACE_CHANGE', 'DISTANCE_CHANGE', 'DURATION_CHANGE', 'DURATION_PROGRESS_OFFER',
+  'REPETITION_CHANGE',
   'RECOVERY_INTERVAL_CHANGE', 'QUALITY_DOSE_CHANGE', 'LONG_RUN_STRUCTURE_CHANGE',
   'WORKOUT_TYPE_CHANGE', 'ADD_WORKOUT', 'REMOVE_WORKOUT', 'FREQUENCY_CHANGE',
   'RESCHEDULE', 'COORDINATED', 'RACE_TARGET_CHANGE', 'TAPER_CHANGE',
@@ -197,7 +225,7 @@ export const ALL_ACTION_KINDS: readonly ActionKind[] = [
 
 /** Kinds that change nothing and exist to make a judgement visible (Rule 11). */
 export const NON_MUTATING_KINDS: ReadonlySet<ActionKind> =
-  new Set<ActionKind>(['HOLD', 'REFUSAL', 'SAFETY_STOP']);
+  new Set<ActionKind>(['HOLD', 'REFUSAL', 'SAFETY_STOP', 'DURATION_PROGRESS_OFFER']);
 
 /* ══════════════════════════════════════════════════════════════════════════
  * STALENESS · a proposal raised against one plan may not mutate another

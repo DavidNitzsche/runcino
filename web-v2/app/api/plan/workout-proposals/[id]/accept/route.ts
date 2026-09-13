@@ -162,6 +162,13 @@ export async function POST(
     });
     if (!outcome.ok) {
       console.error('[proposal/accept] applyBrainAction refused', { proposalId, outcome });
+      /* ── ZEROACCEPT-1, extended to this lane · MERGED WITH ACCEPTTWIN-1 ──────
+       * `acceptProposal` above already stamped this row 'accepted'. Every
+       * failure here is a change that did not land, so the card goes back —
+       * same as every other failure branch in this route — on top of
+       * ACCEPTTWIN-1's status/reason/retryable fix below, which is a
+       * different, non-overlapping defect on this same limb. */
+      await sayIfTheCardCouldNotBePutBack(userId, proposalId);
       /* ── ACCEPTTWIN-1 (2026-09-13) · THE UNTOUCHED TWIN OF THE UNDO ROUTE ──
        *
        * This ladder was the last hand-derived status left on a route that
@@ -260,6 +267,12 @@ export async function POST(
       console.error(
         `[workout-proposals/accept] reprice ${proposalId} carries no readable payload · nothing applied`,
       );
+      // Found by independent review, 2026-09-12: `acceptProposal` above already
+      // stamped this row 'accepted' before this branch runs, same as every
+      // other failure path in this route — an unreadable payload leaves the
+      // plan untouched exactly like `apply_refused`/`apply_failed` below, and
+      // owes the runner the same reopen.
+      await sayIfTheCardCouldNotBePutBack(userId, proposalId);
       return NextResponse.json({ ok: false, error: 'invalid_payload' }, { status: 400 });
     }
     const [{ applyReanchorProposal }, { runnerToday }] = await Promise.all([
@@ -282,6 +295,13 @@ export async function POST(
         reason: r.reason, status: r.status, retryable: r.retryable };
     });
     if (!outcome.ok) {
+      /* ── ZEROACCEPT-1, extended to this lane · MERGED WITH REPRICEREASON-1 ──
+       * `acceptProposal` already stamped this row 'accepted' before the
+       * reprice apply ran (or threw). A refused or thrown reprice is a
+       * change that did not land, on a card the runner has no way to retry
+       * without this — same reopen every other failure branch in this route
+       * performs, orthogonal to REPRICEREASON-1's status/reason fix below. */
+      await sayIfTheCardCouldNotBePutBack(userId, proposalId);
       /* ── REPRICEREASON-1 (2026-09-13) · THE LIMB THAT WAS DEFERRED TWICE ───
        *
        * This answered `{ ok: false, error: 'apply_refused' }` with HTTP 409 and

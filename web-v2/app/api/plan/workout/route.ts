@@ -53,7 +53,8 @@ export async function PATCH(req: NextRequest) {
   // reach a write. Without `archived_iso IS NULL` here this query returned an
   // archived plan just as readily as the active one, and `mutatePlan` below
   // trusted an explicitly-supplied planId as-is (see mutate.ts's own
-  // ARCHIVEDGUARD-1 comment for the shared-boundary half of this fix).
+  // ARCHIVEDGUARD-1 comment for the shared-boundary half of this fix). Same
+  // archived_iso convention as 142_active_plan_unique.sql.
   const plan = (await pool.query(
     `SELECT id FROM training_plans WHERE id = $1 AND user_uuid = $2 AND archived_iso IS NULL`,
     [body.plan_id, userId]

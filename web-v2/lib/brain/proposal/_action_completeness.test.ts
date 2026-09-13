@@ -154,6 +154,7 @@ const SPECIMENS: Record<ActionKind, BrainAction> = {
   PACE_CHANGE: { ...base, kind: 'PACE_CHANGE', direction: 'MORE', lever: 'THRESHOLD', to: { unit: 'sec_per_mi', value: 424 } },
   DISTANCE_CHANGE: { ...base, kind: 'DISTANCE_CHANGE', direction: 'MORE', to: { unit: 'mi', value: 11 } },
   DURATION_CHANGE: { ...base, kind: 'DURATION_CHANGE', direction: 'LESS', to: { unit: 'min', value: 50 } },
+  DURATION_PROGRESS_OFFER: { ...base, kind: 'DURATION_PROGRESS_OFFER', direction: 'MORE', to: { unit: 'min', value: 5 } },
   REPETITION_CHANGE: { ...base, kind: 'REPETITION_CHANGE', direction: 'MORE', to: { unit: 'reps', value: 6 } },
   RECOVERY_INTERVAL_CHANGE: { ...base, kind: 'RECOVERY_INTERVAL_CHANGE', direction: 'MORE', to: { unit: 'min', value: 2 } },
   QUALITY_DOSE_CHANGE: { ...base, kind: 'QUALITY_DOSE_CHANGE', direction: 'MORE', lever: 'THRESHOLD', to: { unit: 'min', value: 24 } },
@@ -970,7 +971,12 @@ describe('GUARD 2 · GENERATOR · every kind is emitted by something live', () =
     // has a real generator (`lib/brain/proposal/generate/from-long-run-
     // structure.ts`), reached live from `action-proposal-lane.ts`'s third
     // section.
-    expect(emitted.length, `emitted kinds: ${emitted.join(', ')}`).toBe(14);
+    // 14 → 15 (DURATIONOFFER-1, 2026-09-12): DURATION_PROGRESS_OFFER's
+    // generator is `action-proposal-lane.ts`'s own `firstDurationAccelerate`,
+    // reached live from the same lane's second-and-a-half section — a
+    // propose-only exception to the 2026-09-02 reshape ruling, scoped to
+    // exactly one axis and direction.
+    expect(emitted.length, `emitted kinds: ${emitted.join(', ')}`).toBe(15);
   });
 
   /* ── the generators, driven for real ─────────────────────────────────── */

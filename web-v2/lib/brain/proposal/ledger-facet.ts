@@ -79,6 +79,17 @@ export function ledgerFacetsOf(action: BrainAction): ActionLedgerFacet {
     case 'DURATION_CHANGE':
       return { scope: 'WORKOUT', proposedLever: 'VOLUME', decision: decisionOf(action) };
 
+    /* DURATIONOFFER-1 · the SAME classification as `DURATION_CHANGE` — this is
+     * the identical decision (direction MORE, decisionOf → 'PROGRESS'), only
+     * not yet applied. Classifying it as `proposedLever: 'RECORD_ONLY'` (HOLD's
+     * convention) would UNDERSTATE it: HOLD's lever is 'RECORD_ONLY' because no
+     * axis was decided on at all, whereas this row IS a real, evidenced VOLUME
+     * decision — Rule 21's whole complaint is that a ledger cannot tell "never
+     * proposed" from "proposed and not applied" apart, and collapsing this to
+     * RECORD_ONLY would recreate exactly that ambiguity one level up. */
+    case 'DURATION_PROGRESS_OFFER':
+      return { scope: 'WORKOUT', proposedLever: 'VOLUME', decision: decisionOf(action) };
+
     case 'LONG_RUN_STRUCTURE_CHANGE':
       return { scope: 'WORKOUT', proposedLever: 'LONG_RUN', decision: decisionOf(action) };
 

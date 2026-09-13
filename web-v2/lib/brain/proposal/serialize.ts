@@ -152,6 +152,10 @@ const READERS: Readonly<Record<ActionKind, Reader>> = {
     const to = qty(body.to);
     return to !== null ? { ...base, kind: 'DURATION_CHANGE', to } : null;
   },
+  DURATION_PROGRESS_OFFER: (body, base) => {
+    const to = qty(body.to);
+    return to !== null ? { ...base, kind: 'DURATION_PROGRESS_OFFER', to } : null;
+  },
   REPETITION_CHANGE: (body, base) => {
     const to = qty(body.to);
     return to !== null ? { ...base, kind: 'REPETITION_CHANGE', to } : null;
