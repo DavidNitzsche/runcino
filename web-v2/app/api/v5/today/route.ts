@@ -1012,7 +1012,55 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   });
   const todayPrimary = resolvedToday ? primaryPrescription(resolvedToday) : null;
   const prescriptionUnmatched = todayPrimary != null && todayPrimary.matchedRun == null;
-  const ranToday = glanceToday && glanceToday.doneMi >= 0.5 && !prescriptionUnmatched;
+  /* STEPPEDDAY-DONE-1 (2026-09-13) · "WAS THERE RUNNING ON THIS DATE" HAS TO BE
+   * ASKED ABOUT THIS DATE.
+   *
+   * This gate read `glanceToday.doneMi` alone, and `loadGlanceState` TAKES NO
+   * DATE — its `weekDays` is always the CURRENT training week (confirmed
+   * against `lib/coach/glance-state.ts:395`, whose signature is
+   * `loadGlanceState(userId)`). So `glanceToday` is null for every viewed date
+   * outside that week, `ranToday` was falsy, and the whole after-run branch
+   * below — the post-run card, the verdict, the win line, `runId`,
+   * `postRun.decisionVersion` — was skipped for a day the runner had actually
+   * run. The screen rendered the PRE-RUN card: an upcoming prescription, over
+   * a session that was finished, graded and sealed.
+   *
+   * Measured on production, read-only, 2026-09-13 (runner today 2026-09-13,
+   * current training week 09-07..09-13):
+   *
+   *     GET /api/v5/today?date=2026-09-01  → state before_run · runId null ·
+   *                                          postRun null
+   *     GET /api/runs/-258355938987883/recap
+   *                                        → postRun POPULATED, "Controlled
+   *                                          work · All four reps landed…"
+   *
+   * Two screens, one run, opposite answers — the exact defect
+   * `_postrun_surface_parity.audit.test.ts` was written to catch. It could not
+   * catch it on the day it was written, because 2026-09-01 was inside the
+   * current week then; it aged into the out-of-week path and failed the first
+   * time the audit job was given credentials (Rule 15 — a mechanism the corpus
+   * cannot reach is untested).
+   *
+   * This is the SAME date-blind source, and the SAME repair, that `todayPlan`
+   * (below) already applies to the prescription half: glance first, because it
+   * carries the adaptation provenance the plan row cannot; the date-aware
+   * `planWeek` row second. `todayWeekDay.done_mi` is `loadPlanWeek`'s own
+   * reading for the VIEWED date and is already trusted for the week strip's
+   * `isDone` (see `weekStripDays` above), so this adds no new source of truth.
+   *
+   * RULE 11 · three states, not two. `null` from both readers is "this date
+   * was not resolvable", NOT "he did not run" — it leaves `ranToday` false
+   * (the conservative answer: never invent a post-run card) but it is reached
+   * by an explicit `!= null` test rather than by a zero.
+   *
+   * Whether the run COMPLETED the prescription is still, and only,
+   * `prescriptionUnmatched` — `lib/execution/day-resolver.ts`, the canonical
+   * owner. This line answers the narrower question of whether any running
+   * happened on the date at all. */
+  const viewedDoneMi: number | null = glanceToday
+    ? glanceToday.doneMi
+    : (todayWeekDay?.done_mi ?? null);
+  const ranToday = viewedDoneMi != null && viewedDoneMi >= 0.5 && !prescriptionUnmatched;
   if (ranToday) {
     // The resolver already found the exact/legacy match for today's
     // prescription — use it directly rather than re-deriving "which run" a
