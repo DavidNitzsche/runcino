@@ -3,11 +3,25 @@
 # WHY THIS EXISTS — the most expensive false green found in the core-closure
 # programme, and the one that hid two others.
 #
-# 28 `*.audit.test.ts` files read live production over the read-only role. Every
-# one of them is `describe.skipIf(!process.env.DATABASE_URL_RO)`. Neither
-# `test-full.yml` nor Railway carries that credential, so all 28 skip — and a
-# skipped Vitest file is reported as `skipped`, never as `failed`. The suite
-# goes green.
+# The `*.audit.test.ts` files read live production over the read-only role, and
+# nearly all of them are `describe.skipIf(!process.env.DATABASE_URL_RO)`.
+# Neither `test-full.yml` nor Railway carries that credential, so those skip —
+# and a skipped Vitest file is reported as `skipped`, never as `failed`. The
+# suite goes green.
+#
+# NO COUNT IS WRITTEN DOWN HERE ANY MORE (AUDITRO-2, 2026-09-13). This header
+# said "28" in three places while `git ls-files` matched 33, and the header of a
+# job whose entire subject is suites that quietly stop running is the last place
+# a stale number belongs — Rule 18's `check-palette-sync.sh` case, which named
+# two files that no longer existed inside the script written to catch exactly
+# that. The live count is PRINTED by the "Run only the production-backed audits"
+# step below, every run, read out of `git ls-files` rather than asserted here.
+#
+# "Nearly all", not "every": `lib/verify/_audit_credential_binding.audit.test.ts`
+# deliberately carries no skip guard. It needs no database — it checks that the
+# credential this job supplies is the one `lib/db/pool` connects with — and it
+# was renamed INTO this glob because under its old name it was excluded from the
+# one job it exists to protect.
 #
 # On 2026-09-04 THREE of them were failing against production all day while
 # `test-full` and Railway both reported green:
@@ -116,7 +130,7 @@ jobs:
             echo "present=no" >> "$GITHUB_OUTPUT"
             echo "::error title=Production audits did not run::DATABASE_URL_RO is not set."
             echo ""
-            echo "All 28 *.audit.test.ts files are describe.skipIf(!DATABASE_URL_RO)."
+            echo "Nearly every lib/**/*.audit.test.ts file is describe.skipIf(!DATABASE_URL_RO)."
             echo "Without the credential they SKIP, and a skipped file reports as"
             echo "green. Three of them were red against production for a full day"
             echo "while every other signal said clean."
@@ -168,8 +182,8 @@ jobs:
       #
       # LIVENESS (Rule 18 guard 2) is folded in here rather than living in its
       # own step, so one place decides the verdict (Rule 16). Vitest exits 0
-      # when every file skipped, so the exit code alone cannot tell "28 audits
-      # passed" from "28 audits were skipped and nobody noticed".
+      # when every file skipped, so the exit code alone cannot tell "the audits
+      # passed" from "the audits were skipped and nobody noticed".
       #
       # WHAT THIS VERDICT CANNOT FAIL ON (Rule 22):
       #   · a PASS that read the wrong rows. It counts assertions, not truth.
@@ -194,7 +208,7 @@ jobs:
 
           if [ "${CRED_PRESENT:-no}" != "yes" ]; then
             STATE="BLOCKED_MISSING_CREDENTIAL"
-            REASON="DATABASE_URL_RO is not set, so all 28 *.audit.test.ts files would have skipped. The audits did not run."
+            REASON="DATABASE_URL_RO is not set, so the *.audit.test.ts files would have skipped. The audits did not run."
           elif [ ! -f /tmp/audits.rc ]; then
             STATE="FAIL"
             REASON="The audit run did not complete — no exit code was recorded. Treated as a failure, never as a skip."
@@ -206,7 +220,7 @@ jobs:
             #     an anchored `Tests +[0-9]+ passed` matches nothing and the
             #     reason line claimed "0 assertions passed" over a run with 203.
             #     The state was right and the sentence was false — Rule 16.
-            #   · `Test Files  28 passed (28)` also contains "N passed", so the
+            #   · `Test Files  33 passed (33)` also contains "N passed", so the
             #     line must be selected before the number is. `Tests` followed
             #     by whitespace excludes `Test Files` without depending on
             #     which line vitest prints last.

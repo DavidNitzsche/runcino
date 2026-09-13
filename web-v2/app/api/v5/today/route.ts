@@ -1042,7 +1042,10 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
    * cannot reach is untested).
    *
    * This is the SAME date-blind source, and the SAME repair, that `todayPlan`
-   * (below) already applies to the prescription half: glance first, because it
+   * — search `const todayPlan =`, roughly 300 lines ABOVE this, not below;
+   * the original wording of this sentence and of the commit message both said
+   * "a few lines below" and sent a reader the wrong way —
+   * already applies to the prescription half: glance first, because it
    * carries the adaptation provenance the plan row cannot; the date-aware
    * `planWeek` row second. `todayWeekDay.done_mi` is `loadPlanWeek`'s own
    * reading for the VIEWED date and is already trusted for the week strip's

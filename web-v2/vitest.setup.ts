@@ -62,27 +62,68 @@ for (const file of ['.env.local', '.env']) {
 // GREEN HAVING ASSERTED NOTHING, in the very job whose stated principle is
 // "a production audit that did not run is a failure, not a pass."
 //
-// And it was not even deterministic. `lib/db/pool` reads the variable ONCE, at
-// module evaluation. The 22 audit files that assign `process.env.DATABASE_URL
-// = RO` inside a test body therefore only work when nothing else in their
-// vitest WORKER imported `lib/db/pool` first — so which audits truly reach
-// production depended on file-to-worker assignment and ran differently from
-// run to run. Measured 2026-09-13 with only `DATABASE_URL_RO` exported:
-// `_postrun_corpus` and `_durability_anchor` both died on the localhost
-// fallback, three levels down in `lib/runs/volume.ts`, for exactly this reason.
+// CORRECTED 2026-09-13 (AUDITRO-2). THE ORIGINAL WORDING OF THIS PARAGRAPH
+// CALLED THE PER-FILE WORKAROUND "NOT EVEN DETERMINISTIC", AND BLAMED
+// FILE-TO-WORKER ASSIGNMENT. THAT DIAGNOSIS WAS WRONG, AND WRONG IN THE
+// DIRECTION THAT MATTERS: it described a race, which invites "retry it and see",
+// when the real thing is a fixed ordering that fails the same way every run.
 //
-// This runs in every worker before any test module is evaluated, so the pool
-// singleton is built from the right string the first time and there is no
-// ordering left to lose. It never overrides an explicit `DATABASE_URL` (a
-// developer machine's `.env.local` above, or a harness pointing at a loopback
-// scratch database, still win), and the value it adopts is the `faff_readonly`
-// role — SELECT only at the database, with the write barrier below as the
-// second, independent layer.
+// `vitest.config.ts` sets no `isolate: false`, so vitest's default per-FILE
+// isolation applies: every test file is evaluated against a fresh module
+// registry, and `lib/db/pool`'s module-level read of `DATABASE_URL` therefore
+// happens once PER FILE, not once per worker. Nothing another file did can
+// reach it.
+//
+// What actually breaks is intra-file ORDER, and ES module semantics fix that
+// order at parse time. A file's static `import` graph — `@/lib/db/pool`
+// directly, or transitively through `lib/runs/volume.ts`, `lib/coach/
+// glance-state.ts` and the rest — is fully evaluated BEFORE the first line of
+// the file's own body, let alone before a `process.env.DATABASE_URL = RO`
+// inside a test callback. So in the 22 audit files that carry that assignment,
+// the assignment is deterministically TOO LATE whenever the file statically
+// imports the pool at any depth, and deterministically fine when it does not.
+// Which files are affected is a property of each file's own import graph and
+// is the same on every run. Measured 2026-09-13 with only `DATABASE_URL_RO`
+// exported: `_postrun_corpus` and `_durability_anchor` both died on the
+// localhost fallback, three levels down in `lib/runs/volume.ts` — every time,
+// not sometimes.
+//
+// The repair is unchanged and correct either way, and this is the reason it
+// is: a setup file runs before ANY test module is evaluated, which is earlier
+// than any import the modules themselves can hoist. It never overrides an
+// explicit `DATABASE_URL` (a developer machine's `.env.local` above, or a
+// harness pointing at a loopback scratch database, still win), and the value it
+// adopts is the `faff_readonly` role — SELECT only at the database, with the
+// write barrier below as the second, independent layer.
 //
 // Rule 11: "no credential", "the read-only credential" and "the read-write
-// credential" are three facts. This binds the second to the connection instead
-// of leaving it to name a fourth state — configured, and still unreachable.
-if (!process.env.DATABASE_URL && process.env.DATABASE_URL_RO) {
+// credential" are three facts. `lib/verify/ro-credential.ts` is the one place
+// that names them, so the gate can exercise all three in a job that has none of
+// them rather than only in the job that already works (AUDITRO-2). Applying the
+// decision here keeps it from naming a fourth state — configured, and still
+// unreachable.
+//
+// TWO CONSEQUENCES OF THIS BINDING THAT NOTHING CURRENTLY CHECKS. Written down
+// because Rule 20's own instruction is that an honest "unenforced" is a known
+// gap and an unmarked one is a rule everybody believes is holding:
+//
+//   1. IT SERVES THE WHOLE SUITE, not just the audits. In any environment that
+//      exports `DATABASE_URL_RO` and no `DATABASE_URL`, the ~78 test files that
+//      reach `lib/db/pool` now genuinely connect (read-only) where they used to
+//      fail fast on the localhost default. Load and surprise rather than
+//      danger — reads are fenced and the `*.db.test.ts` scratch tests still
+//      refuse, since they require a loopback host AND a named scratch database.
+//      No-ops in `test-full.yml` (no `_RO`) and on a developer machine
+//      (`.env.local` sets `DATABASE_URL`).
+//   2. THE FENCE'S VERDICT DEPENDS ON THE RO URL'S HOST. If `DATABASE_URL_RO`
+//      were ever pointed at a loopback database, this binding would flip
+//      `classifyDatabaseTarget` from `indeterminate` (refuse writes) to `local`
+//      (PERMIT writes). Not true today — RO is the remote `faff_readonly`
+//      role — and deliberately not gated here, because the gate belongs beside
+//      `classifyDatabaseTarget` rather than beside the binding. Named so the
+//      next person changing that secret knows it is load-bearing twice.
+const { resolveCredentialBinding } = await import('./lib/verify/ro-credential');
+if (resolveCredentialBinding(process.env).action === 'bind-read-only') {
   process.env.DATABASE_URL = process.env.DATABASE_URL_RO;
 }
 
