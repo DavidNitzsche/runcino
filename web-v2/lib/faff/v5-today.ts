@@ -1428,6 +1428,33 @@ export interface V5TodayContext {
     /** The "Where you are" rows explaining the refusal. */
     rows: V5Row[];
   } | null;
+  /**
+   * ACTUAL UNKNOWN (WEEKLOADER-ACTUAL-2, 2026-09-13) · `week-loader.ts`'s
+   * actual-mileage read for the viewed day FAILED (`PlanWeekResult
+   * .actualStateUnknown`), so this route cannot tell "the runner has not run
+   * yet" apart from "the runner ran and the read that would show it broke".
+   *
+   * Same posture as `safetyUnknown` immediately above, for the same reason:
+   * Rule 11 forbids collapsing "don't know" into either a confident
+   * `before_run` (which is what silently fell out of `ranToday = false` before
+   * this field existed — STEPPEDDAY-DONE-1's own guard checked the flag but
+   * fed a `ranToday` boolean that was already false either way, so nothing
+   * downstream ever saw it) or a fabricated `after_run`. Set ONLY by the
+   * route, and only on the `todayWeekDay` fallback path — `glanceToday` runs
+   * its own live query and is never affected by this read.
+   *
+   * NOT the injury or sick panel, for the same reason `safetyUnknown` is not:
+   * a transient DB error must never blank a healthy day into a fabricated
+   * flare. NOT a new `V5TodayStateWire` value either — `before_run` with a
+   * quiet panel is the shape every deployed client already decodes.
+   */
+  actualUnknown?: {
+    /** One sentence, coach voice: names the failure, asserts nothing about
+     *  whether the runner ran. */
+    verdict: string;
+    /** The "Where you are" rows explaining the refusal. */
+    rows: V5Row[];
+  } | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -2139,6 +2166,26 @@ function composeV5TodayCore(rawCtx: V5TodayContext): V5Today {
     t.panel.weekLine = ctx.weekLine;
     t.why = ctx.safetyUnknown.verdict;
     t.whereYouAre = ctx.safetyUnknown.rows;
+    t.weekStrip = buildWeekStrip(ctx);
+    return t;
+  }
+
+  /* ── ACTUAL UNKNOWN — the actual-mileage read did not run (WEEKLOADER-ACTUAL-2)
+   *
+   * Same shape as `safetyUnknown` just above and for the same reason: a
+   * refusal, not an attempt to assert either side of "did the runner run
+   * today". `before_run` on the wire, quiet panel, no prescription drawn — the
+   * runner should not be handed a workout to go do over a day that may
+   * already be finished, and should not be told they are done over one that
+   * is not. The week strip still draws.
+   */
+  if (ctx.actualUnknown) {
+    const t = EMPTY_TODAY(ctx.todayISO, 'before_run', ctx.planVersion);
+    t.panel.quiet = true;
+    t.panel.type = 'NOT VERIFIED';
+    t.panel.weekLine = ctx.weekLine;
+    t.why = ctx.actualUnknown.verdict;
+    t.whereYouAre = ctx.actualUnknown.rows;
     t.weekStrip = buildWeekStrip(ctx);
     return t;
   }

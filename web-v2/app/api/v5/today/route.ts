@@ -1074,7 +1074,30 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
    * `planWeek.actualStateUnknown` (Rule 11, mirrors `skipStateUnknown`) is
    * only meaningful on the `todayWeekDay` fallback path — `glanceToday` runs
    * its own live query via `loadGlanceState` and never goes through
-   * `loadPlanWeek`'s actualByDate read, so it is unaffected. */
+   * `loadPlanWeek`'s actualByDate read, so it is unaffected.
+   *
+   * WEEKLOADER-ACTUAL-2 (round 2) · WEEKLOADER-ACTUAL-1's own fix was a
+   * no-op. It added `!actualStateUnknownForViewedDay &&` to the front of
+   * `ranToday`'s expression below — but on the exact scenario it targets (a
+   * completed day, this read failed), `viewedDoneMi` is ALREADY `null` (the
+   * failed read is what makes `todayWeekDay.done_mi` null in the first
+   * place), so `ranToday` was ALREADY `false` before the new clause was
+   * added. Anding a flag onto an expression that is already `false` cannot
+   * change its value. Nothing downstream ever branched on the flag; the only
+   * thing round 1 actually shipped was the `console.warn` two lines below.
+   *
+   * The real defect was never the boolean feeding `ranToday` — it is that
+   * `ranToday = false` on THIS path renders the exact same confident
+   * `before_run` panel as `ranToday = false` on a genuinely quiet day, and
+   * nothing distinguishes "he did not run" from "the read broke and we
+   * cannot tell". Fixed by returning an honest, distinguishable response
+   * instead of falling through: `ctx.actualUnknown`
+   * (`lib/faff/v5-today.ts`), the exact shape `ctx.safetyUnknown` already
+   * uses for "the check that decides this screen could not run" — `before_run`
+   * on the wire (no client-decoding change), quiet panel, no prescription
+   * drawn, week strip intact. Gated on the viewed date not being in the
+   * future: a date that has not happened yet cannot have a completion to be
+   * uncertain about, so there is nothing honest to refuse there. */
   const actualStateUnknownForViewedDay = !glanceToday && planWeek.actualStateUnknown === true;
   if (actualStateUnknownForViewedDay) {
     // Rule 18 — this must be observable, not a second silent swallow sitting
@@ -1082,12 +1105,27 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     console.warn('[v5/today] actual-mileage read failed for the viewed week; ' +
       'refusing to assert the viewed day is unrun rather than rendering a ' +
       'possibly-completed day as before_run.');
+    if (today <= runnerTodayISO) {
+      const ctx: V5TodayContext = emptyContext(today, true, isSteppedDay, planVersion);
+      ctx.weekStripDays = weekStripDays;
+      ctx.weekLine = weekLine;
+      ctx.actualUnknown = {
+        verdict: 'Could not confirm whether this day was run. Reopen this screen to retry.',
+        rows: [{
+          id: 'actual-mileage-check',
+          label: 'Run check',
+          sub: 'Could not read your logged runs for this day. Nothing is asserted until it can.',
+          value: null,
+          action: null,
+        }],
+      };
+      return NextResponse.json(composeV5Today(ctx));
+    }
   }
   const viewedDoneMi: number | null = glanceToday
     ? glanceToday.doneMi
     : (todayWeekDay?.done_mi ?? null);
-  const ranToday = !actualStateUnknownForViewedDay
-    && viewedDoneMi != null && viewedDoneMi >= 0.5 && !prescriptionUnmatched;
+  const ranToday = viewedDoneMi != null && viewedDoneMi >= 0.5 && !prescriptionUnmatched;
   if (ranToday) {
     // The resolver already found the exact/legacy match for today's
     // prescription — use it directly rather than re-deriving "which run" a

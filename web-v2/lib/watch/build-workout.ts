@@ -480,6 +480,35 @@ export interface WatchTodayGlance {
    *  beside `workout`, never replaces it: the lobby still knows what was
    *  asked, it also now knows it already happened. */
   completedToday?: WatchCompletedRun | null;
+  /**
+   * WEEKLOADER-ACTUAL-2 (round 2) · `loadPlanWeek`'s actual-mileage read for
+   * this window FAILED, so `completedToday: null` above does NOT mean "not
+   * run" here — it means "could not tell". Same root cause as
+   * `app/api/v5/today/route.ts`'s `actualUnknown` (Rule 11): a bare
+   * `completedToday: null` is indistinguishable from a genuinely unrun day,
+   * and this is the exact predicate (`ranToday`, below) that decides whether
+   * the lobby offers the session as still-to-do.
+   *
+   * Deliberately does NOT withhold the workout the way `safetyGate.kind ===
+   * 'withhold'` does. The asymmetry there is injury risk (showing a cleared
+   * session when the runner is not cleared); the asymmetry here runs the
+   * other way — the watch is the device the runner starts their run FROM, so
+   * blocking it over a transient read failure costs the one thing this app
+   * says it exists to protect (CLAUDE.md: "to push"), while worst case on
+   * leaving the workout live is a runner re-starting a session they had
+   * already logged, which is recoverable and far cheaper than being unable to
+   * start at all. So the default stays conservative in the OTHER direction:
+   * `ranToday`/`completedToday` fall back to "not yet run" (the workout stays
+   * offered) and this flag is the honest signal a build that reads it can
+   * show alongside — "you may have already logged something today, check
+   * before starting again" — without a build that does not read it losing
+   * anything it had before.
+   *
+   * Only set when `today` is not in the future relative to the runner's real
+   * `actualToday` — a date that has not happened yet cannot have a
+   * completion to be uncertain about.
+   */
+  completedTodayUnknown?: true;
 }
 
 export type WatchTodayResponse =
@@ -2777,6 +2806,15 @@ export async function buildWatchToday(
   const completedToday = ranToday
     ? await loadCompletedRun(userId, today, wo).catch(() => null)
     : null;
+  // WEEKLOADER-ACTUAL-2 (round 2) · see `WatchTodayGlance.completedTodayUnknown`'s
+  // doc comment for why this stays `ranToday = false` (workout still offered)
+  // rather than withholding, and why the gate is only meaningful up to today.
+  const completedTodayUnknownFlag: true | undefined =
+    rawWeek?.actualStateUnknown === true && today <= actualToday ? true : undefined;
+  if (completedTodayUnknownFlag) {
+    console.warn('[watch/today] actual-mileage read failed for the loaded week; ' +
+      'offering the session as still-to-do rather than asserting it is unrun.');
+  }
 
   // SAFETYSTOP-1 · THE ONE GATE. Everything above composed the session; this
   // decides whether it is allowed to leave.
@@ -2810,7 +2848,11 @@ export async function buildWatchToday(
       sessionMoved,
       dayState: noSessionState,
       completedToday,
+      completedTodayUnknown: completedTodayUnknownFlag,
     };
   }
-  return { workout, weekStrip, sessionMoved, dayState: noSessionState, completedToday };
+  return {
+    workout, weekStrip, sessionMoved, dayState: noSessionState, completedToday,
+    completedTodayUnknown: completedTodayUnknownFlag,
+  };
 }

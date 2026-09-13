@@ -691,3 +691,119 @@ describe('after_run · TODAYHERO-1 · no prescribed structure to grade against',
     });
   });
 });
+
+/**
+ * WEEKLOADER-ACTUAL-2 (round 2) · `ctx.actualUnknown` actually changes the
+ * rendered response.
+ *
+ * Round 1 (`app/api/v5/today/route.ts`'s STEPPEDDAY-DONE-1 comment,
+ * `1328e4918`) added `!actualStateUnknownForViewedDay && ...` to the front of
+ * `ranToday`'s expression. On the exact scenario it targets — a completed
+ * day whose actual-mileage read failed — `viewedDoneMi` is already `null`
+ * (the failed read is WHY `done_mi` is null), so `ranToday` was already
+ * `false` before that clause existed. ANDing a flag onto an already-false
+ * expression cannot change its value: the fix shipped a `console.warn` and
+ * nothing else. This block proves both halves — the arithmetic no-op, and
+ * that the round-2 fix (an early, honest return in route.ts, `ctx
+ * .actualUnknown` here) is what actually changes what the runner sees.
+ */
+describe('WEEKLOADER-ACTUAL-2 · actualUnknown changes the final rendered response', () => {
+  it('THE NO-OP, reproduced arithmetically · round 1\'s guard cannot change ranToday on its own target scenario', () => {
+    // The exact shape STEPPEDDAY-DONE-1 computes, both before and after
+    // round 1's edit, for a day whose actual-mileage read failed — which is
+    // PRECISELY the scenario that makes `viewedDoneMi` null in the first
+    // place (there is no other way to reach `actualStateUnknownForViewedDay
+    // = true` while a completed day's `done_mi` is populated: the read that
+    // would have populated it is the read that failed).
+    const viewedDoneMi: number | null = null; // what a failed read leaves `done_mi` as
+    const prescriptionUnmatched = false;
+    const actualStateUnknownForViewedDay = true;
+
+    const preFix = viewedDoneMi != null && viewedDoneMi >= 0.5 && !prescriptionUnmatched;
+    const round1 = !actualStateUnknownForViewedDay
+      && viewedDoneMi != null && viewedDoneMi >= 0.5 && !prescriptionUnmatched;
+
+    expect(preFix).toBe(false);
+    expect(round1).toBe(false);
+    // THE FALSIFIER for "round 1 changed anything": if the guard did
+    // anything, these two would differ on the scenario it was written for.
+    expect(round1).toBe(preFix);
+  });
+
+  it('THE OLD RENDER, reproduced · with no actualUnknown signal, a day whose read failed renders the ordinary, confident before_run prescription', () => {
+    // This is exactly the ctx round-1 code (and every version before it)
+    // handed `composeV5Today` on this path: `ranToday` false fell straight
+    // through to the everyday prescription build, with nothing anywhere
+    // marking that the actual-mileage read had failed.
+    const out = composeV5Today(baseCtx({
+      todayPlan: { type: 'threshold', subLabel: 'THRESHOLD', distanceMi: 7, originalType: null, originalSubLabel: null },
+      prescription: {
+        type: 'threshold', headline: 'Threshold', why: 'Extend the ceiling.',
+        total_mi: 7,
+        steps: [{ label: 'Threshold', distance_mi: 7, pace_target: '6:52/mi', note: 'Steady state.' }],
+      },
+    }));
+    // The misleading shape: a confident, ordinary "go run this" screen —
+    // indistinguishable from a day that is genuinely still ahead of the
+    // runner — over a day that may already be finished.
+    expect(out.state).toBe('before_run');
+    expect(out.panel.quiet).toBe(false);
+    expect(out.groups.length).toBeGreaterThan(0);
+  });
+
+  it('THE FIX · ctx.actualUnknown renders an honest, distinguishable refusal instead of the ordinary prescription', () => {
+    const out = composeV5Today(baseCtx({
+      // Same day, same prescription as the "old render" case above — proves
+      // `actualUnknown` PREEMPTS the ordinary composition rather than being
+      // ignored alongside it.
+      todayPlan: { type: 'threshold', subLabel: 'THRESHOLD', distanceMi: 7, originalType: null, originalSubLabel: null },
+      prescription: {
+        type: 'threshold', headline: 'Threshold', why: 'Extend the ceiling.',
+        total_mi: 7,
+        steps: [{ label: 'Threshold', distance_mi: 7, pace_target: '6:52/mi', note: 'Steady state.' }],
+      },
+      actualUnknown: {
+        verdict: 'Could not confirm whether this day was run. Reopen this screen to retry.',
+        rows: [{
+          id: 'actual-mileage-check', label: 'Run check',
+          sub: 'Could not read your logged runs for this day. Nothing is asserted until it can.',
+          value: null, action: null,
+        }],
+      },
+    }));
+    // `before_run` on the wire — no new enum value an old client has never
+    // seen — but the SHAPE is not the ordinary prescription.
+    expect(out.state).toBe('before_run');
+    expect(out.panel.quiet).toBe(true);
+    expect(out.panel.type).toBe('NOT VERIFIED');
+    expect(out.why).toMatch(/[Cc]ould not confirm/);
+    expect(out.whereYouAre.some((r) => r.id === 'actual-mileage-check')).toBe(true);
+    // No prescription drawn: the runner is never handed a workout to go do
+    // over a day that might already be finished.
+    expect(out.groups).toEqual([]);
+  });
+
+  it('THE DIFFERENCE, side by side · the flag is not decorative — it changes quiet, type and groups', () => {
+    const dayFixture = {
+      todayPlan: { type: 'threshold' as const, subLabel: 'THRESHOLD', distanceMi: 7, originalType: null, originalSubLabel: null },
+      prescription: {
+        type: 'threshold', headline: 'Threshold', why: 'Extend the ceiling.',
+        total_mi: 7,
+        steps: [{ label: 'Threshold', distance_mi: 7, pace_target: '6:52/mi', note: 'Steady state.' }],
+      },
+    };
+    const withoutSignal = composeV5Today(baseCtx({ ...dayFixture }));
+    const withSignal = composeV5Today(baseCtx({
+      ...dayFixture,
+      actualUnknown: {
+        verdict: 'Could not confirm whether this day was run. Reopen this screen to retry.',
+        rows: [],
+      },
+    }));
+    expect(withoutSignal.panel.quiet).toBe(false);
+    expect(withSignal.panel.quiet).toBe(true);
+    expect(withoutSignal.panel.type).not.toBe(withSignal.panel.type);
+    expect(withoutSignal.groups.length).toBeGreaterThan(0);
+    expect(withSignal.groups.length).toBe(0);
+  });
+});
