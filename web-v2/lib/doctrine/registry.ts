@@ -19496,6 +19496,7 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     binds: [
       'lib/plan/marathon-specific-ladder.ts#MP_LARGE_SESSION_WINDOW_DAYS',
       'lib/plan/marathon-specific-ladder.ts#MP_PEAK_STIMULUS_WINDOW_DAYS',
+      'lib/plan/generate.ts#peakStimulusRaceWeekIdx',
     ],
     doc: 'Research/04-workout-vocabulary.md',
     anchor: '### 11.1 Canova special block',
@@ -19544,6 +19545,30 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         /const outsideByDays = Math\.max\(0, MP_LARGE_SESSION_WINDOW_DAYS\[0\] - d, d - MP_LARGE_SESSION_WINDOW_DAYS\[1\]\);/,
         'the dose fade measures against the union window',
       );
+      // PLANQUALITY-1 (2026-09-12) · the peak-stimulus RACE SELECTION in
+      // generate.ts is a second consumer of this exact window, and it held its
+      // own hardcoded copy — `if (d < 24 || d > 42) continue;`, a comment
+      // pointing at MP_PEAK_STIMULUS_WINDOW_DAYS rather than importing it. When
+      // MPLADDER-2 moved the real constant's near edge from 24 to 28, this
+      // duplicate stayed at 24, so a B race 24-27 days out could win the
+      // peak-stimulus role from outside the window this very claim certifies —
+      // exactly the split-truth shape Rule 7 exists to catch, just not caught
+      // until this pass because nothing here was reading generate.ts's copy.
+      // The fix imports the constant; this assertion is what stops a future
+      // edit from quietly re-introducing a second hardcoded copy.
+      const genSrc = sourceOf('web-v2/lib/plan/generate.ts');
+      matchLiteral(
+        genSrc,
+        /if \(d < MP_PEAK_STIMULUS_WINDOW_DAYS\[0\] \|\| d > MP_PEAK_STIMULUS_WINDOW_DAYS\[1\]\) continue;/,
+        'peakStimulusRaceWeekIdx selection reads the imported window, not a local copy',
+      );
+      const strayLiteral = /if \(d < \d+ \|\| d > \d+\) continue;\s*\/\/\s*MP_PEAK_STIMULUS_WINDOW_DAYS/;
+      if (strayLiteral.test(genSrc)) {
+        throw new Error(
+          'generate.ts hardcodes a numeric peak-stimulus window again instead of importing ' +
+            'MP_PEAK_STIMULUS_WINDOW_DAYS — the exact regression this claim was extended to catch.',
+        );
+      }
     },
   },
   {

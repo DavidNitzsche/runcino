@@ -302,3 +302,69 @@ describe('BYTE-SAFETY · a plan with no mid-block races is untouched', () => {
     expect(JSON.stringify(withEmpty.weeks)).toBe(JSON.stringify(withAbsent.weeks));
   });
 });
+
+/**
+ * PLANQUALITY-1 (2026-09-12) · THE PEAK-STIMULUS WINDOW BOUNDARY.
+ *
+ * `generate.ts`'s peakStimulusRaceWeekIdx selection used to hardcode
+ * `d < 24 || d > 42` in place of importing `MP_PEAK_STIMULUS_WINDOW_DAYS`
+ * (now `[28, 42]`, moved from `[24, 42]` by MPLADDER-2, 2026-09-03). The
+ * doctrine gate (`MPLADDER.a-large-session-belongs-where-doctrine-puts-one`)
+ * now source-scans for the stray literal, which is the right place to stop a
+ * FUTURE reintroduction. This is the behavioural companion: it proves the
+ * 24-27-day gap actually changes which week wins the role, on a real call
+ * through `composePlan`, not just a text match.
+ *
+ * On David's own CIM frame this defect never fired — his frame has long runs
+ * and the goal race on the same weekday (Sunday), so every candidate's
+ * days-to-race is a multiple of 7 and 24-27 is unreachable from a Sunday long
+ * run. The gap is real for any runner whose long-run day does not match the
+ * goal race's weekday, which is common (e.g. a Saturday-long-run runner
+ * training for a Sunday marathon). This fixture uses a Monday long run
+ * against the same Sunday goal race to reach it: 27 days before a Sunday goal
+ * lands on a Monday (inside the stale window, outside the real one); 34 days
+ * before also lands on a Monday and sits inside both, as a control.
+ */
+describe('PEAK-STIMULUS WINDOW · the 24-27-day gap between the stale literal and the real constant', () => {
+  const MONDAY_LONG_RUN = '2026-08-31'; // same start; longRunDow changes below
+  function mondayLongRunInput(midBlockRaces: NonNullable<ComposePlanInput['midBlockRaces']>): ComposePlanInput {
+    const base = cimInput(midBlockRaces);
+    return { ...base, startMondayISO: MONDAY_LONG_RUN, longRunDow: 1 as DOW, restDow: 6 as DOW, qualityDows: [2, 4] as DOW[] };
+  }
+  function buildMonday(midBlockRaces: NonNullable<ComposePlanInput['midBlockRaces']>) {
+    const input = mondayLongRunInput(midBlockRaces);
+    const composed = composePlan(input);
+    finalizeComposedPlan(composed, input.raceDistanceMi, input.level);
+    return composed;
+  }
+  function rungs(composed: ReturnType<typeof buildMonday>) {
+    const st = composed.authoredState as Record<string, unknown>;
+    const ladder = st.marathon_specific_ladder as { rungs?: Array<{ days_to_race: number; role: string; vehicle: string }> } | null;
+    return ladder?.rungs ?? [];
+  }
+
+  const RACE_DATE_ISO = '2026-12-06'; // the same goal race date cimInput derives; asserted below rather than assumed
+  it('sanity: the goal race in this fixture really is 2026-12-06, a Sunday, so the gap dates below are exact', () => {
+    const input = mondayLongRunInput([]);
+    expect(input.raceDateISO).toBe(RACE_DATE_ISO);
+    expect(new Date(RACE_DATE_ISO + 'T12:00:00Z').getUTCDay()).toBe(0);
+  });
+
+  it('a B race 27 days out (inside the stale [24,42] window, outside the real [28,42] one) does not win peak_stimulus', () => {
+    const race27 = { slug: 'gap27', name: 'Gap Race', date: addDays(RACE_DATE_ISO, -27), distanceMi: 13.1, goalPaceSec: null, priority: 'B' as const };
+    expect(new Date(race27.date + 'T12:00:00Z').getUTCDay(), 'must land on the Monday long-run day to be eligible at all').toBe(1);
+    const composed = buildMonday([race27]);
+    const rs = rungs(composed);
+    const wonIt = rs.some((r) => r.vehicle === 'tune_up_race' && r.role === 'peak_stimulus' && Math.abs(r.days_to_race - 27) < 1);
+    expect(wonIt, 'a race outside MP_PEAK_STIMULUS_WINDOW_DAYS must not be handed the peak_stimulus role').toBe(false);
+  });
+
+  it('control: a B race 34 days out (inside both windows) does win peak_stimulus', () => {
+    const race34 = { slug: 'gap34', name: 'Control Race', date: addDays(RACE_DATE_ISO, -34), distanceMi: 13.1, goalPaceSec: null, priority: 'B' as const };
+    expect(new Date(race34.date + 'T12:00:00Z').getUTCDay()).toBe(1);
+    const composed = buildMonday([race34]);
+    const rs = rungs(composed);
+    const wonIt = rs.some((r) => r.vehicle === 'tune_up_race' && r.role === 'peak_stimulus' && Math.abs(r.days_to_race - 34) < 1);
+    expect(wonIt, 'a race inside MP_PEAK_STIMULUS_WINDOW_DAYS should win peak_stimulus when nothing else competes for it').toBe(true);
+  });
+});
