@@ -89,6 +89,7 @@ import {
 import { hrToNum, pos as num, runPhases, type NormalizedPhase, type RunData } from '@/lib/runs/run-shape';
 import { workAveragesFromPhases } from '@/lib/runs/work-averages';
 import { looksLikeStrideLabel } from '@/lib/training/expand-spec';
+import { fmtClock } from '@/lib/format/run';
 
 /* ══════════════════════════════ 1 · the shape ═══════════════════════════ */
 
@@ -105,6 +106,26 @@ export interface GradedPhase {
   avgSecPerMi: number | null;
   actualDurationSec: number | null;
   actualDistanceMi: number | null;
+  /**
+   * DURATION-REGRESSION-1 (2026-09-12) · NOT a raw wire read. No payload —
+   * `WatchCompletionPhaseBody` (`legacy/native/.../WatchWorkoutModels.swift`)
+   * declares no such property, and neither does any construction site in
+   * `WorkoutEngine.swift` — has ever carried a key literally named
+   * `targetDurationSec`, so `num(p.targetDurationSec)` alone is always null.
+   * COMPLETIONREASON-1 shipped exactly that and silently deleted the
+   * "X of Y · advanced early" duration sentence in `today/route.ts` (guarded
+   * on `targetDurationSec != null && > 0`) for every advanced-early
+   * recovery, because the OLD code it replaced read the extension-aware
+   * number from a different place: `data.recoveryEndedEarly[].prescribedSec`
+   * / `data.sessionEnded.prescribedSecInPhase`, the watch's own
+   * `durationSec + phaseAddedSec` at the moment the runner advanced early or
+   * ended the session (`WorkoutEngine.swift
+   * #recordRecoveryEndedEarlyIfApplicable`). This field now falls back to
+   * those two records (matched by `phaseIndex`, same join `completionReason`
+   * uses) before `opts.prescribedRecoverySec` — restoring the old,
+   * extension-aware value on the one path that needs it, computed from data
+   * that genuinely exists on the wire instead of a field that never did.
+   */
   targetDurationSec: number | null;
   targetDistanceMi: number | null;
   avgHr: number | null;
@@ -122,6 +143,40 @@ export interface GradedPhase {
    * "completed" for a phase where this is null.
    */
   completed: boolean | null;
+  /**
+   * COMPLETIONREASON-1 (2026-09-12) · WHY the phase ended the way it did —
+   * the fact `gradeStoredPhases` already computed internally (as
+   * `earlyEndPhaseIndices`, feeding the `recoveries[]` array behind
+   * `recoveriesHonestOf`) and used to throw away once that vote was cast.
+   * `today/route.ts` and native's `WorkoutEngine.swift` each re-derived an
+   * approximation of this independently by rejoining `recoveryEndedEarly`/
+   * `sessionEnded` onto a phase by `phaseIndex` themselves — Rule 16, two
+   * owners of one question. This is the one answer.
+   *
+   *   'as_prescribed'  · `completed === true`. Ran to its modelled extent.
+   *   'advanced_early' · a `recoveryEndedEarly` record names this phase —
+   *                      the runner chose to move on before the modelled
+   *                      duration ran out. Recovery phases only; the wire
+   *                      never populates this record for any other type.
+   *   'session_ended'  · a `sessionEnded` record names this phase — the
+   *                      SESSION ended here, not a choice to advance to
+   *                      something else. Mutually exclusive with
+   *                      `'advanced_early'` by construction (the wire writes
+   *                      one or the other for a given phase, never both).
+   *   'incomplete'     · `completed === false` and neither record names this
+   *                      phase — a genuine shortfall the wire can explain no
+   *                      further. The same reading `recoveriesHonestOf`
+   *                      already treats as a lapse.
+   *   'unknown'        · `completed === null` — the wire never said either
+   *                      way (Rule 11). A run recorded before this field
+   *                      existed on the wire, or before the watch build that
+   *                      could populate `recoveryEndedEarly` at all, lands
+   *                      here — NEVER defaulted to `'incomplete'` (a
+   *                      shortfall we did not observe) or `'as_prescribed'`
+   *                      (a completion we did not observe either); both
+   *                      would be inventing a fact this phase never claimed.
+   */
+  completionReason: 'as_prescribed' | 'advanced_early' | 'session_ended' | 'incomplete' | 'unknown';
   isFinishSegment: boolean;
   /** Resolved by `gradeStoredPhases` on the two rungs its `GradeOptions`
    *  describes. A stride is never pace-graded: its `shape` is `effort` and its
@@ -269,8 +324,14 @@ export interface GradeOptions {
    * recovery, `recoveriesHonestOf` excludes it from the tolerance check
    * rather than failing it — a decision is not a lapse. Absent or an empty
    * array behaves exactly as before this field existed.
+   *
+   * `prescribedSec` (DURATION-REGRESSION-1, 2026-09-12) is read too now —
+   * see `GradedPhase.targetDurationSec`'s doc comment for why. It is the
+   * watch's own `durationSec + phaseAddedSec` at the moment the runner
+   * advanced early (`WorkoutEngine.swift#recordRecoveryEndedEarlyIfApplicable`),
+   * so it is extension-aware where the raw phase never is.
    */
-  recoveryEndedEarly?: readonly { phaseIndex?: number | null }[] | null;
+  recoveryEndedEarly?: readonly { phaseIndex?: number | null; prescribedSec?: number | null }[] | null;
   /**
    * WALKBACK-SESSIONEND-1 (2026-09-09) · `runs.data.sessionEnded` (or its
    * `RunData` typed form) — the plan's LAST recovery, cut short because the
@@ -282,8 +343,13 @@ export interface GradeOptions {
    * SAME way a chosen early end is: this is neither a lapse nor a choice to
    * move on, because nothing else was left to move on to. Absent behaves
    * exactly as before this field existed.
+   *
+   * `prescribedSecInPhase` (DURATION-REGRESSION-1) is this record's own
+   * extension-aware equivalent of `recoveryEndedEarly[].prescribedSec` —
+   * same watch-side computation, taken on the session-ending branch instead
+   * of the advance-to-the-next-phase one.
    */
-  sessionEnded?: { phaseIndex?: number | null; phaseType?: string | null } | null;
+  sessionEnded?: { phaseIndex?: number | null; phaseType?: string | null; prescribedSecInPhase?: number | null } | null;
 }
 
 /**
@@ -325,6 +391,45 @@ export function gradeStoredPhases(
     .filter((el): el is Record<string, unknown> => !!el && typeof el === 'object' && !Array.isArray(el));
   const normalized: NormalizedPhase[] = runPhases({ phases: list } as unknown as RunData);
   const classKnown = sessionClass !== 'other';
+
+  /* COMPLETIONREASON-1 · hoisted ahead of the per-phase map (this used to be
+   * built AFTER `phases`, purely for `recoveriesHonestOf`'s benefit) because
+   * `completionReason` below needs the same two sets. Split by REASON rather
+   * than the single undifferentiated `earlyEndPhaseIndices` this collapsed
+   * into before — that union still feeds `recoveriesHonestOf` exactly as it
+   * did (see where it is rebuilt below), unchanged. */
+  const advancedEarlyPhaseIndices = new Set(
+    (opts.recoveryEndedEarly ?? [])
+      .map((r) => (typeof r?.phaseIndex === 'number' ? r.phaseIndex : null))
+      .filter((i): i is number => i != null),
+  );
+  const sessionEndedPhaseIndices = new Set<number>();
+  if (opts.sessionEnded?.phaseType === 'recovery' && typeof opts.sessionEnded.phaseIndex === 'number') {
+    sessionEndedPhaseIndices.add(opts.sessionEnded.phaseIndex);
+  }
+  /* DURATION-REGRESSION-1 (2026-09-12) · the extension-aware prescribed
+   * duration for a recovery ended early — `p.targetDurationSec` below is
+   * always null (no wire payload has ever carried that key; see
+   * `GradedPhase.targetDurationSec`'s doc comment), so this is the ONLY
+   * place a phase's modelled recovery duration, including any "+30 sec"
+   * the runner pressed, survives past the watch. Keyed by `phaseIndex`,
+   * the same join `advancedEarlyPhaseIndices` above already performs.
+   *
+   * `num` (this file's own `pos` import — "zero is not a measurement for a
+   * duration") is used here rather than a hand-rolled `> 0 ? x : null`
+   * ternary: the coercion scanner correctly flags that shape as
+   * zero-erasure wherever it is written ad hoc, and this file already has
+   * the doctrine-argued resolver for exactly this question. */
+  const advancedEarlyPrescribedByIndex = new Map<number, number>(
+    (opts.recoveryEndedEarly ?? [])
+      .map((r): [number, number] | null => {
+        const idx = typeof r?.phaseIndex === 'number' ? r.phaseIndex : null;
+        const sec = num(r?.prescribedSec);
+        return idx != null && sec != null ? [idx, sec] : null;
+      })
+      .filter((e): e is [number, number] => e != null),
+  );
+  const sessionEndedPrescribedSec = num(opts.sessionEnded?.prescribedSecInPhase);
 
   const phases: GradedPhase[] = normalized.map((n, i): GradedPhase => {
     const p = list[i] ?? {};
@@ -416,6 +521,19 @@ export function gradeStoredPhases(
     // field and must not treat `null` as a "yes".
     const completed = n.completed;
 
+    // COMPLETIONREASON-1 · most specific rung first. An explicit record
+    // beats the coarse `completed` tri-state, because a chosen early end or
+    // a session-ended phase is not itself a completion claim either way —
+    // the SAME priority `earlyEndPhaseIndices` already gave these records
+    // over a duration comparison. `completed === null` (the wire never
+    // said) is `'unknown'`, never coerced to a confident `'incomplete'`.
+    const completionReason: GradedPhase['completionReason'] =
+      type === 'recovery' && advancedEarlyPhaseIndices.has(n.index) ? 'advanced_early'
+      : type === 'recovery' && sessionEndedPhaseIndices.has(n.index) ? 'session_ended'
+      : completed === true ? 'as_prescribed'
+      : completed === false ? 'incomplete'
+      : 'unknown';
+
     // ONE GRADE, ON THE RESOLVED SHAPE. `gradeWorkPhase` for a window,
     // `gradeCeilingPhase` for a ceiling, nothing for the rest — the same two
     // rules `gradePhase` routes to, called on the shape resolved above rather
@@ -460,12 +578,22 @@ export function gradeStoredPhases(
       avgSecPerMi: avg,
       actualDurationSec: n.actualDurationSec,
       actualDistanceMi: n.actualDistanceMi,
-      targetDurationSec: num(p.targetDurationSec),
+      // DURATION-REGRESSION-1 · see the field's own doc comment. `p
+      // .targetDurationSec` is rung 1 in case a future payload ever adds it,
+      // but no stored row has one today — rungs 2/3 are the extension-aware
+      // records, and rung 4 is the flat per-workout scalar `recoveries[]`
+      // below already uses for a recovery neither record names.
+      targetDurationSec:
+        num(p.targetDurationSec)
+        ?? (type === 'recovery' ? advancedEarlyPrescribedByIndex.get(n.index) ?? null : null)
+        ?? (type === 'recovery' && sessionEndedPhaseIndices.has(n.index) ? sessionEndedPrescribedSec : null)
+        ?? (type === 'recovery' ? num(opts.prescribedRecoverySec) : null),
       targetDistanceMi: num(p.targetDistanceMi),
       avgHr: n.avgHr,
       maxHr: hrToNum(p.maxHr ?? p.max_hr),
       avgCadence: num(p.avgCadence ?? p.avg_cadence),
       completed,
+      completionReason,
       isFinishSegment: p.isFinishSegment === true,
       /* THE ONE RESOLVED ANSWER, so no consumer re-derives it (Rule 16). The
        * post-run composer, the phone's `phase_breakdown` and the win line all
@@ -487,26 +615,14 @@ export function gradeStoredPhases(
 
   // The session ladder, off the SAME per-phase grades — never re-graded.
   const workPhases = phases.filter((p) => p.type === 'work');
-  // WALKBACK-2 · which recovery PHASE INDICES carry an explicit "ended
-  // early, by choice" record — matched the same way `repSkips`/
-  // `recoveryExtensions` already match onto a phase, by `phaseIndex`.
-  //
-  // WALKBACK-SESSIONEND-1 · `opts.sessionEnded`'s phase index joins the SAME
-  // set. `recoveriesHonestOf` excludes a recovery from the honesty vote
-  // exactly the same way for either reason — it is not, in either case, a
-  // lapse to hold the session back on. Only unioned when the record actually
-  // names a recovery phase; the field exists so a future non-recovery
-  // session-end — an `abandon()`-triggered mid-session end, not yet built —
-  // does not silently start excluding a work phase from a check that was
-  // never asking about it.
-  const earlyEndPhaseIndices = new Set(
-    (opts.recoveryEndedEarly ?? [])
-      .map((r) => (typeof r?.phaseIndex === 'number' ? r.phaseIndex : null))
-      .filter((i): i is number => i != null),
-  );
-  if (opts.sessionEnded?.phaseType === 'recovery' && typeof opts.sessionEnded.phaseIndex === 'number') {
-    earlyEndPhaseIndices.add(opts.sessionEnded.phaseIndex);
-  }
+  // WALKBACK-2 / WALKBACK-SESSIONEND-1 · `recoveriesHonestOf` excludes a
+  // recovery from the honesty vote for EITHER reason alike — it is not, in
+  // either case, a lapse to hold the session back on — so it only needs the
+  // union of the two sets `completionReason` above already split by reason.
+  const earlyEndPhaseIndices = new Set<number>([
+    ...advancedEarlyPhaseIndices,
+    ...sessionEndedPhaseIndices,
+  ]);
   const recoveries = phases
     .filter((p) => p.type === 'recovery')
     .map((p) => ({
@@ -589,10 +705,10 @@ export function resolveWorkoutVerdict(args: ResolveWorkoutVerdictArgs): WorkoutV
   const restS = spec ? num(spec.rep_rest_s) : null;
   const strides = spec ? num(spec.strides_reps) : null;
   const recoveryEndedEarly = Array.isArray(args.recoveryEndedEarly)
-    ? (args.recoveryEndedEarly as Array<{ phaseIndex?: number | null }>)
+    ? (args.recoveryEndedEarly as Array<{ phaseIndex?: number | null; prescribedSec?: number | null }>)
     : null;
   const sessionEnded = args.sessionEnded && typeof args.sessionEnded === 'object'
-    ? (args.sessionEnded as { phaseIndex?: number | null; phaseType?: string | null })
+    ? (args.sessionEnded as { phaseIndex?: number | null; phaseType?: string | null; prescribedSecInPhase?: number | null })
     : null;
   return gradeStoredPhases(args.phases, sessionClass, {
     prescribedRecoverySec: restS,
@@ -648,6 +764,62 @@ export function phaseFellShort(p: Pick<GradedPhase, 'verdict'>): boolean {
 /** Did this graded phase land the work. `fast` counts — see `gradeSession`. */
 export function phaseLandedTheWork(p: Pick<GradedPhase, 'verdict'>): boolean {
   return p.verdict === 'hit' || p.verdict === 'fast';
+}
+
+/**
+ * COMPLETIONREASON-1 (2026-09-12) · the sentence a surface prints beside a
+ * phase for `completionReason`, or null when there is nothing honest to add.
+ *
+ * Mirrors `TodayAfterV5.completionNote` (native, `ViewsV5/TodayAfterV5.swift`)
+ * wording and ordering exactly for the four cases that function already
+ * renders — it reconstructs the same four outcomes today by checking
+ * `type`/`completed`/`recoveryEndedEarly`/`sessionEnded` directly rather than
+ * reading this one resolved fact, which is the native-side follow-up this
+ * change unblocks but does not itself make (no Swift file is touched here).
+ *
+ *   'session_ended'  → null. A hard veto, checked first, unconditionally —
+ *                      the runner already sees the run ended here; stating
+ *                      that the workout ended because the workout ended
+ *                      tells him nothing new (UX-simplification doctrine).
+ *   'advanced_early' → "0:43 of 1:00 · advanced early", off the SAME
+ *                      prescribed/actual pair `recoveries[]` already reads
+ *                      (`targetDurationSec`/`actualDurationSec`), not a
+ *                      second copy of the wire's own `recoveryEndedEarly`
+ *                      record.
+ *   'incomplete'     → "not completed" for anything but a recovery. A
+ *                      recovery that came apart with no record stays silent
+ *                      — WALKBACK-1's original posture: no claim in either
+ *                      direction, never an inferred "not completed" off a
+ *                      duration comparison alone.
+ *   'unknown'        → the ONE case native's function has no distinct copy
+ *                      for at all today (it silently falls to nil, the same
+ *                      rendering as a phase that ran exactly as prescribed).
+ *                      Rule 11: "don't know" and "ran as planned" are
+ *                      different facts. Said only for a recovery phase,
+ *                      where the difference is worth a sentence — this
+ *                      function never speaks for a non-recovery phase in any
+ *                      of the other three "nothing to add" cases either.
+ *   'as_prescribed'  → null. Ran as planned; nothing to add.
+ */
+export function completionNoteFor(
+  p: Pick<GradedPhase, 'type' | 'completionReason' | 'targetDurationSec' | 'actualDurationSec'>,
+): string | null {
+  if (p.completionReason === 'session_ended') return null;
+  if (p.completionReason === 'advanced_early') {
+    const prescribed = p.targetDurationSec;
+    const actual = p.actualDurationSec;
+    if (prescribed != null && prescribed > 0 && actual != null && actual >= 0) {
+      const actualClock = fmtClock(actual) ?? '0:00';
+      const prescribedClock = fmtClock(prescribed) ?? '0:00';
+      return `${actualClock} of ${prescribedClock} · advanced early`;
+    }
+    // The record fired with no usable numbers to state — say nothing rather
+    // than a sentence with a hole in it.
+    return null;
+  }
+  if (p.completionReason === 'incomplete' && p.type !== 'recovery') return 'not completed';
+  if (p.completionReason === 'unknown' && p.type === 'recovery') return 'recovery outcome not recorded';
+  return null;
 }
 
 /** Legacy bridge for a reader that still holds only the device's word. */
