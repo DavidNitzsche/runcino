@@ -100,6 +100,29 @@ export interface PlanWeekResult {
    * when this is set — a refusal is a correct answer, an empty state is not.
    */
   skipStateUnknown?: true;
+  /**
+   * WEEKLOADER-ACTUAL-1 (2026-09-13) · True when the ACTUAL-MILEAGE read
+   * (`canonicalMileageByDay` + the run-id lookup below it) FAILED rather than
+   * came back empty. Mirrors `skipStateUnknown` exactly — same Rule 11 shape,
+   * a different read.
+   *
+   * `PlanWeekDay.done_mi` / `completedRunId` are plain wire fields and stay
+   * best-effort (null on failure, same as an honestly rest/unrun day), so this
+   * is the sibling that lets a caller tell "genuinely nothing ran that day"
+   * apart from "we could not find out". Absent means the read succeeded.
+   *
+   * This is the read STEPPEDDAY-DONE-1 (`/api/v5/today`'s `viewedDoneMi` /
+   * `ranToday`, and `weekStripDays[].isDone`) sits directly on top of: before
+   * this flag existed, a transient failure on this specific query silently
+   * became an empty map, `done_mi` read `null` for every day including a
+   * genuinely COMPLETED one, and the viewed day rendered `before_run` — the
+   * exact original defect this file's STEPPEDDAY-DONE-1 comment describes,
+   * reopened through a read-failure path instead of a date-matching one. A
+   * caller must check this flag before treating a null/zero `done_mi` as "he
+   * did not run" — a refusal is a correct answer, a confident "not done" is
+   * not.
+   */
+  actualStateUnknown?: true;
 }
 
 /**
@@ -343,6 +366,12 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
   )).rows;
 
   let actualByDate = new Map<string, { mi: number; id: string | null }>();
+  // WEEKLOADER-ACTUAL-1 · null = the read failed, not "nothing ran". Kept as
+  // its own variable rather than inferred from `actualByDate.size === 0`
+  // because a genuinely quiet week (nobody ran) is a real, valid empty map —
+  // collapsing that into "failed" would be the same Rule 11 violation this
+  // fix exists to remove, just on the other side.
+  let actualReadFailed = false;
   try {
     const canonicalByDay = await canonicalMileageByDay(userId, weekStart, weekEnd);
     const allCanonicalIds = Array.from(canonicalByDay.values()).flatMap((v) => v.canonicalIds);
@@ -388,7 +417,20 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
       const stravaId = primary ? (idByRow.get(primary)?.strava_id ?? primary) : null;
       actualByDate.set(day, { mi: info.mi, id: stravaId });
     }
-  } catch {
+  } catch (e) {
+    // WEEKLOADER-ACTUAL-1 (2026-09-13) · this used to be a bare
+    // `catch { actualByDate = new Map(); }` — a transient failure on this
+    // read (canonicalMileageByDay, or the run-id lookup beside it) became
+    // silently indistinguishable from "nobody ran this week", and
+    // STEPPEDDAY-DONE-1's `done_mi`/`completedRunId` reads downstream had no
+    // way to tell a real rest day from a query that blew up. Logged (not
+    // silent, per Rule 18) and flagged on the result (`actualStateUnknown`,
+    // Rule 11) so a caller — `/api/v5/today`'s `ranToday` gate and
+    // `weekStripDays[].isDone` chief among them — can refuse to assert "he
+    // did not run" instead of rendering a completed day as `before_run`.
+    console.warn('[week-loader] actual-mileage read failed; week strip will show no done state for any day:',
+      e instanceof Error ? e.message : e);
+    actualReadFailed = true;
     actualByDate = new Map();
   }
 
@@ -435,6 +477,9 @@ export async function loadPlanWeek(userId: string, today: string, dateParam?: st
     // never touched a database, so it has no read to have failed. A week whose
     // skip read errored must not assert an unskipped week it never saw.
     ...(skipReadFailed ? { skipStateUnknown: true as const } : {}),
+    // WEEKLOADER-ACTUAL-1 · same shape, the actual-mileage read. A week whose
+    // actual-mileage read errored must not assert an unrun week it never saw.
+    ...(actualReadFailed ? { actualStateUnknown: true as const } : {}),
   };
 }
 

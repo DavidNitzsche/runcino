@@ -1059,11 +1059,35 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
    * Whether the run COMPLETED the prescription is still, and only,
    * `prescriptionUnmatched` — `lib/execution/day-resolver.ts`, the canonical
    * owner. This line answers the narrower question of whether any running
-   * happened on the date at all. */
+   * happened on the date at all.
+   *
+   * WEEKLOADER-ACTUAL-1 (2026-09-13) · this gate sits directly on top of
+   * `loadPlanWeek`'s actual-mileage read, and that read can FAIL (a
+   * transient DB error), not just come back empty. Until now the failure
+   * silently became `todayWeekDay.done_mi = null` for every day in the
+   * loaded week — indistinguishable from a genuinely unrun day — so a
+   * completed PAST day whose read failed fell through `ranToday = false`
+   * into the ordinary before-run panel below, as if nothing had happened
+   * yet. That is the exact defect this comment block was written to fix,
+   * reopened through a read-failure path instead of a date-matching one.
+   *
+   * `planWeek.actualStateUnknown` (Rule 11, mirrors `skipStateUnknown`) is
+   * only meaningful on the `todayWeekDay` fallback path — `glanceToday` runs
+   * its own live query via `loadGlanceState` and never goes through
+   * `loadPlanWeek`'s actualByDate read, so it is unaffected. */
+  const actualStateUnknownForViewedDay = !glanceToday && planWeek.actualStateUnknown === true;
+  if (actualStateUnknownForViewedDay) {
+    // Rule 18 — this must be observable, not a second silent swallow sitting
+    // on top of the first one `week-loader.ts` just stopped committing.
+    console.warn('[v5/today] actual-mileage read failed for the viewed week; ' +
+      'refusing to assert the viewed day is unrun rather than rendering a ' +
+      'possibly-completed day as before_run.');
+  }
   const viewedDoneMi: number | null = glanceToday
     ? glanceToday.doneMi
     : (todayWeekDay?.done_mi ?? null);
-  const ranToday = viewedDoneMi != null && viewedDoneMi >= 0.5 && !prescriptionUnmatched;
+  const ranToday = !actualStateUnknownForViewedDay
+    && viewedDoneMi != null && viewedDoneMi >= 0.5 && !prescriptionUnmatched;
   if (ranToday) {
     // The resolver already found the exact/legacy match for today's
     // prescription — use it directly rather than re-deriving "which run" a
