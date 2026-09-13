@@ -544,9 +544,20 @@ export const EMPTIED_KNOWN: readonly string[] = [
   // gone rather than re-pointed. `loadMutationContext`'s two reads and
   // `mutatePlan`'s active-plan fallback all went through `attempt()`: the
   // context read now reports `readFailed` and the boundary REFUSES a structural
-  // mutation on it instead of validating against maximally permissive
-  // fallbacks, and the fallback refuses as `plan_verification_failed` instead
-  // of claiming the runner has no active plan. EMPTIED_BASELINE 348 -> 345.
+  // mutation on it instead of validating against UNREAD fallbacks, and the
+  // fallback refuses as `plan_verification_failed` instead of claiming the
+  // runner has no active plan. EMPTIED_BASELINE 348 -> 345.
+  //
+  // LEDGERHONESTY-1 (2026-09-13) · this note used to say the boundary had been
+  // "validating against maximally permissive fallbacks". Struck for the same
+  // reason the claim was struck from `mutate.ts` in round 6, and missed there
+  // because the phrase wraps a line break so the scan's literal never matched.
+  // The fallbacks are not uniformly permissive: ultra's long-run cap is looser
+  // than the 26.2 row the context falls back to, and a null
+  // `trainingDaysPerWeek` makes §5's quality-coverage check FIRE rather than
+  // skip. The honest ground for the refusal is Rule 11 by itself — the read
+  // failed, so nothing about this runner's context was ever established, and
+  // grading a mutation against a guess is wrong whichever way the guess leans.
   // Falsified in lib/plan/_mutation_read_honesty.db.test.ts.
   'lib/plan/open-block.ts::recordOpenBlock',
   'lib/plan/pace-drop-event.ts::loadPaceZoneEvent',

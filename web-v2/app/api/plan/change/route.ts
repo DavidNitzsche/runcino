@@ -254,6 +254,14 @@ export async function POST(req: NextRequest) {
         ok: false,
         error: out.code,
         reason: out.reason,
+        /* ACCEPTTWIN-1 (2026-09-13) · Rule 11 on the wire. The status already
+         * separates "your request conflicts" from "we could not do this", but
+         * only `retryable` says whether the SAME request, unchanged, is worth
+         * sending again — and the refusal has known the answer since round 4
+         * while every body but the undo route's dropped it. Absent when the
+         * refusal came from this module's own vocabulary and carries no
+         * opinion, which is a third fact and not a false `false`. */
+        ...(out.retryable === undefined ? {} : { retryable: out.retryable }),
         ...(out.violations ? { violations: out.violations } : {}),
         ...(out.findings ? { findings: out.findings } : {}),
       },

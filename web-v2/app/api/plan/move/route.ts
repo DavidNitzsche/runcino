@@ -190,7 +190,12 @@ export async function POST(req: NextRequest) {
     const out = await undoMove({ userUuid, todayISO, decisionId });
     if (!out.ok) {
       return NextResponse.json(
-        { error: out.code, reason: out.reason, violations: out.violations },
+        {
+          error: out.code, reason: out.reason, violations: out.violations,
+          // ACCEPTTWIN-1 (2026-09-13) · Rule 11 on the wire. See the twin
+          // comment in `/api/plan/change`.
+          ...(out.retryable === undefined ? {} : { retryable: out.retryable }),
+        },
         { status: httpStatusForRefusal(out, STATUS, 400) },
       );
     }
@@ -242,6 +247,10 @@ export async function POST(req: NextRequest) {
         error: out.code,
         reason: out.reason,
         violations: out.violations,
+        // ACCEPTTWIN-1 (2026-09-13) · Rule 11 on the wire. See the twin
+        // comment in `/api/plan/change`. This is the Move-a-Run limb the
+        // round-4 review measured answering 400 on a retryable refusal.
+        ...(out.retryable === undefined ? {} : { retryable: out.retryable }),
         readjudication: out.report ? wire(out.report) : undefined,
       },
       { status: httpStatusForRefusal(out, STATUS, 400) },

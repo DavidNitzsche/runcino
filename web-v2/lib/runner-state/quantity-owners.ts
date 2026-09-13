@@ -905,10 +905,23 @@ export const QUANTITY_OWNERSHIP: Readonly<Record<QuantityId, QuantityOwnership>>
         computes: 'CLOSED 2026-09-07 (RUNFREQ-OWNER-1). A null profile now '
           + 'falls back to `derivedTrainingDaysPerWeek` (the owner) before '
           + 'feeding `PlanValidationContext.trainingDaysPerWeek`, instead of '
-          + 'passing null straight to `validateComposedPlan`\'s frequency cap '
-          + '(which reads null as "no cap" and skips it) — a mutation could '
-          + 'previously add a day the runner does not actually take without '
-          + 'the validator ever seeing it. Measured against production: '
+          + 'passing null straight to `validateComposedPlan`. '
+          /* LEDGERHONESTY-1 (2026-09-13) · this entry used to justify itself by
+           * saying null was passed to "`validateComposedPlan`\'s frequency cap
+           * (which reads null as \'no cap\' and skips it)", so a mutation could
+           * add a day the runner does not take. That is the same false claim
+           * the round-6 review struck from `mutate.ts`, restated in the
+           * CANONICAL OWNERSHIP REGISTRY, which is the worst place for it: this
+           * table is what the next reader consults to learn what owns the
+           * quantity. There is no weekly-frequency cap in `validate.ts` to
+           * skip. The field has ONE consumer there, and it skips §5\'s
+           * quality-coverage check at `<= 1`, so a null makes that check FIRE
+           * rather than disabling it. The fix is still right and still worth
+           * having — the validator should grade against the runner\'s real
+           * frequency — but the reason below is the true one. */
+          + 'The value is what §5\'s quality-coverage check grades against, so '
+          + 'a null had it grading the mutation against a frequency nobody '
+          + 'read. Measured against production: '
           + 'David\'s account (weekly_frequency null) derives 6.',
         reachedBy: ['lib/plan/mutate.ts'],
       },

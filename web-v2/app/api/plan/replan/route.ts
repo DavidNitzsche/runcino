@@ -113,6 +113,9 @@ export async function POST(req: NextRequest) {
         {
           error: out.code,
           reason: out.reason,
+          // ACCEPTTWIN-1 (2026-09-13) · Rule 11 on the wire. See the twin
+          // comment in `/api/plan/change`.
+          ...(out.retryable === undefined ? {} : { retryable: out.retryable }),
           ...(out.violations ? { violations: out.violations } : {}),
           ...(out.findings ? { findings: out.findings } : {}),
         },

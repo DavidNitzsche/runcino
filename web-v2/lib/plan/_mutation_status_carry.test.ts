@@ -478,7 +478,117 @@ const FALSE_CLAIM = [
   'NO CAP AT ALL',
   'STRICTLY MORE PERMISSIVE',
   'maximally permissive fallbacks',
+  // ACCEPTTWIN-1 (2026-09-13) · the quantity-owners phrasing of the same claim.
+  'which reads null as "no cap" and skips it',
 ];
+
+/* ── ACCEPTTWIN-1 (2026-09-13) · WHY THIS SCAN GOT WIDER ────────────────────
+ *
+ * Round 6 struck the claim from `mutate.ts` at seven sites and scoped this
+ * scan to `mutate.ts`. Round 7 found it alive, verbatim in substance, in two
+ * more files — and the scan could not have seen either one:
+ *
+ *   · `lib/runner-state/quantity-owners.ts` is the CANONICAL OWNERSHIP
+ *     REGISTRY. It carried the claim in a `computes:` string, which is the
+ *     field the next reader consults to learn what owns the quantity. Missed
+ *     because the scan only ever opened one file.
+ *
+ *   · `lib/audit/swallowed-failure-registry.ts` carried "maximally permissive
+ *     fallbacks" — a phrase ALREADY IN the array above — and the scan still
+ *     missed it, because the phrase wraps a line break there ("maximally
+ *     permissive\n  // fallbacks") and `includes()` on raw source cannot match
+ *     across the newline and the comment marker. A literal substring scan over
+ *     wrapped prose is a scan that reports clean because it looked at the
+ *     wrong shape (Rule 18), not because the claim is gone.
+ *
+ * So: every file is normalised (comment markers and runs of whitespace
+ * collapsed to single spaces) BEFORE matching, and the pin list is a ratchet
+ * that may grow.
+ */
+
+/** Files that state, in a durable record, why the boundary refuses. RATCHET. */
+const CLAIM_FILES = [
+  'lib/plan/mutate.ts',
+  'lib/runner-state/quantity-owners.ts',
+  'lib/audit/swallowed-failure-registry.ts',
+] as const;
+
+/** Comment markers and line wrapping removed, so a claim cannot hide in the
+ *  gap between two source lines. String concatenation across lines
+ *  (`'...' + '...'`) is collapsed too, which is how the registry wrote it, and
+ *  backticks and quote flavours are normalised so that re-quoting the same
+ *  sentence in a different style is not a way past the scan. */
+function flatten(src: string): string {
+  return src
+    .replace(/^\s*(\/\/|\*\/|\/\*+|\*)\s?/gm, ' ')
+    .replace(/\\?'\s*\+\s*\\?'/g, '')
+    .replace(/[`\\]/g, '')
+    .replace(/["'‘’“”]/g, '"')
+    .replace(/\s+/g, ' ');
+}
+
+/** The same normalisation applied to the needle, so both sides are comparable
+ *  and the scan cannot pass because the two spellings merely differ. */
+const norm = (s: string) => flatten(s).trim();
+
+describe('LEDGERHONESTY-1 · the claim is dead in EVERY file that states it', () => {
+  it('LIVENESS · every pinned claim file was read and flattened to real text', () => {
+    let n = 0;
+    for (const f of CLAIM_FILES) {
+      const flat = flatten(read(f));
+      expect(flat.length, `${f} flattened to nothing`).toBeGreaterThan(1000);
+      n++;
+    }
+    expect(n, 'the scan looked at nothing, which is the worst outcome available')
+      .toBe(CLAIM_FILES.length);
+  });
+
+  /* The two files added this round hold the claim ONLY as a struck-and-
+   * explained history note, which is how this codebase documents its own
+   * corrections. So the assertion is not "the phrase is absent" — that would
+   * forbid the correction itself — it is "wherever the phrase appears, the
+   * strike marker appears too". A NEW bare assertion has no marker and fails. */
+  for (const f of CLAIM_FILES) {
+    for (const claim of FALSE_CLAIM) {
+      it(`${f} · "${claim}" survives only as a marked correction, never as a claim`, () => {
+        const flat = flatten(read(f));
+        if (!flat.includes(norm(claim))) return;   // never present: nothing to excuse
+        expect(
+          flat.includes('LEDGERHONESTY-1'),
+          `${f} states "${claim}" with no LEDGERHONESTY-1 strike note. There is no `
+          + 'weekly-frequency cap in validate.ts, and the field\'s only consumer there '
+          + 'skips a check at <= 1, so a null makes that check FIRE. Either delete the '
+          + 'claim or mark it as struck.',
+        ).toBe(true);
+      });
+    }
+  }
+
+  /* Rule 18 · an absence-only assertion is satisfied by garbage. These two
+   * check that the CORRECTED text says the true thing, not merely that the
+   * false thing is gone. Both were falsified by hand against round 6's tree:
+   * restoring either original sentence fails the matching case below. */
+  it('quantity-owners states the TRUE reason the null mattered', () => {
+    const flat = flatten(read('lib/runner-state/quantity-owners.ts'));
+    expect(flat, 'the corrected justification is gone')
+      .toContain(norm('quality-coverage check grades against'));
+    // And the entry itself no longer ASSERTS the cap. The phrase may appear
+    // once more in the strike note above it, so this counts rather than
+    // forbids: two occurrences means the claim came back beside its own
+    // correction, which is exactly how a struck sentence gets un-struck.
+    const hits = flat.split(norm('validateComposedPlans frequency cap')).length - 1;
+    expect(hits, 'the struck claim appears more than once, so it is being asserted again')
+      .toBeLessThanOrEqual(1);
+  });
+
+  it('the swallowed-failure note states the TRUE ground for the refusal', () => {
+    const flat = flatten(read('lib/audit/swallowed-failure-registry.ts'));
+    expect(flat, 'the corrected note is gone')
+      .toContain(norm('validating against UNREAD fallbacks'));
+    expect(flat, 'the strike note must name what is actually false')
+      .toContain(norm('quality-coverage check FIRE'));
+  });
+});
 
 describe('LEDGERHONESTY-1 · what lands in plan_decision_ledger and plan_mutation_rejections', () => {
   const src = read('lib/plan/mutate.ts');

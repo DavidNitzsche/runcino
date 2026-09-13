@@ -128,7 +128,12 @@ export async function POST(req: NextRequest) {
     const out = await undoReschedule({ userUuid, todayISO, decisionId });
     if (!out.ok) {
       return NextResponse.json(
-        { error: out.code, reason: out.reason, violations: out.violations },
+        {
+          error: out.code, reason: out.reason, violations: out.violations,
+          // ACCEPTTWIN-1 (2026-09-13) · Rule 11 on the wire. See the twin
+          // comment in `/api/plan/change`.
+          ...(out.retryable === undefined ? {} : { retryable: out.retryable }),
+        },
         { status: httpStatusForRefusal(out, STATUS, 400) },
       );
     }
@@ -167,7 +172,12 @@ export async function POST(req: NextRequest) {
 
   if (!out.ok) {
     return NextResponse.json(
-      { error: out.code, reason: out.reason, violations: out.violations },
+      {
+        error: out.code, reason: out.reason, violations: out.violations,
+        // ACCEPTTWIN-1 (2026-09-13) · Rule 11 on the wire. See the twin
+        // comment in `/api/plan/change`.
+        ...(out.retryable === undefined ? {} : { retryable: out.retryable }),
+      },
       { status: httpStatusForRefusal(out, STATUS, 400) },
     );
   }

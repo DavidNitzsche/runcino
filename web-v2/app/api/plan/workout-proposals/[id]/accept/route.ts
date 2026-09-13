@@ -23,6 +23,7 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { loadPendingProposalById } from '@/lib/plan/workout-proposals';
 import { readLiveRows, actionFromPending, LEGACY_MUTATING_ACTION_KINDS } from '@/lib/brain/proposal/staleness';
 import { prepareAction } from '@/lib/brain/proposal/execute';
+import { httpStatusForRefusal } from '@/lib/plan/mutation-refusal';
 
 export const dynamic = 'force-dynamic';
 
@@ -161,9 +162,63 @@ export async function POST(
     });
     if (!outcome.ok) {
       console.error('[proposal/accept] applyBrainAction refused', { proposalId, outcome });
-      const status = outcome.error === 'unsupported' ? 422
-        : outcome.error === 'apply_failed' ? 500 : 409;
-      return NextResponse.json({ ok: false, error: outcome.error, detail: outcome.detail }, { status });
+      /* ── ACCEPTTWIN-1 (2026-09-13) · THE UNTOUCHED TWIN OF THE UNDO ROUTE ──
+       *
+       * This ladder was the last hand-derived status left on a route that
+       * answers a `mutatePlan` refusal, and it was WRONG in exactly the way
+       * `STATUSCARRY-1` fixed everywhere else. The `: 409` tail caught
+       * `unverified`, which is what `applyBrainAction` reports for BOTH
+       * `plan_verification_failed` (a read inside the boundary threw) and
+       * `ledger_unwritten` (the decision could not be recorded, so it was
+       * rolled back). Both are 503 and `retryable: true`, and `refusalFor`
+       * had already said so one hop back.
+       *
+       * The measured consequence, live while migration 166 is unapplied to
+       * production and `landDecisionInTransaction` therefore refuses every
+       * structural mutation: the runner taps LET IT HAPPEN, the boundary
+       * refuses with `ledger_unwritten`, and this route answered a bare 409
+       * carrying `{ error, detail }`. `APIV5.answerProposal` decodes a
+       * `V5Refusal` off any 4xx, finds neither `refusal` nor `reason` (it is
+       * forbidden from reading `detail`, which is machine text naming a row
+       * id), and falls into its `statusCode == 409` branch — which prints a
+       * sentence the phone wrote itself:
+       *
+       *     "This session has changed since the coach proposed it, so the
+       *      decision no longer fits. It will be raised again against the
+       *      session as it stands."
+       *
+       * Nothing about the session had changed. The database could not write a
+       * ledger row. The runner is told his card is stale, so he will not retry,
+       * and retrying is the only thing that would have worked. That is the
+       * `refusalFor` bug — an honest backend refusal turned into a false
+       * runner-facing sentence — surviving on the one route nobody re-read.
+       *
+       * Three things move, and all three are needed:
+       *   `status`    — 503 now reaches the phone, which does not fabricate
+       *                 outside 4xx, so the false sentence is unreachable.
+       *   `reason`    — the coach sentence under the key the phone READS, so a
+       *                 refusal that IS a 409 (a doctrine rejection) also stops
+       *                 borrowing the stale-session sentence.
+       *   `retryable` — Rule 11 on the wire: "do not retry" and "ask again" are
+       *                 different facts and the client must be able to tell.
+       *
+       * The ladder stays as the FALLBACK for the errors this route's own
+       * applier raises, which carry no status of their own. */
+      const status = httpStatusForRefusal(
+        { code: outcome.error, status: outcome.status, retryable: outcome.retryable },
+        { unsupported: 422, apply_failed: 500 },
+        409,
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          error: outcome.error,
+          detail: outcome.detail,
+          ...(outcome.reason === undefined ? {} : { reason: outcome.reason }),
+          ...(outcome.retryable === undefined ? {} : { retryable: outcome.retryable }),
+        },
+        { status },
+      );
     }
     /* The wrist is asked to look again only when what it CARRIES moved. A
      * change three weeks out has no business invalidating a workout the runner

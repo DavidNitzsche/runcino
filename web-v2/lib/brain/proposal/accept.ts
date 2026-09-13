@@ -50,7 +50,7 @@ import { undoWritesFor } from './undo';
 import type { RepricePayload } from '@/lib/plan/reprice-payload';
 import type { AdaptationAction } from '@/lib/plan/adapt';
 import { mutatePlan } from '@/lib/plan/mutate';
-import { refusalFor } from '@/lib/plan/mutation-refusal';
+import { refusalFor, carriedRefusal } from '@/lib/plan/mutation-refusal';
 
 export interface AcceptContext {
   readonly userUuid: string;
@@ -112,6 +112,16 @@ export type AcceptOutcome =
        * runner, and only one of them means "try again". */
       readonly error: 'invalid' | 'unsupported' | 'missing_context' | 'apply_failed' | 'rejected' | 'unverified';
       readonly detail: string;
+      /* ACCEPTTWIN-1 (2026-09-13) · THE COACH SENTENCE, SEPARATE FROM `detail`.
+       *
+       * `detail` interleaves the sentence with the boundary's violation
+       * strings, and `APIV5.answerProposal`'s own doc comment forbids printing
+       * it ("it names a row id and is machine text; the design contract does
+       * not allow it near a runner"). So the honest sentence was IN the payload
+       * and unreadable, and the phone fell back to a sentence it wrote itself.
+       * `reason` is the key the phone actually reads (`r.refusal ?? r.reason`),
+       * and it carries `refusalFor`'s wording verbatim and nothing else. */
+      readonly reason?: string;
       /* STATUSCARRY-1 (2026-09-13) · carried from `refusalFor` rather than
        * dropped, so a caller answering over HTTP does not have to re-derive
        * what the boundary already decided. See `undo-apply.ts`'s twin and
@@ -249,15 +259,25 @@ export async function applyBrainAction(
          * wrong where it counts: the machine-readable half said the coach
          * refused this, for a read that failed. `refusalFor` decides. */
         const refusal = refusalFor(boundary, { thing: 'That change' });
+        /* ACCEPTTWIN-1 (2026-09-13) · `carriedRefusal` rather than three hand
+         * written field copies, so `status` and `retryable` are NON-OPTIONAL on
+         * what it returns and this hop cannot quietly drop one of them again.
+         * Same construction as `reschedule.ts` and `replan-scenarios.ts`. */
+        const carried = carriedRefusal(
+          refusal,
+          refusal.code === 'plan_invariant_violation' ? ('rejected' as const) : ('unverified' as const),
+        );
         return {
           ok: false,
-          error: refusal.code === 'plan_invariant_violation' ? 'rejected' : 'unverified',
+          error: carried.code,
           detail: boundary.violations.length > 0
-            ? `${refusal.reason} (${boundary.violations.join('; ')})`
-            : refusal.reason,
+            ? `${carried.reason} (${boundary.violations.join('; ')})`
+            : carried.reason,
+          // The runner-facing half, unmixed with the machine half. See the type.
+          reason: carried.reason,
           // STATUSCARRY-1 (2026-09-13) · carried verbatim. See the type above.
-          status: refusal.status,
-          retryable: refusal.retryable,
+          status: carried.status,
+          retryable: carried.retryable,
         };
       }
       return boundary.value > 0
