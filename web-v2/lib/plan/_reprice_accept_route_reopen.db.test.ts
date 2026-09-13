@@ -208,7 +208,19 @@ when('ITEM 5 · accept ROUTE reopens a reprice proposal when applyReanchorPropos
 
     expect(res.status, 'a reprice accept whose plan cannot be resolved must not report 200').toBe(409);
     const json = await res.json();
-    expect(json).toEqual({ ok: false, error: 'apply_refused' });
+    /* REPRICEREASON-1 (merged onto this route after this test was written)
+     * replaced the bare `{ ok:false, error:'apply_refused' }` this test
+     * originally asserted with a typed, reasoned refusal -- same fact (this
+     * plan cannot be resolved), honest shape. `detail` embeds the doomed
+     * proposal's randomized planId, so it is pattern-matched rather than
+     * equality-checked; every other field is stable and asserted exactly. */
+    expect(json).toEqual({
+      ok: false,
+      error: 'stale_card',
+      reason: 'That repricing could not be matched to an active plan, so nothing was changed.',
+      detail: expect.stringMatching(/^plan pln_does_not_exist_[0-9a-f]{8} is no longer this runner's active plan$/),
+      retryable: false,
+    });
 
     const after = await pool.query<{ status: string; resolved_at: string | null }>(
       `SELECT status, resolved_at FROM plan_workout_proposals WHERE id = $1`, [proposalId],

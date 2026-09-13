@@ -126,7 +126,13 @@ describe('workout-proposals accept · reopen on Apply failure (modern lanes)', (
     expect(res.status).toBe(200);
   });
 
-  it('REANCHORPROPOSES-1 (reprice) lane: reopens the card when applyReanchorProposal resolves null', async () => {
+  it('REANCHORPROPOSES-1 (reprice) lane: reopens the card when applyReanchorProposal refuses', async () => {
+    /* REPRICEREASON-1 (2026-09-13, merged onto this route after this test was
+     * written) replaced applyReanchorProposal's null-on-refusal contract with
+     * a typed ReanchorApplyOutcome so the route can carry a reason/status/
+     * retryable back to the phone instead of a bare 409. The reopen behaviour
+     * this test exists to prove is unchanged; only the mock shape and the
+     * response body follow the new contract. */
     vi.mocked(loadPendingProposalById).mockResolvedValue({
       ok: true,
       proposal: { planWorkoutId: 'w1', actionKind: 'reprice' },
@@ -136,7 +142,14 @@ describe('workout-proposals accept · reopen on Apply failure (modern lanes)', (
       actionPayload: { reprice: { planId: 'p1', arm: 'canonical-prior', toVdot: 50 } },
     } as any);
     vi.mocked(asRepricePayload).mockReturnValue({ planId: 'p1', arm: 'canonical-prior', toVdot: 50 } as any);
-    vi.mocked(applyReanchorProposal).mockResolvedValue(null as any);
+    vi.mocked(applyReanchorProposal).mockResolvedValue({
+      ok: false,
+      code: 'stale_card',
+      reason: 'That repricing could not be matched to an active plan, so nothing was changed.',
+      because: 'plan p1 is no longer this runner\'s active plan',
+      status: 409,
+      retryable: false,
+    } as any);
 
     const { req, ctx } = acceptRequest();
     const res = await POST(req, ctx);
@@ -144,7 +157,13 @@ describe('workout-proposals accept · reopen on Apply failure (modern lanes)', (
     expect(reopenProposal).toHaveBeenCalledWith(USER, PROPOSAL_ID);
     expect(res.status).toBe(409);
     const json = await res.json();
-    expect(json).toEqual({ ok: false, error: 'apply_refused' });
+    expect(json).toEqual({
+      ok: false,
+      error: 'stale_card',
+      reason: 'That repricing could not be matched to an active plan, so nothing was changed.',
+      detail: 'plan p1 is no longer this runner\'s active plan',
+      retryable: false,
+    });
   });
 
   it('REANCHORPROPOSES-1 (reprice) lane: reopens the card when applyReanchorProposal throws', async () => {
@@ -163,7 +182,11 @@ describe('workout-proposals accept · reopen on Apply failure (modern lanes)', (
     const res = await POST(req, ctx);
 
     expect(reopenProposal).toHaveBeenCalledWith(USER, PROPOSAL_ID);
-    expect(res.status).toBe(409);
+    /* REPRICEREASON-1's own .catch() routes a THROW through refusalFor's
+     * 'not_attempted' limb, which is 503/retryable (Rule 11: a throw is not
+     * one of the four characterised refusals) -- not the 409 this test
+     * asserted before that fix landed on this route. */
+    expect(res.status).toBe(503);
   });
 
   it('REANCHORPROPOSES-1 (reprice) lane: reopens the card when the payload is unreadable (found by independent review)', async () => {
@@ -196,7 +219,16 @@ describe('workout-proposals accept · reopen on Apply failure (modern lanes)', (
       actionPayload: { reprice: { planId: 'p1', arm: 'canonical-prior', toVdot: 50 } },
     } as any);
     vi.mocked(asRepricePayload).mockReturnValue({ planId: 'p1', arm: 'canonical-prior', toVdot: 50 } as any);
-    vi.mocked(applyReanchorProposal).mockResolvedValue({ workoutsUpdated: 5, workoutsSealed: 0, toVdot: 51 } as any);
+    // REPRICEREASON-1's typed ReanchorApplyOutcome wraps the result in `{ ok:
+    // true, result }` rather than returning it bare -- see reanchor-plan.ts.
+    vi.mocked(applyReanchorProposal).mockResolvedValue({
+      ok: true,
+      result: {
+        planId: 'p1', mode: 'maintenance', fromVdot: 49, toVdot: 51,
+        fromSource: 'measured', workoutsUpdated: 5, workoutsSealed: 0,
+        clearedProvisional: false,
+      },
+    } as any);
 
     const { req, ctx } = acceptRequest();
     const res = await POST(req, ctx);
