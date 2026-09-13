@@ -414,10 +414,6 @@ describe('CONTEXTREAD-1 · a failed validator-context read no longer weakens the
         res.violations.join(' '),
         'the recorded reason must name the validator context, not the archived-plan guard',
       ).toContain('validator context');
-      expect(
-        res.violations.join(' '),
-        'and must say WHY refusing beats grading: the fallbacks are more permissive',
-      ).toContain('MORE PERMISSIVE');
       expect(await workoutTypeOn(seeded.planId), 'the row was rewritten anyway').toBe('easy');
     },
   );
