@@ -46,6 +46,47 @@ for (const file of ['.env.local', '.env']) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// AUDITRO-1 (2026-09-13) · THE CREDENTIAL THE AUDITS SKIP ON MUST BE THE
+// CREDENTIAL THEY CONNECT WITH.
+//
+// Every one of the 33 `*.audit.test.ts` files gates itself on
+// `DATABASE_URL_RO`, and `audit-suite.yml` supplies exactly that secret and no
+// other. But `lib/db/pool.ts` connects on `DATABASE_URL`. So in CI the
+// skip-guard opened, the file RAN, and the pool fell back to the localhost
+// default and answered "The server does not support SSL connections".
+//
+// The visible half was two loud failures — `_postrun_live` and `_detail_live`
+// both assert `haveDb()` (Rule 18 clause 2), so they went red. The dangerous
+// half is the other seven assertions in those same two files: each opens with
+// `if (!await haveDb()) { console.warn(...); return; }` and therefore REPORTED
+// GREEN HAVING ASSERTED NOTHING, in the very job whose stated principle is
+// "a production audit that did not run is a failure, not a pass."
+//
+// And it was not even deterministic. `lib/db/pool` reads the variable ONCE, at
+// module evaluation. The 22 audit files that assign `process.env.DATABASE_URL
+// = RO` inside a test body therefore only work when nothing else in their
+// vitest WORKER imported `lib/db/pool` first — so which audits truly reach
+// production depended on file-to-worker assignment and ran differently from
+// run to run. Measured 2026-09-13 with only `DATABASE_URL_RO` exported:
+// `_postrun_corpus` and `_durability_anchor` both died on the localhost
+// fallback, three levels down in `lib/runs/volume.ts`, for exactly this reason.
+//
+// This runs in every worker before any test module is evaluated, so the pool
+// singleton is built from the right string the first time and there is no
+// ordering left to lose. It never overrides an explicit `DATABASE_URL` (a
+// developer machine's `.env.local` above, or a harness pointing at a loopback
+// scratch database, still win), and the value it adopts is the `faff_readonly`
+// role — SELECT only at the database, with the write barrier below as the
+// second, independent layer.
+//
+// Rule 11: "no credential", "the read-only credential" and "the read-write
+// credential" are three facts. This binds the second to the connection instead
+// of leaving it to name a fourth state — configured, and still unreachable.
+if (!process.env.DATABASE_URL && process.env.DATABASE_URL_RO) {
+  process.env.DATABASE_URL = process.env.DATABASE_URL_RO;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // AND THEN FENCE IT.
 //
 // The block above is the reason a fence is needed. It has just loaded
