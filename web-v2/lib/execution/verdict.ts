@@ -106,6 +106,26 @@ export interface GradedPhase {
   avgSecPerMi: number | null;
   actualDurationSec: number | null;
   actualDistanceMi: number | null;
+  /**
+   * DURATION-REGRESSION-1 (2026-09-12) · NOT a raw wire read. No payload —
+   * `WatchCompletionPhaseBody` (`legacy/native/.../WatchWorkoutModels.swift`)
+   * declares no such property, and neither does any construction site in
+   * `WorkoutEngine.swift` — has ever carried a key literally named
+   * `targetDurationSec`, so `num(p.targetDurationSec)` alone is always null.
+   * COMPLETIONREASON-1 shipped exactly that and silently deleted the
+   * "X of Y · advanced early" duration sentence in `today/route.ts` (guarded
+   * on `targetDurationSec != null && > 0`) for every advanced-early
+   * recovery, because the OLD code it replaced read the extension-aware
+   * number from a different place: `data.recoveryEndedEarly[].prescribedSec`
+   * / `data.sessionEnded.prescribedSecInPhase`, the watch's own
+   * `durationSec + phaseAddedSec` at the moment the runner advanced early or
+   * ended the session (`WorkoutEngine.swift
+   * #recordRecoveryEndedEarlyIfApplicable`). This field now falls back to
+   * those two records (matched by `phaseIndex`, same join `completionReason`
+   * uses) before `opts.prescribedRecoverySec` — restoring the old,
+   * extension-aware value on the one path that needs it, computed from data
+   * that genuinely exists on the wire instead of a field that never did.
+   */
   targetDurationSec: number | null;
   targetDistanceMi: number | null;
   avgHr: number | null;
@@ -304,8 +324,14 @@ export interface GradeOptions {
    * recovery, `recoveriesHonestOf` excludes it from the tolerance check
    * rather than failing it — a decision is not a lapse. Absent or an empty
    * array behaves exactly as before this field existed.
+   *
+   * `prescribedSec` (DURATION-REGRESSION-1, 2026-09-12) is read too now —
+   * see `GradedPhase.targetDurationSec`'s doc comment for why. It is the
+   * watch's own `durationSec + phaseAddedSec` at the moment the runner
+   * advanced early (`WorkoutEngine.swift#recordRecoveryEndedEarlyIfApplicable`),
+   * so it is extension-aware where the raw phase never is.
    */
-  recoveryEndedEarly?: readonly { phaseIndex?: number | null }[] | null;
+  recoveryEndedEarly?: readonly { phaseIndex?: number | null; prescribedSec?: number | null }[] | null;
   /**
    * WALKBACK-SESSIONEND-1 (2026-09-09) · `runs.data.sessionEnded` (or its
    * `RunData` typed form) — the plan's LAST recovery, cut short because the
@@ -317,8 +343,13 @@ export interface GradeOptions {
    * SAME way a chosen early end is: this is neither a lapse nor a choice to
    * move on, because nothing else was left to move on to. Absent behaves
    * exactly as before this field existed.
+   *
+   * `prescribedSecInPhase` (DURATION-REGRESSION-1) is this record's own
+   * extension-aware equivalent of `recoveryEndedEarly[].prescribedSec` —
+   * same watch-side computation, taken on the session-ending branch instead
+   * of the advance-to-the-next-phase one.
    */
-  sessionEnded?: { phaseIndex?: number | null; phaseType?: string | null } | null;
+  sessionEnded?: { phaseIndex?: number | null; phaseType?: string | null; prescribedSecInPhase?: number | null } | null;
 }
 
 /**
@@ -376,6 +407,29 @@ export function gradeStoredPhases(
   if (opts.sessionEnded?.phaseType === 'recovery' && typeof opts.sessionEnded.phaseIndex === 'number') {
     sessionEndedPhaseIndices.add(opts.sessionEnded.phaseIndex);
   }
+  /* DURATION-REGRESSION-1 (2026-09-12) · the extension-aware prescribed
+   * duration for a recovery ended early — `p.targetDurationSec` below is
+   * always null (no wire payload has ever carried that key; see
+   * `GradedPhase.targetDurationSec`'s doc comment), so this is the ONLY
+   * place a phase's modelled recovery duration, including any "+30 sec"
+   * the runner pressed, survives past the watch. Keyed by `phaseIndex`,
+   * the same join `advancedEarlyPhaseIndices` above already performs.
+   *
+   * `num` (this file's own `pos` import — "zero is not a measurement for a
+   * duration") is used here rather than a hand-rolled `> 0 ? x : null`
+   * ternary: the coercion scanner correctly flags that shape as
+   * zero-erasure wherever it is written ad hoc, and this file already has
+   * the doctrine-argued resolver for exactly this question. */
+  const advancedEarlyPrescribedByIndex = new Map<number, number>(
+    (opts.recoveryEndedEarly ?? [])
+      .map((r): [number, number] | null => {
+        const idx = typeof r?.phaseIndex === 'number' ? r.phaseIndex : null;
+        const sec = num(r?.prescribedSec);
+        return idx != null && sec != null ? [idx, sec] : null;
+      })
+      .filter((e): e is [number, number] => e != null),
+  );
+  const sessionEndedPrescribedSec = num(opts.sessionEnded?.prescribedSecInPhase);
 
   const phases: GradedPhase[] = normalized.map((n, i): GradedPhase => {
     const p = list[i] ?? {};
@@ -524,7 +578,16 @@ export function gradeStoredPhases(
       avgSecPerMi: avg,
       actualDurationSec: n.actualDurationSec,
       actualDistanceMi: n.actualDistanceMi,
-      targetDurationSec: num(p.targetDurationSec),
+      // DURATION-REGRESSION-1 · see the field's own doc comment. `p
+      // .targetDurationSec` is rung 1 in case a future payload ever adds it,
+      // but no stored row has one today — rungs 2/3 are the extension-aware
+      // records, and rung 4 is the flat per-workout scalar `recoveries[]`
+      // below already uses for a recovery neither record names.
+      targetDurationSec:
+        num(p.targetDurationSec)
+        ?? (type === 'recovery' ? advancedEarlyPrescribedByIndex.get(n.index) ?? null : null)
+        ?? (type === 'recovery' && sessionEndedPhaseIndices.has(n.index) ? sessionEndedPrescribedSec : null)
+        ?? (type === 'recovery' ? num(opts.prescribedRecoverySec) : null),
       targetDistanceMi: num(p.targetDistanceMi),
       avgHr: n.avgHr,
       maxHr: hrToNum(p.maxHr ?? p.max_hr),
@@ -642,10 +705,10 @@ export function resolveWorkoutVerdict(args: ResolveWorkoutVerdictArgs): WorkoutV
   const restS = spec ? num(spec.rep_rest_s) : null;
   const strides = spec ? num(spec.strides_reps) : null;
   const recoveryEndedEarly = Array.isArray(args.recoveryEndedEarly)
-    ? (args.recoveryEndedEarly as Array<{ phaseIndex?: number | null }>)
+    ? (args.recoveryEndedEarly as Array<{ phaseIndex?: number | null; prescribedSec?: number | null }>)
     : null;
   const sessionEnded = args.sessionEnded && typeof args.sessionEnded === 'object'
-    ? (args.sessionEnded as { phaseIndex?: number | null; phaseType?: string | null })
+    ? (args.sessionEnded as { phaseIndex?: number | null; phaseType?: string | null; prescribedSecInPhase?: number | null })
     : null;
   return gradeStoredPhases(args.phases, sessionClass, {
     prescribedRecoverySec: restS,
