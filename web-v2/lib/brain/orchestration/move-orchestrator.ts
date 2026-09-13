@@ -1172,12 +1172,24 @@ export type MoveOutcome =
     }
   | {
       ok: false;
+      /* CALLERHONESTY-1 (2026-09-13) · the last four are forwarded verbatim
+       * from `applyReschedule`, which now distinguishes a doctrine rejection
+       * from a failed read, an unwritable ledger and an already-applied move.
+       * Forwarded rather than re-collapsed to `rejected`, which is the whole
+       * point: this orchestrator is one more hop the distinction has to
+       * survive. */
       code: 'no_plan' | 'not_found' | 'bad_request' | 'plan_moved' | 'rejected'
           | 'sealed' | 'immovable' | 'no_record_table' | 'readjudication_refused'
-          | 'authority_refused';
+          | 'authority_refused'
+          | 'plan_verification_failed' | 'ledger_unrecorded' | 'duplicate' | 'mutation_failed';
       reason: string;
       report?: ReadjudicationReport;
       violations?: string[];
+      /* STATUSCARRY-1 (2026-09-13) · forwarded from `applyReschedule` for the
+       * same reason the codes are: `/api/plan/move`'s own STATUS map had never
+       * heard of the four `mutation-refusal` codes and fell through to 400. */
+      status?: 409 | 503;
+      retryable?: boolean;
     };
 
 export interface ApplyMoveInput {
@@ -1264,7 +1276,13 @@ export async function applyMove(input: ApplyMoveInput): Promise<MoveOutcome> {
     allowAdjacentWeek: input.allowAdjacentWeek,
   });
   if (!applied.ok) {
-    return { ok: false, code: applied.code, reason: applied.reason, report, violations: applied.violations };
+    /* STATUSCARRY-1 (2026-09-13) · `status`/`retryable` forwarded, for the same
+     * stated reason the four codes above are: this orchestrator is one more hop
+     * the distinction has to survive, and it is the hop `/api/plan/move` reads. */
+    return {
+      ok: false, code: applied.code, reason: applied.reason, report,
+      violations: applied.violations, status: applied.status, retryable: applied.retryable,
+    };
   }
 
   /* 4 · the ledger. */
@@ -1335,7 +1353,9 @@ export async function applyMove(input: ApplyMoveInput): Promise<MoveOutcome> {
 
 export type UndoMoveOutcome =
   | { ok: true; decisionId: string; restored: number; planVersion: string; ledger: 'written' | 'table_absent' | 'failed' }
-  | { ok: false; code: string; reason: string; violations?: string[] };
+  /* STATUSCARRY-1 (2026-09-13) · `status`/`retryable` forwarded from
+   * `undoReschedule`. See `ApplyMoveOutcome`'s twin. */
+  | { ok: false; code: string; reason: string; violations?: string[]; status?: 409 | 503; retryable?: boolean };
 
 /**
  * Put it back, and say so in the ledger.
@@ -1349,7 +1369,12 @@ export async function undoMove(opts: {
   userUuid: string; todayISO: string; decisionId: string;
 }): Promise<UndoMoveOutcome> {
   const out = await undoReschedule(opts);
-  if (!out.ok) return { ok: false, code: out.code, reason: out.reason, violations: out.violations };
+  if (!out.ok) {
+    return {
+      ok: false, code: out.code, reason: out.reason, violations: out.violations,
+      status: out.status, retryable: out.retryable,   // STATUSCARRY-1
+    };
+  }
 
   const plan = await pool.query<{ id: string; last_adapted_at: string | null }>(
     `SELECT id, last_adapted_at::text AS last_adapted_at FROM training_plans

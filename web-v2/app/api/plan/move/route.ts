@@ -45,6 +45,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserId } from '@/lib/auth/session';
+import { httpStatusForRefusal } from '@/lib/plan/mutation-refusal';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { isISODate, recommendReschedule, resolveConstraint } from '@/lib/plan/reschedule';
 import {
@@ -56,6 +57,13 @@ import {
 } from '@/lib/brain/orchestration/move-orchestrator';
 import { checksThatCouldNotRun } from '@/lib/coaching-contract/move-readjudication';
 
+/**
+ * STATUSCARRY-1 (2026-09-13) · THE FALLBACK, NOT THE ANSWER. See
+ * `/api/plan/reschedule`'s twin. This is the route the live regression was
+ * measured on: with migration 166 unapplied on production,
+ * `landDecisionInTransaction` refuses every structural mutation, `applyMove`
+ * forwards `plan_verification_failed`, and this map answered `?? 400` for it.
+ */
 const STATUS: Record<string, number> = {
   no_plan: 404,
   not_found: 404,
@@ -139,7 +147,7 @@ export async function GET(req: NextRequest) {
   if (!rec.ok) {
     return NextResponse.json(
       { error: rec.code, reason: rec.reason },
-      { status: STATUS[rec.code] ?? 400 },
+      { status: httpStatusForRefusal(rec, STATUS, 400) },
     );
   }
 
@@ -182,8 +190,13 @@ export async function POST(req: NextRequest) {
     const out = await undoMove({ userUuid, todayISO, decisionId });
     if (!out.ok) {
       return NextResponse.json(
-        { error: out.code, reason: out.reason, violations: out.violations },
-        { status: STATUS[out.code] ?? 400 },
+        {
+          error: out.code, reason: out.reason, violations: out.violations,
+          // ACCEPTTWIN-1 (2026-09-13) · Rule 11 on the wire. See the twin
+          // comment in `/api/plan/change`.
+          ...(out.retryable === undefined ? {} : { retryable: out.retryable }),
+        },
+        { status: httpStatusForRefusal(out, STATUS, 400) },
       );
     }
     return NextResponse.json({
@@ -234,9 +247,13 @@ export async function POST(req: NextRequest) {
         error: out.code,
         reason: out.reason,
         violations: out.violations,
+        // ACCEPTTWIN-1 (2026-09-13) · Rule 11 on the wire. See the twin
+        // comment in `/api/plan/change`. This is the Move-a-Run limb the
+        // round-4 review measured answering 400 on a retryable refusal.
+        ...(out.retryable === undefined ? {} : { retryable: out.retryable }),
         readjudication: out.report ? wire(out.report) : undefined,
       },
-      { status: STATUS[out.code] ?? 400 },
+      { status: httpStatusForRefusal(out, STATUS, 400) },
     );
   }
 

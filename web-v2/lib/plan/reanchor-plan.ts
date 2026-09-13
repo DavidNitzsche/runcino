@@ -87,6 +87,9 @@ import { rowOrNull } from '@/lib/db/read';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import type { PrescribedPaceAnchors } from '@/lib/training/prescription-resolver';
 import { mutatePlan } from './mutate';
+// REPRICEREASON-1 (2026-09-13) · the ONE mapping from a refusal to what the
+// runner reads. See `ReanchorApplyOutcome` above.
+import { refusalFor, carriedRefusal } from './mutation-refusal';
 import {
   writeReanchorProposal, pricedAnchorsOf, anchorMovesBetween,
   type RepriceProposalOutcome,
@@ -351,6 +354,65 @@ export interface ReanchorProposed {
 }
 
 export type ReanchorOutcome = ReanchorResult | ReanchorDeferral | ReanchorProposed | null;
+
+/**
+ * REPRICEREASON-1 (2026-09-13) · WHAT AN ACCEPTED REPRICING ANSWERS WITH.
+ *
+ * ── THE BUG, AND THE MIS-DIAGNOSIS THAT KEPT IT OPEN ────────────────────────
+ *
+ * `applyReanchorProposal` returned `ReanchorResult | null`, and the accept
+ * route turned the `null` into a bare `{ ok: false, error: 'apply_refused' }`
+ * with HTTP 409 and no `reason`. That is the same shape ACCEPTTWIN-1 fixed on
+ * the action limb of the same route and UNDOTWIN-1 fixed on the undo twin: a
+ * 4xx with no `reason` is a 4xx the phone answers with a sentence it wrote
+ * itself, and on this route that sentence tells the runner his SESSION moved
+ * when what actually happened was that his PLAN was rebuilt, or that the card
+ * carried no anchor.
+ *
+ * A prior round deferred this on the ground that the `null` was an
+ * uncharacterised refusal, so surfacing it would mean inventing coach copy for
+ * something nobody understood. That was FALSE, and it is the reason the defect
+ * outlived two rounds. The `null` had four distinct origins, every one of them
+ * already reasoned about at its own site, two of them already carrying a
+ * written `console.error` sentence:
+ *
+ *   stale_card   the named plan is archived or rebuilt, so the card is stale.
+ *                Reuses `refusalFor`'s `no_plan` sentence verbatim — the fact
+ *                and the wording both already existed.
+ *   no_anchor    the card carries no usable anchor VDOT. Permanent for this
+ *                card, so it is not retryable.
+ *   deferred     the adapter re-priced this plan inside its window. Clears on
+ *                its own, so it IS retryable.
+ *   not_applied  the arm ran and wrote nothing. See `repriceApplyOutcome` for
+ *                what is still collapsed inside this one, and why.
+ *
+ * ── RULE 22 · WHAT THIS TYPE CANNOT DO ─────────────────────────────────────
+ *
+ * It cannot make the route spend `reason`. `_reprice_reason.test.ts` asserts on
+ * the route's own response body for that, because a caller that keeps only
+ * `ok` is a regression this type is structurally unable to see.
+ */
+export type ReanchorApplyRefusalCode =
+  | 'stale_card'
+  | 'no_anchor'
+  | 'deferred'
+  | 'not_applied';
+
+export interface ReanchorApplyRefusal {
+  readonly ok: false;
+  readonly code: ReanchorApplyRefusalCode;
+  /** One sentence, coach voice, for the runner. The key the phone reads. */
+  readonly reason: string;
+  /** Machine text naming the plan and the arm. Never printed to a runner. */
+  readonly because: string;
+  readonly status: 409 | 503;
+  /** Rule 11 on the wire: "do not retry" and "ask again" are different facts. */
+  readonly retryable: boolean;
+}
+
+export type ReanchorApplyOutcome =
+  | { readonly ok: true; readonly result: ReanchorResult }
+  | ReanchorApplyRefusal;
 
 /** Discriminant helper for consumers of `ReanchorOutcome`. */
 export function isReanchorDeferral(o: ReanchorOutcome): o is ReanchorDeferral {
@@ -790,7 +852,7 @@ export async function applyReanchorProposal(
   payload: { planId: string; arm: RepriceArm; toVdot: number | null },
   today: string,
   evidence?: ReanchorEvidence | null,
-): Promise<ReanchorResult | null> {
+): Promise<ReanchorApplyOutcome> {
   const planRow = (await pool.query<{
     id: string; mode: string | null; race_id: string | null;
     authored_state: Record<string, unknown> | null;
@@ -806,24 +868,111 @@ export async function applyReanchorProposal(
     console.error(
       `[reanchorPlan] accept REFUSED · plan=${payload.planId} is no longer this runner's active plan`,
     );
-    return null;
+    /* REPRICEREASON-1 · a stale card is EXACTLY the fact `refusalFor` already
+     * has a sentence for, so this reuses it rather than writing a second one
+     * (Rule 16). `no_plan` is its own word for "this could not be matched to an
+     * active plan", which is what happened. */
+    const carried = carriedRefusal(
+      refusalFor({ outcome: 'no_plan', violations: [] }, { thing: 'That repricing' }),
+      'stale_card' as const,
+    );
+    return {
+      ok: false,
+      code: carried.code,
+      reason: carried.reason,
+      because: `plan ${payload.planId} is no longer this runner's active plan`,
+      status: carried.status,
+      retryable: carried.retryable,
+    };
   }
   const st = (planRow.authored_state ?? {}) as Record<string, any>;
 
   if (payload.arm === 'canonical-prior') {
     const out = await reanchorOffCanonicalPrior(userId, today, 'apply');
-    return out != null && !isReanchorDeferral(out) && !isReanchorProposed(out) ? out : null;
+    return repriceApplyOutcome(out, payload.planId, 'canonical-prior');
   }
   if (payload.toVdot == null || !Number.isFinite(payload.toVdot) || payload.toVdot <= 0) {
     console.error(
       `[reanchorPlan] accept REFUSED · plan=${payload.planId} · the card carries no usable anchor VDOT`,
     );
-    return null;
+    return {
+      ok: false,
+      code: 'no_anchor',
+      /* The card itself is unreadable, so retrying THIS card cannot work. The
+       * sentence says the plan is untouched and does not offer a retry, which
+       * is what `retryable: false` says on the machine half. */
+      reason: 'That repricing could not be read, so your paces were not changed.',
+      because: `the card carries no usable anchor VDOT (${String(payload.toVdot)})`,
+      status: 409,
+      retryable: false,
+    };
   }
   const out = payload.arm === 'race-prep'
     ? await reanchorRacePrep(userId, planRow.id, st, payload.toVdot, today, evidence, true, 'apply')
     : await reanchorMaintenance(userId, planRow.id, st, payload.toVdot, today, evidence, true, 'apply');
-  return out != null && !isReanchorDeferral(out) && !isReanchorProposed(out) ? out : null;
+  return repriceApplyOutcome(out, payload.planId, payload.arm);
+}
+
+/**
+ * REPRICEREASON-1 (2026-09-13) · THE ARM'S ANSWER, WITHOUT THE COLLAPSE.
+ *
+ * `applyReanchorProposal` used to end `? out : null` on both arms, so a
+ * deferral, a propose-in-apply-mode and a refusal all left as one bare `null`.
+ *
+ * ── WHAT REMAINS COLLAPSED, STATED RATHER THAN HIDDEN (Rule 11) ─────────────
+ *
+ * `null` from an arm is still TWO facts: the gate found nothing worth moving,
+ * and `mutatePlan` refused the write. Telling them apart means widening
+ * `ReanchorOutcome` itself, which every caller of `reanchorActivePlan` and
+ * `forceReanchorActivePlan` reads, and that is a larger change than this one.
+ * So `not_applied` says what is TRUE of both — the plan did not move — and
+ * claims no knowledge of which. It does NOT say "the coach refused", which is
+ * the fabrication this whole pass exists to remove.
+ */
+function repriceApplyOutcome(
+  out: ReanchorOutcome,
+  planId: string,
+  arm: RepriceArm,
+): ReanchorApplyOutcome {
+  if (isReanchorDeferral(out)) {
+    return {
+      ok: false,
+      code: 'deferred',
+      /* Characterised at its source: `deferred_to_adapter_recompute` means the
+       * adapter already re-priced this plan inside `windowHours`. It clears on
+       * its own, so this one IS retryable. */
+      reason: 'Your paces were re-anchored a moment ago, so this was not applied again.',
+      because: `${arm} deferred to the adapter recompute for ${out.windowHours}h`,
+      status: 409,
+      retryable: true,
+    };
+  }
+  if (isReanchorProposed(out)) {
+    /* Unreachable by construction: both arms are called with mode 'apply' and
+     * only 'propose' raises a card. Named rather than folded into the branch
+     * below, because if it ever DOES happen the runner tapped accept and got a
+     * second card, and that is a routing bug worth reading as one. */
+    console.error(`[reanchorPlan] accept REFUSED · plan=${planId} · ${arm} raised a card in apply mode`);
+    return {
+      ok: false,
+      code: 'not_applied',
+      reason: 'That repricing was not applied, so your paces are unchanged.',
+      because: `${arm} returned a proposal in apply mode`,
+      status: 503,
+      retryable: true,
+    };
+  }
+  if (out == null) {
+    return {
+      ok: false,
+      code: 'not_applied',
+      reason: 'That repricing was not applied, so your paces are unchanged.',
+      because: `${arm} wrote no row`,
+      status: 503,
+      retryable: true,
+    };
+  }
+  return { ok: true, result: out };
 }
 
 /**

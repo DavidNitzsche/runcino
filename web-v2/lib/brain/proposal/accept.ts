@@ -50,6 +50,7 @@ import { undoWritesFor } from './undo';
 import type { RepricePayload } from '@/lib/plan/reprice-payload';
 import type { AdaptationAction } from '@/lib/plan/adapt';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor, carriedRefusal } from '@/lib/plan/mutation-refusal';
 
 export interface AcceptContext {
   readonly userUuid: string;
@@ -105,8 +106,28 @@ export type AcceptOutcome =
     }
   | {
       readonly ok: false;
-      readonly error: 'invalid' | 'unsupported' | 'missing_context' | 'apply_failed' | 'rejected';
+      /* CALLERHONESTY-1 (2026-09-13) · `unverified` is new and is NOT a flavour
+       * of `rejected`. A card that says the coach refused the change and a card
+       * that says the server could not check are different things to tell the
+       * runner, and only one of them means "try again". */
+      readonly error: 'invalid' | 'unsupported' | 'missing_context' | 'apply_failed' | 'rejected' | 'unverified';
       readonly detail: string;
+      /* ACCEPTTWIN-1 (2026-09-13) · THE COACH SENTENCE, SEPARATE FROM `detail`.
+       *
+       * `detail` interleaves the sentence with the boundary's violation
+       * strings, and `APIV5.answerProposal`'s own doc comment forbids printing
+       * it ("it names a row id and is machine text; the design contract does
+       * not allow it near a runner"). So the honest sentence was IN the payload
+       * and unreadable, and the phone fell back to a sentence it wrote itself.
+       * `reason` is the key the phone actually reads (`r.refusal ?? r.reason`),
+       * and it carries `refusalFor`'s wording verbatim and nothing else. */
+      readonly reason?: string;
+      /* STATUSCARRY-1 (2026-09-13) · carried from `refusalFor` rather than
+       * dropped, so a caller answering over HTTP does not have to re-derive
+       * what the boundary already decided. See `undo-apply.ts`'s twin and
+       * `lib/plan/mutation-refusal.ts`'s `httpStatusForRefusal`. */
+      readonly status?: 409 | 503;
+      readonly retryable?: boolean;
     };
 
 /**
@@ -156,7 +177,7 @@ export async function applyBrainAction(
         };
       }
       const { applyReanchorProposal } = await import('@/lib/plan/reanchor-plan');
-      const res = await applyReanchorProposal(
+      const outcome = await applyReanchorProposal(
         ctx.userUuid,
         { planId: reprice.planId, arm: reprice.arm, toVdot: reprice.toVdot },
         ctx.todayISO,
@@ -164,10 +185,41 @@ export async function applyBrainAction(
         console.error('[proposal/accept] reprice apply threw:', e);
         return null;
       });
-      if (res == null) {
-        return { ok: false, error: 'apply_failed', detail: 'the repricing was refused by its own apply path' };
+      if (outcome == null) {
+        /* The apply path THREW. Rule 11 · that is not one of the four refusals
+         * the applier characterises. `refusalFor`'s default limb already owns
+         * the sentence for "could not be applied, nothing was changed", so it
+         * is read out of the resolver rather than written here again. */
+        const carried = carriedRefusal(
+          refusalFor({ outcome: 'not_attempted', violations: [] }, { thing: 'That repricing' }),
+          'apply_failed' as const,
+        );
+        return {
+          ok: false,
+          error: carried.code,
+          detail: 'the reprice apply path threw',
+          reason: carried.reason,
+          status: carried.status,
+          retryable: carried.retryable,
+        };
       }
-      return { ok: true, applied: res.workoutsUpdated, recordedOnly: false, watch, undo };
+      if (!outcome.ok) {
+        /* REPRICEREASON-1 (2026-09-13) · `apply_failed` with a hardcoded
+         * sentence, for four distinct refusals the applier had already told
+         * apart. It now carries its own reason, and this hop does not
+         * re-describe it. See `ReanchorApplyOutcome`. */
+        return {
+          ok: false,
+          error: outcome.code === 'stale_card' ? 'rejected' : 'unverified',
+          detail: outcome.because,
+          reason: outcome.reason,
+          status: outcome.status,
+          retryable: outcome.retryable,
+        };
+      }
+      return {
+        ok: true, applied: outcome.result.workoutsUpdated, recordedOnly: false, watch, undo,
+      };
     }
 
     case 'ADAPTATION_PIPELINE': {
@@ -232,11 +284,31 @@ export async function applyBrainAction(
         apply: async (tx, planId) => applyWritePlan(tx, planId, plan.writes),
       });
       if (!boundary.ok || boundary.value == null) {
+        /* CALLERHONESTY-1 (2026-09-13) · `error: 'rejected'` unconditionally,
+         * with the violation strings as the detail. Less wrong than the route
+         * handlers (the honest text at least survived in `detail`) and still
+         * wrong where it counts: the machine-readable half said the coach
+         * refused this, for a read that failed. `refusalFor` decides. */
+        const refusal = refusalFor(boundary, { thing: 'That change' });
+        /* ACCEPTTWIN-1 (2026-09-13) · `carriedRefusal` rather than three hand
+         * written field copies, so `status` and `retryable` are NON-OPTIONAL on
+         * what it returns and this hop cannot quietly drop one of them again.
+         * Same construction as `reschedule.ts` and `replan-scenarios.ts`. */
+        const carried = carriedRefusal(
+          refusal,
+          refusal.code === 'plan_invariant_violation' ? ('rejected' as const) : ('unverified' as const),
+        );
         return {
-          ok: false, error: 'rejected',
+          ok: false,
+          error: carried.code,
           detail: boundary.violations.length > 0
-            ? boundary.violations.join('; ')
-            : 'the mutation boundary refused the write',
+            ? `${carried.reason} (${boundary.violations.join('; ')})`
+            : carried.reason,
+          // The runner-facing half, unmixed with the machine half. See the type.
+          reason: carried.reason,
+          // STATUSCARRY-1 (2026-09-13) · carried verbatim. See the type above.
+          status: carried.status,
+          retryable: carried.retryable,
         };
       }
       return boundary.value > 0

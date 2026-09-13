@@ -35,6 +35,7 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor, refusalBody } from '@/lib/plan/mutation-refusal';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export async function PATCH(req: NextRequest) {
@@ -46,9 +47,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'plan_id + date_iso required' }, { status: 400 });
   }
 
-  // Resolve plan + auth (the row must belong to the user)
+  // Resolve plan + auth (the row must belong to the user AND be the runner's
+  // ACTIVE plan · ARCHIVEDGUARD-1 (2026-09-12), Rule 14 — a plan_id the runner
+  // has ever owned, including one a rebuild has already archived, must never
+  // reach a write. Without `archived_iso IS NULL` here this query returned an
+  // archived plan just as readily as the active one, and `mutatePlan` below
+  // trusted an explicitly-supplied planId as-is (see mutate.ts's own
+  // ARCHIVEDGUARD-1 comment for the shared-boundary half of this fix).
   const plan = (await pool.query(
-    `SELECT id FROM training_plans WHERE id = $1 AND user_uuid = $2`,
+    `SELECT id FROM training_plans WHERE id = $1 AND user_uuid = $2 AND archived_iso IS NULL`,
     [body.plan_id, userId]
   )).rows[0];
   if (!plan) return NextResponse.json({ error: 'plan not found' }, { status: 404 });
@@ -113,10 +120,13 @@ export async function PATCH(req: NextRequest) {
       },
     });
     if (!boundary.ok) {
-      return NextResponse.json(
-        { error: 'plan_invariant_violation', violations: boundary.violations },
-        { status: 409 },
-      );
+      // CALLERHONESTY-1 (2026-09-13) · this used to answer EVERY refusal with
+      // `plan_invariant_violation` / 409, including `plan_verification_failed`,
+      // which is a failed database read and not a rule conflict at all. One
+      // resolver, so this route and the four others cannot describe the same
+      // refusal differently (Rule 16).
+      const refusal = refusalFor(boundary, { thing: 'That change' });
+      return NextResponse.json(refusalBody(refusal), { status: refusal.status });
     }
     const r = { rowCount: boundary.value?.rowCount ?? 0, rows: [boundary.value?.row] };
     if (r.rowCount === 0) return NextResponse.json({ error: 'workout not found' }, { status: 404 });

@@ -51,6 +51,7 @@ import { pool } from '@/lib/db/pool';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { requireUserId } from '@/lib/auth/session';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor, refusalBody } from '@/lib/plan/mutation-refusal';
 import { planVersionOf } from '@/lib/plan/plan-version';
 import { readjudicateMove, verdictOf, allFindings } from '@/lib/brain/orchestration/move-orchestrator';
 import { checksThatCouldNotRun } from '@/lib/coaching-contract/move-readjudication';
@@ -341,13 +342,18 @@ export async function POST(req: NextRequest) {
   });
 
   if (!boundary.ok) {
-    // The move was refused and the plan is unchanged. 409 with the violation
-    // list so the client can say what the move would have broken rather than
-    // showing a generic failure.
-    return NextResponse.json(
-      { error: 'plan_invariant_violation', violations: boundary.violations },
-      { status: 409 },
-    );
+    // The move was refused and the plan is unchanged.
+    //
+    // CALLERHONESTY-1 (2026-09-13) · the comment that used to sit here said the
+    // 409 body let "the client say what the move would have broken rather than
+    // showing a generic failure" — and it hardcoded `plan_invariant_violation`
+    // for every outcome, so on a `plan_verification_failed` it told the runner
+    // his move broke something when a read had merely timed out. The generic
+    // failure it was avoiding was replaced with a specific WRONG one. One
+    // resolver now, and the status code moves with the cause: 409 for a real
+    // conflict, 503 for a read this server could not complete.
+    const refusal = refusalFor(boundary, { thing: 'That move' });
+    return NextResponse.json(refusalBody(refusal), { status: refusal.status });
   }
 
   // The ledger, per Rule 21: what moved, in which direction, on what evidence.

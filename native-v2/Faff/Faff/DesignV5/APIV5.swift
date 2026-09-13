@@ -2330,16 +2330,39 @@ extension API {
     /// means something else has moved the session since and the undo would
     /// write over it, and the runner is owed that sentence rather than a
     /// silent no-op.
-    static func undoProposal(id: String) async throws -> (ok: Bool, status: Int) {
+    ///
+    /// UNDOTWIN-1 (2026-09-13) · AND THE SENTENCE IS THE ENGINE'S NOW.
+    ///
+    /// This discarded the response body entirely and returned only
+    /// `(ok, status)`, so the caller had nothing to print and wrote its own
+    /// text for the 409. That was defensible while the route answered a 409
+    /// with machine text only. It no longer does: every refusal `refusalFor`
+    /// resolved arrives carrying `reason`, the same key `answerProposal` reads
+    /// twenty lines up.
+    ///
+    /// So `reason` is decoded and handed back. It is OPTIONAL rather than
+    /// required, because two limbs of that route (`stale`, `not_undoable`)
+    /// raise their own refusals and carry no `reason` — Rule 11, three facts:
+    /// a sentence, no sentence, and a transport failure, and the caller has to
+    /// be able to tell them apart. `detail` is NOT read. It names a plan row id
+    /// and the design contract does not allow it near a runner.
+    static func undoProposal(id: String) async throws -> (ok: Bool, status: Int, reason: String?) {
         let rowId = id.hasPrefix("w") ? String(id.dropFirst()) : id
         let path = "/api/plan/workout-proposals/\(rowId)/undo"
-        guard let url = URL(string: API.baseURL.absoluteString + path) else { return (false, 0) }
+        guard let url = URL(string: API.baseURL.absoluteString + path) else { return (false, 0, nil) }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         req.httpBody = Data("{}".utf8)
-        let (_, http) = try await API.authedSend(req)
-        return ((200...299).contains(http.statusCode), http.statusCode)
+        let (data, http) = try await API.authedSend(req)
+        let ok = (200...299).contains(http.statusCode)
+        var reason: String? = nil
+        if !ok,
+           let r = try? JSONDecoder().decode(V5Refusal.self, from: data),
+           let text = r.refusal ?? r.reason, !text.isEmpty {
+            reason = text
+        }
+        return (ok, http.statusCode, reason)
     }
 
     /// V5PROPOSALSURFACE-1 · `GET /api/v5/decisions` · the decision history.

@@ -179,6 +179,7 @@ import { roundTo } from '@/lib/format/run';
 import type { PoolClient } from 'pg';
 import { pool } from '@/lib/db/pool';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor, carriedRefusal } from '@/lib/plan/mutation-refusal';
 import { loadPlanShape, type PlanShape } from '@/lib/plan/replan-scenarios';
 import { weekDosingFindings, type DosingFinding, type DosingWeek } from '@/lib/plan/dosing';
 import { isDaySealed } from '@/lib/plan/seal';
@@ -637,9 +638,23 @@ export type ApplyOutcome =
   | { ok: true; decision: RescheduleDecision; summary: RescheduleSummary }
   | {
       ok: false;
+      /* CALLERHONESTY-1 (2026-09-13) · the last four come from
+       * `lib/plan/mutation-refusal.ts`. `_move_ledger_absent.db.test.ts`
+       * already had the finding written into its own comments: a
+       * `ledger_unwritten` arrived here as `rejected` and was shown as "That
+       * move would break the plan", which is not what happened. */
       code: 'no_plan' | 'not_found' | 'bad_request' | 'plan_moved' | 'rejected'
-          | 'sealed' | 'immovable' | 'no_record_table';
+          | 'sealed' | 'immovable' | 'no_record_table'
+          | 'plan_verification_failed' | 'ledger_unrecorded' | 'duplicate' | 'mutation_failed';
       reason: string;
+      /* STATUSCARRY-1 (2026-09-13) · `refusalFor` computes both of these and
+       * this type used to drop them, so every route downstream re-derived the
+       * status from a map that had never heard of the four codes above. See
+       * `lib/plan/mutation-refusal.ts`'s `httpStatusForRefusal`. Optional
+       * because the `no_record_table` limb below is this module's own refusal
+       * and not one of `refusalFor`'s. */
+      status?: 409 | 503;
+      retryable?: boolean;
       violations?: string[];
     };
 
@@ -2516,13 +2531,19 @@ export async function applyReschedule(input: ApplyInput): Promise<ApplyOutcome> 
   }
 
   if (!res.ok || !res.value) {
-    return {
-      ok: false, code: 'rejected',
-      reason: res.violations.length
-        ? 'That move would break the plan. Nothing was changed.'
-        : 'That move could not be applied. Nothing was changed.',
-      violations: res.violations,
-    };
+    /* CALLERHONESTY-1 (2026-09-13) · the old branch keyed on
+     * `res.violations.length`, which is not a fact about WHY the move was
+     * refused — every refusal populates it, including a failed read and an
+     * unwritable ledger. So "That move would break the plan" was printed over
+     * both. `_move_ledger_absent.db.test.ts` recorded that as
+     * FOUND-BUT-NOT-FIXED and asserted on `violations[0]` instead of the
+     * sentence, because the sentence could not be trusted. It can now. */
+    const refusal = refusalFor(res, { thing: 'That move' });
+    /* STATUSCARRY-1 (2026-09-13) · `carriedRefusal` rather than a literal, so
+     * `status` and `retryable` cannot be dropped here again. Dropping them is
+     * what made this exact function answer HTTP 400 for a transient read
+     * failure on the live app. */
+    return { ok: false, ...carriedRefusal(refusal, refusal.code === 'plan_invariant_violation' ? 'rejected' as const : refusal.code) };
   }
 
   return { ok: true, decision: res.value, summary: summaryOf(r, option, res.value) };
@@ -2663,8 +2684,16 @@ export type UndoOutcome =
   | { ok: true; decisionId: string; restored: number }
   | {
       ok: false;
-      code: 'not_found' | 'sealed' | 'rejected' | 'already_undone' | 'read_failed';
-      reason: string; violations?: string[];
+      /* CALLERHONESTY-1 (2026-09-13) · `read_failed` was already here, for the
+       * decision-row read this function does itself. Its sibling — a read
+       * failure INSIDE `mutatePlan` — had no code and arrived as `rejected`. */
+      code: 'not_found' | 'sealed' | 'rejected' | 'already_undone' | 'read_failed'
+          | 'no_plan' | 'plan_verification_failed' | 'ledger_unrecorded' | 'duplicate' | 'mutation_failed';
+      reason: string;
+      /* STATUSCARRY-1 (2026-09-13) · see `ApplyOutcome`'s twin above. */
+      status?: 409 | 503;
+      retryable?: boolean;
+      violations?: string[];
     };
 
 /**
@@ -2735,10 +2764,21 @@ export async function undoReschedule(opts: {
   });
 
   if (!res.ok || res.value == null) {
+    /* CALLERHONESTY-1 (2026-09-13) · unconditional sentence, same defect as
+     * `applyReschedule` above. `plan_invariant_violation` keeps this exact
+     * wording through `refusalFor`'s subject; every other outcome now gets
+     * its own. */
+    const refusal = refusalFor(res, { thing: 'Putting that back' });
+    // STATUSCARRY-1 (2026-09-13) · see `applyReschedule`'s twin above.
     return {
-      ok: false, code: 'rejected',
-      reason: 'Putting that back would break the plan as it now stands. Nothing was changed.',
-      violations: res.violations,
+      ok: false,
+      ...carriedRefusal(
+        refusal,
+        refusal.code === 'plan_invariant_violation' ? 'rejected' as const : refusal.code,
+        refusal.code === 'plan_invariant_violation'
+          ? 'Putting that back would break the plan as it now stands. Nothing was changed.'
+          : refusal.reason,
+      ),
     };
   }
   return { ok: true, decisionId: opts.decisionId, restored: res.value };

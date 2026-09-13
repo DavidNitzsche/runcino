@@ -207,16 +207,24 @@ describe.skipIf(!REACHABLE)('LEDGERREQUIRED-1 · a real Move-a-Run write, agains
 
     expect(outcome.ok, `a Move-a-Run write with no ledger table must not report success: ${JSON.stringify(outcome)}`).toBe(false);
     if (outcome.ok) throw new Error('unreachable');
-    expect(outcome.code).toBe('rejected');
-    // FOUND-BUT-NOT-FIXED (handback report) · `applyReschedule`'s own mapping
-    // (lib/plan/reschedule.ts:2518-2524) folds `mutatePlan`'s `ledger_unwritten`
-    // outcome into the SAME generic "That move would break the plan" sentence
-    // a real doctrine rejection gets, because both arrive with a non-empty
-    // `violations` array. The safety property still holds — nothing moved —
-    // but the human-readable `reason` cannot tell a caller "the ledger was
-    // unavailable" from "this move breaks the plan". The SPECIFIC message
-    // survives in `violations[0]`, which is what this asserts instead of the
-    // generic `reason` text.
+    // FIXED · CALLERHONESTY-1 (2026-09-13). This block used to read
+    // FOUND-BUT-NOT-FIXED and assert `code === 'rejected'`, because
+    // `applyReschedule` folded `mutatePlan`'s `ledger_unwritten` outcome into
+    // the SAME generic "That move would break the plan" sentence a real
+    // doctrine rejection gets: it branched on `violations.length`, which every
+    // refusal populates. The safety property held (nothing moved) and the
+    // human-readable half did not, so this file asserted on `violations[0]`
+    // instead of on the sentence it could not trust.
+    //
+    // `lib/plan/mutation-refusal.ts` is the fix, and the sentence is now the
+    // thing worth asserting on. Both are checked: the code, and the words.
+    expect(outcome.code).toBe('ledger_unrecorded');
+    expect(
+      outcome.reason,
+      'the runner is still being told his move breaks the plan when what '
+      + 'actually happened is that the change could not be recorded',
+    ).not.toContain('would break the plan');
+    expect(outcome.reason).toContain('recorded');
     const outcomeWithViolations = outcome as { violations?: readonly string[] };
     expect(outcomeWithViolations.violations?.length ?? 0).toBeGreaterThan(0);
     expect(String(outcomeWithViolations.violations?.[0] ?? '')).toContain('ledger');

@@ -74,6 +74,7 @@ import { createHash } from 'crypto';
 import type { PoolClient } from 'pg';
 import { pool } from '@/lib/db/pool';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor, carriedRefusal } from '@/lib/plan/mutation-refusal';
 import { weekDosingFindings, type DosingFinding, type DosingWeek } from '@/lib/plan/dosing';
 import { distanceMiFromLabel } from '@/lib/race/distance';
 import { suppressDriftNearRace } from '@/lib/plan/drift-proposal-policy';
@@ -213,8 +214,21 @@ export type ApplyOutcome =
   | { ok: true; proposal: ChangeProposal; planId: string; rebuiltPlanId?: string; diffUrl?: string }
   | {
       ok: false;
-      code: 'no_plan' | 'unavailable' | 'bad_request' | 'plan_moved' | 'rejected' | 'dosing_breach' | 'rebuild_failed';
+      /* CALLERHONESTY-1 (2026-09-13) · the four codes after `rebuild_failed`
+       * come from `lib/plan/mutation-refusal.ts` and are the outcomes the
+       * boundary can refuse with that are NOT a doctrine rejection. They used
+       * to arrive here as `rejected`, carrying `rejected`'s sentence. */
+      code: 'no_plan' | 'unavailable' | 'bad_request' | 'plan_moved' | 'rejected' | 'dosing_breach' | 'rebuild_failed'
+          | 'plan_verification_failed' | 'ledger_unrecorded' | 'duplicate' | 'mutation_failed';
       reason: string;
+      /* STATUSCARRY-1 (2026-09-13) · carried from `refusalFor` rather than
+       * re-derived by `/api/plan/change` and `/api/plan/replan`, whose own
+       * maps had never heard of the four codes above and answered 400 and 409
+       * for them respectively. See `mutation-refusal.ts`'s
+       * `httpStatusForRefusal`. Optional because the other seven codes are
+       * this module's own and carry no status. */
+      status?: 409 | 503;
+      retryable?: boolean;
       violations?: string[];
       findings?: DosingFinding[];
       detail?: Record<string, unknown>;
@@ -1836,12 +1850,19 @@ export async function applyChange(
   });
 
   if (!boundary.ok) {
-    return {
-      ok: false,
-      code: 'rejected',
-      reason: 'That change would break the plan\'s own rules, so it was not made.',
-      violations: boundary.violations,
-    };
+    /* CALLERHONESTY-1 (2026-09-13) · this sentence used to be a string
+     * literal, unconditional on the outcome. The round-5 review named it as
+     * the worst instance in the set, and it is: `mutatePlan` had just been
+     * taught to say `plan_verification_failed` when a database read threw, and
+     * this line answered that by telling the runner his change conflicts with
+     * the plan's rules. Affirmatively false, in his voice, on his screen, and
+     * it removes the one action (retry) that would have worked.
+     *
+     * `refusalFor` maps the outcome. `plan_invariant_violation` still gets this
+     * exact sentence, because for THAT outcome it was always correct. */
+    const refusal = refusalFor(boundary, { thing: 'That change' });
+    // STATUSCARRY-1 (2026-09-13) · `status`/`retryable` carried, not dropped.
+    return { ok: false, ...carriedRefusal(refusal, refusal.code === 'plan_invariant_violation' ? 'rejected' as const : refusal.code) };
   }
 
   await pool.query(

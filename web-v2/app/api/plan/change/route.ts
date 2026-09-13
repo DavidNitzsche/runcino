@@ -74,6 +74,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserId } from '@/lib/auth/session';
+import { httpStatusForRefusal } from '@/lib/plan/mutation-refusal';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { fireAutoRebuild } from '@/lib/plan/auto-rebuild';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
@@ -92,11 +93,27 @@ import { checksThatCouldNotRun, type ReadjudicationReport } from '@/lib/coaching
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+/**
+ * STATUSCARRY-1 (2026-09-13) · THE FALLBACK, NOT THE ANSWER.
+ *
+ * This map used to be the whole answer, and it had never heard of
+ * `plan_verification_failed`, `ledger_unrecorded`, `duplicate` or
+ * `mutation_failed` — the four codes `lib/plan/mutation-refusal.ts` introduced.
+ * They fell through to `?? 400`, which tells the runner his request is at
+ * fault and not to retry, over refusals the resolver itself marks
+ * `retryable: true`. `httpStatusForRefusal` now reads the status the refusal
+ * carries and consults this only for the codes below, which are
+ * `replan-scenarios.ts`'s own and have no `refusalFor` opinion.
+ */
 const STATUS: Record<string, number> = {
   no_plan: 404,
   bad_request: 400,
   unavailable: 422,
   plan_moved: 409,
+  // `rejected` stays: `reschedule.ts` raises one internally-consistent-option
+  // refusal under that code WITHOUT going through `refusalFor`, so it arrives
+  // carrying no status. Every `refusalFor`-derived `rejected` carries 409 of
+  // its own and never reads this row.
   rejected: 409,
   dosing_breach: 409,
   rebuild_failed: 500,
@@ -200,7 +217,7 @@ export async function POST(req: NextRequest) {
     if (!out.ok) {
       return NextResponse.json(
         { ok: false, error: out.code, reason: out.reason, ...(out.detail ? { detail: out.detail } : {}) },
-        { status: STATUS[out.code] ?? 400 },
+        { status: httpStatusForRefusal(out, STATUS, 400) },
       );
     }
     return NextResponse.json({
@@ -237,10 +254,18 @@ export async function POST(req: NextRequest) {
         ok: false,
         error: out.code,
         reason: out.reason,
+        /* ACCEPTTWIN-1 (2026-09-13) · Rule 11 on the wire. The status already
+         * separates "your request conflicts" from "we could not do this", but
+         * only `retryable` says whether the SAME request, unchanged, is worth
+         * sending again — and the refusal has known the answer since round 4
+         * while every body but the undo route's dropped it. Absent when the
+         * refusal came from this module's own vocabulary and carries no
+         * opinion, which is a third fact and not a false `false`. */
+        ...(out.retryable === undefined ? {} : { retryable: out.retryable }),
         ...(out.violations ? { violations: out.violations } : {}),
         ...(out.findings ? { findings: out.findings } : {}),
       },
-      { status: STATUS[out.code] ?? 400 },
+      { status: httpStatusForRefusal(out, STATUS, 400) },
     );
   }
 
