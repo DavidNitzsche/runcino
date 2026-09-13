@@ -75,7 +75,7 @@ import { deriveRecap } from '@/lib/coach/run-recap';
 import { deriveWin } from '@/lib/coach/run-win';
 import { loadPostRunExperience, resolveStoredPhases } from '@/lib/postrun/load';
 import { postRunWire, type PostRunWire } from '@/lib/postrun/wire';
-import { resolveWorkoutVerdict } from '@/lib/execution/verdict';
+import { resolveWorkoutVerdict, completionNoteFor } from '@/lib/execution/verdict';
 import { resolveDayExecutions, primaryPrescription, type ResolvedRun } from '@/lib/execution/day-resolver';
 import { recommendShoe, shoeDisplayName, planTypeToShoeType, type GarageShoe } from '@/lib/shoe/recommend';
 import { computeShoeMileage } from '@/lib/shoe/mileage';
@@ -1136,6 +1136,14 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         type: todayPlan?.type ?? (data.workoutType as string | null) ?? null,
         spec: planRow?.workout_spec ?? null,
         phases: completionPhases,
+        // COMPLETIONREASON-1 (2026-09-12) · so `GradedPhase.completionReason`
+        // can tell a chosen early end / a session-ended phase from a
+        // genuinely short, unrecorded recovery — the same wiring
+        // `lib/postrun/load.ts`'s canonical composer already carries (see
+        // `RunData.recoveryEndedEarly` / `RunData.sessionEnded`). Read off
+        // below instead of this route re-deriving the same match itself.
+        recoveryEndedEarly: data.recoveryEndedEarly,
+        sessionEnded: data.sessionEnded,
       });
       /* PHASE-GRAIN-1 (2026-09-08) · each phase's own mile table, off the SAME
        * `completionPhases` array `grade` was resolved from, so the two are
@@ -1539,42 +1547,50 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // learned the hard way for `actualDistanceMi`).
         workoutPhases: Array.isArray(data.phases)
           ? (data.phases as any[]).map((ph, phaseArrayPos) => {
-              // WALKBACK-2 (2026-09-09) · which recovery this phase is, if
-              // any, per `data.recoveryEndedEarly` — matched by `phaseIndex`
-              // against the phase's own `index` (falling back to array
-              // position for a payload whose phase objects predate `index`).
-              // Resolved once here, server-side, so `TodayAfterV5` reads a
-              // plain nested object rather than re-doing this match itself.
-              const recoveryEndedEarly = ((): { prescribedSec: number; actualSec: number } | null => {
-                if (ph.type !== 'recovery' || !Array.isArray(data.recoveryEndedEarly)) return null;
-                const phaseIdx = Number.isFinite(Number(ph.index))
-                  ? Math.round(Number(ph.index)) : phaseArrayPos;
-                const rec = (data.recoveryEndedEarly as any[]).find(
-                  (r) => Number(r?.phaseIndex) === phaseIdx,
-                );
-                if (!rec) return null;
-                const prescribedSec = Number(rec.prescribedSec);
-                const actualSec = Number(rec.actualSec);
-                if (!Number.isFinite(prescribedSec) || prescribedSec <= 0) return null;
-                if (!Number.isFinite(actualSec) || actualSec < 0) return null;
-                return { prescribedSec: Math.round(prescribedSec), actualSec: Math.round(actualSec) };
-              })();
-              // WALKBACK-SESSIONEND-1 (2026-09-09) · the SAME phase this
-              // recovery already is, but ended because the session itself
-              // ended here rather than by the runner's choice to advance —
-              // see `RunData.sessionEnded`'s doc comment for why this is a
-              // distinct field from `recoveryEndedEarly` above rather than a
-              // shape inside it (Rule 16). `data.sessionEnded` is singular
-              // (a session ends once), so this is a match, not a find over
-              // an array.
-              const sessionEnded = ((): boolean => {
-                if (ph.type !== 'recovery') return false;
-                const se = data.sessionEnded as Record<string, unknown> | undefined;
-                if (!se || typeof se !== 'object') return false;
-                const phaseIdx = Number.isFinite(Number(ph.index))
-                  ? Math.round(Number(ph.index)) : phaseArrayPos;
-                return Number(se.phaseIndex) === phaseIdx && se.wasLastPrescribedPhase === true;
-              })();
+              // COMPLETIONREASON-1 (2026-09-12) · THIS ROUTE used to decide
+              // "advanced early" vs "session ended" itself, by rejoining
+              // `data.recoveryEndedEarly`/`data.sessionEnded` onto this phase
+              // by `phaseIndex` a second time — the exact question `grade`
+              // above (`resolveWorkoutVerdict`, `lib/execution/verdict.ts`)
+              // already answered once, as `completionReason`, from the SAME
+              // two wire fields. Rule 16: one owner. Matched onto `grade.phases`
+              // by the phase's own `index` (falling back to array position for
+              // a payload whose phase objects predate `index`) — the SAME
+              // resolution `GradedPhase.index` itself uses.
+              const phaseIdx = Number.isFinite(Number(ph.index))
+                ? Math.round(Number(ph.index)) : phaseArrayPos;
+              const gradedPhase = grade.phases.find((gp) => gp.index === phaseIdx) ?? null;
+              const completionReason = gradedPhase?.completionReason ?? 'unknown';
+              // WALKBACK-2 · nil unless `completionReason` says this recovery
+              // was advanced early BY CHOICE. The prescribed/actual pair
+              // comes off `GradedPhase` itself (`targetDurationSec` /
+              // `actualDurationSec`, the same numbers `recoveries[]` inside
+              // `gradeStoredPhases` already reads for this exact phase) —
+              // never re-read from the raw `data.recoveryEndedEarly` array,
+              // which would be a second copy of the same two numbers.
+              const recoveryEndedEarly: { prescribedSec: number; actualSec: number } | null =
+                completionReason === 'advanced_early'
+                  && gradedPhase?.targetDurationSec != null && gradedPhase.targetDurationSec > 0
+                  && gradedPhase?.actualDurationSec != null && gradedPhase.actualDurationSec >= 0
+                  ? {
+                      prescribedSec: Math.round(gradedPhase.targetDurationSec),
+                      actualSec: Math.round(gradedPhase.actualDurationSec),
+                    }
+                  : null;
+              // WALKBACK-SESSIONEND-1 · true only when `completionReason`
+              // says the SESSION ended at this phase. See `verdict.ts`'s
+              // `GradedPhase.completionReason` doc comment for why this and
+              // `recoveryEndedEarly` above are mutually exclusive by
+              // construction rather than independently re-derived.
+              const sessionEnded = completionReason === 'session_ended';
+              // COMPLETIONREASON-1 · THE sentence, resolved once by
+              // `completionNoteFor` (`lib/execution/verdict.ts`) off the
+              // SAME `gradedPhase` rather than reconstructed here. A client
+              // that has not yet switched to reading this can keep deriving
+              // its own text from `recoveryEndedEarly`/`sessionEnded` above —
+              // this is additive, never a replacement those two stop working
+              // without.
+              const completionNote = gradedPhase ? completionNoteFor(gradedPhase) : null;
               // WORKOUTPHASES-2 (2026-09-04) · `avgHr`/`maxHr` are absent on
               // several phases in THIS account's own stored rows (every
               // "work" phase in a 2026-09-03 hill session, confirmed
@@ -1625,6 +1641,16 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
                 // construction — the watch writes one or the other for a
                 // given phase, never both. See the resolver above.
                 sessionEnded,
+                // COMPLETIONREASON-1 · THE canonical fact `recoveryEndedEarly`
+                // and `sessionEnded` above are now both derived FROM, kept on
+                // the wire in its own right so a client can switch on it
+                // directly once it does — see `GradedPhase.completionReason`'s
+                // doc comment in `lib/execution/verdict.ts`.
+                completionReason,
+                // THE sentence, resolved once. See `completionNoteFor`'s own
+                // doc comment for the case-by-case wording and why `'unknown'`
+                // now gets one where native's own switch today does not.
+                completionNote,
               };
             })
           : [],

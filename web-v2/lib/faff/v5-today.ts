@@ -646,6 +646,21 @@ export interface V5Today {
      *  case, which read as "advanced early" for a runner who had simply
      *  finished his workout — this field distinguishes the two. */
     sessionEnded: boolean;
+    /**
+     * COMPLETIONREASON-1 (2026-09-12) · THE canonical fact `recoveryEndedEarly`
+     * and `sessionEnded` above are now both DERIVED FROM, server-side
+     * (`GradedPhase.completionReason`, `lib/execution/verdict.ts`) — exposed
+     * in its own right rather than left implicit in the presence or absence
+     * of those two fields. A future client can switch on this one value
+     * directly instead of reconstructing intent the way
+     * `TodayAfterV5.completionNote` (native) still does today.
+     */
+    completionReason: 'as_prescribed' | 'advanced_early' | 'session_ended' | 'incomplete' | 'unknown';
+    /** `completionNoteFor(completionReason)`'s own resolved sentence
+     *  (`lib/execution/verdict.ts`), or null when there is nothing honest to
+     *  add. Additive: a client that has not switched to this can keep
+     *  deriving its own text from `recoveryEndedEarly`/`sessionEnded` above. */
+    completionNote: string | null;
   }>;
   /** The runner's own HR zone bands. Empty at cold start. */
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
@@ -1206,6 +1221,21 @@ export interface V5RecentRunCtx {
      *  case, which read as "advanced early" for a runner who had simply
      *  finished his workout — this field distinguishes the two. */
     sessionEnded: boolean;
+    /**
+     * COMPLETIONREASON-1 (2026-09-12) · THE canonical fact `recoveryEndedEarly`
+     * and `sessionEnded` above are now both DERIVED FROM, server-side
+     * (`GradedPhase.completionReason`, `lib/execution/verdict.ts`) — exposed
+     * in its own right rather than left implicit in the presence or absence
+     * of those two fields. A future client can switch on this one value
+     * directly instead of reconstructing intent the way
+     * `TodayAfterV5.completionNote` (native) still does today.
+     */
+    completionReason: 'as_prescribed' | 'advanced_early' | 'session_ended' | 'incomplete' | 'unknown';
+    /** `completionNoteFor(completionReason)`'s own resolved sentence
+     *  (`lib/execution/verdict.ts`), or null when there is nothing honest to
+     *  add. Additive: a client that has not switched to this can keep
+     *  deriving its own text from `recoveryEndedEarly`/`sessionEnded` above. */
+    completionNote: string | null;
   }>;
   hrZones: Array<{ label: string; lower: number | null; upper: number | null }>;
   paceBand: { lo: number; hi: number } | null;
