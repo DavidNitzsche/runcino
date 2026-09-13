@@ -22,7 +22,7 @@ function phaseLabelFor(weekIdx: number): string {
   return p?.label ?? 'QUALITY';
 }
 
-function realDay(w: RAW['workouts'][number]): DayPlan {
+function realDay(w: typeof RAW['workouts'][number]): DayPlan {
   return {
     dow: w.dow as DayPlan['dow'],
     type: w.type as DayPlan['type'],
