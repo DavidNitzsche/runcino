@@ -13,7 +13,7 @@ Tracking table — fill in only with direct evidence, never inference from a doc
 | Correct workout identity | UNINVESTIGATED | — |
 | Correct active-plan ownership, no archived-plan mutation | UNINVESTIGATED | — |
 | No supplemental-run contamination | UNINVESTIGATED | — |
-| No duplicated proposal/application, no silent side-door write | UNINVESTIGATED | Mandate flags `reanchorLthr` as a "real ungated profile-write side door" — needs confirmation, not yet done |
+| No duplicated proposal/application, no silent side-door write | PARTIALLY CONFIRMED for `lane-c/adaptation-vertical-slice`'s own new code (DURATION_PROGRESS_OFFER is structurally RECORD_ONLY, cron never reaches REPRICE_APPLY) — `[SRC]`, see `06-integration-waves.md`. `reanchorLthr` side-door claim from the mandate still unconfirmed either way. | |
 | Correct runner-visible proposal; accept/decline/defer/undo/history/failure-recovery | UNINVESTIGATED | — |
 | Atomic application; accurate before/after audit | UNINVESTIGATED | Mandate flags `adaptation_log` as recording only `{"n":1,"ts":...}` — a counter, not a record — per CLAUDE.md Rule 21 |
 | Subsequent-outcome evaluation feeding next decision | UNINVESTIGATED | — |
