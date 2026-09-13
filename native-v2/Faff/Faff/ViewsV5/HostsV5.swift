@@ -4769,7 +4769,7 @@ struct DecisionHistoryHostV5: View {
     /// other non-2xx is the outage because we do not know what it was.
     private func undo(_ d: V5Decision) async {
         undoRefusal = nil
-        let answered: (ok: Bool, status: Int)
+        let answered: (ok: Bool, status: Int, reason: String?)
         do {
             answered = try await API.undoProposal(id: d.id)
         } catch {
@@ -4791,13 +4791,34 @@ struct DecisionHistoryHostV5: View {
             NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
             return
         }
+        /// UNDOTWIN-1 (2026-09-13) · THE ENGINE'S SENTENCE, NOT THE PHONE'S.
+        ///
+        /// This used to be a bare `if answered.status == 409` that printed a
+        /// sentence written here: "Something else has moved this session
+        /// since." The premise was that 409 had exactly one meaning on this
+        /// route. It never did. The route answers 409 for a DOCTRINE
+        /// rejection too, and on that limb the server's own staleness check
+        /// (`movedSinceAccept`) has already run and PASSED — so the one
+        /// sentence the phone printed was, by construction, the one thing
+        /// that could not be true.
+        ///
+        /// The route now carries `reason` on every refusal `refusalFor`
+        /// resolved. Three endings, three renderings, and the phone invents
+        /// nothing:
+        ///
+        ///   a carried reason  · print it. It is the coach's own words.
+        ///   a 409 with none   · the `stale` limb, which raises its own
+        ///                       refusal and is the case this sentence was
+        ///                       always true for. Kept, and now reached ONLY
+        ///                       by that limb.
+        ///   anything else     · the outage, because we do not know what it
+        ///                       was (unchanged).
+        if let reason = answered.reason, !reason.isEmpty {
+            undoRefusal = reason
+            return
+        }
         if answered.status == 409 {
-            // The one sentence the phone is allowed to write on the engine's
-            // behalf, because the route answers 409 with machine text and
-            // this is what 409 MEANS here — stated in `undoProposal`'s own
-            // doc comment, which is the contract being honoured rather than
-            // a reason being invented.
-            undoRefusal = "Something else has moved this session since. "
+            undoRefusal = "The session has moved since this decision landed on it. "
                 + "Taking it back now would write over that change."
             return
         }

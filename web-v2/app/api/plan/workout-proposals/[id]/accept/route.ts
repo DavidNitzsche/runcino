@@ -23,7 +23,7 @@ import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { loadPendingProposalById } from '@/lib/plan/workout-proposals';
 import { readLiveRows, actionFromPending, LEGACY_MUTATING_ACTION_KINDS } from '@/lib/brain/proposal/staleness';
 import { prepareAction } from '@/lib/brain/proposal/execute';
-import { httpStatusForRefusal } from '@/lib/plan/mutation-refusal';
+import { httpStatusForRefusal, refusalFor } from '@/lib/plan/mutation-refusal';
 
 export const dynamic = 'force-dynamic';
 
@@ -267,17 +267,61 @@ export async function POST(
       import('@/lib/runtime/runner-tz'),
     ]);
     const today = await runnerToday(userId);
-    const res = await applyReanchorProposal(
+    const outcome = await applyReanchorProposal(
       userId,
       { planId: reprice.planId, arm: reprice.arm, toVdot: reprice.toVdot },
       today,
     ).catch((e: unknown) => {
       console.error('[workout-proposals/accept] reprice apply threw:', e);
-      return null;
+      /* Rule 11 · a THROW is its own fact and is not one of the four the
+       * applier characterises. `refusalFor`'s default limb is exactly the
+       * sentence for it — "could not be applied, nothing was changed", 503,
+       * retryable — so nothing new is written here either. */
+      const r = refusalFor({ outcome: 'not_attempted', violations: [] }, { thing: 'That repricing' });
+      return { ok: false as const, code: 'apply_threw' as const, because: 'the reprice apply path threw',
+        reason: r.reason, status: r.status, retryable: r.retryable };
     });
-    if (res == null) {
-      return NextResponse.json({ ok: false, error: 'apply_refused' }, { status: 409 });
+    if (!outcome.ok) {
+      /* ── REPRICEREASON-1 (2026-09-13) · THE LIMB THAT WAS DEFERRED TWICE ───
+       *
+       * This answered `{ ok: false, error: 'apply_refused' }` with HTTP 409 and
+       * no `reason`, which is precisely the shape ACCEPTTWIN-1 fixed on the
+       * action limb thirty lines up and UNDOTWIN-1 fixed on the undo twin. The
+       * phone decodes a `V5Refusal` off a 4xx, finds no `refusal` and no
+       * `reason`, and falls into its own 409 branch, which prints:
+       *
+       *     "This session has changed since the coach proposed it, so the
+       *      decision no longer fits. It will be raised again against the
+       *      session as it stands."
+       *
+       * A repricing is not about a session at all. It is one decision over the
+       * whole block, and the four things that actually refuse it are a rebuilt
+       * plan, an unreadable card, a deferral and a write that touched nothing.
+       * The sentence names none of them, and "it will be raised again" is a
+       * promise this route cannot keep for a card that is already stale.
+       *
+       * A prior round left it here believing the refusal was uncharacterised.
+       * It was not; see `ReanchorApplyOutcome`. Nothing new is invented below —
+       * the applier carries the reason it already had. */
+      const status = httpStatusForRefusal(
+        { code: outcome.code, status: outcome.status, retryable: outcome.retryable },
+        {},
+        409,
+      );
+      return NextResponse.json(
+        {
+          ok: false,
+          error: outcome.code,
+          // The coach sentence, under the key the phone reads.
+          reason: outcome.reason,
+          // Machine text. Never printed to a runner; kept for the log.
+          detail: outcome.because,
+          retryable: outcome.retryable,
+        },
+        { status },
+      );
     }
+    const res = outcome.result;
     await bustBriefingCacheForEvent(userId, 'plan_swap').catch(() => {});
     return NextResponse.json({
       ok: true,

@@ -547,22 +547,80 @@ describe('LEDGERHONESTY-1 · the claim is dead in EVERY file that states it', ()
    * explained history note, which is how this codebase documents its own
    * corrections. So the assertion is not "the phrase is absent" — that would
    * forbid the correction itself — it is "wherever the phrase appears, the
-   * strike marker appears too". A NEW bare assertion has no marker and fails. */
+   * strike marker appears too". A NEW bare assertion has no marker and fails.
+   *
+   * ── UNDOTWIN-1 (2026-09-13) · WHY THIS IS A PROXIMITY CHECK NOW ───────────
+   *
+   * It was `flat.includes('LEDGERHONESTY-1')` — FILE level. On `mutate.ts`,
+   * which carries the marker at more than twenty sites, that condition is
+   * satisfied before the scan starts, so the check was VACUOUS on the file it
+   * was written for. Falsified round 8 by pasting a bare, unmarked "NO CAP AT
+   * ALL" into `mutate.ts` several hundred lines from any marker: the suite
+   * stayed green, while this test's own message claims it would name exactly
+   * that (Rule 18 — a gate that cannot fail is a hypothesis).
+   *
+   * The window is 400 characters of FLATTENED text, measured on the tree this
+   * landed in. The six real occurrences sit 95, 133, 168, 168, 189 and 223
+   * characters from their marker, so 400 clears the widest legitimate note by
+   * a comfortable margin and still catches an unmarked claim anywhere else in
+   * even the smallest of the three files. Widening it past a page of prose
+   * would return it to being file-level in disguise.
+   *
+   * WHAT IT STILL CANNOT FAIL ON (Rule 22): a claim placed deliberately inside
+   * an existing strike note's window. That is indistinguishable from the
+   * correction itself in source text, and no proximity threshold separates
+   * them. The two "the corrected text says the true thing" assertions below
+   * are what stand behind that case. */
+  const MARKER_WINDOW_CHARS = 400;
+
   for (const f of CLAIM_FILES) {
     for (const claim of FALSE_CLAIM) {
       it(`${f} · "${claim}" survives only as a marked correction, never as a claim`, () => {
         const flat = flatten(read(f));
-        if (!flat.includes(norm(claim))) return;   // never present: nothing to excuse
+        const needle = norm(claim);
+        const markers = [...flat.matchAll(/LEDGERHONESTY-1/g)].map((m) => m.index ?? 0);
+        const unmarked: number[] = [];
+        for (let i = flat.indexOf(needle); i >= 0; i = flat.indexOf(needle, i + 1)) {
+          const near = markers.some((m) => Math.abs(m - i) <= MARKER_WINDOW_CHARS);
+          if (!near) unmarked.push(i);
+        }
         expect(
-          flat.includes('LEDGERHONESTY-1'),
-          `${f} states "${claim}" with no LEDGERHONESTY-1 strike note. There is no `
-          + 'weekly-frequency cap in validate.ts, and the field\'s only consumer there '
-          + 'skips a check at <= 1, so a null makes that check FIRE. Either delete the '
-          + 'claim or mark it as struck.',
-        ).toBe(true);
+          unmarked,
+          `${f} states "${claim}" at offset(s) ${unmarked.join(', ')} with no LEDGERHONESTY-1 `
+          + `strike note within ${MARKER_WINDOW_CHARS} characters. There is no weekly-frequency `
+          + 'cap in validate.ts, and the field\'s only consumer there skips a check at <= 1, so '
+          + 'a null makes that check FIRE. Either delete the claim or mark it as struck '
+          + 'BESIDE the claim, not somewhere else in the same file.',
+        ).toEqual([]);
       });
     }
   }
+
+  /* Rule 18 · the proximity check is only worth its window, so the window is
+   * asserted against the real tree rather than assumed. This fails if a future
+   * edit pushes a legitimate note out of range (fix the note or widen with
+   * evidence) AND it fails if the widest gap grows toward the threshold, which
+   * is the quiet way a proximity check turns back into a file-level one. */
+  it('LIVENESS · every real occurrence sits well inside the window', () => {
+    let seen = 0;
+    let widest = 0;
+    for (const f of CLAIM_FILES) {
+      const flat = flatten(read(f));
+      const markers = [...flat.matchAll(/LEDGERHONESTY-1/g)].map((m) => m.index ?? 0);
+      expect(markers.length, `${f} carries no strike marker at all`).toBeGreaterThan(0);
+      for (const claim of FALSE_CLAIM) {
+        const needle = norm(claim);
+        for (let i = flat.indexOf(needle); i >= 0; i = flat.indexOf(needle, i + 1)) {
+          seen++;
+          widest = Math.max(widest, Math.min(...markers.map((m) => Math.abs(m - i))));
+        }
+      }
+    }
+    expect(seen, 'the proximity scan found no occurrence to measure, so it proves nothing')
+      .toBeGreaterThan(0);
+    expect(widest, 'a legitimate strike note has drifted close to the window edge')
+      .toBeLessThan(MARKER_WINDOW_CHARS * 0.75);
+  });
 
   /* Rule 18 · an absence-only assertion is satisfied by garbage. These two
    * check that the CORRECTED text says the true thing, not merely that the
