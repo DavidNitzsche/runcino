@@ -33,6 +33,7 @@ import { requireUserId } from '@/lib/auth/session';
 import { loadAcceptedProposalById, reopenProposal } from '@/lib/plan/workout-proposals';
 import { actionFromPending } from '@/lib/brain/proposal/staleness';
 import { applyUndo } from '@/lib/brain/proposal/undo-apply';
+import { httpStatusForRefusal } from '@/lib/plan/mutation-refusal';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 
@@ -93,9 +94,25 @@ export async function POST(
   });
 
   if (!outcome.ok) {
-    const status = outcome.error === 'not_undoable' ? 422
-      : outcome.error === 'apply_failed' ? 500 : 409;
-    return NextResponse.json({ ok: false, error: outcome.error, detail: outcome.because }, { status });
+    /* STATUSCARRY-1 (2026-09-13) · the `: 409` tail answered every `unverified`
+     * — a failed read inside the boundary, an unwritable ledger — with "your
+     * request conflicts with the state of things". Those are 503 and retryable,
+     * and `refusalFor` already said so; `applyUndo` now carries it through.
+     * The ladder below is the fallback for the errors it raises itself. */
+    const status = httpStatusForRefusal(
+      { code: outcome.error, status: outcome.status, retryable: outcome.retryable },
+      { not_undoable: 422, apply_failed: 500 },
+      409,
+    );
+    return NextResponse.json(
+      {
+        ok: false, error: outcome.error, detail: outcome.because,
+        // Rule 11 on the wire: the client must be able to tell "do not retry"
+        // from "ask again". Absent when the boundary had no opinion.
+        ...(outcome.retryable === undefined ? {} : { retryable: outcome.retryable }),
+      },
+      { status },
+    );
   }
 
   /* The proposal goes back to PENDING, not to dismissed. He accepted, saw it,

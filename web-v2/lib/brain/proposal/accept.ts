@@ -112,6 +112,12 @@ export type AcceptOutcome =
        * runner, and only one of them means "try again". */
       readonly error: 'invalid' | 'unsupported' | 'missing_context' | 'apply_failed' | 'rejected' | 'unverified';
       readonly detail: string;
+      /* STATUSCARRY-1 (2026-09-13) · carried from `refusalFor` rather than
+       * dropped, so a caller answering over HTTP does not have to re-derive
+       * what the boundary already decided. See `undo-apply.ts`'s twin and
+       * `lib/plan/mutation-refusal.ts`'s `httpStatusForRefusal`. */
+      readonly status?: 409 | 503;
+      readonly retryable?: boolean;
     };
 
 /**
@@ -249,6 +255,9 @@ export async function applyBrainAction(
           detail: boundary.violations.length > 0
             ? `${refusal.reason} (${boundary.violations.join('; ')})`
             : refusal.reason,
+          // STATUSCARRY-1 (2026-09-13) · carried verbatim. See the type above.
+          status: refusal.status,
+          retryable: refusal.retryable,
         };
       }
       return boundary.value > 0

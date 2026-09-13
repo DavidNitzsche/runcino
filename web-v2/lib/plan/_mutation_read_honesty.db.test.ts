@@ -342,10 +342,17 @@ describe('CONTEXTREAD-1 · a failed validator-context read no longer weakens the
       // This is what the old code handed the validator, and what the new code
       // still computes — the fix is that it no longer hands it over silently.
       expect(failed.level, 'a failed profile read leaves the experience level unknown').toBeNull();
+      /* LEDGERHONESTY-1 (2026-09-13) · the message here used to say a null
+       * `trainingDaysPerWeek` is read as "NO frequency cap at all". False —
+       * `validate.ts` has no frequency cap, and the field's only consumer
+       * there SKIPS §5's quality-coverage check at `<= 1`, so a null makes
+       * that check fire. What matters for THIS assertion is unchanged and is
+       * the honest half: a failed read is indistinguishable from a runner with
+       * no profile row. */
       expect(
         failed.trainingDaysPerWeek,
-        'a failed profile read leaves trainingDaysPerWeek null, which '
-        + 'validateComposedPlan reads as NO frequency cap at all',
+        'a failed profile read leaves trainingDaysPerWeek null, which the validator cannot '
+        + 'tell apart from a runner whose frequency was genuinely never recorded',
       ).toBeNull();
 
       // And the pre-fix shape offered NOTHING to tell the two apart. Every

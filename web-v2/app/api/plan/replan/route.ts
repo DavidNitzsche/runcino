@@ -58,6 +58,7 @@ import { mutatePlan } from '@/lib/plan/mutate';
 import { generatePlan } from '@/lib/plan/generate';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { applyChange } from '@/lib/plan/replan-scenarios';
+import { httpStatusForRefusal } from '@/lib/plan/mutation-refusal';
 // RACEPROT-PROGRESSION-1 (2026-09-11) · the day-level race detector, not the
 // raw `is_race_week` column — see the sick-ladder loop below, the same gap
 // dose-guard.ts/adapt.ts/mutate.ts/progression-pass.ts were already fixed for.
@@ -98,10 +99,16 @@ export async function POST(req: NextRequest) {
     const todayISO = await runnerToday(userId);
     const out = await applyChange(userId, todayISO, { scenario: 'travel', fromISO, toISO }, null);
     if (!out.ok) {
-      const status = out.code === 'no_plan' ? 404
-        : out.code === 'bad_request' ? 400
-        : out.code === 'unavailable' ? 422
-        : 409;
+      /* STATUSCARRY-1 (2026-09-13) · this ladder's `: 409` tail swallowed the
+       * four `lib/plan/mutation-refusal.ts` codes — a failed read and an
+       * unwritable ledger are 503 and retryable, and answering 409 tells the
+       * runner his request conflicts with the plan's state, which it does not.
+       * The refusal's own status wins; the ladder is the fallback for
+       * `replan-scenarios.ts`'s own codes. */
+      const status = httpStatusForRefusal(out, {
+        no_plan: 404, bad_request: 400, unavailable: 422,
+        plan_moved: 409, rejected: 409, dosing_breach: 409, rebuild_failed: 500,
+      }, 409);
       return NextResponse.json(
         {
           error: out.code,

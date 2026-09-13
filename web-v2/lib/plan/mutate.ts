@@ -496,19 +496,47 @@ export function structuralFingerprint(snap: PlanSnapshot): string {
  * the numbers around them:
  *
  *   · `contextIncomplete` — the reads SUCCEEDED and the race distance was not
- *     recorded anywhere. A measured absence. `26.2` was substituted, and the
- *     substitution is the most permissive row in CONSTRAINTS on purpose.
- *   · `readFailed`        — the read THREW. Nothing about the runner was
- *     established at all, and every default below it (26.2 miles,
- *     `level: null`, `trainingDaysPerWeek: null` = NO frequency cap) is a
- *     guess that makes the validator STRICTLY MORE PERMISSIVE than the truth.
+ *     recorded anywhere. A measured absence. `26.2` was substituted.
+ *   · `readFailed`        — the read THREW. NOTHING about the runner was
+ *     established at all, so every value the validator is about to be handed
+ *     is a guess, and this boundary cannot say whether the doctrine check it
+ *     is about to run is the one this runner's real context calls for.
  *
- * That asymmetry is why this exists. Rule 11's clause is exact: "a missing
- * input must never silently disable a safety mechanism." Before this, both of
- * these reads carried a bare `.catch(() => ({ rows: [] }))`, so a transient
- * failure on either one quietly relaxed the very validation that decides
- * whether a mutation is allowed to land — and it did it without a log line,
- * which `lib/db/read.ts`'s header names as the floor no read may fall below.
+ * Rule 11 is the whole ground: "don't know", "measured zero" and "the read
+ * failed" are three facts, and a mutation graded against a context that was
+ * never read has not been safety-checked. That is sufficient on its own and
+ * this comment deliberately does not lean on more. Before this, both reads
+ * carried a bare `.catch(() => ({ rows: [] }))`, so a transient failure passed
+ * unverified guesses into the very validation that decides whether a mutation
+ * lands — and it did it without a log line, which `lib/db/read.ts`'s header
+ * names as the floor no read may fall below.
+ *
+ * ── LEDGERHONESTY-1 (2026-09-13) · WHAT THE FALLBACKS ACTUALLY DO ───────────
+ *
+ * This block previously claimed `trainingDaysPerWeek: null` means "NO
+ * frequency cap". That is FALSE, and it was written into
+ * `plan_decision_ledger.explanation` and `plan_mutation_rejections.violations`
+ * — durable records — which is the same defect class as the sentence
+ * `mutation-refusal.ts` was written to kill. Traced against the validator:
+ *
+ *   · `trainingDaysPerWeek` has exactly ONE consumer in `validate.ts` (§5,
+ *     the quality-coverage check). It SKIPS that check when the value is
+ *     `<= 1`, because a one-day-a-week runner gets the long run and not a
+ *     separate quality session. There is no frequency cap anywhere in the
+ *     validator for a null to disable. A null makes §5 STRICTER, not looser:
+ *     the skip does not fire.
+ *   · `raceDistanceMi` falling back to 26.2 DOES loosen §1's long-run cap for
+ *     every runner whose real race is shorter (5K 14 mi, 10K 17, HM 14/20/22,
+ *     marathon 25). It is not the loosest row — ultra is 32 — so a real ultra
+ *     runner gets a TIGHTER cap from the fallback than the truth.
+ *   · `level: null` loosens §1 for a beginner half-marathoner: the cap reads
+ *     20 mi where `'beginner'` would read 14. It does not loosen §3, whose
+ *     `GENERAL_RAMP_CEILING[null ?? 'intermediate']` is 1.15 against a
+ *     beginner's 1.20.
+ *
+ * So the fallbacks loosen SOME checks for SOME runners and tighten others.
+ * Which is exactly why "the read failed, so this was not verified" is the
+ * honest reason to refuse, and "a safety cap was disabled" is not.
  */
 export interface MutationContextReadFailure {
   /** `training_plans` (mode, authored_state, race distance) could not be read. */
@@ -768,13 +796,21 @@ interface PlanContextRow {
  * carry a bare `.catch(() => ({ rows: [] }))`. Neither logged, which is the
  * one thing `lib/db/read.ts`'s header says no read may do ("a database call
  * may fail, but it may never fail invisibly"), and — worse — an empty row set
- * here is not a neutral value. It is the MOST PERMISSIVE possible validator
- * input: `raceDistanceMi` falls back to 26.2 (the loosest long-run cap row in
- * CONSTRAINTS), `level` falls to null, and `trainingDaysPerWeek` falls to null
- * which `validateComposedPlan`'s frequency cap reads as NO CAP AT ALL. A
- * thirty-second Postgres blip therefore relaxed the exact gate that decides
- * whether a plan mutation is allowed to commit, silently, in the runner's
- * favour and against his legs.
+ * here is not a neutral value. It is a GUESS at the runner's context, and the
+ * guess is what the doctrine check then grades the mutation against:
+ * `raceDistanceMi` falls back to 26.2, `level` to null, `trainingDaysPerWeek`
+ * to null. A thirty-second Postgres blip therefore decided whether a plan
+ * mutation was allowed to commit, silently, off a context nobody had read.
+ *
+ * LEDGERHONESTY-1 (2026-09-13) · this passage used to say the fallbacks are
+ * uniformly "the MOST PERMISSIVE possible validator input", that 26.2 is the
+ * loosest long-run cap row, and that a null `trainingDaysPerWeek` is read as
+ * "NO CAP AT ALL". None of the three survives contact with `validate.ts`:
+ * ultra's cap is 32 mi and looser than 26.2's row, and `trainingDaysPerWeek`
+ * has one consumer there which SKIPS §5's quality-coverage check at `<= 1`, so
+ * a null makes that check fire rather than disabling it. The honest ground for
+ * refusing is Rule 11 by itself — the read failed, so nothing was verified.
+ * See `MutationContextReadFailure`'s header for the full trace.
  *
  * Both now go through `attempt()`, which logs on failure and makes the caller
  * branch. This function still RETURNS a context — it is called from three
@@ -840,26 +876,50 @@ export async function loadMutationContext(
 
   const freq = profRes.rows[0]?.weekly_frequency;
   // RUNFREQ-OWNER-1 (2026-09-07) · a null stated preference used to leave
-  // trainingDaysPerWeek null here, which validateComposedPlan's frequency cap
-  // reads as "no cap" — so a mutation could add a day the runner does not
-  // actually take without the validator ever seeing it. Fall back to the same
-  // Rule-8-filtered rank-3 read `loadGeneratorInputs` uses at authoring time,
-  // rather than leaving the check silently unenforced. Measured against
+  // trainingDaysPerWeek null here, so this context could not answer how many
+  // days a week the runner takes and the value reached the validator as an
+  // unknown. LEDGERHONESTY-1 (2026-09-13) corrects this comment's original
+  // justification: it said `validateComposedPlan`'s "frequency cap" reads a
+  // null as "no cap". There is no frequency cap in `validate.ts`. The one
+  // consumer of this field there (§5) SKIPS the quality-coverage requirement
+  // at `<= 1`, so a null makes that check STRICTER, not looser. The fallback
+  // below is still right, for the reason that survives: this is the canonical
+  // answer to "how many days a week is this runner absorbing" (Rule 16), and a
+  // context that carries the measured number rather than an unknown is the one
+  // every reader of it should get. Same Rule-8-filtered rank-3 read
+  // `loadGeneratorInputs` uses at authoring time. Measured against
   // production: David's account (0645f40c-951d-4ccc-b86e-9979cd26c795) has
   // weekly_frequency = null and derivedTrainingDaysPerWeek = 6.
   // No .catch() here on purpose: derivedTrainingDaysPerWeek's only read goes
   // through rowOrNull, which never rejects (lib/db/read.ts#attempt catches
   // internally) — a wrapping .catch(() => null) would be a second, redundant
   // collapse site the coercion scan correctly flags.
+  //
+  // KNOWN GAP, NOT AN INVARIANT (round-6 review finding F3, 2026-09-13). This
+  // is the ONE context read that does not feed `readFailed`. Inside
+  // `derivedTrainingDaysPerWeek`, `rowOrNull` returns null on a failed read
+  // and undefined on no rows, and the function collapses BOTH — plus a
+  // genuine rank-3 of zero — into a single `null`. So a `runs` read that
+  // threw is indistinguishable here from a runner with no measurable habit,
+  // which is a Rule 11 collapse and is stated as such rather than papered
+  // over. It is left open deliberately: splitting it means a new reading
+  // shape on `generate.ts`'s authoring path and a POSTURE decision (refuse, or
+  // proceed) that the LEDGERHONESTY-1 trace above materially changes — a null
+  // here makes §5 STRICTER, so the substituted value is the safe one and
+  // refusing on it is a judgment call, not an obvious fix. Whoever takes it
+  // decides that first.
   const derivedFreq = freq == null
     ? await (await import('@/lib/plan/generate')).derivedTrainingDaysPerWeek(userUuid, todayISO)
     : null;
 
   return {
-    // 26.2 is the fallback only when nothing at all resolves. It is the most
-    // PERMISSIVE distance row in CONSTRAINTS for the long-run cap, so a guessed
-    // context leans toward letting a mutation through rather than blocking one
-    // on a number we do not actually know. `contextIncomplete` says so out loud.
+    // 26.2 is the fallback only when nothing at all resolves. Its long-run cap
+    // row (25 mi) is looser than 5K's 14, 10K's 17 and every HM row, so a
+    // guessed context leans toward letting a mutation through rather than
+    // blocking one on a number we do not actually know. LEDGERHONESTY-1
+    // (2026-09-13): it is NOT the loosest row overall — ultra is 32 mi — so
+    // for a real ultra runner this guess is the tighter one. Either way the
+    // cap being applied is not his, and `contextIncomplete` says so out loud.
     raceDistanceMi: resolvedDistance ?? 26.2,
     contextIncomplete: resolvedDistance == null,
     mode,
@@ -896,10 +956,19 @@ export type MutationTouch = 'structural' | 'derivations' | 'authorship';
  *                             which is a specific, meaningful and in this case
  *                             completely fabricated claim.
  *   · `mutation-context`      the validator's own inputs could not be read, so
- *                             the doctrine check would have run against
- *                             maximally permissive defaults. Collapsing this
- *                             did not produce a false sentence; it produced a
- *                             SILENTLY WEAKER GATE, which is worse.
+ *                             the doctrine check would have graded the
+ *                             mutation against defaults nobody established.
+ *                             Collapsing this did not produce a false
+ *                             sentence; it produced a gate that RAN ANYWAY, on
+ *                             a context that was never read, and reported the
+ *                             result as a verdict.
+ *
+ * LEDGERHONESTY-1 (2026-09-13) · the third bullet used to say "maximally
+ * permissive defaults" and "a SILENTLY WEAKER GATE". Half true at best: the
+ * distance fallback does loosen §1 for every non-ultra runner, but a null
+ * `trainingDaysPerWeek` makes §5 stricter and a null `level` leaves §3 where
+ * it was. Rule 11 alone carries the refusal, and it does not need the
+ * overstatement. `MutationContextReadFailure`'s header has the trace.
  */
 export type PlanVerificationFailure =
   | 'requested-plan-guard'
@@ -917,10 +986,18 @@ const PLAN_VERIFICATION_REASON: Readonly<Record<PlanVerificationFailure, string>
     'could not resolve which plan is active for this runner · the read itself failed '
     + '(transient DB error, lock-wait timeout, or similar). This is NOT the same fact as '
     + '"this runner has no active plan", which is what the pre-fix swallow reported',
+  /* LEDGERHONESTY-1 (2026-09-13) · this string is PERSISTED — it reaches
+   * `plan_mutation_rejections.violations` and, through `land`, the decision
+   * ledger. It used to assert that the fallbacks run "a STRICTLY MORE
+   * PERMISSIVE doctrine check". That is not what `validate.ts` does with them
+   * (a null `trainingDaysPerWeek` makes §5 fire rather than skip), and a false
+   * claim in a durable record is the exact defect this whole review chain
+   * started from. What it says now is the fact that was actually established:
+   * the read failed, so the check could not be run against this runner. */
   'mutation-context':
     'could not read the validator context (plan row and/or profile row) for this mutation. '
-    + 'the read itself failed, and validating against the fallback defaults would have run a '
-    + 'STRICTLY MORE PERMISSIVE doctrine check than the runner\'s real context calls for',
+    + 'the read itself failed, so the doctrine check could only have been run against '
+    + 'substituted values that were never established for this runner. it was not run',
 };
 
 export type MutationOutcome =
@@ -1886,6 +1963,15 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     //     because step 4 below has to be able to take the same exit when the
     //     VALIDATOR CONTEXT read fails. One body, so the two exits cannot
     //     describe the same refusal in two different ways (Rule 16).
+    /* LEDGERHONESTY-1 (2026-09-13) · the `mutation-context` explanation below
+     * lands in `plan_decision_ledger.explanation` and is permanent. It used to
+     * claim the fallbacks leave "no weekly-frequency cap at all". There is no
+     * weekly-frequency cap in `validate.ts` to lose; the field's only consumer
+     * there skips a check at `<= 1`, so a null makes that check FIRE. It now
+     * states what happened and nothing more. (Kept out of the `land(...)`
+     * argument list on purpose: `_decision_ledger_gate.ts`'s GUARD 1 walks 30
+     * lines back from each exit to find its `land` call, and a comment inside
+     * the arguments pushes the exit out of that window.) */
     const refuseUnverifiable = async (
       why: PlanVerificationFailure | null,
       planIdForRow: string | null,
@@ -1923,10 +2009,10 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
             + '"this runner has no active plan", which is a different and specific fact this '
             + 'boundary did not establish (CLAUDE.md Rule 11).'
           : why === 'mutation-context'
-          ? 'the validator context for this mutation could not be read, so the doctrine check '
-            + 'would have run against maximally permissive fallbacks (a marathon-distance long-run '
-            + 'cap and no weekly-frequency cap at all). The write was rolled back rather than '
-            + 'graded by a gate that had quietly been weakened (CLAUDE.md Rule 11).'
+          ? 'the validator context for this mutation could not be read (the plan row and/or '
+            + 'profile row read failed), so the doctrine check could only have been run against '
+            + 'substituted values never established for this runner. The write was rolled back '
+            + 'rather than graded against a context nobody read (CLAUDE.md Rule 11).'
           : requestedPlanArchived
           ? 'the caller supplied a plan_id that is archived or not owned by this runner. The '
             + 'write was rolled back rather than silently retargeted onto whatever plan is '
@@ -1954,13 +2040,22 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         //
         // This is the posture the callers demand rather than one picked for
         // tidiness. A structural mutation's ONLY gate is the differential
-        // doctrine verdict computed from this context, and every fallback in
-        // `loadMutationContext` loosens that verdict: 26.2 mi is the most
-        // permissive long-run cap row in CONSTRAINTS, and a null
-        // `trainingDaysPerWeek` is read by `validateComposedPlan` as no
-        // frequency cap at all. So a failed context read does not degrade the
-        // check, it DISABLES parts of it — Rule 11's named failure exactly
-        // ("a missing input must never silently disable a safety mechanism").
+        // doctrine verdict computed from this context. When the reads that
+        // build it THREW, the verdict is computed from substituted values that
+        // were never established for this runner — so it is not a verdict
+        // about him, whichever direction the substitutions happen to lean.
+        // Rule 11: the read failing and the value being absent are different
+        // facts, and only one of them licenses proceeding.
+        //
+        // LEDGERHONESTY-1 (2026-09-13) · this comment used to argue the
+        // stronger claim — that a failed read DISABLES parts of the check,
+        // with a null `trainingDaysPerWeek` read as "no frequency cap at all".
+        // Traced against `validate.ts`: there is no frequency cap, the field's
+        // one consumer SKIPS §5 at `<= 1`, and a null therefore makes §5
+        // stricter. The decision below does not change; only the reason,
+        // because a decision defended on a false premise is one nobody can
+        // check. See `MutationContextReadFailure`'s header.
+        //
         // Nothing has been written yet at this point, so refusing here costs
         // the runner one retry and costs him nothing else.
         if (ctx.readFailed) return refuseUnverifiable('mutation-context', planId);

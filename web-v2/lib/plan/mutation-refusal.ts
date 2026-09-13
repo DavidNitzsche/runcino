@@ -219,6 +219,114 @@ function lowerFirst(s: string): string {
 }
 
 /**
+ * STATUSCARRY-1 (2026-09-13) · WHAT A LIB-LEVEL REFUSAL CARRIES ACROSS THE HOP
+ * TO ITS ROUTE.
+ *
+ * ─── THE BUG ────────────────────────────────────────────────────────────────
+ *
+ * `refusalFor` resolves five things and the five route handlers that call it
+ * directly read all five. Four callers sit one hop further back —
+ * `applyReschedule`, `undoReschedule`, `applyChange` and the two proposal
+ * appliers — and they returned `{ code, reason, violations }` only. `status`
+ * and `retryable` were computed and dropped on the floor.
+ *
+ * Six routes then re-derived an HTTP status from a hand-written `STATUS`
+ * record of their own. None of those records had heard of
+ * `plan_verification_failed`, `ledger_unrecorded`, `duplicate` or
+ * `mutation_failed`, because they predate the codes. Three fell through to
+ * `?? 400` and two to `409`.
+ *
+ * The measured consequence, LIVE at the time of writing because migration 166
+ * is not applied to production and `landDecisionInTransaction` therefore
+ * refuses every structural mutation: `applyReschedule` used to answer
+ * `'rejected'`, which the maps mapped to 409. It now answers
+ * `plan_verification_failed`, which they do not know, so Move-a-Run answers
+ * **400** — the strongest "this is your fault, do not retry" signal HTTP has —
+ * over a refusal this file itself marks `retryable: true`. The round-4 fix
+ * made the backend honest and the last hop un-did it, which is the same shape
+ * as the bug `refusalFor` was written for, one layer out.
+ *
+ * ─── WHY A HELPER AND NOT SIX CORRECTED MAPS ────────────────────────────────
+ *
+ * Rule 16. A map that has to be kept in sync by hand, six times, is six
+ * chances to add a code in one place and not the other, and the drift is
+ * invisible because nobody reads six routes side by side. The refusal already
+ * knows its own status; the route's job is to spend it, not to re-derive it.
+ *
+ * The route-local record does NOT go away, because it answers a genuinely
+ * different question: `bad_request`, `sealed`, `immovable`, `not_found`,
+ * `authority_refused` and `no_record_table` are refusals this file never
+ * produced and has no opinion about. It is now the FALLBACK, consulted only
+ * for a code that carries no status of its own.
+ *
+ * ─── RULE 22 · WHAT THIS CANNOT DO ──────────────────────────────────────────
+ *
+ * It cannot make a route call it, and it cannot see a lib function that stops
+ * populating `status`. `_mutation_refusal.test.ts` scans for both: every
+ * caller of `refusalFor` must carry `status` into what it returns, and no
+ * route may key an HTTP status off a `MutationRefusalCode` by hand.
+ */
+export interface RefusalTransport {
+  readonly code: string;
+  readonly reason?: string;
+  /**
+   * Present iff this refusal came from `refusalFor` and was carried intact.
+   * Absent for a refusal the calling module raised on its own (`bad_request`,
+   * `sealed`, `no_record_table`), which is what the fallback map is for.
+   */
+  readonly status?: number;
+  readonly retryable?: boolean;
+  readonly violations?: readonly string[];
+}
+
+/**
+ * The HTTP status for a refusal that arrived from a lib function.
+ *
+ * @param out          the refusal, as the lib function returned it.
+ * @param routeLocal   statuses for the codes this file does not produce.
+ * @param fallback     for a code neither source knows. Kept per-route rather
+ *                     than defaulted here, because changing an existing
+ *                     route's fallback is a separate decision from fixing the
+ *                     propagation.
+ */
+export function httpStatusForRefusal(
+  out: RefusalTransport,
+  routeLocal: Readonly<Record<string, number>>,
+  fallback: number,
+): number {
+  // The refusal's own answer wins. It is the only one computed from the
+  // outcome rather than from a string somebody remembered to add to a map.
+  if (typeof out.status === 'number') return out.status;
+  const local = routeLocal[out.code];
+  return typeof local === 'number' ? local : fallback;
+}
+
+/**
+ * What a lib-level caller of `refusalFor` returns to its own caller.
+ *
+ * `code` is the caller's own vocabulary (several of them say `rejected` where
+ * this file says `plan_invariant_violation`, because that is the word their
+ * published union already used and renaming it is a separate change). `status`
+ * and `retryable` are carried VERBATIM: they are properties of the outcome,
+ * not of the surface, so no caller gets to have an opinion about them.
+ */
+export function carriedRefusal<C extends string>(
+  refusal: MutationRefusal,
+  code: C,
+  reason: string = refusal.reason,
+): {
+  code: C; reason: string; status: 409 | 503; retryable: boolean; violations: string[];
+} {
+  return {
+    code,
+    reason,
+    status: refusal.status,
+    retryable: refusal.retryable,
+    violations: refusal.violations as string[],
+  };
+}
+
+/**
  * The JSON body every route answers a refused mutation with.
  *
  * `error` is the code, `reason` is the sentence, and `violations` is the

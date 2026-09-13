@@ -68,7 +68,19 @@ export type UndoOutcome =
   | { readonly ok: true; readonly reverted: 0; readonly nothingToUndo: true; readonly because: string }
   /* CALLERHONESTY-1 (2026-09-13) · `unverified` for the outcomes that are not
    * a doctrine refusal. See `accept.ts`'s twin and lib/plan/mutation-refusal.ts. */
-  | { readonly ok: false; readonly error: 'not_undoable' | 'stale' | 'rejected' | 'apply_failed' | 'unverified'; readonly because: string };
+  | {
+      readonly ok: false;
+      readonly error: 'not_undoable' | 'stale' | 'rejected' | 'apply_failed' | 'unverified';
+      readonly because: string;
+      /* STATUSCARRY-1 (2026-09-13) · `refusalFor` resolves both and this type
+       * dropped them, so `/api/plan/workout-proposals/[id]/undo` answered 409
+       * for every non-`not_undoable`/`apply_failed` error — including a failed
+       * read, which is a 503 and is retryable. Present only on the limb that
+       * came from `refusalFor`; the route falls back to its own ladder for the
+       * rest. See `lib/plan/mutation-refusal.ts`'s `httpStatusForRefusal`. */
+      readonly status?: 409 | 503;
+      readonly retryable?: boolean;
+    };
 
 export interface UndoContext {
   readonly userUuid: string;
@@ -187,6 +199,9 @@ export async function applyUndo(
       because: boundary.violations.length > 0
         ? `${refusal.reason} (${boundary.violations.join('; ')})`
         : refusal.reason,
+      // STATUSCARRY-1 (2026-09-13) · carried verbatim. See the type above.
+      status: refusal.status,
+      retryable: refusal.retryable,
     };
   }
   if (boundary.value === 0) {

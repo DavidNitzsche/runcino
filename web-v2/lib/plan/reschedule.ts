@@ -179,7 +179,7 @@ import { roundTo } from '@/lib/format/run';
 import type { PoolClient } from 'pg';
 import { pool } from '@/lib/db/pool';
 import { mutatePlan } from '@/lib/plan/mutate';
-import { refusalFor } from '@/lib/plan/mutation-refusal';
+import { refusalFor, carriedRefusal } from '@/lib/plan/mutation-refusal';
 import { loadPlanShape, type PlanShape } from '@/lib/plan/replan-scenarios';
 import { weekDosingFindings, type DosingFinding, type DosingWeek } from '@/lib/plan/dosing';
 import { isDaySealed } from '@/lib/plan/seal';
@@ -647,6 +647,14 @@ export type ApplyOutcome =
           | 'sealed' | 'immovable' | 'no_record_table'
           | 'plan_verification_failed' | 'ledger_unrecorded' | 'duplicate' | 'mutation_failed';
       reason: string;
+      /* STATUSCARRY-1 (2026-09-13) · `refusalFor` computes both of these and
+       * this type used to drop them, so every route downstream re-derived the
+       * status from a map that had never heard of the four codes above. See
+       * `lib/plan/mutation-refusal.ts`'s `httpStatusForRefusal`. Optional
+       * because the `no_record_table` limb below is this module's own refusal
+       * and not one of `refusalFor`'s. */
+      status?: 409 | 503;
+      retryable?: boolean;
       violations?: string[];
     };
 
@@ -2531,12 +2539,11 @@ export async function applyReschedule(input: ApplyInput): Promise<ApplyOutcome> 
      * FOUND-BUT-NOT-FIXED and asserted on `violations[0]` instead of the
      * sentence, because the sentence could not be trusted. It can now. */
     const refusal = refusalFor(res, { thing: 'That move' });
-    return {
-      ok: false,
-      code: refusal.code === 'plan_invariant_violation' ? 'rejected' : refusal.code,
-      reason: refusal.reason,
-      violations: refusal.violations as string[],
-    };
+    /* STATUSCARRY-1 (2026-09-13) · `carriedRefusal` rather than a literal, so
+     * `status` and `retryable` cannot be dropped here again. Dropping them is
+     * what made this exact function answer HTTP 400 for a transient read
+     * failure on the live app. */
+    return { ok: false, ...carriedRefusal(refusal, refusal.code === 'plan_invariant_violation' ? 'rejected' as const : refusal.code) };
   }
 
   return { ok: true, decision: res.value, summary: summaryOf(r, option, res.value) };
@@ -2682,7 +2689,11 @@ export type UndoOutcome =
        * failure INSIDE `mutatePlan` — had no code and arrived as `rejected`. */
       code: 'not_found' | 'sealed' | 'rejected' | 'already_undone' | 'read_failed'
           | 'no_plan' | 'plan_verification_failed' | 'ledger_unrecorded' | 'duplicate' | 'mutation_failed';
-      reason: string; violations?: string[];
+      reason: string;
+      /* STATUSCARRY-1 (2026-09-13) · see `ApplyOutcome`'s twin above. */
+      status?: 409 | 503;
+      retryable?: boolean;
+      violations?: string[];
     };
 
 /**
@@ -2758,13 +2769,16 @@ export async function undoReschedule(opts: {
      * wording through `refusalFor`'s subject; every other outcome now gets
      * its own. */
     const refusal = refusalFor(res, { thing: 'Putting that back' });
+    // STATUSCARRY-1 (2026-09-13) · see `applyReschedule`'s twin above.
     return {
       ok: false,
-      code: refusal.code === 'plan_invariant_violation' ? 'rejected' : refusal.code,
-      reason: refusal.code === 'plan_invariant_violation'
-        ? 'Putting that back would break the plan as it now stands. Nothing was changed.'
-        : refusal.reason,
-      violations: refusal.violations as string[],
+      ...carriedRefusal(
+        refusal,
+        refusal.code === 'plan_invariant_violation' ? 'rejected' as const : refusal.code,
+        refusal.code === 'plan_invariant_violation'
+          ? 'Putting that back would break the plan as it now stands. Nothing was changed.'
+          : refusal.reason,
+      ),
     };
   }
   return { ok: true, decisionId: opts.decisionId, restored: res.value };

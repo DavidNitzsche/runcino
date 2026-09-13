@@ -33,6 +33,7 @@
  */
 import { NextRequest, NextResponse } from 'next/server';
 import { requireUserId } from '@/lib/auth/session';
+import { httpStatusForRefusal } from '@/lib/plan/mutation-refusal';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import {
   recommendReschedule,
@@ -42,6 +43,16 @@ import {
   resolveConstraint,
 } from '@/lib/plan/reschedule';
 
+/**
+ * STATUSCARRY-1 (2026-09-13) · THE FALLBACK, NOT THE ANSWER. See
+ * `/api/plan/change`'s twin for the full account. In short: this map had never
+ * heard of `plan_verification_failed`, `ledger_unrecorded`, `duplicate` or
+ * `mutation_failed`, and `applyReschedule` — which used to answer `'rejected'`
+ * (409) — now answers those. They fell through to `?? 400`. Move-a-Run was
+ * answering 400 on production for a transient, retryable read failure.
+ * `httpStatusForRefusal` spends the status the refusal carries; the rows below
+ * are `reschedule.ts`'s own codes, which carry none.
+ */
 const STATUS: Record<string, number> = {
   no_plan: 404,
   not_found: 404,
@@ -94,7 +105,7 @@ export async function GET(req: NextRequest) {
   if (!out.ok) {
     return NextResponse.json(
       { error: out.code, reason: out.reason },
-      { status: STATUS[out.code] ?? 400 },
+      { status: httpStatusForRefusal(out, STATUS, 400) },
     );
   }
   return NextResponse.json(out.recommendation);
@@ -118,7 +129,7 @@ export async function POST(req: NextRequest) {
     if (!out.ok) {
       return NextResponse.json(
         { error: out.code, reason: out.reason, violations: out.violations },
-        { status: STATUS[out.code] ?? 400 },
+        { status: httpStatusForRefusal(out, STATUS, 400) },
       );
     }
     return NextResponse.json(out);
@@ -157,7 +168,7 @@ export async function POST(req: NextRequest) {
   if (!out.ok) {
     return NextResponse.json(
       { error: out.code, reason: out.reason, violations: out.violations },
-      { status: STATUS[out.code] ?? 400 },
+      { status: httpStatusForRefusal(out, STATUS, 400) },
     );
   }
   return NextResponse.json(out);
