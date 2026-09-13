@@ -91,8 +91,17 @@ const PLAN_STATUSES = [
   'superseded', 'expired', 'no_change', 'undone',
 ] as const;
 
-/** Every status `plan_workout_proposals` can hold. */
-const WORKOUT_STATUSES = ['pending', 'accepted', 'dismissed', 'expired'] as const;
+/**
+ * Every status `plan_workout_proposals` can hold.
+ *
+ * CA-13 (2026-09-13) · this list itself was missing `'superseded'` until
+ * this pass — the same omission `outcomeOfWorkoutRow` had, found by an
+ * independent Coach-audit implementation-status verification. A real,
+ * currently-live row (`plan_workout_proposals.id=8`, `action_kind='hold'`)
+ * carries this status. `web-v2/lib/plan/workout-proposals.ts:221`'s write
+ * site is the source of truth for this value's existence.
+ */
+const WORKOUT_STATUSES = ['pending', 'accepted', 'dismissed', 'expired', 'superseded'] as const;
 
 describe('V5PROPOSALSURFACE-1 · the two status maps are total', () => {
   it('maps every plan_proposals status, and only no_change is dropped', () => {
@@ -106,6 +115,16 @@ describe('V5PROPOSALSURFACE-1 · the two status maps are total', () => {
     for (const s of WORKOUT_STATUSES) {
       expect(outcomeOfWorkoutRow(s, false, false)).toBeTruthy();
     }
+  });
+
+  it('CA-13 · a superseded workout row reads the same outcome a superseded plan row does (Rule 16)', () => {
+    // Before this fix, a per-workout 'superseded' status fell through to the
+    // `default` branch and read as 'expired' — implying the runner simply
+    // never answered, when a newer decision actually intervened first. Both
+    // tables now use the identical vocabulary value for the identical fact.
+    expect(outcomeOfWorkoutRow('superseded', false, false)).toBe('superseded');
+    expect(outcomeOfWorkoutRow('superseded', false, false))
+      .toBe(outcomeOfPlanRow('superseded'));
   });
 
   it('an UNKNOWN status is never reported as still open', () => {
