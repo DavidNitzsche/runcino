@@ -1502,6 +1502,39 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     // than refusing. The `opts.bypass` escape hatch is untouched: it exists
     // precisely for a caller (an admin backfill) that must be able to name a
     // plan without paying for this check.
+    //
+    // ARCHIVEDGUARD-2 (2026-09-12) · closes the review gap left by
+    // ARCHIVEDGUARD-1. That fix checked `archived_iso IS NULL` and the write
+    // in `apply` as two separate statements under plain READ COMMITTED, with
+    // no lock held in between — so the guarantee only covered a race already
+    // resolved BEFORE this SELECT ran, not one developing DURING this
+    // transaction. A concurrent `clearActivePlansFor` (generate.ts,
+    // seed-from-onboarding.ts) archiving this exact plan and committing in
+    // the window between this SELECT and `apply`'s write would sail through
+    // undetected — the check had already said "active" and nothing re-asked.
+    //
+    // `FOR UPDATE` closes it with an ordinary row lock, not an advisory lock,
+    // because the row already exists (this is a resolve-then-mutate path, not
+    // a create path — advisory locks are for when there is no row to hold a
+    // lock on) and because the archiver's own write is a plain `UPDATE
+    // training_plans SET archived_iso = ... WHERE ... archived_iso IS NULL`
+    // (`clearActivePlansFor`, both implementations) — an UPDATE always takes
+    // an implicit row lock on every row it is about to modify, so it is
+    // already a *compatible* lock-taker and needed no change of its own.
+    // Concretely, under READ COMMITTED:
+    //   · this SELECT's FOR UPDATE wins the row first → the archiver's UPDATE
+    //     blocks on the same row until this transaction COMMITs or ROLLBACKs,
+    //     so the archive can only land AFTER this mutation is fully decided —
+    //     never interleaved with it.
+    //   · the archiver's UPDATE wins first and commits → this SELECT, once it
+    //     acquires the now-free lock, re-evaluates its own WHERE clause
+    //     against the just-committed row (standard READ COMMITTED semantics
+    //     for a blocked writer/locker) and correctly returns zero rows,
+    //     because `archived_iso` is no longer NULL. `requestedPlanArchived`
+    //     fires exactly as it does for a race resolved before this ran.
+    // Either way there is no window left in which this transaction can both
+    // believe the plan is active and commit a write after it has actually
+    // been archived.
     let planId: string | null = null;
     let requestedPlanArchived = false;
     if (opts.planId) {
@@ -1511,7 +1544,8 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         const active = (await client.query<{ id: string }>(
           `SELECT id::text AS id FROM training_plans
             WHERE id = $1 AND user_uuid = $2::uuid AND archived_iso IS NULL
-            LIMIT 1`,
+            LIMIT 1
+            FOR UPDATE`,
           [opts.planId, opts.userUuid],
         ).catch(() => ({ rows: [] as Array<{ id: string }> }))).rows[0]?.id ?? null;
         if (active) planId = active;
