@@ -200,10 +200,10 @@ export async function runActionProposalLane(
    *
    * Propose-only exception to the 2026-09-02 reshape ruling, scoped to
    * exactly one axis (interval_duration) and exactly one verdict
-   * (ACCELERATE) — the owner's own explicit ruling, in conversation with the
-   * implementing session, not a file in this tree (see `action.ts`'s doc
-   * comment on `DURATION_PROGRESS_OFFER`, and Rule 20 on why this comment
-   * does not cite a path).
+   * (ACCELERATE) — the owner's ruling, recorded in full at
+   * `docs/PRODUCT_DECISIONS.md` under "2026-09-12 · DURATIONOFFER-1" (see
+   * `action.ts`'s doc comment on `DURATION_PROGRESS_OFFER` for the same
+   * citation and the test that keeps it resolvable).
    *
    * Same shape as the HOLD raise immediately above: reads the SAME `actions`
    * array (no re-detection, Rule 16), translates via the SAME

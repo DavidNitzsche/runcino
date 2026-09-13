@@ -1748,6 +1748,44 @@ cited as still-settled when it no longer was.
 
 ---
 
+## 2026-09-12 · DURATIONOFFER-1 — a propose-only, record-only exception to the 2026-09-02 reshape ruling, scoped to one axis and one verdict
+
+### The gap this closes
+
+The end-to-end adaptation vertical-slice track's Milestone 1 work found that `resolveWeekProgression`'s ACCELERATE verdict (`lib/plan/progression-gate.ts`) — one of the three adaptation triggers CLAUDE.md's Rule 21 names, and the mechanism that measured "309 intents, zero upward, ever" — has no runner-visible path at all. Not because it is unwired: `lib/brain/proposal/write.ts`'s `WRITER_REFUSES` deliberately withholds every session-geometry kind (`DURATION_CHANGE`, `REPETITION_CHANGE`, `RECOVERY_INTERVAL_CHANGE`, `QUALITY_DOSE_CHANGE`, `LONG_RUN_STRUCTURE_CHANGE`) from ever being proposed, citing the owner's 2026-09-02 ruling by name, and stating explicitly that closing it "is the owner's call, not a writer's."
+
+The track's own initial framing of the gap as a "PACE" lever was a mislabeling, corrected before any code was written: `progression-gate.ts`'s own doctrine header states "it does not touch pace... Pace is the fitness model's business," and `docs/ADAPTATION_PROGRESSION_DOCTRINE.md`'s four-question framing (pace / duration / density / hold) already separates the two. True pace acceleration is the VDOT/LTHR reprice mechanism, already runner-visible and already complete.
+
+### The owner's ruling, verbatim, in two parts
+
+First, transferring the authorization from the (mislabeled) PACE framing to DURATION specifically:
+
+> "I explicitly lift the 2026-09-02 prohibition only for runner-visible, propose-only PACE ACCELERATE cards in this milestone. This authorization is narrowly bounded: You may compute and display a PACE proposal using the same proposal lifecycle already established for VOLUME. You may update the doctrine/ratchet to record this specific propose-only exception. You must prove the evidence classification and eligibility inputs before producing the proposal. The proposal must show the evidence, proposed pace change, protected sessions, uncertainty, and what would earn the next progression. Accept, decline, defer, history, and undo states may be implemented where they operate on proposal state only. No automatic application. No plan, workout, target, session-geometry, or runner-state mutation. No new side-door write path. No widening this authorization to DURATION, DENSITY, regression, or any other lever. If completing the card requires an actual session-geometry write or an unresolved ownership decision, stop and report the precise blocker. Falsify the full lifecycle with real evidence and rendered runner-facing states. This authorizes a safe proposal surface, not autonomous PACE mutation."
+
+Then, after the implementing session reported back that `progression-gate.ts`'s ACCELERATE never touches pace and that true pace already has a complete lifecycle via reprice cards:
+
+> "Do not build a duplicate PACE proposal system. Accept the ownership correction provisionally, but do not mark PACE complete merely because reprice-card code exists. [... falsify the existing PACE lifecycle first, which the implementing session did — see the historical-data track's own handback for that result ...] For the milestone's second build item, I explicitly transfer the narrow propose-only authorization to DURATION only, not DENSITY. DURATION authorization is limited to: one existing, doctrine-supported ACCELERATE change type, such as prescribed duration or rep-count progression; runner-visible proposal and proposal-state lifecycle; evidence-first eligibility; record-only acceptance; no automatic application; no plan/workout/session mutation; no recovery-shortening or density change; no new side-door write path. Before building it, publish the exact semantic mapping from progression-gate output to the proposed DURATION change, its evidence requirements, safety constraints, protected sessions, and refusal cases. If more than one meaning is bundled together, choose one atomic change for this milestone. DENSITY remains explicitly undefined and off. Do not conflate it with duration, rep count, recovery, or generic session reshaping. Record it as a separate doctrine/product decision for the later autonomous-Brain pass."
+
+### The fix
+
+A new `BrainAction` kind, `DURATION_PROGRESS_OFFER` (`lib/brain/proposal/action.ts`), scoped to exactly one atomic change: `interval_duration` ACCELERATE (the rep gets longer — `repMinutes` increases — same rep count, recovery and pace; chosen over rep-count specifically because it carries zero interpretive risk of being a density change in disguise). Fires only when `resolveWeekProgression`'s resolution carries `action === 'ACCELERATE'` (read directly from the gate's own verdict field, never inferred from a translated shape — see `lib/plan/action-proposal-lane.ts`'s `firstDurationAccelerate` for why that distinction matters after an independent-review-found defect, DURATIONOFFER-2 below).
+
+Structurally non-mutating by construction, not by convention: `lib/brain/proposal/execute.ts`'s `plannedWrites` returns `{writes: [], nonMutating: true}` unconditionally for this kind; `lib/brain/proposal/executor-map.ts`'s `executorFor` returns `RECORD_ONLY` unconditionally; `lib/brain/proposal/accept.ts`'s single shared `RECORD_ONLY` dispatch branch (also used by `HOLD`/`SAFETY_STOP`/`REFUSAL`/`CONDITIONAL`) returns before ever calling `mutatePlan` or `applyAdaptations`, for every kind classified this way, not this one specifically. `DURATION_CHANGE` (the real, mutating sibling kind) and `write.ts`'s `WRITER_REFUSES` map are both completely untouched — the genuinely-refused reshape kinds remain exactly as withheld as before this work.
+
+### DURATIONOFFER-2 — a defect an independent reviewer found in the first cut
+
+The first implementation's eligibility filter (`translated.kind === 'DURATION_CHANGE' && translated.direction === 'MORE'`) did not actually guarantee a genuine ACCELERATE: `lib/plan/progression-pass.ts`'s own "resume a paused ladder" case lets a **TAKE** produce the identical translated shape, because `resolveWeekProgression` recomputes its own `changed` field independently of `resolveProgressionStep`'s. A fresh independent reviewer, explicitly instructed to verify this by direct construction rather than by reading comments, built exactly this counter-example and confirmed the misclassification. Fixed by reading `resolution.action === 'ACCELERATE'` directly — which also makes the "evidence band is strong" claim actually true by construction, since `resolveProgressionStep` returns `ACCELERATE` from exactly one branch (`case 'strong':`). Not a mutation-safety defect — a misclassified card would still have gone through the identical RECORD_ONLY path — but a real, evidence-shape defect that a runner would have read as a false "you earned this" claim absent the fix.
+
+### Scope, stated plainly
+
+DENSITY: **remains explicitly undefined and off.** Not invented, not silently retired, not assumed identical to session-shape reshaping. A separate doctrine/product decision, not made here. Rep-count, recovery-interval, quality-dose and long-run-structure ACCELERATE resolutions remain fully withheld under the original 2026-09-02 ruling, exactly as before. Extending this exception to any other lever is a separate ruling, not an engineering decision — code comments in `action.ts` and `action-proposal-lane.ts` point here rather than asserting that independently.
+
+### Verification
+
+`tsc --noEmit` clean; `lib/brain/proposal/_action_completeness.test.ts` (58/58) and `_action_schema_gate.test.ts` (20/20) updated and passing with the new kind as a 15th generated kind; full `lib/brain`/`lib/plan`/`lib/faff`/`lib/race`/`lib/audit` suites green; real-database verification on two local scratch schemas (`faff_166absent_scratch` = current production schema, `faff_roundtrip_scratch` = migrations 166/167 applied) proving `plan_workouts` is byte-identical before and after both accepting and declining the offer; a permanent regression test (`lib/plan/_duration_accelerate_discriminator.test.ts`) reproducing the independent reviewer's exact resumed-TAKE counter-example, a positive control (genuine ACCELERATE still offered), and BACK_OFF/HOLD sanity cases. Every fixed/new behavior falsified against its pre-fix state per this project's own Rule 18 discipline (confirmed to fail, then confirmed to pass restored). Full evidence trail: `for external review/08-adaptation-vertical-slice/` (this repository's external-review package, outside the git tree), documents 00 through 06.
+
+---
+
 ## Standing constraints referenced above
 
 - Paces come from evidence. The goal stays visible and never distorts training.
