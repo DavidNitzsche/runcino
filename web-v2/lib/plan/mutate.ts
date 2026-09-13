@@ -263,7 +263,7 @@ import {
   type LedgerSourceMode,
 } from '@/lib/brain/ledger/ledger-entry';
 import { pool } from '@/lib/db/pool';
-import { rowOrNull } from '@/lib/db/read';
+import { attempt, rowOrNull } from '@/lib/db/read';
 import type { PoolClient } from 'pg';
 import { validateComposedPlan, PlanValidationError } from './validate';
 import type { ComposePlanResult, ComposedWeek, DayPlan } from './generate';
@@ -807,6 +807,25 @@ export type MutationOutcome =
   | 'bypassed'
   | 'authorship_drift'
   | 'no_plan'
+  /**
+   * SWALLOWEDGUARD-1 (2026-09-13) · Rule 11 — "don't know", "measured zero"
+   * and "the read failed" are three facts, never one. This is what `no_plan`
+   * was missing: the archived-plan check in step 1 below used to `.catch(()
+   * => ({ rows: [] }))` around its own query, so a THROWN read (a transient
+   * DB error, a lock-wait timeout, a network blip — anything, not just "the
+   * plan doesn't exist") silently became an empty row set, and the code then
+   * reported `requestedPlanArchived = true` — a false claim about the
+   * runner's actual data, indistinguishable downstream from a plan that is
+   * genuinely archived.
+   *
+   * This outcome is the third, honest state: the read itself failed, so
+   * nothing could be verified. It must never collapse into `no_plan`
+   * (a false "archived" claim) and must never let the mutation proceed as if
+   * the plan were active (a silent bypass of the guard). The mutation is
+   * refused either way; the outcome name is what lets a caller — and this
+   * outcome's own regression test — tell which refusal actually happened.
+   */
+  | 'plan_verification_failed'
   /**
    * LEDGERATOMIC-1 · THE MUTATION WAS ROLLED BACK BECAUSE ITS RECORD COULD NOT
    * BE WRITTEN. The owner's rule, verbatim: "If the ledger is the durable
@@ -1537,28 +1556,64 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     // been archived.
     let planId: string | null = null;
     let requestedPlanArchived = false;
+    // SWALLOWEDGUARD-1 (2026-09-13) · Rule 11. This used to be
+    // `.catch(() => ({ rows: [] }))`, which cannot tell "the plan is
+    // archived / not owned" (a real, queried negative) apart from "the query
+    // itself threw" (a transient DB error, a lock-wait timeout, a network
+    // blip). Both collapsed into `requestedPlanArchived = true` — a false
+    // "archived" claim reported as fact whenever the read merely failed.
+    //
+    // `attempt()` (lib/db/read.ts) is the primitive built for exactly this:
+    // it forces the caller to branch on `ok` before touching a value, so a
+    // failure cannot silently become an answer. `rowOrNull` was considered
+    // (it is what the lineage lookup 30 lines below uses) but rejected for
+    // THIS call site: `rowOrNull` still returns a single collapsed `null` for
+    // "not found" (well, `undefined`) vs "failed" (`null`) — a caller that
+    // isn't careful can still do `?? null` and lose the distinction, which is
+    // exactly the failure mode this guard exists to prevent. This check's
+    // entire reason for existing is "verify not-archived before allowing a
+    // write", so a failed read must REFUSE the mutation with its own honest
+    // outcome (`plan_verification_failed`, step 3 below) — never fall back to
+    // "archived" (false negative reported as fact) and never fall through to
+    // "active" (an unverified state waved through silently).
+    let planVerificationFailed = false;
     if (opts.planId) {
       if (opts.bypass) {
         planId = opts.planId;
       } else {
-        const active = (await client.query<{ id: string }>(
-          `SELECT id::text AS id FROM training_plans
-            WHERE id = $1 AND user_uuid = $2::uuid AND archived_iso IS NULL
-            LIMIT 1
-            FOR UPDATE`,
-          [opts.planId, opts.userUuid],
-        ).catch(() => ({ rows: [] as Array<{ id: string }> }))).rows[0]?.id ?? null;
-        if (active) planId = active;
-        else requestedPlanArchived = true;
+        const activeAttempt = await attempt(
+          'mutate/archived-plan-guard',
+          client.query<{ id: string }>(
+            `SELECT id::text AS id FROM training_plans
+              WHERE id = $1 AND user_uuid = $2::uuid AND archived_iso IS NULL
+              LIMIT 1
+              FOR UPDATE`,
+            [opts.planId, opts.userUuid],
+          ),
+        );
+        if (!activeAttempt.ok) {
+          planVerificationFailed = true;
+        } else {
+          const active = activeAttempt.value.rows[0]?.id ?? null;
+          if (active) planId = active;
+          else requestedPlanArchived = true;
+        }
       }
     }
-    if (!planId && !requestedPlanArchived && opts.workoutId) {
+    // SWALLOWEDGUARD-1 · both fallbacks below are also gated on
+    // `!planVerificationFailed`. A caller who named a `planId` that we could
+    // not verify must not have that unresolved read silently papered over by
+    // falling through to a DIFFERENT plan (the workoutId's owner, or
+    // whatever else is currently active) — that is the "proceeds as if
+    // active" failure mode this fix exists to close, just wearing the
+    // fallback's clothes instead of the archived-claim's.
+    if (!planId && !requestedPlanArchived && !planVerificationFailed && opts.workoutId) {
       planId = (await client.query<{ plan_id: string }>(
         `SELECT plan_id::text AS plan_id FROM plan_workouts WHERE id = $1 LIMIT 1`,
         [opts.workoutId],
       )).rows[0]?.plan_id ?? null;
     }
-    if (!planId && !requestedPlanArchived && touches !== 'authorship') {
+    if (!planId && !requestedPlanArchived && !planVerificationFailed && touches !== 'authorship') {
       planId = (await client.query<{ id: string }>(
         `SELECT id::text AS id FROM training_plans
           WHERE user_uuid = $1::uuid AND archived_iso IS NULL
@@ -1624,24 +1679,43 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     //     plan — it just failed the archived/ownership check — and that is
     //     never a "nothing to validate against" case that authorship's
     //     no-plan exemption was written for.
-    if ((!planId && touches !== 'authorship') || requestedPlanArchived) {
+    //
+    //     SWALLOWEDGUARD-1 · `planVerificationFailed` forces the SAME
+    //     refusal, for the SAME reason, but is reported under its own
+    //     outcome (`plan_verification_failed`, never `no_plan`) — Rule 11's
+    //     "don't know" / "measured zero" / "the read failed" are three facts
+    //     a caller or a reader of `plan_decision_ledger` must be able to
+    //     tell apart. Collapsing this into `no_plan`/`requestedPlanArchived`
+    //     would recreate the exact bug this fixes one label up the stack.
+    if ((!planId && touches !== 'authorship') || requestedPlanArchived || planVerificationFailed) {
       await client.query('ROLLBACK');
-      const reason = requestedPlanArchived
+      const reason = planVerificationFailed
+        ? 'could not verify whether the requested plan_id is archived — the read itself failed '
+          + '(transient DB error, lock-wait timeout, or similar), not a confirmed archived state'
+        : requestedPlanArchived
         ? 'the requested plan_id is archived or not owned by this runner, so it is no longer a '
           + 'valid mutation target'
         : 'no active plan resolved for this mutation';
       console.error(
         `[plan/mutate] NO PLAN · source=${opts.source} user=${opts.userUuid.slice(0, 8)}`
-        + (requestedPlanArchived ? ' · requested plan archived/not-owned' : ''),
+        + (planVerificationFailed ? ' · archived-plan-guard READ FAILED, refusing rather than guessing'
+          : requestedPlanArchived ? ' · requested plan archived/not-owned' : ''),
       );
+      const outcome: MutationOutcome = planVerificationFailed ? 'plan_verification_failed' : 'no_plan';
       await recordMutationOutcome({
         userUuid: opts.userUuid, planId: null, source: opts.source,
-        outcome: 'no_plan', violations: [reason],
+        outcome, violations: [reason],
         preExisting: [], detail: opts.detail ?? null,
       });
       await land(
-        'REFUSE', 'no_plan', [reason],
-        requestedPlanArchived
+        'REFUSE', outcome, [reason],
+        planVerificationFailed
+          ? 'the archived-plan-guard read for the caller-supplied plan_id failed outright, so '
+            + 'this boundary could not confirm the plan is active. The write was rolled back '
+            + 'rather than reported as "archived" (a false negative) or allowed through as '
+            + '"active" (an unverified state) — refusing is the only honest answer to a failed '
+            + 'read (CLAUDE.md Rule 11).'
+          : requestedPlanArchived
           ? 'the caller supplied a plan_id that is archived or not owned by this runner. The '
             + 'write was rolled back rather than silently retargeted onto whatever plan is '
             + 'currently active.'
@@ -1649,7 +1723,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
           + 'owned by the runner and by no plan; its lineage is the orphan marker.',
         null,
       );
-      return fail('no_plan', [reason], [], null);
+      return fail(outcome, [reason], [], null);
     }
 
     // 4 · before-snapshot + context (skipped for authorship: there is nothing
