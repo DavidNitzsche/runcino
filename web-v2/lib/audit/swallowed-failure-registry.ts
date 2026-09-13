@@ -540,9 +540,14 @@ export const EMPTIED_KNOWN: readonly string[] = [
   'lib/plan/injury-builder.ts::buildInjuryPlanBody',
   'lib/plan/injury-builder.ts::buildInjuryPlanBody',
   'lib/plan/injury-builder.ts::buildInjuryPlanBody',
-  'lib/plan/mutate.ts::loadMutationContext',
-  'lib/plan/mutate.ts::loadMutationContext',
-  'lib/plan/mutate.ts::mutatePlan',
+  // 2026-09-13 · CALLERHONESTY-1 / CONTEXTREAD-1 · FIXED, so the three ids are
+  // gone rather than re-pointed. `loadMutationContext`'s two reads and
+  // `mutatePlan`'s active-plan fallback all went through `attempt()`: the
+  // context read now reports `readFailed` and the boundary REFUSES a structural
+  // mutation on it instead of validating against maximally permissive
+  // fallbacks, and the fallback refuses as `plan_verification_failed` instead
+  // of claiming the runner has no active plan. EMPTIED_BASELINE 348 -> 345.
+  // Falsified in lib/plan/_mutation_read_honesty.db.test.ts.
   'lib/plan/open-block.ts::recordOpenBlock',
   'lib/plan/pace-drop-event.ts::loadPaceZoneEvent',
   'lib/plan/progression-pass.ts::applyProgressionReshape',
@@ -791,7 +796,7 @@ export const EMPTIED_KNOWN: readonly string[] = [
 // result there did not degrade anything visibly, it reported the runner's
 // session as cleanly executed — and the query it guarded was grading whichever
 // payload the DAY happened to carry last, not the run's own.
-export const EMPTIED_BASELINE = 348;
+export const EMPTIED_BASELINE = 345;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.

@@ -43,6 +43,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { pool } from '@/lib/db/pool';
 import { requireUserId } from '@/lib/auth/session';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor, refusalBody } from '@/lib/plan/mutation-refusal';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 
 export const dynamic = 'force-dynamic';
@@ -229,10 +230,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ ok: false, error: 'server_error' }, { status: 500 });
   }
   if (!boundary.ok) {
-    return NextResponse.json(
-      { ok: false, error: 'plan_invariant_violation', violations: boundary.violations },
-      { status: 409 },
-    );
+    // CALLERHONESTY-1 (2026-09-13) · see lib/plan/mutation-refusal.ts. A failed
+    // verification read is not a rule conflict and must not be told to the
+    // runner as one.
+    const refusal = refusalFor(boundary, { thing: 'That change' });
+    return NextResponse.json(refusalBody(refusal), { status: refusal.status });
   }
   const outcome = boundary.value;
   if (outcome == null) {

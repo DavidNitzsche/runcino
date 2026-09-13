@@ -59,13 +59,16 @@ import { readLiveRows } from './staleness';
 import { ledgerFacetsOf } from './ledger-facet';
 import type { PlannedWrite } from './execute';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor } from '@/lib/plan/mutation-refusal';
 import { findLiveAcceptedLedgerRow } from '@/lib/brain/ledger/decision-ledger';
 import type { PoolClient } from 'pg';
 
 export type UndoOutcome =
   | { readonly ok: true; readonly reverted: number; readonly ledgerRowId: string | null }
   | { readonly ok: true; readonly reverted: 0; readonly nothingToUndo: true; readonly because: string }
-  | { readonly ok: false; readonly error: 'not_undoable' | 'stale' | 'rejected' | 'apply_failed'; readonly because: string };
+  /* CALLERHONESTY-1 (2026-09-13) · `unverified` for the outcomes that are not
+   * a doctrine refusal. See `accept.ts`'s twin and lib/plan/mutation-refusal.ts. */
+  | { readonly ok: false; readonly error: 'not_undoable' | 'stale' | 'rejected' | 'apply_failed' | 'unverified'; readonly because: string };
 
 export interface UndoContext {
   readonly userUuid: string;
@@ -176,12 +179,14 @@ export async function applyUndo(
   });
 
   if (!boundary.ok || boundary.value == null) {
+    // CALLERHONESTY-1 (2026-09-13) · see `accept.ts`'s twin.
+    const refusal = refusalFor(boundary, { thing: 'Putting that back' });
     return {
       ok: false,
-      error: 'rejected',
+      error: refusal.code === 'plan_invariant_violation' ? 'rejected' : 'unverified',
       because: boundary.violations.length > 0
-        ? boundary.violations.join('; ')
-        : 'the mutation boundary refused to put it back',
+        ? `${refusal.reason} (${boundary.violations.join('; ')})`
+        : refusal.reason,
     };
   }
   if (boundary.value === 0) {

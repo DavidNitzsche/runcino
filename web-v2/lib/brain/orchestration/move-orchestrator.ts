@@ -1172,9 +1172,16 @@ export type MoveOutcome =
     }
   | {
       ok: false;
+      /* CALLERHONESTY-1 (2026-09-13) · the last four are forwarded verbatim
+       * from `applyReschedule`, which now distinguishes a doctrine rejection
+       * from a failed read, an unwritable ledger and an already-applied move.
+       * Forwarded rather than re-collapsed to `rejected`, which is the whole
+       * point: this orchestrator is one more hop the distinction has to
+       * survive. */
       code: 'no_plan' | 'not_found' | 'bad_request' | 'plan_moved' | 'rejected'
           | 'sealed' | 'immovable' | 'no_record_table' | 'readjudication_refused'
-          | 'authority_refused';
+          | 'authority_refused'
+          | 'plan_verification_failed' | 'ledger_unrecorded' | 'duplicate' | 'mutation_failed';
       reason: string;
       report?: ReadjudicationReport;
       violations?: string[];

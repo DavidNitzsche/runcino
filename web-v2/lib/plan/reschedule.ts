@@ -179,6 +179,7 @@ import { roundTo } from '@/lib/format/run';
 import type { PoolClient } from 'pg';
 import { pool } from '@/lib/db/pool';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor } from '@/lib/plan/mutation-refusal';
 import { loadPlanShape, type PlanShape } from '@/lib/plan/replan-scenarios';
 import { weekDosingFindings, type DosingFinding, type DosingWeek } from '@/lib/plan/dosing';
 import { isDaySealed } from '@/lib/plan/seal';
@@ -637,8 +638,14 @@ export type ApplyOutcome =
   | { ok: true; decision: RescheduleDecision; summary: RescheduleSummary }
   | {
       ok: false;
+      /* CALLERHONESTY-1 (2026-09-13) · the last four come from
+       * `lib/plan/mutation-refusal.ts`. `_move_ledger_absent.db.test.ts`
+       * already had the finding written into its own comments: a
+       * `ledger_unwritten` arrived here as `rejected` and was shown as "That
+       * move would break the plan", which is not what happened. */
       code: 'no_plan' | 'not_found' | 'bad_request' | 'plan_moved' | 'rejected'
-          | 'sealed' | 'immovable' | 'no_record_table';
+          | 'sealed' | 'immovable' | 'no_record_table'
+          | 'plan_verification_failed' | 'ledger_unrecorded' | 'duplicate' | 'mutation_failed';
       reason: string;
       violations?: string[];
     };
@@ -2516,12 +2523,19 @@ export async function applyReschedule(input: ApplyInput): Promise<ApplyOutcome> 
   }
 
   if (!res.ok || !res.value) {
+    /* CALLERHONESTY-1 (2026-09-13) · the old branch keyed on
+     * `res.violations.length`, which is not a fact about WHY the move was
+     * refused — every refusal populates it, including a failed read and an
+     * unwritable ledger. So "That move would break the plan" was printed over
+     * both. `_move_ledger_absent.db.test.ts` recorded that as
+     * FOUND-BUT-NOT-FIXED and asserted on `violations[0]` instead of the
+     * sentence, because the sentence could not be trusted. It can now. */
+    const refusal = refusalFor(res, { thing: 'That move' });
     return {
-      ok: false, code: 'rejected',
-      reason: res.violations.length
-        ? 'That move would break the plan. Nothing was changed.'
-        : 'That move could not be applied. Nothing was changed.',
-      violations: res.violations,
+      ok: false,
+      code: refusal.code === 'plan_invariant_violation' ? 'rejected' : refusal.code,
+      reason: refusal.reason,
+      violations: refusal.violations as string[],
     };
   }
 
@@ -2663,7 +2677,11 @@ export type UndoOutcome =
   | { ok: true; decisionId: string; restored: number }
   | {
       ok: false;
-      code: 'not_found' | 'sealed' | 'rejected' | 'already_undone' | 'read_failed';
+      /* CALLERHONESTY-1 (2026-09-13) · `read_failed` was already here, for the
+       * decision-row read this function does itself. Its sibling — a read
+       * failure INSIDE `mutatePlan` — had no code and arrived as `rejected`. */
+      code: 'not_found' | 'sealed' | 'rejected' | 'already_undone' | 'read_failed'
+          | 'no_plan' | 'plan_verification_failed' | 'ledger_unrecorded' | 'duplicate' | 'mutation_failed';
       reason: string; violations?: string[];
     };
 
@@ -2735,10 +2753,18 @@ export async function undoReschedule(opts: {
   });
 
   if (!res.ok || res.value == null) {
+    /* CALLERHONESTY-1 (2026-09-13) · unconditional sentence, same defect as
+     * `applyReschedule` above. `plan_invariant_violation` keeps this exact
+     * wording through `refusalFor`'s subject; every other outcome now gets
+     * its own. */
+    const refusal = refusalFor(res, { thing: 'Putting that back' });
     return {
-      ok: false, code: 'rejected',
-      reason: 'Putting that back would break the plan as it now stands. Nothing was changed.',
-      violations: res.violations,
+      ok: false,
+      code: refusal.code === 'plan_invariant_violation' ? 'rejected' : refusal.code,
+      reason: refusal.code === 'plan_invariant_violation'
+        ? 'Putting that back would break the plan as it now stands. Nothing was changed.'
+        : refusal.reason,
+      violations: refusal.violations as string[],
     };
   }
   return { ok: true, decisionId: opts.decisionId, restored: res.value };

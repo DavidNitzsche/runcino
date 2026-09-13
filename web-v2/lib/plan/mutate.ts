@@ -263,7 +263,12 @@ import {
   type LedgerSourceMode,
 } from '@/lib/brain/ledger/ledger-entry';
 import { pool } from '@/lib/db/pool';
-import { attempt, rowOrNull } from '@/lib/db/read';
+// CALLERHONESTY-1 / LINEAGEREAD-1 (2026-09-13) · `rowOrNull` is gone from this
+// file. Every read here now branches on `attempt().ok` explicitly, because
+// every one of them decides whether a write may commit or what gets written
+// into the durable ledger, and `rowOrNull`'s `?? null` idiom re-collapses the
+// two states it exists to keep apart the moment a caller reaches for it.
+import { attempt } from '@/lib/db/read';
 import type { PoolClient } from 'pg';
 import { validateComposedPlan, PlanValidationError } from './validate';
 import type { ComposePlanResult, ComposedWeek, DayPlan } from './generate';
@@ -482,6 +487,36 @@ export function structuralFingerprint(snap: PlanSnapshot): string {
 
 // ── validation (PURE) ─────────────────────────────────────────────────────────
 
+/**
+ * CONTEXTREAD-1 (2026-09-13) · WHICH OF THIS CONTEXT'S OWN READS FAILED.
+ *
+ * Not the same question as `contextIncomplete`, and that is the whole reason
+ * it is a second field rather than a widened first one (Rule 16). Both flags
+ * can be true at once and they mean opposite things about how much to trust
+ * the numbers around them:
+ *
+ *   · `contextIncomplete` — the reads SUCCEEDED and the race distance was not
+ *     recorded anywhere. A measured absence. `26.2` was substituted, and the
+ *     substitution is the most permissive row in CONSTRAINTS on purpose.
+ *   · `readFailed`        — the read THREW. Nothing about the runner was
+ *     established at all, and every default below it (26.2 miles,
+ *     `level: null`, `trainingDaysPerWeek: null` = NO frequency cap) is a
+ *     guess that makes the validator STRICTLY MORE PERMISSIVE than the truth.
+ *
+ * That asymmetry is why this exists. Rule 11's clause is exact: "a missing
+ * input must never silently disable a safety mechanism." Before this, both of
+ * these reads carried a bare `.catch(() => ({ rows: [] }))`, so a transient
+ * failure on either one quietly relaxed the very validation that decides
+ * whether a mutation is allowed to land — and it did it without a log line,
+ * which `lib/db/read.ts`'s header names as the floor no read may fall below.
+ */
+export interface MutationContextReadFailure {
+  /** `training_plans` (mode, authored_state, race distance) could not be read. */
+  plan: boolean;
+  /** `profile` (experience level, weekly frequency) could not be read. */
+  profile: boolean;
+}
+
 /** The runner + plan context the validator needs, reconstructed post-hoc. */
 export interface PlanMutationContext {
   raceDistanceMi: number;
@@ -496,6 +531,14 @@ export interface PlanMutationContext {
    *  against a guessed distance is never mistaken for one made against a known
    *  one. */
   contextIncomplete: boolean;
+  /**
+   * CONTEXTREAD-1 · PRESENT ONLY WHEN A READ THREW. Absent (undefined) is the
+   * ordinary case and means both reads ran. Optional so every existing
+   * hand-built fixture of this shape still compiles, and deliberately absent
+   * rather than `{plan:false,profile:false}` so `if (ctx.readFailed)` is the
+   * whole of the check at every call site.
+   */
+  readFailed?: MutationContextReadFailure;
 }
 
 /**
@@ -720,6 +763,24 @@ interface PlanContextRow {
 /**
  * One query set, once per mutation batch, to reconstruct what the validator
  * needs and the rows do not carry. See "CONTEXT RECONSTRUCTION" in the header.
+ *
+ * CONTEXTREAD-1 (2026-09-13) · CLAUDE.md Rule 11. Both queries below used to
+ * carry a bare `.catch(() => ({ rows: [] }))`. Neither logged, which is the
+ * one thing `lib/db/read.ts`'s header says no read may do ("a database call
+ * may fail, but it may never fail invisibly"), and — worse — an empty row set
+ * here is not a neutral value. It is the MOST PERMISSIVE possible validator
+ * input: `raceDistanceMi` falls back to 26.2 (the loosest long-run cap row in
+ * CONSTRAINTS), `level` falls to null, and `trainingDaysPerWeek` falls to null
+ * which `validateComposedPlan`'s frequency cap reads as NO CAP AT ALL. A
+ * thirty-second Postgres blip therefore relaxed the exact gate that decides
+ * whether a plan mutation is allowed to commit, silently, in the runner's
+ * favour and against his legs.
+ *
+ * Both now go through `attempt()`, which logs on failure and makes the caller
+ * branch. This function still RETURNS a context — it is called from three
+ * places with three different correct postures, so choosing the posture is not
+ * its job — but the context now carries `readFailed`, and `mutatePlan` refuses
+ * a structural mutation outright when it is set. See step 4 there.
  */
 export async function loadMutationContext(
   tx: Queryable,
@@ -727,21 +788,35 @@ export async function loadMutationContext(
   planId: string,
   todayISO: string,
 ): Promise<PlanMutationContext> {
-  const [planRes, profRes] = await Promise.all([
-    tx.query<PlanContextRow>(
-      `SELECT tp.mode,
-              tp.authored_state,
-              (SELECT MAX(pw.distance_mi)::float8 FROM plan_workouts pw
-                WHERE pw.plan_id = tp.id AND pw.type = 'race') AS race_distance_mi
-         FROM training_plans tp WHERE tp.id = $1 LIMIT 1`,
-      [planId],
-    ).catch(() => ({ rows: [] as PlanContextRow[] })),
-    tx.query<{ experience_level: string | null; weekly_frequency: number | null }>(
-      `SELECT experience_level, weekly_frequency FROM profile
-        WHERE user_uuid = $1::uuid LIMIT 1`,
-      [userUuid],
-    ).catch(() => ({ rows: [] as Array<{ experience_level: string | null; weekly_frequency: number | null }> })),
+  const [planAttempt, profAttempt] = await Promise.all([
+    attempt(
+      'mutate/context-plan-row',
+      tx.query<PlanContextRow>(
+        `SELECT tp.mode,
+                tp.authored_state,
+                (SELECT MAX(pw.distance_mi)::float8 FROM plan_workouts pw
+                  WHERE pw.plan_id = tp.id AND pw.type = 'race') AS race_distance_mi
+           FROM training_plans tp WHERE tp.id = $1 LIMIT 1`,
+        [planId],
+      ),
+    ),
+    attempt(
+      'mutate/context-profile-row',
+      tx.query<{ experience_level: string | null; weekly_frequency: number | null }>(
+        `SELECT experience_level, weekly_frequency FROM profile
+          WHERE user_uuid = $1::uuid LIMIT 1`,
+        [userUuid],
+      ),
+    ),
   ]);
+  const planRes = planAttempt.ok ? planAttempt.value : { rows: [] as PlanContextRow[] };
+  const profRes = profAttempt.ok
+    ? profAttempt.value
+    : { rows: [] as Array<{ experience_level: string | null; weekly_frequency: number | null }> };
+  const readFailed: MutationContextReadFailure | undefined =
+    planAttempt.ok && profAttempt.ok
+      ? undefined
+      : { plan: !planAttempt.ok, profile: !profAttempt.ok };
 
   const plan = planRes.rows[0];
   const st = (plan?.authored_state ?? {}) as Record<string, unknown>;
@@ -793,12 +868,60 @@ export async function loadMutationContext(
     todayISO,
     trainingDaysPerWeek: freq != null ? Number(freq) : derivedFreq,
     recentWeeklyMi: num(st.recent_avg_mpw) ?? num((st.derived_from as Record<string, unknown> | undefined)?.recentWeeklyMi),
+    // CONTEXTREAD-1 · spread so the key is genuinely ABSENT on the happy path
+    // rather than present-and-false. `if (ctx.readFailed)` is then the whole
+    // check, and a caller cannot half-read it.
+    ...(readFailed ? { readFailed } : {}),
   };
 }
 
 // ── the door ──────────────────────────────────────────────────────────────────
 
 export type MutationTouch = 'structural' | 'derivations' | 'authorship';
+
+/**
+ * CALLERHONESTY-1 (2026-09-13) · WHICH read failed, when the outcome is
+ * `plan_verification_failed`. One outcome word, three named causes.
+ *
+ * Every one of these is a read this boundary must complete BEFORE it can let a
+ * write commit, and every one of them used to answer a failure with a
+ * plausible-looking empty result:
+ *
+ *   · `requested-plan-guard`  the caller named a plan_id and we could not
+ *                             establish whether it is still active. Collapsing
+ *                             this reported the plan as ARCHIVED (false).
+ *   · `active-plan-fallback`  no plan_id was named and we could not establish
+ *                             which plan is active. Collapsing this reported
+ *                             `no_plan` — "this runner has no active plan" —
+ *                             which is a specific, meaningful and in this case
+ *                             completely fabricated claim.
+ *   · `mutation-context`      the validator's own inputs could not be read, so
+ *                             the doctrine check would have run against
+ *                             maximally permissive defaults. Collapsing this
+ *                             did not produce a false sentence; it produced a
+ *                             SILENTLY WEAKER GATE, which is worse.
+ */
+export type PlanVerificationFailure =
+  | 'requested-plan-guard'
+  | 'active-plan-fallback'
+  | 'mutation-context';
+
+/** The sentence that goes on the record for each. Read out loud, once, here —
+ *  a second copy at a call site is how two refusals start describing the same
+ *  fact differently (Rule 16). */
+const PLAN_VERIFICATION_REASON: Readonly<Record<PlanVerificationFailure, string>> = {
+  'requested-plan-guard':
+    'could not verify whether the requested plan_id is archived · the read itself failed '
+    + '(transient DB error, lock-wait timeout, or similar), not a confirmed archived state',
+  'active-plan-fallback':
+    'could not resolve which plan is active for this runner · the read itself failed '
+    + '(transient DB error, lock-wait timeout, or similar). This is NOT the same fact as '
+    + '"this runner has no active plan", which is what the pre-fix swallow reported',
+  'mutation-context':
+    'could not read the validator context (plan row and/or profile row) for this mutation. '
+    + 'the read itself failed, and validating against the fallback defaults would have run a '
+    + 'STRICTLY MORE PERMISSIVE doctrine check than the runner\'s real context calls for',
+};
 
 export type MutationOutcome =
   | 'applied'
@@ -824,6 +947,14 @@ export type MutationOutcome =
    * the plan were active (a silent bypass of the guard). The mutation is
    * refused either way; the outcome name is what lets a caller — and this
    * outcome's own regression test — tell which refusal actually happened.
+   *
+   * CALLERHONESTY-1 (2026-09-13) · it now covers THREE reads, not one, because
+   * all three answer the same question ("could this boundary establish what it
+   * needs before allowing a write") and Rule 16 says one quantity gets one
+   * name. `PlanVerificationFailure` below says which read it was, and that
+   * word reaches `plan_mutation_rejections.violations` and the ledger's
+   * explanation; the OUTCOME stays one word so a caller has one branch to
+   * write rather than three that can drift apart.
    */
   | 'plan_verification_failed'
   /**
@@ -1092,6 +1223,14 @@ interface LedgerLanding {
   hold: { owner: string; blocker: string; expiresWhen: string } | null;
   planId: string | null;
   replacedPlanId: string | null;
+  /**
+   * LINEAGEREAD-1 (2026-09-13) · the lineage lookup THREW, so `replacedPlanId`
+   * being null here is "we could not look" and not "there was nothing to
+   * find". Three facts, and this is the one that used to be the second
+   * (Rule 11). See the read site in `mutatePlan` for why a null here is a
+   * PERMANENT false claim rather than a transient one.
+   */
+  replacedPlanUnknown: boolean;
   planVersion: string | null;
   /** Empty when there was no comparable before-state. Direction reads UNKNOWN. */
   before: readonly PlanWorkoutRow[];
@@ -1238,6 +1377,10 @@ async function buildLedgerEntry(l: LedgerLanding, on?: LedgerExecutor): Promise<
       userUuid: l.userUuid,
       planId: l.planId,
       replacedPlanId: l.replacedPlanId,
+      // LINEAGEREAD-1 · carries the third state through to the column, so a
+      // row whose lineage could not be established is not written as a row
+      // that CONFIDENTLY opens a new one.
+      replacedPlanUnknown: l.replacedPlanUnknown,
       on,
     });
     const supplied = l.ledger?.explanation;
@@ -1317,6 +1460,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         hold: null,
         planId: opts.planId ?? null,
         replacedPlanId: null,
+        replacedPlanUnknown: false,
         planVersion: null,
         before: [],
         after: [],
@@ -1415,6 +1559,9 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
    * archived last March". Plan lineage is the column that makes the ledger
    * survive a rebuild, so it may not rest on a guess. */
   let replacedPlanId: string | null = null;
+  /* LINEAGEREAD-1 (2026-09-13) · and the read that fills it can FAIL, which is
+   * a third fact the `?? null` below used to erase. See the read site. */
+  let replacedPlanUnknown = false;
 
   /* Set on every exit that commits a write to an existing plan. */
   let producedPlanVersion: string | null = null;
@@ -1438,6 +1585,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     hold: verdict.permitted ? null : (opts.hold ?? null),
     planId: planIdForRow,
     replacedPlanId,
+    replacedPlanUnknown,
     planVersion: producedPlanVersion,
     before: ledgerBefore,
     after: ledgerAfter,
@@ -1576,7 +1724,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     // outcome (`plan_verification_failed`, step 3 below) — never fall back to
     // "archived" (false negative reported as fact) and never fall through to
     // "active" (an unverified state waved through silently).
-    let planVerificationFailed = false;
+    let planVerificationFailed: PlanVerificationFailure | null = null;
     if (opts.planId) {
       if (opts.bypass) {
         planId = opts.planId;
@@ -1592,7 +1740,7 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
           ),
         );
         if (!activeAttempt.ok) {
-          planVerificationFailed = true;
+          planVerificationFailed = 'requested-plan-guard';
         } else {
           const active = activeAttempt.value.rows[0]?.id ?? null;
           if (active) planId = active;
@@ -1613,22 +1761,58 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
         [opts.workoutId],
       )).rows[0]?.plan_id ?? null;
     }
+    // CALLERHONESTY-1 (2026-09-13) · Rule 11, the same bug one branch over.
+    // This is the "no planId was supplied" fallback, and until now it carried
+    // the ORIGINAL, unfixed `.catch(() => ({ rows: [] }))` shape — the round-4
+    // fix's own test file declared it out of scope on the argument that it
+    // "answers a different question". It does answer a different question, and
+    // it collapses that answer exactly as badly: a thrown read became zero
+    // rows, `planId` stayed null, and step 3 refused with `no_plan` — the
+    // affirmative claim "this runner has no active plan", stated as fact about
+    // a runner who may well have one, and recorded that way in
+    // `plan_mutation_rejections`. `no_plan` is a real and meaningful outcome
+    // (a runner genuinely between blocks); that is precisely why "we could not
+    // tell" must not wear its name.
     if (!planId && !requestedPlanArchived && !planVerificationFailed && touches !== 'authorship') {
-      planId = (await client.query<{ id: string }>(
-        `SELECT id::text AS id FROM training_plans
-          WHERE user_uuid = $1::uuid AND archived_iso IS NULL
-          ORDER BY authored_iso DESC LIMIT 1`,
-        [opts.userUuid],
-      ).catch(() => ({ rows: [] as Array<{ id: string }> }))).rows[0]?.id ?? null;
+      const fallbackAttempt = await attempt(
+        'mutate/active-plan-fallback',
+        client.query<{ id: string }>(
+          `SELECT id::text AS id FROM training_plans
+            WHERE user_uuid = $1::uuid AND archived_iso IS NULL
+            ORDER BY authored_iso DESC LIMIT 1`,
+          [opts.userUuid],
+        ),
+      );
+      if (!fallbackAttempt.ok) planVerificationFailed = 'active-plan-fallback';
+      else planId = fallbackAttempt.value.rows[0]?.id ?? null;
     }
 
     /* LEDGER-1 · for an authorship, read the plan about to be replaced BEFORE
      * `apply` archives it. See `replacedPlanId`'s declaration for why this
-     * cannot be reconstructed afterwards. `.catch` to an empty row set, the
-     * same posture the plan resolution above already takes: a lineage lookup
-     * must never be the thing that fails a rebuild. */
+     * cannot be reconstructed afterwards.
+     *
+     * LINEAGEREAD-1 (2026-09-13) · this used to be `rowOrNull(...)?.id ?? null`
+     * and was defended as an argued Rule 11 exemption on the grounds that a
+     * lineage lookup is "audit-only" and "must never be the thing that fails a
+     * rebuild". The second half of that sentence is still right and this fix
+     * keeps it: a failed lookup does NOT refuse the authorship. The first half
+     * was wrong, and the `?? null` was doing real damage, because this value is
+     * not consumed and discarded — it is WRITTEN DOWN:
+     *
+     *   · `resolvePlanLineage` reads a null `replacedPlanId` as "nothing was
+     *     replaced" and returns the NEW plan's own id, so `plan_lineage_id`
+     *     starts a fresh lineage. Every decision ever recorded against the
+     *     previous block is then unreachable by lineage, permanently, which is
+     *     the one thing that column exists to prevent.
+     *   · the account sentence in the authorship exit below literally read
+     *     "a new plan was authored and replaced nothing. This row opens its
+     *     lineage." A false statement, in a durable ledger, produced by a
+     *     transient blip.
+     *
+     * So: `attempt`, branch, and carry the third state (`replacedPlanUnknown`)
+     * into both the lineage value and the sentence. The rebuild still commits. */
     if (touches === 'authorship') {
-      replacedPlanId = (await rowOrNull<{ id: string }>(
+      const replacedAttempt = await attempt(
         'mutate/lineage-replaced-plan',
         client.query<{ id: string }>(
           `SELECT id::text AS id FROM training_plans
@@ -1636,7 +1820,17 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
             ORDER BY authored_iso DESC LIMIT 1`,
           [opts.userUuid],
         ),
-      ))?.id ?? null;
+      );
+      if (!replacedAttempt.ok) {
+        replacedPlanUnknown = true;
+        console.error(
+          `[plan/mutate] LINEAGE UNKNOWN · source=${opts.source} · the replaced-plan lookup `
+          + 'failed, so this authorship records an UNKNOWN lineage rather than claiming it '
+          + 'replaced nothing. The plan itself is unaffected.',
+        );
+      } else {
+        replacedPlanId = replacedAttempt.value.rows[0]?.id ?? null;
+      }
     }
 
     // 2 · the marked bypass. Runs the writes, records the decision, commits.
@@ -1687,43 +1881,65 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     //     a caller or a reader of `plan_decision_ledger` must be able to
     //     tell apart. Collapsing this into `no_plan`/`requestedPlanArchived`
     //     would recreate the exact bug this fixes one label up the stack.
-    if ((!planId && touches !== 'authorship') || requestedPlanArchived || planVerificationFailed) {
+    //
+    //     CALLERHONESTY-1 · the ROLLBACK-and-refuse body is a closure now,
+    //     because step 4 below has to be able to take the same exit when the
+    //     VALIDATOR CONTEXT read fails. One body, so the two exits cannot
+    //     describe the same refusal in two different ways (Rule 16).
+    const refuseUnverifiable = async (
+      why: PlanVerificationFailure | null,
+      planIdForRow: string | null,
+    ): Promise<MutatePlanResult<T>> => {
       await client.query('ROLLBACK');
-      const reason = planVerificationFailed
-        ? 'could not verify whether the requested plan_id is archived — the read itself failed '
-          + '(transient DB error, lock-wait timeout, or similar), not a confirmed archived state'
+      const reason = why
+        ? PLAN_VERIFICATION_REASON[why]
         : requestedPlanArchived
         ? 'the requested plan_id is archived or not owned by this runner, so it is no longer a '
           + 'valid mutation target'
         : 'no active plan resolved for this mutation';
       console.error(
-        `[plan/mutate] NO PLAN · source=${opts.source} user=${opts.userUuid.slice(0, 8)}`
-        + (planVerificationFailed ? ' · archived-plan-guard READ FAILED, refusing rather than guessing'
+        `[plan/mutate] ${why ? 'UNVERIFIED' : 'NO PLAN'} · source=${opts.source} `
+        + `user=${opts.userUuid.slice(0, 8)}`
+        + (why ? ` · ${why} READ FAILED, refusing rather than guessing`
           : requestedPlanArchived ? ' · requested plan archived/not-owned' : ''),
       );
-      const outcome: MutationOutcome = planVerificationFailed ? 'plan_verification_failed' : 'no_plan';
+      const outcome: MutationOutcome = why ? 'plan_verification_failed' : 'no_plan';
       await recordMutationOutcome({
-        userUuid: opts.userUuid, planId: null, source: opts.source,
+        userUuid: opts.userUuid, planId: planIdForRow, source: opts.source,
         outcome, violations: [reason],
-        preExisting: [], detail: opts.detail ?? null,
+        preExisting: [], detail: why ? { ...(opts.detail ?? {}), verification_failure: why } : (opts.detail ?? null),
       });
       await land(
         'REFUSE', outcome, [reason],
-        planVerificationFailed
+        why === 'requested-plan-guard'
           ? 'the archived-plan-guard read for the caller-supplied plan_id failed outright, so '
             + 'this boundary could not confirm the plan is active. The write was rolled back '
             + 'rather than reported as "archived" (a false negative) or allowed through as '
-            + '"active" (an unverified state) — refusing is the only honest answer to a failed '
+            + '"active" (an unverified state). Refusing is the only honest answer to a failed '
             + 'read (CLAUDE.md Rule 11).'
+          : why === 'active-plan-fallback'
+          ? 'no plan_id was supplied and the read that resolves this runner\'s active plan failed '
+            + 'outright. The write was rolled back and reported as UNVERIFIED rather than as '
+            + '"this runner has no active plan", which is a different and specific fact this '
+            + 'boundary did not establish (CLAUDE.md Rule 11).'
+          : why === 'mutation-context'
+          ? 'the validator context for this mutation could not be read, so the doctrine check '
+            + 'would have run against maximally permissive fallbacks (a marathon-distance long-run '
+            + 'cap and no weekly-frequency cap at all). The write was rolled back rather than '
+            + 'graded by a gate that had quietly been weakened (CLAUDE.md Rule 11).'
           : requestedPlanArchived
           ? 'the caller supplied a plan_id that is archived or not owned by this runner. The '
             + 'write was rolled back rather than silently retargeted onto whatever plan is '
             + 'currently active.'
           : 'no active plan could be resolved for this write, so it was rolled back. This row is '
           + 'owned by the runner and by no plan; its lineage is the orphan marker.',
-        null,
+        planIdForRow,
       );
-      return fail(outcome, [reason], [], null);
+      return fail(outcome, [reason], [], planIdForRow);
+    };
+
+    if ((!planId && touches !== 'authorship') || requestedPlanArchived || planVerificationFailed) {
+      return refuseUnverifiable(planVerificationFailed, null);
     }
 
     // 4 · before-snapshot + context (skipped for authorship: there is nothing
@@ -1734,6 +1950,20 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
       before = await snapshotPlan(client, planId);
       if (touches === 'structural') {
         ctx = await loadMutationContext(client, opts.userUuid, planId, opts.todayISO);
+        // CONTEXTREAD-1 · REFUSE, do not validate against the fallbacks.
+        //
+        // This is the posture the callers demand rather than one picked for
+        // tidiness. A structural mutation's ONLY gate is the differential
+        // doctrine verdict computed from this context, and every fallback in
+        // `loadMutationContext` loosens that verdict: 26.2 mi is the most
+        // permissive long-run cap row in CONSTRAINTS, and a null
+        // `trainingDaysPerWeek` is read by `validateComposedPlan` as no
+        // frequency cap at all. So a failed context read does not degrade the
+        // check, it DISABLES parts of it — Rule 11's named failure exactly
+        // ("a missing input must never silently disable a safety mechanism").
+        // Nothing has been written yet at this point, so refusing here costs
+        // the runner one retry and costs him nothing else.
+        if (ctx.readFailed) return refuseUnverifiable('mutation-context', planId);
       }
     }
     ledgerBefore = before.workouts;
@@ -1812,14 +2042,34 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
       // second connection afterwards where it could be lost.
       const authorCtx = await loadMutationContext(client, opts.userUuid, afterPlanId, opts.todayISO);
       let drift: string[] = [];
-      try {
-        drift = violationsOf(after, authorCtx);
-      } catch (e) {
+      // CONTEXTREAD-1 · the OPPOSITE posture from the structural exit above,
+      // and it is the corollary, not an inconsistency. This check is
+      // REPORT-ONLY by design (DESIGN DECISION 2): a rolled-back rebuild
+      // leaves the runner with no plan at all, which is strictly worse than an
+      // ungraded one. So a failed context read must not refuse here.
+      //
+      // What it must not do either is report "no drift" as though the check
+      // had run — the same three-facts problem wearing a green tick. An empty
+      // `drift` from a context that could not be read is "we did not look",
+      // and that is now said out loud on the row and in the log rather than
+      // being indistinguishable from a clean read-back.
+      if (authorCtx.readFailed) {
         console.error(
-          `[plan/mutate] authorship read-back check errored (plan commits regardless) · ` +
-          `source=${opts.source} ·`,
-          e instanceof Error ? e.message : e,
+          `[plan/mutate] AUTHORSHIP READ-BACK NOT GRADED · source=${opts.source} `
+          + `plan=${afterPlanId} · the validator context could not be read `
+          + `(plan=${authorCtx.readFailed.plan} profile=${authorCtx.readFailed.profile}), so this `
+          + 'plan was committed WITHOUT a persisted-drift check. Not "no drift found".',
         );
+      } else {
+        try {
+          drift = violationsOf(after, authorCtx);
+        } catch (e) {
+          console.error(
+            `[plan/mutate] authorship read-back check errored (plan commits regardless) · ` +
+            `source=${opts.source} ·`,
+            e instanceof Error ? e.message : e,
+          );
+        }
       }
       /* LEDGER-1 · THE ROW THAT MAKES A REBUILD PRESERVE THE LEDGER.
        *
@@ -1835,10 +2085,24 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
        * coaching direction would put fiction into Rule 21's census. */
       await landInTx(
         'APPLY', drift.length > 0 ? 'authorship_drift' : 'applied', drift,
-        replacedPlanId
+        /* LINEAGEREAD-1 · THREE sentences, because there are three facts. The
+         * middle one did not exist and its case was printed as the third —
+         * "replaced nothing" — which is an assertion about the runner's plan
+         * history made from a read that never completed, written into a
+         * durable record that outlives the request. */
+        (replacedPlanId
           ? `a new plan was authored, replacing ${replacedPlanId}, whose ledger lineage it `
             + 'inherits. Direction is unmeasured: two different blocks are not comparable.'
-          : 'a new plan was authored and replaced nothing. This row opens its lineage.',
+          : replacedPlanUnknown
+          ? 'a new plan was authored. WHETHER IT REPLACED AN EARLIER PLAN IS UNKNOWN: the lineage '
+            + 'lookup failed outright, so this row carries a lineage-unknown marker rather than '
+            + 'claiming it replaced nothing. Do not read this row as the start of a lineage. '
+            + 'Direction is unmeasured: two different blocks are not comparable.'
+          : 'a new plan was authored and replaced nothing. This row opens its lineage.')
+        + (authorCtx.readFailed
+          ? ' The persisted-drift read-back did NOT run: its validator context could not be read, '
+            + 'so an empty violation list here means "not checked", not "clean".'
+          : ''),
         afterPlanId,
       );
       await client.query('COMMIT');
@@ -1862,6 +2126,12 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
 
     // structural · the differential verdict.
     const useCtx = ctx ?? await loadMutationContext(client, opts.userUuid, afterPlanId, opts.todayISO);
+    // CONTEXTREAD-1 · step 4 already refused on `ctx.readFailed`, so this only
+    // fires for the `??` limb — a structural mutation whose plan id was not
+    // resolvable until `planIdFromResult` ran. Same reason, same refusal, and
+    // it ROLLS BACK writes that have already been issued, which is the point:
+    // a write graded by a gate whose inputs did not load has not been graded.
+    if (useCtx.readFailed) return refuseUnverifiable('mutation-context', afterPlanId);
     const beforeV = violationsOf(before, useCtx);
     const afterV = violationsOf(after, useCtx);
     const diff = diffViolations(beforeV, afterV);

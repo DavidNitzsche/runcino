@@ -35,6 +35,7 @@ import { runnerToday } from '@/lib/runtime/runner-tz';
 import { buildWorkoutSpec } from '@/lib/plan/spec-builder';
 import { resolvePrescribedPaceAnchors } from '@/lib/training/load-prescription-anchors';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor, refusalBody } from '@/lib/plan/mutation-refusal';
 
 export const dynamic = 'force-dynamic';
 
@@ -243,10 +244,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'restore_failed' }, { status: 500 });
   }
   if (!boundary.ok) {
-    return NextResponse.json(
-      { ok: false, error: 'plan_invariant_violation', violations: boundary.violations },
-      { status: 409 },
-    );
+    // CALLERHONESTY-1 (2026-09-13) · see lib/plan/mutation-refusal.ts.
+    const refusal = refusalFor(boundary, { thing: 'Putting that back' });
+    return NextResponse.json(refusalBody(refusal), { status: refusal.status });
   }
   const outcome = boundary.value;
   if (outcome == null) {

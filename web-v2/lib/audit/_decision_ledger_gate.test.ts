@@ -188,10 +188,24 @@ describe('GUARD 1 · every exit of the mutation boundary lands a ledger row', ()
   it('plan lineage is read BEFORE the rebuild archives the plan it replaces', () => {
     // After `clearActivePlansFor` runs, nothing distinguishes "the plan this one
     // replaced" from "some plan this runner archived last March".
-    const read = body.indexOf('replacedPlanId = (await rowOrNull');
+    //
+    // LINEAGEREAD-1 (2026-09-13) · the pin used to be the literal
+    // `replacedPlanId = (await rowOrNull`, which stopped matching when that
+    // read was moved onto `attempt()` so a FAILED lookup could stop being
+    // reported as "replaced nothing". The pin is now the read's LABEL, which
+    // is what actually identifies it and does not move when its error
+    // handling changes.
+    const read = body.indexOf("'mutate/lineage-replaced-plan'");
     const apply = body.indexOf('const value = await opts.apply(client');
     expect(read, 'the replaced-plan read has moved or been removed').toBeGreaterThan(-1);
     expect(read, 'lineage is resolved after the rebuild, which is too late').toBeLessThan(apply);
+    // And it must still BRANCH on the failure rather than coalescing it, which
+    // is the half a position-only check cannot see.
+    expect(
+      body.slice(read, read + 700),
+      'the lineage read no longer distinguishes a failed lookup from an absent plan, so a '
+      + 'transient blip writes "this plan replaced nothing" into the durable record',
+    ).toContain('replacedPlanUnknown = true');
   });
 
   it('ORACLE · the scan WOULD flag an exit with no ledger write', () => {

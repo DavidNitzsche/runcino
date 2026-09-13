@@ -50,6 +50,7 @@ import { undoWritesFor } from './undo';
 import type { RepricePayload } from '@/lib/plan/reprice-payload';
 import type { AdaptationAction } from '@/lib/plan/adapt';
 import { mutatePlan } from '@/lib/plan/mutate';
+import { refusalFor } from '@/lib/plan/mutation-refusal';
 
 export interface AcceptContext {
   readonly userUuid: string;
@@ -105,7 +106,11 @@ export type AcceptOutcome =
     }
   | {
       readonly ok: false;
-      readonly error: 'invalid' | 'unsupported' | 'missing_context' | 'apply_failed' | 'rejected';
+      /* CALLERHONESTY-1 (2026-09-13) · `unverified` is new and is NOT a flavour
+       * of `rejected`. A card that says the coach refused the change and a card
+       * that says the server could not check are different things to tell the
+       * runner, and only one of them means "try again". */
+      readonly error: 'invalid' | 'unsupported' | 'missing_context' | 'apply_failed' | 'rejected' | 'unverified';
       readonly detail: string;
     };
 
@@ -232,11 +237,18 @@ export async function applyBrainAction(
         apply: async (tx, planId) => applyWritePlan(tx, planId, plan.writes),
       });
       if (!boundary.ok || boundary.value == null) {
+        /* CALLERHONESTY-1 (2026-09-13) · `error: 'rejected'` unconditionally,
+         * with the violation strings as the detail. Less wrong than the route
+         * handlers (the honest text at least survived in `detail`) and still
+         * wrong where it counts: the machine-readable half said the coach
+         * refused this, for a read that failed. `refusalFor` decides. */
+        const refusal = refusalFor(boundary, { thing: 'That change' });
         return {
-          ok: false, error: 'rejected',
+          ok: false,
+          error: refusal.code === 'plan_invariant_violation' ? 'rejected' : 'unverified',
           detail: boundary.violations.length > 0
-            ? boundary.violations.join('; ')
-            : 'the mutation boundary refused the write',
+            ? `${refusal.reason} (${boundary.violations.join('; ')})`
+            : refusal.reason,
         };
       }
       return boundary.value > 0

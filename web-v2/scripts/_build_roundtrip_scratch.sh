@@ -49,9 +49,13 @@ echo "== rebuilding LOCAL $SCRATCH =="
 "$PSQL" -q "postgresql://localhost/$SCRATCH" -f /tmp/faff-schema.sql >/dev/null 2>/tmp/faff-schema-errors.txt || true
 echo "== schema load finished ($(wc -l < /tmp/faff-schema-errors.txt) stderr lines, mostly extension/role noise) =="
 
-echo "== applying migrations 166 and 167 (the ledger and the scheduler) =="
+echo "== applying migrations 166, 167 and 171 (the ledger, the scheduler, the outcome widening) =="
 "$PSQL" -q "postgresql://localhost/$SCRATCH" -f db/migrations/166_plan_decision_ledger.sql >/dev/null
 "$PSQL" -q "postgresql://localhost/$SCRATCH" -f db/migrations/167_reassessment_schedule.sql >/dev/null
+# 171 widens 166's `mutation_outcome` CHECK to accept `plan_verification_failed`.
+# Without it the ledger REJECTS the very refusal SWALLOWEDGUARD-1 introduced, and
+# `lib/plan/_mutation_read_honesty.db.test.ts` fails loudly rather than quietly.
+"$PSQL" -q "postgresql://localhost/$SCRATCH" -f db/migrations/171_ledger_outcome_plan_verification_failed.sql >/dev/null
 
 echo "== tables present =="
 "$PSQL" -tA "postgresql://localhost/$SCRATCH" -c \

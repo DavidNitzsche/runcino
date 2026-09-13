@@ -293,11 +293,36 @@ async function ledgerTableExistsInTransaction(
  * purpose and inventing a plan id here would be worse than saying plainly that
  * this decision belongs to a runner and to no plan. It is greppable, and the
  * prefix cannot collide with a plan id.
+ *
+ * LINEAGEREAD-1 (2026-09-13) · and there is a FIFTH state, which used to be
+ * silently rendered as rung 4. `mutatePlan` reads the plan an authorship is
+ * about to replace, and that read can THROW. A null `replacedPlanId` then
+ * meant two opposite things — "this runner had no active plan, so this block
+ * genuinely starts a lineage" and "we could not look" — and rung 4 answered
+ * both by starting a fresh lineage. That is not a transient wrong answer: it
+ * is written to `plan_lineage_id`, it is the column every decision ever
+ * recorded against the previous block is reachable by, and nothing afterwards
+ * can tell the two cases apart to repair it.
+ *
+ * `replacedPlanUnknown` carries the third fact in, and the lineage becomes
+ * `lineage-unknown:<plan id>` — same discipline as `orphan:`, same reason:
+ * NOT NULL, greppable, cannot collide with a plan id, and it refuses to make
+ * the claim the data does not support. A reader looking for "did this rebuild
+ * break the chain" can find these; a bare plan id is invisible.
  */
+export const LINEAGE_UNKNOWN_PREFIX = 'lineage-unknown:';
+
 export async function resolvePlanLineage(args: {
   userUuid: string;
   planId: string | null;
   replacedPlanId: string | null;
+  /**
+   * LINEAGEREAD-1 · the replaced-plan lookup FAILED, so `replacedPlanId: null`
+   * above is "unread", not "none". Optional, defaulting to false, so the
+   * dozens of call sites that genuinely know there was nothing to replace stay
+   * exactly as they are.
+   */
+  replacedPlanUnknown?: boolean;
   /**
    * LEDGERATOMIC-1 · lane A passes its own transaction, so the lineage is read
    * against the SAME snapshot the row is about to be written into. Reading it
@@ -333,6 +358,13 @@ export async function resolvePlanLineage(args: {
 
   if (args.replacedPlanId) {
     return (await known(args.replacedPlanId)) ?? args.replacedPlanId;
+  }
+  /* LINEAGEREAD-1 · BEFORE rung 3/4, because the question rung 3 asks ("what
+   * lineage does the ledger already know for THIS plan") has no useful answer
+   * for a brand-new authorship, and rung 4's answer is the false claim. An
+   * unknown lineage is marked and left unknown. */
+  if (args.replacedPlanUnknown) {
+    return `${LINEAGE_UNKNOWN_PREFIX}${args.planId ?? args.userUuid}`;
   }
   if (args.planId) {
     return (await known(args.planId)) ?? args.planId;
