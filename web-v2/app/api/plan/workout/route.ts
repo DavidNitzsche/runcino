@@ -46,9 +46,15 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'plan_id + date_iso required' }, { status: 400 });
   }
 
-  // Resolve plan + auth (the row must belong to the user)
+  // Resolve plan + auth (the row must belong to the user AND be the runner's
+  // ACTIVE plan · ARCHIVEDGUARD-1 (2026-09-12), Rule 14 — a plan_id the runner
+  // has ever owned, including one a rebuild has already archived, must never
+  // reach a write. Without `archived_iso IS NULL` here this query returned an
+  // archived plan just as readily as the active one, and `mutatePlan` below
+  // trusted an explicitly-supplied planId as-is (see mutate.ts's own
+  // ARCHIVEDGUARD-1 comment for the shared-boundary half of this fix).
   const plan = (await pool.query(
-    `SELECT id FROM training_plans WHERE id = $1 AND user_uuid = $2`,
+    `SELECT id FROM training_plans WHERE id = $1 AND user_uuid = $2 AND archived_iso IS NULL`,
     [body.plan_id, userId]
   )).rows[0];
   if (!plan) return NextResponse.json({ error: 'plan not found' }, { status: 404 });

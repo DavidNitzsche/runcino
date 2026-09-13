@@ -1485,14 +1485,46 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     await client.query('BEGIN');
 
     // 1 · resolve the plan.
-    let planId = opts.planId ?? null;
-    if (!planId && opts.workoutId) {
+    //
+    // ARCHIVEDGUARD-1 (2026-09-12) · Rule 14 — "a query names the population
+    // it reads." A caller-supplied `opts.planId` used to be trusted AS-IS: the
+    // `archived_iso IS NULL` fallback two blocks below only ran when NO
+    // planId was supplied at all. `api/plan/workout/route.ts`'s PATCH resolved
+    // ownership with `WHERE id = $1 AND user_uuid = $2` — no archived check —
+    // and forwarded that id straight into `planId` here, so any plan_id the
+    // runner had ever owned, active or already superseded by a rebuild,
+    // reached every non-bypass write this boundary guards.
+    //
+    // `requestedPlanArchived` marks that failure so it can be REFUSED outright
+    // in step 3, rather than falling through to the "no planId supplied"
+    // fallback below and silently retargeting the write onto whatever OTHER
+    // plan happens to be active right now — landing on the wrong plan is worse
+    // than refusing. The `opts.bypass` escape hatch is untouched: it exists
+    // precisely for a caller (an admin backfill) that must be able to name a
+    // plan without paying for this check.
+    let planId: string | null = null;
+    let requestedPlanArchived = false;
+    if (opts.planId) {
+      if (opts.bypass) {
+        planId = opts.planId;
+      } else {
+        const active = (await client.query<{ id: string }>(
+          `SELECT id::text AS id FROM training_plans
+            WHERE id = $1 AND user_uuid = $2::uuid AND archived_iso IS NULL
+            LIMIT 1`,
+          [opts.planId, opts.userUuid],
+        ).catch(() => ({ rows: [] as Array<{ id: string }> }))).rows[0]?.id ?? null;
+        if (active) planId = active;
+        else requestedPlanArchived = true;
+      }
+    }
+    if (!planId && !requestedPlanArchived && opts.workoutId) {
       planId = (await client.query<{ plan_id: string }>(
         `SELECT plan_id::text AS plan_id FROM plan_workouts WHERE id = $1 LIMIT 1`,
         [opts.workoutId],
       )).rows[0]?.plan_id ?? null;
     }
-    if (!planId && touches !== 'authorship') {
+    if (!planId && !requestedPlanArchived && touches !== 'authorship') {
       planId = (await client.query<{ id: string }>(
         `SELECT id::text AS id FROM training_plans
           WHERE user_uuid = $1::uuid AND archived_iso IS NULL
@@ -1552,21 +1584,38 @@ export async function mutatePlan<T>(opts: MutatePlanOptions<T>): Promise<MutateP
     // 3 · no plan to validate against. The writes are still refused rather
     //     than waved through — a plan_workouts write with no resolvable owning
     //     plan is exactly the shape this boundary exists to make visible.
-    if (!planId && touches !== 'authorship') {
+    //
+    //     ARCHIVEDGUARD-1 · `requestedPlanArchived` forces this refusal even
+    //     when `touches === 'authorship'`, because the caller DID name a
+    //     plan — it just failed the archived/ownership check — and that is
+    //     never a "nothing to validate against" case that authorship's
+    //     no-plan exemption was written for.
+    if ((!planId && touches !== 'authorship') || requestedPlanArchived) {
       await client.query('ROLLBACK');
-      console.error(`[plan/mutate] NO PLAN · source=${opts.source} user=${opts.userUuid.slice(0, 8)}`);
+      const reason = requestedPlanArchived
+        ? 'the requested plan_id is archived or not owned by this runner, so it is no longer a '
+          + 'valid mutation target'
+        : 'no active plan resolved for this mutation';
+      console.error(
+        `[plan/mutate] NO PLAN · source=${opts.source} user=${opts.userUuid.slice(0, 8)}`
+        + (requestedPlanArchived ? ' · requested plan archived/not-owned' : ''),
+      );
       await recordMutationOutcome({
         userUuid: opts.userUuid, planId: null, source: opts.source,
-        outcome: 'no_plan', violations: ['no active plan resolved for this mutation'],
+        outcome: 'no_plan', violations: [reason],
         preExisting: [], detail: opts.detail ?? null,
       });
       await land(
-        'REFUSE', 'no_plan', ['no active plan resolved for this mutation'],
-        'no active plan could be resolved for this write, so it was rolled back. This row is '
-        + 'owned by the runner and by no plan; its lineage is the orphan marker.',
+        'REFUSE', 'no_plan', [reason],
+        requestedPlanArchived
+          ? 'the caller supplied a plan_id that is archived or not owned by this runner. The '
+            + 'write was rolled back rather than silently retargeted onto whatever plan is '
+            + 'currently active.'
+          : 'no active plan could be resolved for this write, so it was rolled back. This row is '
+          + 'owned by the runner and by no plan; its lineage is the orphan marker.',
         null,
       );
-      return fail('no_plan', ['no active plan resolved for this mutation'], [], null);
+      return fail('no_plan', [reason], [], null);
     }
 
     // 4 · before-snapshot + context (skipped for authorship: there is nothing
