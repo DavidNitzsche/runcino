@@ -226,8 +226,32 @@ export async function runActionProposalLane(
   if (accelerated === null) {
     withheld.push('the progression pass raised no interval-duration ACCELERATE this run');
   } else {
-    const out = await raise(userUuid, todayISO, anchor, accelerated.action, accelerated.why);
-    if (out === null) raised += 1; else withheld.push(`DURATION_PROGRESS_OFFER: ${out}`);
+    /* DURATIONOFFER-3 (2026-09-12, second independent review): this card is an
+     * offer about ONE specific session — the one the progression gate actually
+     * accelerated — not a whole-runner judgement like SAFETY_STOP or HOLD
+     * above, which is why `firstHold`'s "the card is anchored to
+     * nextSessionFor's row, not to this one" reasoning does not transfer here.
+     * `nextSessionFor` returns whatever is chronologically next in the whole
+     * plan, which can be a DIFFERENT session than the one this resolution is
+     * about (a different day, a different type, a different distance) —
+     * exactly the LONG_RUN_STRUCTURE case below already recognises: "a card
+     * about the long run that hangs on Tuesday's tempo would be the wrong fact
+     * attached to the right sentence (Rule 16)". Same fix, same shape: re-read
+     * the accelerated session LIVE (Rule 10 — the detection-time row can be
+     * stale by the time this cron reaches it) and anchor to THAT row.
+     */
+    const live = await readLiveRows(userUuid, [accelerated.workoutId]);
+    const row = live.get(accelerated.workoutId);
+    if (row === undefined) {
+      withheld.push('DURATION_PROGRESS_OFFER: the accelerated session is no longer live');
+    } else {
+      const durationAnchor: AnchorRow = {
+        planWorkoutId: row.planWorkoutId, dateISO: row.dateISO,
+        type: row.type, distanceMi: row.distanceMi,
+      };
+      const out = await raise(userUuid, todayISO, durationAnchor, accelerated.action, accelerated.why);
+      if (out === null) raised += 1; else withheld.push(`DURATION_PROGRESS_OFFER: ${out}`);
+    }
   }
 
   /* ── 3 · THE LONG RUN'S OWN AXIS · LONGRUNSTRUCTURE-1 (2026-09-06) ────────
@@ -351,7 +375,7 @@ function firstHold(
  */
 export function firstDurationAccelerate(
   actions: readonly AdaptationAction[],
-): { readonly action: BrainAction; readonly why: string } | null {
+): { readonly action: BrainAction; readonly why: string; readonly workoutId: string } | null {
   for (const a of actions) {
     if (a.kind !== 'reshape') continue;
     // THE authoritative gate. Read the gate's own verdict, not an inference
@@ -368,7 +392,15 @@ export function firstDurationAccelerate(
     });
     if (translated === null || translated.kind !== 'DURATION_CHANGE' || translated.direction !== 'MORE') continue;
     const offer: BrainAction = { ...translated, kind: 'DURATION_PROGRESS_OFFER' };
-    return { action: offer, why: a.why };
+    // `workoutId` is returned alongside the translated action so the caller can
+    // anchor the card to the SESSION ACTUALLY BEING ACCELERATED — DURATIONOFFER-3
+    // (2026-09-12, second independent review). See the caller's own comment for
+    // the bug this closes: `wid` here is exactly `a.workoutIds[0]`, the plan
+    // row this resolution is about, which is not necessarily the chronologically
+    // next session the runner meets (that is `nextSessionFor`'s job, a different
+    // question, used by SAFETY/HOLD immediately above for a reason stated at
+    // `firstHold`).
+    return { action: offer, why: a.why, workoutId: wid };
   }
   return null;
 }
