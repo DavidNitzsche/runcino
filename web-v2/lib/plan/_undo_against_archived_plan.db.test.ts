@@ -225,13 +225,23 @@ describe('UNDOARCHIVED-1 · an undo against a since-archived plan is refused, on
         'boundary\'s archived-plan guard did not fire for this caller',
       ).toBe(false);
       if (!out.ok) {
-        expect(out.code).toBe('rejected');
+        // CALLERHONESTY-1 (2026-09-13) · was `'rejected'`. An undo aimed at an
+        // archived plan is NOT a doctrine rejection and never was: the
+        // boundary has always reported it as `no_plan`, and this caller used
+        // to relabel it `rejected` on the way out, printing "Putting that back
+        // would break the plan as it now stands" over a plan that is simply no
+        // longer the active one. The code now carries the boundary's own fact.
+        expect(out.code).toBe('no_plan');
         expect(
           out.violations?.join(' ') ?? '',
           'the refusal should name the archived/not-owned plan, not some ' +
           'unrelated doctrine violation — otherwise this is passing for the ' +
           'wrong reason',
         ).toContain('archived');
+        expect(
+          out.reason,
+          'and the SENTENCE must stop claiming the runner\'s plan rules refused this',
+        ).not.toContain('would break the plan');
       }
 
       // Nothing moved: the row this decision would have restored is
@@ -256,7 +266,10 @@ describe('UNDOARCHIVED-1 · an undo against a since-archived plan is refused, on
 
       expect(out.ok, 'undoMove applied an undo its own undoReschedule should have refused').toBe(false);
       if (!out.ok) {
-        expect(out.code).toBe('rejected');
+        // CALLERHONESTY-1 · forwarded unchanged, which is what this test is
+        // about: the honest code must survive the extra hop, not be
+        // re-collapsed to `rejected` by the orchestrator.
+        expect(out.code).toBe('no_plan');
       }
       expect(await workoutDateOf(workoutId)).toBe(NEW_ISO);
       expect(await undoneAtOf(decisionId)).toBeNull();
