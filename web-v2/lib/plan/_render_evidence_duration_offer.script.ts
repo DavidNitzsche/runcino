@@ -86,7 +86,7 @@ const out = {
   resumedTake: {
     resolutionAction: resumedTake.action,
     offerRaised: resumedResult !== null,
-    note: 'Must be false after DURATIONOFFER-2 — a resumed TAKE is not a strong-evidence ACCELERATE.',
+    note: 'Must be false after DURATIONOFFER-2. A resumed TAKE is not a strong-evidence ACCELERATE.',
   },
   backOff: {
     resolutionAction: backOff.action,
