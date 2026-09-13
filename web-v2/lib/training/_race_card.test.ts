@@ -131,6 +131,11 @@ describe('race-card', () => {
     expect(keepLabel).toContain('100 ft gain');
     expect(useLabel).not.toBe(keepLabel);
     expect(card.courseElevationDetail).toEqual(cimUnresolvedDetail);
+    // NATURAL-COACHING-3 (2026-09-12) · this card's own question text
+    // ("...isn't dense enough for us to trust it...") carried the same
+    // first-person-plural slip as its fact-card sibling above. Pinned here
+    // too, since the two cards compose their questions independently.
+    expect(card.question).not.toMatch(/\bwe\b|\bus\b/i);
   });
 
   it('chip-time lock approaching → fact, no safe/stretch, no take', () => {
@@ -303,6 +308,11 @@ describe('race-card', () => {
       expect(card.question.toLowerCase()).toContain('course chunk');
       // The honestly-disclosed schema gap (trace doc §5) — no invented date.
       expect(card.question).toContain('No verification date is on record');
+      // NATURAL-COACHING-3 (2026-09-12) · coach voice states facts; it does
+      // not speak as "we"/"us" doing something to the runner. This was the
+      // only first-person-plural phrasing found across `lib/training`,
+      // `lib/race`, `lib/faff` and `lib/coach`'s runner-facing strings.
+      expect(card.question).not.toMatch(/\bwe\b|\bus\b/i);
     });
   });
 });

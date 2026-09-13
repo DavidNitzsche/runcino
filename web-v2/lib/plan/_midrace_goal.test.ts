@@ -220,7 +220,16 @@ describe('MIDGOAL-1 · a coach-set goal reaches the row and names its author', (
     // And it says whose number it is. A modelled value in a string with no
     // provenance carrier names its author in words.
     expect(notes).toContain('Coach target');
-    expect(notes).toContain('Yours to change');
+    // NATURAL-COACHING-1 (2026-09-11) · "Yours to change" was dropped: this
+    // sentence reaches the phone ONLY via PlanSnapshotDayView, which carries
+    // no race slug and no edit control at all, so the claim was untrue for
+    // the one screen that showed it. The real edit control (a goal-time
+    // entry that flips `goalPaceIsCoachSet` false, MIDGOAL-1 guard 1 above)
+    // lives on the Race Detail screen, which states its own honest version
+    // of this claim next to its own real "Edit race" button
+    // (`lib/race/coach-goal.ts`'s "Yours to edit."). This sentence no longer
+    // claims a capability this screen cannot back.
+    expect(notes).not.toContain('Yours to change');
   });
 
   it('the prose stays in coach voice · no hype, no exclamation, no em dash', () => {

@@ -261,8 +261,16 @@ export function raceLayers(o: RaceOutlook | null | undefined): RaceLayers | null
         : null,
       modelled: true,
       actionable: true,
+      // NATURAL-COACHING-5 (2026-09-12) · "hard session" → "quality session".
+      // An independent review found this RENDERED sentence (RaceDetailV5's
+      // execution_target tile, live via app/api/v5/race/[slug]) describes
+      // the identical controlled_c_effort fact `generate.ts`'s and
+      // `race-outlook.ts`'s sentences do, and those two were harmonized to
+      // "quality session" earlier the same day without checking this file
+      // — the exact Rule-16 gap the review named. `execution-plan.ts`'s
+      // sibling sentence for this same fact fixed in the same pass.
       note: isControlled
-        ? 'The week’s hard session, not a race. Take the work, not the result.'
+        ? 'The week’s quality session, not a race. Take the work, not the result.'
         : 'The number to run to. It moves when your evidence moves.',
       criteria: null,
     });

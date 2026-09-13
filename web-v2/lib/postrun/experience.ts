@@ -708,7 +708,11 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       status: 'INDETERMINATE',
       headline: hadTreadmillTarget ? 'Work done by treadmill effort, not pace-graded' : 'Work done, no target to read it against',
       summary: hadTreadmillTarget
-        ? `The work phases were prescribed by treadmill speed and incline, not pace — this is a record of what was run rather than a pace grade.${strideClause}`
+        // NATURAL-COACHING-3 (2026-09-12) · em-dash removed, matching this
+        // file's own sibling string one line below (which already uses
+        // "so" rather than "—" for the identical "record, not a grade"
+        // idiom) — this project's coach-voice rule forbids em dashes.
+        ? `The work phases were prescribed by treadmill speed and incline, not pace, so this is a record of what was run rather than a pace grade.${strideClause}`
         : `The work phases carried no prescribed pace, so this is a record of what was run rather than a grade.${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'UNKNOWN',

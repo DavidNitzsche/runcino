@@ -407,6 +407,11 @@ describe('run-type states', () => {
     expect(out.execution.headline).not.toMatch(/no target to read it against/i);
     expect(out.execution.summary).not.toMatch(/carried no prescribed pace/i);
     expect(out.execution.summary).toMatch(/treadmill speed and incline/i);
+    // NATURAL-COACHING-3 (2026-09-12) · coach voice forbids em dashes; this
+    // was the one line in this file that still had one, matching its own
+    // sibling string (the NO-TARGET-AT-ALL case above) which already used
+    // "so" instead of "—" for the identical "record, not a grade" idiom.
+    expect(out.execution.summary).not.toMatch(/—/);
   });
 
   it('NO TARGET AT ALL · a genuinely untargeted work block still reads "no prescribed pace"', () => {

@@ -130,6 +130,16 @@ function outcomeOfWorkoutRow(
     // reassessment date the card does, so the history and Today cannot
     // disagree about whether the runner owes an answer (Rule 16).
     case 'pending': return pastDated ? 'expired' : (deferred ? 'deferred' : 'pending');
+    // CA-13 (2026-09-13) · a per-workout row can carry this status too (a
+    // competing, evidenced proposal supersedes an earlier one before the
+    // runner answers it — `lib/plan/workout-proposals.ts`'s own write site:
+    // "was superseded before the runner answered it", the exact fact this
+    // outcome value already documents for plan-level rows above). Missing
+    // this case fell through to `default` below and told the runner an
+    // answered-late safety override "expired" — implying he never got to
+    // it, when a newer decision actually intervened first. Same vocabulary
+    // value `outcomeOfPlanRow` already uses for the identical fact.
+    case 'superseded': return 'superseded';
     // Rule 11: a status this mapping has not been taught is not "pending". It
     // is reported as expired, the reading that promises the runner nothing.
     default: return 'expired';

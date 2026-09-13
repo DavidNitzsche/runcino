@@ -567,10 +567,13 @@ export function composeRaceExecutionPlan(args: {
   const earlyLine = opening.openingMi > 1
     ? `Hold ${fmtPace(opening.earlyPaceSPerMi)} through ${Math.round(opening.openingMi)}. `
     : '';
+  // NATURAL-COACHING-5 (2026-09-12) \u00b7 "hard session" -> "quality session",
+  // same fix and same reasoning as race-page-layers.ts's sibling sentence
+  // for this identical controlled_c_effort fact.
   const strategyLine = args.effortCharacter === 'controlled'
     ? openLine + earlyLine +
       `Then it's ${fmtPace(opening.repaidPaceSPerMi)}s the rest of the way. ` +
-      'Controlled the whole way. This is the week\u2019s hard session, not a race, so finish it able to run tomorrow.'
+      'Controlled the whole way. This is the week\u2019s quality session, not a race, so finish it able to run tomorrow.'
     : openLine + earlyLine +
       `Then it's ${fmtPace(opening.repaidPaceSPerMi)}s the rest of the way · the early patience comes back to you. ` +
       `Push the final ${pushMiles === 1 ? 'mile' : `${pushMiles} miles`} on feel.`;

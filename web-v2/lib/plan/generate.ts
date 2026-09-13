@@ -8930,11 +8930,51 @@ export function embedMidBlockRaces(
     });
     slot.notes = race.priority === 'B'
       ? role === 'b_effort'
-        ? `${race.name}. B effort. Hard, not all out. It feeds your goal pacing and leaves the build intact.`
+        // NATURAL-COACHING-3 (2026-09-12) · dropped the "B effort" internal
+        // tier label, same pattern as the sibling default branch below (and
+        // the already-accepted NATURAL-COACHING-1 fix): the sentence already
+        // states the instruction in full ("Hard, not all out"), so the label
+        // added a term the runner has to parse for no information the rest
+        // of the sentence doesn't already carry.
+        ? `${race.name}. Hard, not all out. It feeds your goal pacing and leaves the build intact.`
         : role === 'race'
           ? `${race.name}. Race it honestly. Full effort; full recovery follows before quality resumes.`
-          : `${race.name}. B race · race effort. Recovery days follow before quality resumes.`
-      : `${race.name}. C race · this is the week's quality session. Run it as the workout.`;
+          // NATURAL-COACHING-1 (2026-09-11) · this default fires when the
+          // runner has not answered the race-role card, so it is the copy
+          // most runners on a B race actually see — David's Santa Monica
+          // 10K among them (MIDGOAL-1's own comment above names it the one
+          // race in his calendar with an empty goal field, which is exactly
+          // what routes it here). It used to read "B race · race effort.
+          // Recovery days follow before quality resumes." — internal
+          // classification language ("B race") a runner should never have
+          // to parse, "race effort" stated twice over (once as the label,
+          // once as the instruction), and no clearer for it. A held rewrite
+          // (`fix/santa-monica-race-day-copy`, 38d090ec8, NOT merged) tried
+          // "Race it, full effort. Recovery follows, then harder training
+          // returns." — still repetitive ("Race it" + "full effort" say the
+          // same thing twice), and "harder training returns" reads as a
+          // threat rather than a fact. Same execution as the 'race' branch
+          // above (full effort, embedded as the day's quality); the words
+          // now say so plainly and end on a neutral fact, not an implied
+          // punishment.
+          : `${race.name}. Run it at full effort. Recovery comes first, then training continues.`
+      // NATURAL-COACHING-3 (2026-09-12) · dropped "C race" (internal tier
+      // label), same shape as the NATURAL-COACHING-1 fix above. "quality
+      // session" is KEPT, not replaced — grepping the wider app found it is
+      // the established, already-rendered term for this workout category
+      // (a literal Block-screen stat label, `v5-block.ts`'s "Quality
+      // sessions"; dozens of other coach sentences), so swapping in "hard
+      // session" here would have created a second name for the same thing
+      // (a Rule 16 violation in the other direction) rather than removed
+      // jargon. Only the tier label was ever the defect.
+      //
+      // NATURAL-COACHING-4 (2026-09-12) · "Run it as the workout." named no
+      // antecedent ("the workout" — which one?) and added no instruction
+      // "quality session" hadn't already implied. The actual missing fact
+      // is the one `race-outlook.ts`'s sibling sentence for this same
+      // effort class already states: it is priced/run CONTROLLED, not
+      // raced. Restated here in the same terms for cross-file consistency.
+      : `${race.name}. This is the week's quality session, not a race. Run it controlled.`;
     // MIDGOAL-1 (2026-08-30) · STATE THE TARGET, AND SAY WHOSE IT IS.
     //
     // The row carried `raceGoalPaceSec` since MIDRACE-1 and the prose never
@@ -9602,9 +9642,25 @@ export function embedMidBlockRaces(
             `${g.longMi} miles the morning after ${race.name}. ${g.authoredPurpose} ` +
             'Easy the whole way. The distance is the work, not the pace.';
           designed.nl.d.notes = longNote;
+          // NATURAL-COACHING-3 (2026-09-12) · a second, textually-identical
+          // occurrence of the same jargon fixed in `embedMidBlockRaces`
+          // above — this is a different branch (the designed-race-weekend
+          // long-run-the-next-morning case), found by grepping for the
+          // exact literal after an independent review flagged the risk that
+          // more than one site carried it. "quality session" kept (see the
+          // sibling comment above) — only the "C race" label was jargon.
+          //
+          // NATURAL-COACHING-4 (2026-09-12) · the original also said
+          // "controlled" twice in one paragraph ("Run it as the workout,
+          // controlled." and, two sentences later, "running today
+          // controlled is what buys it") — Rule 17, a fact said twice.
+          // Dropped the first, vaguer instance ("the workout" named no
+          // antecedent either); the second already carries the instruction
+          // AND ties it to why (buys tomorrow's long run), so nothing is
+          // lost by keeping only it.
           slot.notes =
-            `${race.name}. C race · this is the week's quality session. Run it as the workout, ` +
-            `controlled. Tomorrow's ${g.longMi}-mile long run is the other half of this weekend, ` +
+            `${race.name}. This is the week's quality session, not a race. ` +
+            `Tomorrow's ${g.longMi}-mile long run is the other half of this weekend, ` +
             'and running today controlled is what buys it.';
         }
         compromises.push({

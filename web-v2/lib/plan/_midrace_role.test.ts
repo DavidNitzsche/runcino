@@ -88,6 +88,11 @@ const MALIBU = {
   distanceMi: 13.1, goalPaceSec: 412, priority: 'B' as const,
 };
 
+const TURKEY_TROT = {
+  slug: 'turkey-trot', name: 'Turkey Trot 10K', date: '2026-11-08',
+  distanceMi: 6.2, goalPaceSec: null, priority: 'C' as const,
+};
+
 const embeddedOf = (composed: ReturnType<typeof build>): EmbeddedRaceSummary[] =>
   ((composed.authoredState as Record<string, unknown>).embedded_races ?? []) as EmbeddedRaceSummary[];
 
@@ -98,7 +103,12 @@ describe("'b_effort' · the answered role shapes race day and the recovery windo
     const race = dayAt(composed, MALIBU.date)!;
     expect(race.day.type).toBe('race');
     expect(race.day.subLabel).toBe('RACE · B EFFORT');
-    expect(race.day.notes).toContain('B effort. Hard, not all out.');
+    // NATURAL-COACHING-3 (2026-09-12) · dropped "B effort." internal tier
+    // label from the sentence itself (the subLabel above still carries the
+    // classification for the UI's own badge use) — the instruction already
+    // said "Hard, not all out" without it.
+    expect(race.day.notes).toContain('Hard, not all out.');
+    expect(race.day.notes).not.toContain('B effort.');
   });
 
   it("the post-race window is 00b's B scale (7 days), not the default 4", () => {
@@ -172,6 +182,27 @@ describe("'mp_workout' · the race becomes the week's MP long", () => {
   });
 });
 
+describe("'C' priority · the race-role card never fires, so this is the only sentence a C-race runner ever sees", () => {
+  const composed = build([{ ...TURKEY_TROT }]);
+
+  it('race day carries the tune-up framing with no internal tier jargon', () => {
+    const race = dayAt(composed, TURKEY_TROT.date)!;
+    expect(race.day.type).toBe('race');
+    // NATURAL-COACHING-3 (2026-09-12) · dropped only "C race" (internal
+    // tier label), same shape as NATURAL-COACHING-1's fix to the sibling
+    // B-race default. "quality session" is KEPT — it's the app's own
+    // established term for this workout category (a literal Block-screen
+    // stat label; see `v5-block.ts`), so replacing it would trade one
+    // Rule-16 violation for another rather than remove jargon.
+    // NATURAL-COACHING-4 (2026-09-12) · "Run it as the workout." (vague,
+    // no antecedent) replaced with the same "not a race... controlled"
+    // instruction race-outlook.ts already states for this effort class.
+    expect(race.day.notes).toContain("This is the week's quality session, not a race. Run it controlled.");
+    expect(race.day.notes).not.toMatch(/C race/i);
+    expect(race.day.notes).not.toMatch(/run it as the workout/i);
+  });
+});
+
 describe('unanswered · byte-identical to the pre-RACEROLE composition', () => {
   it('plannedRole null, undefined, and absent all compose the same plan', () => {
     const absent = build([{ ...MALIBU }]);
@@ -179,7 +210,12 @@ describe('unanswered · byte-identical to the pre-RACEROLE composition', () => {
     expect(JSON.stringify(nulled.weeks)).toBe(JSON.stringify(absent.weeks));
     const race = dayAt(absent, MALIBU.date)!;
     expect(race.day.subLabel).toBe('RACE');
-    expect(race.day.notes).toContain('B race · race effort');
+    // NATURAL-COACHING-1 (2026-09-11) · this default was rewritten to drop
+    // internal classification language ("B race", doubled "race effort") a
+    // runner should never have to parse. This still asserts the SAME
+    // execution the old string named (full race effort), just in words a
+    // coach would actually say on race day.
+    expect(race.day.notes).toContain('Run it at full effort');
     expect(embeddedOf(absent).find((e) => e.slug === 'malibu')?.plannedRole ?? null).toBeNull();
   });
 });

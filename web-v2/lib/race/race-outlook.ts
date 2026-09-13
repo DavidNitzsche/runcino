@@ -820,9 +820,23 @@ export async function composeRaceOutlook(
       // A slower stated goal is honoured; a faster one is echoed and not run to.
       targetSec = roundRaceTargetSec(goalSec != null ? Math.max(ceilingSec, goalSec) : ceilingSec);
       source = 'controlled_c_effort';
+      // NATURAL-COACHING-3 (2026-09-12) \u00b7 dropped the "C race" internal tier
+      // label \u2014 traced this field (`execution.reasonVsExpected` /
+      // `race_execution.reason` on the wire) and found it reaches no current
+      // render surface (not `race-page-layers.ts`'s own `note` for this same
+      // `controlled_c_effort` case, not `race-on-today.ts`, not any native
+      // or web component); fixed anyway since it's fully computed and
+      // shipped over the wire today, so it is one un-guarded regression away
+      // from becoming visible with the jargon still in it.
+      // NATURAL-COACHING-4 (2026-09-12) \u00b7 "hard session" \u2192 "quality
+      // session", for consistency with `generate.ts`'s sibling sentence for
+      // this same effort class (both fixed under the same review). Neither
+      // word was ever wrong on its own; having both live in sentences that
+      // describe the identical fact read as two different things to a
+      // reader comparing them.
       reasonVsExpected = goalSec != null && goalSec < ceilingSec
-        ? `C race. Run it as the week's hard session, not as a race. Your ${fmtTime(goalSec)} goal stays yours; ${fmtTime(targetSec)} is what this day is for.`
-        : 'C race. Run it as the week\u2019s hard session, controlled, and take the day\u2019s work rather than the result.';
+        ? `Run it as the week's quality session, not as a race. Your ${fmtTime(goalSec)} goal stays yours; ${fmtTime(targetSec)} is what this day is for.`
+        : 'Run it as the week\u2019s quality session, controlled. Take the day\u2019s work rather than the result.';
     }
   } else if (currentProjection.expectedSec != null) {
     /* ── EXECTARGET-1 (2026-09-03) · THE ACTIVE NUMBER IS THE CURRENT-EVIDENCE
@@ -993,8 +1007,19 @@ export async function composeRaceOutlook(
       // EXECTARGET-1 · the step now differs from the one before it by going
       // BACK to current evidence, and says so. The forecast above it is the
       // block's intent; this is what today's evidence carries.
+      // NATURAL-COACHING-3 (2026-09-12) · dropped "C race", same reasoning
+      // as the reasonVsExpected fix above in this same file: traced this
+      // field (differsFromPrevious → wire's `differs_from_previous`) and
+      // found no current render consumer on native or web, fixed anyway
+      // since it's fully computed and shipped over the wire today.
+      //
+      // NATURAL-COACHING-4 (2026-09-12) · "This is run as..." was passive
+      // and, once "C race" was dropped, no longer named a subject at all.
+      // Restated as a direct, active claim about the quality session
+      // itself; "hard session" → "quality session" for the same
+      // cross-file consistency as the reasonVsExpected fix above.
       differsFromPrevious: source === 'controlled_c_effort'
-        ? 'A C race is run as the week’s hard session, so it is priced as a controlled effort rather than as a race.'
+        ? 'The quality session is priced as a controlled effort, not a race.'
         : source === 'current_evidence'
           ? 'Today’s evidence, not the forecast above it. The block is built to move that forward; race day is not priced on training that has not happened yet.'
           : null,

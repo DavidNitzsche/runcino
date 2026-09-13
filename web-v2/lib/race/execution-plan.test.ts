@@ -35,6 +35,17 @@ describe('composeRaceExecutionPlan · splits', () => {
     expect(plan).not.toBeNull();
   });
 
+  it('a controlled effort’s strategy line names it "quality session", not "hard session" (NATURAL-COACHING-5, 2026-09-12)', () => {
+    // Same controlled_c_effort fact race-page-layers.ts's execution_target
+    // note describes ("The week's quality session, not a race..."); an
+    // independent review found this sibling sentence still said "hard
+    // session" after that file was harmonized, missing the identical fact
+    // stated in a different rendered surface (Rule 16).
+    const controlled = composeRaceExecutionPlan({ ...AFC, effortCharacter: 'controlled' })!;
+    expect(controlled.strategyLine).toMatch(/quality session/i);
+    expect(controlled.strategyLine).not.toMatch(/hard session/i);
+  });
+
   it('goal pace is goal/distance — 412 s/mi (6:52), NOT T-pace 6:47', () => {
     expect(plan.goalPaceSPerMi).toBe(412);
   });
