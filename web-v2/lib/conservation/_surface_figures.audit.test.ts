@@ -111,10 +111,19 @@ describe.skipIf(!RO)('surface figures · the real readers over real rows (READ-O
         `SELECT data FROM runs WHERE data->>'mergedIntoId' = $1`, [row.id],
       )).rows.map((t) => t.data ?? {});
 
+      // ELEVTRUST-1 (2026-09-13) · `distanceMi` passed through, matching
+      // every real call site (`resolveElevationGain` in `lib/runs/twins.ts`,
+      // and this row's own `loadRunDetail` on the other side of this
+      // comparison) — without it a `'watch'`-sourced candidate skips the
+      // credibility recheck and this harness stops simulating "the poster"
+      // and starts simulating a poster with a bug the real one no longer
+      // has. Confirmed live: the 2026-08-26 row (2807 ft, 361 ft/mi, a known
+      // pre-elev-sanity outlier) disagreed with `loadRunDetail`'s correct
+      // refusal until this line passed the distance through.
       const posterElev = pickElevationGain([
         { ft: Number(d.elevGainFt) || null, source: d.elevGainSource ?? null, ingest: d.source ?? null },
         ...twins.map((t) => ({ ft: Number(t.elevGainFt) || null, source: t.elevGainSource ?? null, ingest: t.source ?? null })),
-      ]);
+      ], Number(d.distanceMi) || null);
       const posterSplits = pickSplits(Number(d.distanceMi) || null, [
         { splits: Array.isArray(d.splits) ? d.splits : null, source: 'canonical' },
         ...twins.map((t) => ({ splits: Array.isArray(t.splits) ? t.splits : null, source: t.source ?? null })),

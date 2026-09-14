@@ -825,13 +825,23 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
    * row's weaker instrument win by default. */
   const twins = await loadRunTwins(row.id);
 
-  /** The climb, ranked by instrument across this row and every twin. */
+  /** The climb, ranked by instrument across this row and every twin.
+   *
+   * ELEVTRUST-1 (2026-09-13) · `distanceMi` used to be hardcoded null here —
+   * harmless while `resolveElevationGain` never read it, but it now does:
+   * an `elevGainSource:'watch'` candidate is re-checked against its own
+   * ft/mi (see `lib/runs/elevation.ts`), and with no distance to check
+   * against that re-check cannot run. Passing the real, already-reconciled
+   * `distanceMi` (computed just above, for exactly this row) is what lets a
+   * `'watch'` candidate stand on its own credibility here the same way it
+   * does on the poster's `app/api/v5/today/route.ts` path, which already
+   * passed its own `distanceMi` through. */
   const elevationReading = resolveElevationGain({
     elevGainFt: Number(r.elevGainFt) || null,
     elevGainSource: (r.elevGainSource as string | null) ?? null,
     source: (r.source as string | null) ?? null,
     splits: null,
-    distanceMi: null,
+    distanceMi,
   }, twins);
 
   /* ── WHICH SPLIT ARRAY DECOMPOSES THIS RUN · 2026-08-24 ────────────────

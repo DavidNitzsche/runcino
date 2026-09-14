@@ -323,9 +323,12 @@ function num(v: unknown): number | null {
 
 /** Elevation, heart rate, cadence, temperature and calories, resolved once. */
 export function absoluteFigures(data: RunData): Partial<SurfaceReading> {
+  // ELEVTRUST-1 (2026-09-13) · `data.distanceMi` passed through so a
+  // `'watch'`-sourced candidate gets re-checked against its own ft/mi before
+  // this reader trusts it — see `lib/runs/elevation.ts`.
   const elev = pickElevationGain([
     { ft: num(data.elevGainFt), source: (data.elevGainSource as string | null) ?? null, ingest: (data.source as string | null) ?? null },
-  ]);
+  ], num(data.distanceMi));
   const splits = Array.isArray(data.splits) ? (data.splits as Array<Record<string, unknown>>) : null;
   return {
     avgHrBpm: num(data.avgHr),

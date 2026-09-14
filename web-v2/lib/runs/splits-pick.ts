@@ -152,20 +152,102 @@ export const COVERAGE_TOLERANCE_MI = 0.25;
 /**
  * The array that best decomposes this run.
  *
- * Coverage first — an array that describes three miles of a four-mile run is
- * wrong about the run no matter how nicely formed it is. Richness breaks a
- * tie, because a mile with a heart rate is worth more than a mile without one
- * and neither is worth anything if it is not there.
+ * CANONICAL-1 (2026-09-13) · PREFER THE CANONICAL ROW'S OWN SPLITS, WHEN
+ * THEY ARE USABLE, BEFORE RACING COVERAGE ACROSS SIBLINGS.
+ *
+ * The Santa Monica 10K, real production shape (`runs.id -159534527913687`,
+ * canonical `source:'watch'`, twin `source:'apple_watch'` at
+ * `id -2879323795619998`): the run is 6.28 mi. The canonical's own splits are
+ * six whole miles — 6:52 / 6:59 / 7:17 / 7:51 / 7:44 / 7:02, verified against
+ * Strava's own splits and against `deriveSplitsFromPaceSamples` run fresh
+ * over the same pace stream, all three agreeing within a second per mile.
+ * `splitsCoverageMi` scores that array at 6.00 mi (it carries no
+ * `distanceMi` per split, so each one defaults to 1 — see that function),
+ * against the true 6.28. The absorbed HealthKit twin carries an explicit
+ * `distanceMi` on every split, summing to 6.278 — because
+ * `HealthKitImporter.perMileSplits` sums raw fix-to-fix GPS haversine
+ * distance with no interpolation and no odometer normalization, which
+ * over-counts during the GPS "warm-up" in the first mile or two and happens
+ * to land almost exactly on the true total. Pure coverage-gap racing
+ * (`|6.00-6.28| = 0.28` vs `|6.278-6.28| ≈ 0.002`) therefore picked the
+ * inflated, wrong array over the correct one, and did so ~10s/mi wrong on
+ * three of the six miles.
+ *
+ * The general shape: `deriveSplitsFromPaceSamples` (and the watch's own
+ * on-device split derivation it mirrors) reports WHOLE MILES ONLY — see its
+ * own header, "the whole-run entry point still returns whole miles only ...
+ * this function ignores [the trailing remainder], exactly as it always has."
+ * Any run that doesn't end on an exact mile boundary — which is most runs,
+ * and effectively every race — therefore leaves the canonical array
+ * "short" of the true distance by up to just under a mile, BY DESIGN, no
+ * matter how accurate every split in it is. A coverage-sum race with no
+ * concept of that design fact will systematically prefer whichever sibling
+ * happens to encode a fractional tail, accurate or not — this is a Rule 9
+ * shape (the fitter/more-honest array loses on a near-threshold gap) hiding
+ * inside what reads as a data-quality check.
+ *
+ * The fix asks the question the array's own shape can answer honestly: does
+ * the canonical cover as many WHOLE miles as the run has, not does its
+ * coverage SUM land within a quarter mile of the true total. That is exactly
+ * what distinguishes this case from the one `pickSplits` was ORIGINALLY built
+ * to fix (2026-08-24, see the module header above): 4.02 mi run, canonical
+ * only 3 splits — short of `floor(4.02) = 4`, a genuinely missing whole mile
+ * (the last one, 158 bpm, Z4) — where the fuller twin correctly wins. Santa
+ * Monica's canonical carries 6 splits against `floor(6.28) = 6`: complete by
+ * this measure, incomplete only by the coverage-sum test, because the
+ * "gap" the sum sees is the ordinary trailing partial the derivation always
+ * omits, not a lost mile.
+ *
+ * `usable` therefore means: at least as many whole-mile splits as the run has
+ * whole miles. Genuinely short (a real missing mile, or an empty/absent
+ * array) still falls through to the coverage race below — unchanged from
+ * before — so the sibling with real additional coverage still wins in that
+ * case exactly as it did on 2026-08-24. Richness breaks a tie, because a mile
+ * with a heart rate is worth more than a mile without one and neither is
+ * worth anything if it is not there.
  *
  * Returns null when no candidate carries splits at all. It never merges two
  * arrays: they are separate observations of the run by separate instruments,
  * and interleaving them would invent miles that no instrument recorded.
+ *
+ * Rule 11 · the fallback (coverage race, non-canonical winner) is a
+ * DIFFERENT fact from a canonical read, and it stays distinguishable exactly
+ * the way it always was: `SplitChoice.source` carries the literal winning
+ * candidate's own source (`'canonical'` only when the canonical row's array
+ * actually won), and every caller downstream already keys off that field
+ * (`MILEFALLBACK-LABEL-1` in `app/api/v5/today/route.ts`) rather than
+ * assuming canonical.
  */
 export function pickSplits(
   runDistanceMi: number | null | undefined,
   candidates: SplitCandidate[],
 ): SplitChoice | null {
   const mi = Number(runDistanceMi);
+  const hasMi = Number.isFinite(mi) && mi > 0;
+
+  const canonicalCandidate = candidates.find((c) => c.source === 'canonical');
+  if (
+    canonicalCandidate
+    && Array.isArray(canonicalCandidate.splits)
+    && canonicalCandidate.splits.length > 0
+  ) {
+    const coverage = splitsCoverageMi(canonicalCandidate.splits);
+    // With no run distance to judge against, the canonical's own array is
+    // usable by definition — there is nothing to be short OF. Otherwise a
+    // whole-mile-only array is usable when it has at least as many splits as
+    // the run has whole miles; the trailing partial mile it never numbers is
+    // not a hole.
+    const wholeMilesExpected = hasMi ? Math.floor(mi) : canonicalCandidate.splits.length;
+    if (canonicalCandidate.splits.length >= wholeMilesExpected) {
+      return {
+        splits: canonicalCandidate.splits,
+        source: canonicalCandidate.source ?? null,
+        coverageMi: coverage,
+        coversRun: hasMi ? Math.abs(coverage - mi) <= COVERAGE_TOLERANCE_MI : false,
+      };
+    }
+  }
+
   let best: SplitChoice | null = null;
   let bestGap = Infinity;
   let bestRich = -1;
