@@ -188,6 +188,19 @@ targets() {
   # directory, so the next file to author copy has to make the same case.
   [ -f "$ROOT/web-v2/lib/training/projection-trend.ts" ] \
     && printf '%s\n' "$ROOT/web-v2/lib/training/projection-trend.ts"
+  # 2026-09-14 · COMPOSEREVIEWTRIGGER-FIX · a second named exception in
+  # `lib/training`, same justification as `projection-trend.ts` immediately
+  # above: `composeCoachLine`, `thesisLeadClause` and `composeReviewTrigger`
+  # author the Coaching Thesis's runner-facing sentences (`wireThesis` is what
+  # `/api/v5/today` and `/api/v5/block` actually emit under the `thesis` key —
+  # the file's own header calls this "ONE VOICE... every surface quotes it").
+  # It sat outside every guard in this script until this pass found it while
+  # fixing `composeReviewTrigger`'s race-mention bug — copy authored in an
+  # unscanned engine file is exactly the Rule 20 gap this comment block exists
+  # to keep naming. Named individually rather than widening the directory, so
+  # the next file to author copy in `lib/training` has to make the same case.
+  [ -f "$ROOT/web-v2/lib/training/coaching-thesis.ts" ] \
+    && printf '%s\n' "$ROOT/web-v2/lib/training/coaching-thesis.ts"
 }
 
 FILES="$(targets | sort -u \

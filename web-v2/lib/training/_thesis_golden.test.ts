@@ -36,12 +36,14 @@
 import { describe, it, expect } from 'vitest';
 import {
   composeCoachingThesis,
+  composeReviewTrigger,
   assessWeekAgainstThesis,
   thesisPlanDirective,
   curveShapeFrom,
   type CoachingThesis,
   type ThesisWeekRow,
 } from './coaching-thesis';
+import { scanLayerOne, scanPunctuation } from '@/lib/faff/coach-lexicon';
 import {
   composeDurability,
   CAPACITY_CONFIDENCE_BANDS,
@@ -290,6 +292,80 @@ describe('COACHING THESIS · the golden runners (pure five)', () => {
       if (t.primaryLimiter === 'UNKNOWN') continue;
       const s = t.standings.find((x) => x.capacity === t.primaryLimiter)!;
       expect(s.rankable).toBe(true);
+    }
+  });
+
+  /*
+   * COMPOSEREVIEWTRIGGER-FIX-2026-09-14 · races are STRUCTURALLY excluded
+   * from threshold's direct evidence tier (`pace-corpus.ts`, reason
+   * `LABEL_RACE`), but `composeReviewTrigger` used to lead with "a new race
+   * result lands" for every limiter, THRESHOLD included. Falsified against
+   * the unfixed function on the exact fixture-3 inputs before this test was
+   * written (see `programme-internal-working/00-master-programme/
+   * COMPOSEREVIEWTRIGGER-FIX-2026-09-14.md`): the old output was "This gets
+   * revisited when a new race result lands, or when the evidence behind your
+   * threshold catches up with the rest." Fixture 3 is the one golden runner
+   * whose limiter is THRESHOLD, so it is the one that can catch a regression
+   * back to that sentence.
+   *
+   * COMPOSEREVIEWTRIGGER-VOICE-REWORK-2026-09-14 · the sentence shape changed
+   * again (see the function's own header comment) but the correctness claim
+   * this test guards is unchanged: never race-as-path-forward for THRESHOLD,
+   * stated affirmatively rather than by absence alone.
+   */
+  it('composeReviewTrigger never offers a race as the path forward for THRESHOLD, in any fixture', () => {
+    for (const { t } of resolved) {
+      if (t.primaryLimiter !== 'THRESHOLD') continue;
+      const out = composeReviewTrigger(t);
+      expect(out, out).not.toMatch(/a new race result lands/i);
+      // Not absence-only (Rule 13's own warning): the sentence must instead
+      // affirmatively rule racing out, in these words.
+      expect(out, out).toMatch(/never on a race|not routine threshold|race cannot move it/i);
+    }
+  });
+
+  /*
+   * The DURABILITY-limited fixtures (2 and 6, both `CURVE_SHAPE_EVIDENCE`)
+   * are the one case where race-result language IS doctrine-correct
+   * (`composeDurability`'s race-exponent component is built from graded
+   * races). The fix must not have swung to the opposite defect of removing
+   * races everywhere — it names the actual current exponent and race count
+   * rather than a generic "catches up with the rest".
+   */
+  it('composeReviewTrigger names the actual curve exponent and race count for a CURVE_SHAPE_EVIDENCE limiter', () => {
+    for (const { t } of resolved) {
+      if (t.basis !== 'CURVE_SHAPE_EVIDENCE' || t.curveShape.read === 'unavailable') continue;
+      const out = composeReviewTrigger(t);
+      expect(out, out).toContain(t.curveShape.rawExponent.toFixed(2));
+      expect(out, out).toContain(String(t.curveShape.races));
+      expect(out, out).toMatch(/graded race/i);
+    }
+  });
+
+  /*
+   * COMPOSEREVIEWTRIGGER-VOICE-REWORK-2026-09-14 · the coach consultant's
+   * finding was that this function had never had a canonical situation-
+   * library entry (`Design/coach-voice-brief.md` §"What's currently limiting
+   * you, and what would move it") — it was speaking in an engine's voice
+   * ("this gets revisited when...") rather than the coach's. This is the
+   * falsifiable half of that claim: the actual Layer-1 lexicon
+   * (`lib/faff/coach-lexicon.ts`) that already gates `why` and `coachLine`
+   * runs over `composeReviewTrigger`'s output too, for every fixture whose
+   * limiter is evidenced. Confirmed BEFORE the rework that the OLD template's
+   * "the evidence behind your threshold catches up with the rest" phrasing
+   * itself carried no lexicon hit — this is a real regression gate, not
+   * theater, only because the earlier defect was the missing situation-
+   * library entry and voice register, not a banned word. `limiter` in
+   * particular is banned (`scanLayerOne`'s jargon band, added after the live
+   * Today `why` opened "Durability is the limiter right now") and is the one
+   * a rewrite of this function could easily reintroduce by habit.
+   */
+  it('composeReviewTrigger passes the same Layer-1 coach-voice lexicon that gates why/coachLine', () => {
+    for (const { t } of resolved) {
+      if (t.primaryLimiter === 'UNKNOWN') continue;
+      const out = composeReviewTrigger(t);
+      expect(scanLayerOne(out), out).toEqual([]);
+      expect(scanPunctuation(out), out).toEqual([]);
     }
   });
 });

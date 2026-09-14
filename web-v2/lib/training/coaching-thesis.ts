@@ -141,7 +141,7 @@ import { weekWindowFor } from '@/lib/coach/week-window';
 import { runnerToday } from '@/lib/runtime/runner-tz';
 import { isNonBuildingPhaseLabel } from '@/lib/plan/non-building-week';
 import { readSelectionRationale } from '@/lib/plan/progression-spec';
-import { POPULATION_ENDURANCE_PRIOR } from '@/lib/training/durability-anchor';
+import { POPULATION_ENDURANCE_PRIOR, MARATHON_REHEARSAL_MIN_SESSIONS } from '@/lib/training/durability-anchor';
 import { CURVE_NEUTRAL_EXPONENT_BAND } from '@/lib/coach/limiter';
 import {
   resolveThresholdCapacity,
@@ -236,6 +236,23 @@ export interface DurabilitySubReads {
   populationPrior: number;
   /** Mean pace/HR drift across qualifying long runs, or null. */
   decouplingPct: number | null;
+  /**
+   * COMPOSEREVIEWTRIGGER-FIX-2026-09-14 · how many marathon-pace rehearsals
+   * (`Research/02` §12.2/§12.4, `lib/training/durability-anchor.ts`'s
+   * `resolveTrainingDurability`) have qualified in the trailing
+   * `MARATHON_REHEARSAL_WINDOW_DAYS`, whether or not that clears the
+   * corroboration bar. Present even when `trainingDurabilityMet` is false so
+   * a reader can say "2 of 3", not only "not yet" — the same distinction
+   * Rule 11 asks every reader to keep. This is a TRAINING-EVIDENCE count: the
+   * loader that produces it explicitly excludes `type = 'race'` rows.
+   */
+  trainingDurabilityObservations: number;
+  /** `MARATHON_REHEARSAL_MIN_SESSIONS`, carried so a caller never re-types
+   *  the doctrine number that decides what "enough" means. */
+  trainingDurabilityMinRequired: number;
+  /** Whether the rehearsal count above has actually cleared the bar and is
+   *  being spent on the estimate (`training.present`), not merely counted. */
+  trainingDurabilityMet: boolean;
 }
 
 /**
@@ -361,6 +378,17 @@ const SESSION_WORD: Record<PrimaryCapacity, string> = {
 };
 
 function durabilitySubReads(durability: DurabilityCapacityEstimate): DurabilitySubReads {
+  const training = durability.trainingDurability;
+  // `DurabilityComponent`'s `present: true` branch carries `evidenceIds`, not
+  // `observations` — each rehearsal contributes exactly one id (§ composeDurability),
+  // so its length IS the count. The `present: false` branch carries
+  // `observations` directly. Either way this is never a silent zero standing
+  // in for "did not look" (Rule 11): `training` itself is only ever undefined
+  // for a hand-built fixture that never populated it, and `composeDurability`
+  // always sets it for a real estimate.
+  const trainingDurabilityObservations = training == null
+    ? 0
+    : training.present ? training.evidenceIds.length : training.observations;
   return {
     raceExponent: durability.raceExponent.present ? durability.raceExponent.value : null,
     rawFittedExponent: durability.raceExponent.present
@@ -368,6 +396,9 @@ function durabilitySubReads(durability: DurabilityCapacityEstimate): DurabilityS
       : null,
     populationPrior: POPULATION_ENDURANCE_PRIOR,
     decouplingPct: durability.decoupling.present ? durability.decoupling.value : null,
+    trainingDurabilityObservations,
+    trainingDurabilityMinRequired: MARATHON_REHEARSAL_MIN_SESSIONS,
+    trainingDurabilityMet: training?.present === true,
   };
 }
 
@@ -743,18 +774,112 @@ export function coachSafeSessionName(selectionRationale: string | null): string 
   return head;
 }
 
-/** §F's "what evidence would change the strategy", in coach voice. */
+/** The rankable standing for one capacity, or undefined when it is not on
+ *  the thesis's own `standings` in rankable form. A private lookup, not a
+ *  second ranking — it reads the SAME array `composeCoachingThesis` built. */
+function rankableStandingFor(
+  thesis: CoachingThesis,
+  capacity: PrimaryCapacity,
+): Extract<CapacityStanding, { rankable: true }> | undefined {
+  const s = thesis.standings.find((x) => x.capacity === capacity);
+  return s && s.rankable ? s : undefined;
+}
+
+/**
+ * §F's "what evidence would change the strategy", spoken in the Situation
+ * Library's own register (`Design/coach-voice-brief.md` §"What's currently
+ * limiting you, and what would move it").
+ *
+ * COMPOSEREVIEWTRIGGER-FIX-2026-09-14 · this used to be one template for
+ * every limiter, and it was wrong in a way that was not just generic: it led
+ * with "a new race result lands" for EVERY limiter, including THRESHOLD,
+ * whose direct evidence tier excludes a race outright (`pace-corpus.ts`,
+ * reason `LABEL_RACE`: "a race is strategic effort, not routine threshold
+ * work; it reaches the model through the race exponent"). A race is
+ * mechanically incapable of moving a threshold read built on that tier, and
+ * the copy said the opposite.
+ *
+ * COMPOSEREVIEWTRIGGER-VOICE-REWORK-2026-09-14 · the per-limiter correctness
+ * from the first pass is right and untouched here (the evidence-admission
+ * logic below still reads exactly the resolvers cited above). What changed is
+ * the REGISTER: the coach consultant's review of that fix against the voice
+ * brief's situation library found there was never a canonical entry for this
+ * situation at all — the library has "You got faster" (the AFTER-the-fact
+ * acknowledgment) but nothing for the BEFORE-the-fact case this function
+ * actually speaks: naming the current trade and the specific thing that would
+ * move it, in the observation-reality check-reason-action shape every other
+ * entry uses, not an engine sentence that happens to be per-limiter. Each
+ * branch below is now a coach naming the trade directly — "X is what the plan
+ * is built around right now" — rather than a hedge about when the thesis
+ * "gets revisited". The concrete counts (`thesis.evidenceIds`,
+ * `thesis.curveShape`, the durability standing's rehearsal count) are threaded
+ * through exactly as the first pass computed them; only the sentence shape
+ * changed, to match the library entry now recorded in the brief.
+ */
 export function composeReviewTrigger(thesis: CoachingThesis): string {
   if (thesis.primaryLimiter === 'UNKNOWN') {
-    return 'This gets revisited as soon as there is enough evidence to name a limiter.';
+    return 'There is not enough evidence yet to say what is limiting you. That is what the next '
+      + 'few weeks are for.';
   }
-  const word = CAPACITY_WORD[thesis.primaryLimiter];
-  if (thesis.basis === 'CURVE_SHAPE_EVIDENCE') {
-    return 'This gets revisited when a new race result lands, or when a long race or a '
-      + 'race-pace long run shows your pace holding with distance.';
+
+  if (thesis.primaryLimiter === 'THRESHOLD') {
+    const standing = rankableStandingFor(thesis, 'THRESHOLD');
+    // The below-table-anchor rung (§ capacity-resolver.ts `belowTableSourceMode`)
+    // is the one honest exception: when the number this runner is currently
+    // read at rests on a race pace the standard table cannot represent, a
+    // race genuinely is the evidence behind it. That is a different fact
+    // from the routine case below and the copy has to say so, not paper over
+    // it with a blanket "never".
+    if (standing?.sourceMode === 'race_derived') {
+      return 'Threshold is what the plan is built around right now, and it currently rests on a race '
+        + 'pace fast enough that the standard pace table cannot represent it. That is the one case '
+        + 'where racing IS the evidence here: another race at or beyond that pace, or training that '
+        + 'demonstrates the same, is what moves it.';
+    }
+    const n = thesis.evidenceIds.length;
+    const corroboration = n > 0
+      ? `${n} corroborating threshold session${n === 1 ? '' : 's'} are already backing it`
+      : 'no corroborating threshold session is backing it yet';
+    return 'Threshold is what the plan is built around right now, and a race cannot move it. A race '
+      + 'is strategic effort, not routine threshold work, and this number only moves on training in '
+      + `the tier it is built from. ${capitalise(corroboration)}. The next well-executed threshold `
+      + 'session is what moves it.';
   }
-  return `This gets revisited when a new race result lands, or when the evidence behind `
-    + `your ${word} catches up with the rest.`;
+
+  if (thesis.primaryLimiter === 'DURABILITY') {
+    const training = rankableStandingFor(thesis, 'DURABILITY')?.durability;
+    const rehearsalDetail = training == null
+      ? null
+      : training.trainingDurabilityMet
+        ? `${training.trainingDurabilityObservations} marathon-pace rehearsals already count as `
+          + 'training evidence toward it'
+        : `${training.trainingDurabilityObservations} of the ${training.trainingDurabilityMinRequired} `
+          + 'marathon-pace rehearsals doctrine wants are in';
+    const rehearsalSentence = ` A race-pace long run that holds pace deep enough to qualify counts as `
+      + `evidence too${rehearsalDetail ? `: ${rehearsalDetail}` : ''}.`;
+
+    if (thesis.basis === 'CURVE_SHAPE_EVIDENCE' && thesis.curveShape.read !== 'unavailable') {
+      const shape = thesis.curveShape;
+      return 'Durability is what the plan is built around right now. Your race curve is fading with '
+        + `distance faster than your speed predicts: ${shape.rawExponent.toFixed(2)} over ${shape.races} `
+        + `graded races, against doctrine's neutral band of ${shape.band[0]} to ${shape.band[1]}. A new `
+        + 'graded race is the direct way to close that.' + rehearsalSentence;
+    }
+    return 'Durability is what the plan is built around right now, on thinner evidence than a curve '
+      + 'verdict. It moves on another graded race, or on long runs that stop drifting late.'
+      + rehearsalSentence;
+  }
+
+  // HIGH_INTENSITY: no direct reader exists yet (`composeHighIntensityCapacity`
+  // carries `NO_DIRECT_HIGH_INTENSITY_READER` on every estimate it returns),
+  // so there is no routine tier to describe. The fallback ladder it does read
+  // from admits a demonstrated pace from EITHER a race or training
+  // (`loadVdotFallback`'s `bestRecentVdot` reads both `raceCandidates` and
+  // `runCandidates`) — unlike threshold, this capacity has no doctrine reason
+  // to exclude a race, so the copy correctly names both.
+  return 'Speed does not have a dedicated read yet, so this one only moves when a demonstrated pace, '
+    + 'from training or a race, is fast enough to update it. There is no routine check-in tier here '
+    + 'the way there is for threshold.';
 }
 
 /**
@@ -875,11 +1000,25 @@ function reviewTriggersFor(
     });
   }
 
-  triggers.push({
-    code: 'NEW_RACE_RESULT',
-    detail: 'a new race result changes any capacity\'s sourceMode or the race-curve fit, which '
-      + 'can both admit a capacity to the ranking and move the shape read',
-  });
+  // COMPOSEREVIEWTRIGGER-FIX-2026-09-14 · this used to fire unconditionally,
+  // for every limiter. That was wrong for THRESHOLD and HIGH_INTENSITY: a
+  // race is excluded outright from threshold's direct corpus
+  // (`pace-corpus.ts#classifyThresholdCandidatesDetailed`, reason
+  // `LABEL_RACE`, "a race is strategic effort, not routine threshold work; it
+  // reaches the model through the race exponent") and high-intensity has no
+  // direct reader at all to admit one into. DURABILITY is different by
+  // design — `composeDurability`'s `raceExponent` component IS built from
+  // graded races, and a new one can move the curve-shape read whether or not
+  // this limiter was picked by CURVE_SHAPE_EVIDENCE. Gating on the limiter,
+  // not on the basis, is deliberate: a durability limiter picked by
+  // LOWEST_CONFIDENCE_AMONG_EVIDENCED still has a race-derived exponent
+  // component that a new race moves.
+  if (limiter === 'DURABILITY') {
+    triggers.push({
+      code: 'NEW_RACE_RESULT',
+      detail: 'a new graded race moves the race-curve exponent this limiter is read from',
+    });
+  }
 
   return triggers;
 }

@@ -164,6 +164,7 @@ a composer is never invented where a detector already exists.
 | Taper | `taperFactor` per distance, `lib/plan/generate.ts` |
 | Race pacing / starting too fast | `lib/race/distance-doctrine.ts` opening allowance; `lib/race/effective-race-target.ts` |
 | Race confidence | `lib/plan/goal-gap.ts`, `lib/coach/coach-log.ts` |
+| What's currently limiting you, and what would move it | `composeReviewTrigger`, `lib/training/coaching-thesis.ts` |
 
 ---
 
@@ -263,6 +264,50 @@ When an estimate changes:
 > now. It means your training paces can move with your fitness.
 
 Stronger: *"This isn't one good day. The trend moved."* That distinction matters.
+
+## What's currently limiting you, and what would move it
+
+Added 2026-09-14. Where "You got faster" is the acknowledgment after the fact, this is the trade
+stated before it: which capacity the plan is built around right now, and the actual, specific
+thing that would change it. Not "this gets revisited eventually" — the concrete evidence rule
+this particular capacity reads from. `docs/PUSH_THE_RUNNER_FORWARD_DOCTRINE.md`'s own worked
+example is the register to match: name the evidence, name what it would take, keep it specific.
+
+Threshold-limited. A race cannot move this, at the tier almost every runner reads at — routine
+threshold work is not what a race is:
+
+> Threshold is what the plan is built around right now, and a race can't move it. A race is
+> strategic effort, not routine threshold work, and this number only moves on training in the
+> tier it's built from. Two corroborating sessions are already backing it. The next
+> well-executed threshold session is what moves it.
+
+Durability-limited, picked by the race curve. Here a race genuinely is primary evidence, so say
+so with the real numbers, and give training evidence the same specificity instead of leaving it
+implied:
+
+> Durability is what the plan is built around right now. Your race curve is fading with distance
+> faster than your speed predicts: 1.11 over 5 graded races, against doctrine's neutral band of
+> 1.06 to 1.08. A new graded race is the direct way to close that. A race-pace long run that
+> holds pace deep enough counts too: 2 of the 3 marathon-pace rehearsals doctrine wants are in.
+
+Durability-limited, picked on confidence alone rather than the curve — the same trade, thinner
+evidence, said plainly:
+
+> Durability is what the plan is built around right now, on thinner evidence than a curve
+> verdict. It moves on another graded race, or on long runs that stop drifting late.
+
+High-intensity. No dedicated reader exists yet, so say that plainly instead of implying a
+routine tier that isn't there:
+
+> Speed doesn't have a dedicated read yet, so this one only moves when a demonstrated pace, from
+> training or a race, is fast enough to update it. There's no routine check-in tier here the way
+> there is for threshold.
+
+**Never say "a new race result" for a capacity a race structurally can't move.** Threshold's own
+direct evidence excludes race-labelled effort outright — naming a race as the path forward there
+isn't vague, it's wrong. Durability is the opposite case: a race genuinely is primary evidence
+there, so the copy keeps the numbers instead of hiding them behind "shows your pace holding with
+distance."
 
 ## The day after a bad race
 
