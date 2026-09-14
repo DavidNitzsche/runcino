@@ -92,6 +92,7 @@ import {
   classifyDay,
   type PrescribedRow as DayResolverPrescribedRow,
   type RunRow as DayResolverRunRow,
+  type PlanRowVersion as DayResolverPlanRowVersion,
 } from '@/lib/execution/day-resolver';
 /* The phase VOCABULARY and its one translation from the generator's own label.
  * Imported rather than re-implemented so this loader cannot coin a second
@@ -200,6 +201,23 @@ export interface PlanWorkoutRow {
   is_quality: boolean;
   is_long: boolean;
   sub_label: string | null;
+  /**
+   * F040 FOLLOW-UP (2026-09-14) · every `plan_workouts` row this user has on
+   * THIS DATE, across every plan version — the same PLAN-VERSION-ALIAS-1
+   * alias list `day-resolver.ts`'s `resolveDateRangeExecutions` already
+   * builds via a `jsonb_agg` join. OPTIONAL: `readPlanWorkouts` (the
+   * FORWARD-looking, current-plan-only read) never selects it, so a
+   * `PlanWorkoutRow` built from that query carries `undefined` here — which
+   * `classifyDay`'s Pass 1b already treats as "no aliases known", the
+   * conservative default. Only `readOwnedPlanWorkouts` (BACKWARD-looking)
+   * populates it. See `buildPrescriptionRunMatches`'s own header for the
+   * defect this closes (F040): without it, a run stamped against a
+   * plan_workouts row from a DIFFERENT plan version than the one
+   * `ownedDaysSql()` picked as this date's reign-owner still fails Pass 1a's
+   * literal-id match, even after F038's fix supplies a same-date row to
+   * compare against at all.
+   */
+  version_rows?: DayResolverPlanRowVersion[] | null;
 }
 
 /** EXPORTED (SUPPLEMENTALGRADE-1) — the shape `buildLiveCanonicalInput`
@@ -353,19 +371,42 @@ export interface OwnedPlanWorkoutRow extends PlanWorkoutRow {
  * `readPlanWorkouts(plan.id)` — a current-plan question is correctly
  * current-plan-scoped (F038 report §4), and this function must never be
  * substituted there.
+ *
+ * F040 FOLLOW-UP (2026-09-14) · also projects `version_rows`: EVERY
+ * `plan_workouts` row this user has on each date, across every plan version
+ * (same `jsonb_agg` pattern `day-resolver.ts`'s `resolveDateRangeExecutions`
+ * already runs). Confirmed live (F038-F040-RECONCILIATION-2026-09-14.md):
+ * `ownedDaysSql()`'s reign-owner row and the row a run's `planWorkoutId` is
+ * actually stamped against are not always the same row — a run can be
+ * stamped against whichever plan was active when it was completed/synced,
+ * not the plan whose reign covered its calendar date — so Pass 1a's literal
+ * id match can still miss even once F038 supplies a same-date row to compare
+ * against at all. `version_rows` lets `classifyDay`'s Pass 1b (
+ * PLAN-VERSION-ALIAS-1) recognise the stamped row as an alias of the
+ * reign-owner's row when both name the same type.
  */
 async function readOwnedPlanWorkouts(
   userUuid: string,
   fromISO: string,
   toISO: string,
 ): Promise<OwnedPlanWorkoutRow[]> {
-  const sql = ownedDaysSql({
-    columns: `pw.id::text AS id, pw.week_id::text AS week_id, pw.date_iso::text AS date_iso,
-              pw.type, pw.distance_mi, pw.pace_target_s_per_mi, pw.workout_spec,
-              pw.is_quality, pw.is_long, pw.sub_label,
-              tp.mode AS owning_plan_mode, pwk.is_cutback`,
-    includePlanWeeks: true,
-  });
+  const sql = `
+    WITH owned AS (${ownedDaysSql({
+      columns: `pw.id::text AS id, pw.week_id::text AS week_id, pw.date_iso::text AS date_iso,
+                pw.type, pw.distance_mi, pw.pace_target_s_per_mi, pw.workout_spec,
+                pw.is_quality, pw.is_long, pw.sub_label,
+                tp.mode AS owning_plan_mode, pwk.is_cutback`,
+      includePlanWeeks: true,
+    })}),
+    versions AS (
+      SELECT pw.date_iso,
+             jsonb_agg(jsonb_build_object('id', pw.id, 'type', pw.type)) AS version_rows
+        FROM plan_workouts pw
+       WHERE pw.user_uuid = $1 AND pw.date_iso >= $2 AND pw.date_iso < $3
+       GROUP BY pw.date_iso
+    )
+    SELECT owned.*, versions.version_rows
+      FROM owned LEFT JOIN versions ON versions.date_iso = owned.date_iso`;
   const r = await roQuery<OwnedPlanWorkoutRow>(sql, [userUuid, fromISO, toISO]);
   return r.rows;
 }
@@ -535,6 +576,13 @@ export function buildPrescriptionRunMatches(
       sub_label: w.sub_label,
       is_quality: w.is_quality,
       is_long: w.is_long,
+      // F040 FOLLOW-UP · absent (undefined) for a `PlanWorkoutRow` built from
+      // `readPlanWorkouts` (forward-looking, current-plan-only — no aliases
+      // possible by construction), populated for one built from
+      // `readOwnedPlanWorkouts` (backward-looking). `classifyDay`'s Pass 1b
+      // already treats "absent" as "no aliases known", so this is a pure
+      // addition — no existing caller's behaviour changes.
+      version_rows: w.version_rows ?? null,
     }));
     const resolved = classifyDay(dateISO, prescribedRows, runRowsByDate.get(dateISO) ?? []);
     for (const p of resolved.prescriptions) {

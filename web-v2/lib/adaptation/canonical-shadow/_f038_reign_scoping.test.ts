@@ -53,7 +53,11 @@ describe('1 · the fix reuses the reign-stitched query, does not re-derive it', 
   it('defines a reign-based reader that queries over roQuery, the fenced connection', () => {
     expect(CODE).toMatch(/async function readOwnedPlanWorkouts\(/);
     const fnStart = CODE.indexOf('async function readOwnedPlanWorkouts(');
-    const fnBody = CODE.slice(fnStart, fnStart + 800);
+    // F040 FOLLOW-UP (2026-09-14) widened this from 800: the function body
+    // grew to ~1000 stripped chars once it also builds `version_rows` via a
+    // `versions` CTE. 1300 keeps comfortable margin over the current ~1005
+    // without being so loose it stops meaning "near the top of the function".
+    const fnBody = CODE.slice(fnStart, fnStart + 1300);
     expect(fnBody).toContain('ownedDaysSql(');
     expect(fnBody).toContain('roQuery<OwnedPlanWorkoutRow>(');
     expect(fnBody).not.toContain('pool.query');
@@ -61,7 +65,11 @@ describe('1 · the fix reuses the reign-stitched query, does not re-derive it', 
 
   it('projects the owning plan\'s mode and its OWN plan_weeks.is_cutback, via includePlanWeeks', () => {
     const fnStart = CODE.indexOf('async function readOwnedPlanWorkouts(');
-    const fnBody = CODE.slice(fnStart, fnStart + 800);
+    // F040 FOLLOW-UP (2026-09-14) widened this from 800: the function body
+    // grew to ~1000 stripped chars once it also builds `version_rows` via a
+    // `versions` CTE. 1300 keeps comfortable margin over the current ~1005
+    // without being so loose it stops meaning "near the top of the function".
+    const fnBody = CODE.slice(fnStart, fnStart + 1300);
     expect(fnBody).toContain('includePlanWeeks: true');
     expect(fnBody).toMatch(/tp\.mode AS owning_plan_mode/);
     expect(fnBody).toMatch(/pwk\.is_cutback/);
@@ -152,5 +160,37 @@ describe('4 · the lever files this loader feeds are untouched', () => {
     // file starts asserting against those paths, that is the signal this
     // guard existed to give.
     expect(SRC).not.toMatch(/weekly-volume\.ts|long-run\.ts/);
+  });
+});
+
+describe('5 · F040 follow-up (2026-09-14) — version_rows aliasing on top of the F038 fix', () => {
+  // F038-F040-RECONCILIATION-2026-09-14.md: F038 alone gives every backward
+  // date a row to match against (closes F040's defect #2), but a run can be
+  // stamped against a DIFFERENT plan version's copy of a day's row than the
+  // one `ownedDaysSql()` picks as that date's reign-owner (live-verified,
+  // 2026-09-01), so Pass 1a's literal-id match still misses without
+  // `version_rows` for Pass 1b (PLAN-VERSION-ALIAS-1) to fall back on.
+  it('readOwnedPlanWorkouts also aggregates every plan version\'s row per date into version_rows', () => {
+    const fnStart = CODE.indexOf('async function readOwnedPlanWorkouts(');
+    const fnBody = CODE.slice(fnStart, fnStart + 1300);
+    expect(fnBody).toContain('versions AS (');
+    expect(fnBody).toContain("jsonb_agg(jsonb_build_object('id', pw.id, 'type', pw.type)) AS version_rows");
+    expect(fnBody).toContain('LEFT JOIN versions ON versions.date_iso = owned.date_iso');
+  });
+
+  it('buildPrescriptionRunMatches carries version_rows through onto the DayResolverPrescribedRow it hands classifyDay', () => {
+    const start = CODE.indexOf('const prescribedRows: DayResolverPrescribedRow[] = dayWorkouts.map((w) => ({');
+    expect(start).toBeGreaterThan(-1);
+    const block = CODE.slice(start, start + 500);
+    expect(block).toContain('version_rows: w.version_rows ?? null');
+  });
+
+  it('a PlanWorkoutRow built from readPlanWorkouts (forward-looking, no aliases possible) still type-checks without version_rows', () => {
+    // version_rows is OPTIONAL on PlanWorkoutRow specifically so the
+    // forward-looking, current-plan-only `readPlanWorkouts` never needs to
+    // supply it — `classifyDay`'s Pass 1b already treats it as absent.
+    const start = CODE.indexOf('export interface PlanWorkoutRow {');
+    const block = CODE.slice(start, start + 900);
+    expect(block).toMatch(/version_rows\?\s*:/);
   });
 });
