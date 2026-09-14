@@ -286,9 +286,10 @@ so with the real numbers, and give training evidence the same specificity instea
 implied:
 
 > Durability is what the plan is built around right now. Your race curve is fading with distance
-> faster than your speed predicts: 1.11 over 5 graded races, against doctrine's neutral band of
-> 1.06 to 1.08. A new graded race is the direct way to close that. A race-pace long run that
-> holds pace deep enough counts too: 2 of the 3 marathon-pace rehearsals doctrine wants are in.
+> faster than your speed predicts: 1.11 over 5 graded races, against what's typical for a runner
+> whose pace and endurance are in balance (1.06 to 1.08). A new graded race is the direct way to
+> close that. A race-pace long run that holds pace deep enough counts too: 2 of the 3 marathon-pace
+> rehearsals it takes to count as confirmed are in.
 
 Durability-limited, picked on confidence alone rather than the curve — the same trade, thinner
 evidence, said plainly:

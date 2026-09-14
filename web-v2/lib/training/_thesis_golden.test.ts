@@ -359,10 +359,21 @@ describe('COACHING THESIS · the golden runners (pure five)', () => {
    * particular is banned (`scanLayerOne`'s jargon band, added after the live
    * Today `why` opened "Durability is the limiter right now") and is the one
    * a rewrite of this function could easily reintroduce by habit.
+   *
+   * COMPOSEREVIEWTRIGGER-VOICE-FIXES-2026-09-14 · the coach consultant's
+   * follow-up review flagged this test's own `if (t.primaryLimiter ===
+   * 'UNKNOWN') continue`: the UNKNOWN branch's copy ("There is not enough
+   * evidence yet to say what is limiting you") was never run through the
+   * lexicon at all. The consultant's read was that there is no live bug —
+   * "limiting" is an ordinary verb, not the banned noun "limiter" — but a
+   * permanent regression test whose whole purpose is catching jargon creeping
+   * back in by habit should cover every branch it composes, not skip the one
+   * branch closest to the banned word. Skip removed; fixture 4 is the golden
+   * runner whose limiter is UNKNOWN, so it is the one that exercises this
+   * branch.
    */
   it('composeReviewTrigger passes the same Layer-1 coach-voice lexicon that gates why/coachLine', () => {
     for (const { t } of resolved) {
-      if (t.primaryLimiter === 'UNKNOWN') continue;
       const out = composeReviewTrigger(t);
       expect(scanLayerOne(out), out).toEqual([]);
       expect(scanPunctuation(out), out).toEqual([]);

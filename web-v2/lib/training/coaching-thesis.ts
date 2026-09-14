@@ -815,6 +815,14 @@ function rankableStandingFor(
  * `thesis.curveShape`, the durability standing's rehearsal count) are threaded
  * through exactly as the first pass computed them; only the sentence shape
  * changed, to match the library entry now recorded in the brief.
+ *
+ * COMPOSEREVIEWTRIGGER-VOICE-FIXES-2026-09-14 · the coach consultant's review
+ * of the register pass above found the word "doctrine" literally in two of
+ * the six rendered strings, both DURABILITY branches ("against doctrine's
+ * neutral band" and "doctrine wants"). That is project-internal vocabulary —
+ * no entry in the voice brief's situation library, including its high-stakes
+ * ones, names its source that way. Both now say what the number MEANS instead
+ * of naming where it comes from. No evidence-admission logic changed.
  */
 export function composeReviewTrigger(thesis: CoachingThesis): string {
   if (thesis.primaryLimiter === 'UNKNOWN') {
@@ -854,7 +862,7 @@ export function composeReviewTrigger(thesis: CoachingThesis): string {
         ? `${training.trainingDurabilityObservations} marathon-pace rehearsals already count as `
           + 'training evidence toward it'
         : `${training.trainingDurabilityObservations} of the ${training.trainingDurabilityMinRequired} `
-          + 'marathon-pace rehearsals doctrine wants are in';
+          + 'marathon-pace rehearsals it takes to count as confirmed are in';
     const rehearsalSentence = ` A race-pace long run that holds pace deep enough to qualify counts as `
       + `evidence too${rehearsalDetail ? `: ${rehearsalDetail}` : ''}.`;
 
@@ -862,8 +870,9 @@ export function composeReviewTrigger(thesis: CoachingThesis): string {
       const shape = thesis.curveShape;
       return 'Durability is what the plan is built around right now. Your race curve is fading with '
         + `distance faster than your speed predicts: ${shape.rawExponent.toFixed(2)} over ${shape.races} `
-        + `graded races, against doctrine's neutral band of ${shape.band[0]} to ${shape.band[1]}. A new `
-        + 'graded race is the direct way to close that.' + rehearsalSentence;
+        + `graded races, against what is typical for a runner whose pace and endurance are in balance `
+        + `(${shape.band[0]} to ${shape.band[1]}). A new graded race is the direct way to close that.`
+        + rehearsalSentence;
     }
     return 'Durability is what the plan is built around right now, on thinner evidence than a curve '
       + 'verdict. It moves on another graded race, or on long runs that stop drifting late.'
