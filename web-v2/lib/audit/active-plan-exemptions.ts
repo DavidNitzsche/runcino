@@ -158,4 +158,22 @@ export const ACTIVE_PLAN_EXEMPTIONS: readonly ActivePlanExemption[] = [
       'One-off analysis script, not production. Reads tune-up dates across the ' +
       'whole plan history ON PURPOSE, which is what a retrospective wants.',
   },
+  {
+    file: 'lib/adaptation/canonical-shadow/live-input.ts',
+    statement:
+      "versions AS ( SELECT pw.date_iso, jsonb_agg(jsonb_build_object('id', pw.id, 'type', pw.type)) AS version_rows",
+    reason:
+      'F040 FOLLOW-UP (2026-09-14) · the same PLAN-VERSION-ALIAS-1 pattern ' +
+      '`day-resolver.ts` is already exempted for, reused here verbatim (same ' +
+      'fingerprint, different file) rather than re-derived. This CTE exists for ' +
+      'the identical reason: a run stamped against a superseded plan version\'s ' +
+      'row needs every version\'s id for that date to be recognised as the same ' +
+      'prescription, or `readOwnedPlanWorkouts`\'s own reign-stitched row (which ' +
+      'IS correctly scoped to one owning plan per date, via `ownedDaysSql`) has ' +
+      'nothing to alias against. Nothing here is summed, averaged, counted or ' +
+      'rendered directly — the rows become a set-membership test inside ' +
+      '`classifyDay` Pass 1b, exactly as `day-resolver.ts`\'s own entry argues. ' +
+      'Scoped to THIS STATEMENT: any other unguarded `plan_workouts` read added ' +
+      'to `live-input.ts` still fails this gate.',
+  },
 ];
