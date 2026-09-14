@@ -343,6 +343,15 @@ enum AppCache {
         let current = store.string(forKey: ownerKey) ?? ""
         guard current != incoming else { return }
         clearAll()   // also drops ownerKey — it carries the prefix
+        // F022/F024 (2026-09-14) · PlanSnapshotStore is user-tied exactly
+        // like the keys `clearAll()` just swept, but it lives outside
+        // UserDefaults (a file in Application Support) so this prefix sweep
+        // has never reached it. It is now Today/Block's OWNING fallback on
+        // a failed read (see HostsV5.swift), so leaving a previous owner's
+        // authored plan on disk here is an account-isolation leak, not a
+        // stale-cache nuisance — see PlanSnapshotStore.clearForSignOut()'s
+        // own doc comment for the incident this closes.
+        PlanSnapshotStore.shared.clearForSignOut()
         // EVERY user-tied local store, not just the surface cache.
         //
         // Three others outlived a sign-out, and one of them crosses users on

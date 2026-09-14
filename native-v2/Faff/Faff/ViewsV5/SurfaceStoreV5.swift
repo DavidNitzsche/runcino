@@ -842,40 +842,24 @@ struct V5OutageCopy {
     /// The quiet line underneath. What is still true while we cannot see.
     let reassurance: String
 
-    /// COLDOPEN-1 (2026-09-11) · BOTH LINES CORRECTED — SEE THE FINDING.
+    /// F022 (2026-09-14) · `.today`/`.block` DELETED — SEE OD-20260914-001.
     ///
-    /// This copy is reached only by `isOutage` (`model == nil && stale`),
-    /// and `/api/v5/today` is ONE monolithic fetch — there is no separate
-    /// readiness sub-fetch, and `V5Today` carries no readiness-score field
-    /// at all (`ContentReadiness` elsewhere in this app is an unrelated
-    /// concept — whether a payload matches the date on screen, not a
-    /// coaching score). So the old `note` named a specific part that failed
-    /// when the truth is the WHOLE model never arrived; that is Rule 16's
-    /// failure mode pointed at an error message rather than a metric.
-    ///
-    /// The old `reassurance` had the opposite problem: it asserted "today's
-    /// session is on the phone already" unconditionally, but this branch is
-    /// reached ONLY when nothing decodable exists on disk AND the refresh
-    /// failed (per COLDOPEN-1, any decodable cache — however old — now seeds
-    /// `model` and renders through the stale-banner path instead, never
-    /// this one). In the one state that reaches this copy, the session is
-    /// specifically NOT already known on the phone, so claiming it is would
-    /// be exactly the unverified reassurance Rule 20/Finding 1 flags. What
-    /// IS true in that state, traced against `LiveRunHostV5`'s `.task`
-    /// (HostsV5.swift): starting and recording a run never depends on this
-    /// fetch — `PendingRunPlanV5`/`API.fetchWatchWorkout()` are a separate
-    /// read, and failing that too still leaves both live-run consoles their
-    /// documented no-target layout rather than blocking Start. That is the
-    /// claim this reassurance is narrowed to.
-    static let today = V5OutageCopy(
-        note: "Today did not load. Your plan is intact, we just cannot see it.",
-        reassurance: "You can still start and record a run from the Run tab without this. Today's session shows again the moment the connection does."
-    )
-
-    static let block = V5OutageCopy(
-        note: "The block did not load. Your plan is intact, we just cannot see it.",
-        reassurance: "Nothing in it has changed. This is the connection, not the training."
-    )
+    /// This whole composition (`OutageBodyV5`'s ErrorNote + Skeleton +
+    /// CoachSay) is what David rejected outright for Today and Block: "I
+    /// hate this shit and there is no reason to ever see this." Neither
+    /// `TodayHostV5` nor `BlockHostV5` reaches `OutageBodyV5` at all any
+    /// more — a failed refresh with nothing cached now checks the versioned
+    /// `PlanSnapshotStore` first (see `TodayHostV5.snapshotOnlyCard`/
+    /// `BlockHostV5.snapshotOnlyBody`) and falls back to a compact,
+    /// non-`OutageBodyV5` "not synced yet" state only when that has nothing
+    /// either. Keeping unreachable copy here — even accurate copy — is
+    /// exactly the "hidden gallery specimen" the owner-direction doc warns
+    /// against, so the constants are gone along with their last two callers.
+    /// The struct itself (and every OTHER surface's own named copy below)
+    /// stays: Races/Paces/RaceDetail/ReturnLadder/RunLog/RunDetail/
+    /// Decisions/Tomorrow still have no local-truth fallback of their own
+    /// (audited, not fixed, per this pass's explicit scope) and this is
+    /// still their correct floor for a genuine outage.
 
     static let races = V5OutageCopy(
         note: "The race read did not load. Your goal and your schedule stand, we just cannot see them.",
@@ -923,7 +907,13 @@ struct V5OutageCopy {
 }
 
 struct OutageBodyV5: View {
-    var copy: V5OutageCopy = .today
+    // F022 (2026-09-14) · no default. `.today` (this struct's old default)
+    // was David's rejected Today outage copy and is deleted — every
+    // remaining caller (Races/Paces/RaceDetail/ReturnLadder/RunLog/
+    // RunDetail/Decisions/Tomorrow) already named its own copy explicitly,
+    // and a required parameter is what keeps a future call site from
+    // silently reaching for whatever the default happens to be.
+    let copy: V5OutageCopy
     let onRetry: () -> Void
     /// The height the real content will take. Passed in, so the placeholder
     /// reserves the layout rather than guessing at it.

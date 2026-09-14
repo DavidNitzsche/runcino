@@ -1,32 +1,38 @@
 //
 //  StateScreensV5.swift
-//  faff.run iPhone · four Today variants where there is nothing to prescribe,
-//  or nothing to read.
+//  faff.run iPhone · Today variants where there is nothing to prescribe.
 //
 //  ─────────────────────────────────────────────────────────────────────────
-//  WHY THESE FOUR ARE BUILT TOGETHER
+//  WHY THESE ARE BUILT TOGETHER
 //
 //  13a (injury flare), 14a (week off) and 15a (off-season) are REFUSALS: the
 //  engine read the runner's state and the honest answer is "no session
-//  today", each for a different reason. 16a (data outage) is NOT a refusal —
-//  it is the one screen where the engine could not read something at all.
-//  Rule three exists specifically so these four are never drawn the same way:
+//  today", each for a different reason. Rule three exists specifically so
+//  these are never drawn the same way:
 //
 //      13a, 14a   we read it, there is no session, here is why    CoachSay
 //      15a        there is nothing honest to say yet              Silence
-//      16a        we could not read this                          ErrorNote + Skeleton
 //
 //  Mixing these up tells the runner the app is broken when it is working
 //  (ErrorNote on a refusal), or that it is working when it cannot see
 //  (Silence or CoachSay standing in for an outage). Every screen below is
 //  built to keep that boundary, not to look tidy.
 //
+//  16a (data outage) used to belong on this list — the same Today shell,
+//  drawing `OutageBodyV5`'s ErrorNote+Skeleton+CoachSay for "we could not
+//  read this." DELETED (F022/F024, 2026-09-14): David rejected exactly this
+//  composition outright (OD-20260914-001: "I hate this shit and there is no
+//  reason to ever see this"), and `TodayHostV5`/`BlockHostV5` no longer
+//  reach it — see `HostsV5.swift`'s `snapshotOnlyCard`/`snapshotOnlyBody` for
+//  what replaced it. `OutageBodyV5` itself still exists for surfaces that
+//  have no local-truth fallback of their own (audited, not fixed, this pass).
+//
 //  ─────────────────────────────────────────────────────────────────────────
 //  RULE ONE, AS IT LANDS HERE
 //
-//  Every number on these four screens comes through `FaffValue` — a dose, a
+//  Every number on these screens comes through `FaffValue` — a dose, a
 //  stat-plate value, a row value — so a modelled number cannot reach the
-//  screen without its amber tilde. None of the four states below asserts a
+//  screen without its amber tilde. None of the states below asserts a
 //  changed SESSION. The screen that did (17a, "changed overnight") was
 //  deleted 2026-09-02 with the readiness triggers behind it.
 //
@@ -172,44 +178,18 @@ private struct StateScreenScaffold<Panel: View, Body: View>: View {
     /// ScrollView the cap protects — the `nested` branch's host
     /// (`TodayHostV5.inSharedShell`) is responsible for its own.
     var panelFill: PanelFill
-    /// SCROLLCLOCK-3 (2026-09-10) · THE STALE-BANNER EXTENSION POINT, BUILT
-    /// SO THE ORDERING BUG CANNOT COME BACK.
+    /// SCROLLCLOCK-3 (2026-09-10) → REMOVED (F024, 2026-09-14).
     ///
-    /// `DataOutageV5` and `RaceJustFinishedV5` default to `nested: false` and
-    /// have no other option — neither type exposes a `suppressOwnHeader`
-    /// parameter at all. `InjuryFlareV5`/`WeekOffV5`/`OffSeasonV5` DO, and
-    /// every real Today host that draws them passes `suppressOwnHeader: true`
-    /// — except `InjuryPreviewHostV5` ("See it in Injury", off Today, per
-    /// `TODAYWRITE-1`'s own header above), which calls `InjuryFlareV5(model:
-    /// injury, onCheckIn:)` with NO `suppressOwnHeader`, so it ALSO reaches
-    /// `!nested` in a real, currently-shipping build — it just has no
-    /// `.v5StaleBanner` wired onto it today, so the bug this section fixes
-    /// has not yet fired there. All five screens used to call
-    /// `.v5ScrollSafeTop(fill:)` directly on their own `ScrollView`, exactly
-    /// the shape SCROLLCLOCK-2 fixed at every OTHER call site in the app: a
-    /// cap composed as an ANCESTOR of wherever `.v5StaleBanner` might attach,
-    /// instead of the OUTERMOST layer. `DataOutageV5`'s own header names it as
-    /// the data-outage/stale-readiness screen, and `InjuryPreviewHostV5`
-    /// already loads over the network and already branches on
-    /// `surface.isOutage` — a "Can't reach faff" banner landing on either one
-    /// later is exactly the kind of change nobody would think to re-read this
-    /// file's history for.
-    ///
-    /// So the fix does not just correct today's shape — it removes the
-    /// choice. This scaffold now owns BOTH modifiers and composes them in the
-    /// one order that works, INTERNALLY, so no caller (today's five screens or
-    /// a sixth one added later) can attach `.v5StaleBanner` externally and get
-    /// the order backwards, the way `Races`/`Block`/`Today` originally did.
-    /// `nil` — every current caller — means no banner, matching today's
-    /// behaviour byte for byte; a future screen that needs one passes it here
-    /// rather than composing `.v5StaleBanner` + `.v5ScrollSafeTop` at its own
-    /// call site.
-    struct StaleBannerWiring {
-        let stale: Bool
-        let cachedAt: Date?
-        let onRetry: () -> Void
-    }
-    var staleBanner: StaleBannerWiring? = nil
+    /// This scaffold used to own an optional `StaleBannerWiring` so no caller
+    /// (`InjuryFlareV5`/`WeekOffV5`/`OffSeasonV5`/`DataOutageV5`/
+    /// `RaceJustFinishedV5`) could attach `.v5StaleBanner` externally and get
+    /// its composition order with `.v5ScrollSafeTop` wrong. Every real caller
+    /// passed `nil` — none of these five ever actually wired a banner — so
+    /// deleting the global stale/offline banner outright (`StaleStateV5.swift`,
+    /// per OD-20260914-003 / F024: "If I see the banner again I'm going to
+    /// lose it") removes this extension point rather than leaving a dormant
+    /// parameter nothing sets. `.v5ScrollSafeTop` alone, applied directly
+    /// below, still caps the status-bar band the same way for every caller.
     @ViewBuilder var panel: () -> Panel
     @ViewBuilder var content: () -> Body
 
@@ -233,25 +213,10 @@ private struct StateScreenScaffold<Panel: View, Body: View>: View {
                     .background(V5.surfacePage)
                     .scrollIndicators(.hidden)
             }
-            // SCROLLCLOCK-3 · `.v5StaleBanner` FIRST, `.v5ScrollSafeTop`
-            // LAST, in the SAME chain, both owned by this scaffold rather
-            // than left for a caller to compose. `.v5StaleBanner(stale:
-            // false, ...)` is what every current caller gets (`staleBanner ==
-            // nil`) — its `.safeAreaInset` reserves nothing when `stale` is
-            // false, so this is a no-op byte-for-byte, the same way
-            // `HostsV5.swift`'s Today/Block/Races hosts already call
-            // `.v5StaleBanner` unconditionally and rely on it doing nothing
-            // while not stale. `.v5ScrollSafeTop` then caps the status-bar
-            // band with the same slice of `panel()`'s own gradient that shows
-            // there at rest — attached OUTERMOST so no section in `content()`
-            // below it, and no banner a future caller wires in through
-            // `staleBanner`, can ever collide with the clock or fight the cap
-            // for the same pixels. See `PanelV5.swift`'s SCROLLCLOCK-2 header
-            // for why the order is load-bearing and `StaleBannerWiring`'s own
-            // comment above for why it lives here now instead of at a host.
-            .v5StaleBanner(stale: staleBanner?.stale ?? false,
-                           cachedAt: staleBanner?.cachedAt,
-                           onRetry: staleBanner?.onRetry ?? {})
+            // SCROLLCLOCK-3 · `.v5ScrollSafeTop`, OUTERMOST, so no section in
+            // `content()` below it can collide with the status-bar clock. No
+            // stale-banner composition to order it against any more — see
+            // this struct's own `panelFill` doc comment (F024, 2026-09-14).
             .v5ScrollSafeTop(fill: panelFill)
         }
     }
@@ -635,102 +600,22 @@ struct OffSeasonV5: View {
     }
 }
 
-// MARK: - 16a · Data outage
+// MARK: - 16a · Data outage — DELETED (F022/F024, 2026-09-14)
 //
-// NOT a screen of its own — the same Today shell, demonstrating the
-// network-failure content rules. The panel keeps painting from the last
-// payload we could read (today's session is written and stored on the
-// phone, so it does not need the network to be right); only the sections
-// that actually failed to refresh take the outage treatment. `OutageBodyV5`
-// (`SurfaceStoreV5.swift`) already IS that treatment — ErrorNote with retry,
-// a height-reserving Skeleton, the on-device coach line — so this view
-// composes it rather than re-authoring it.
-//
-// This is the one screen in the file where `ErrorNote` belongs. Reaching for
-// `Alert` or `Silence` here would say "the answer is no" or "nothing honest
-// to say" about a session that is, in fact, sitting on the phone right now.
-
-struct DataOutageV5: View {
-    private var panelInk: V5.PanelInk { today.panel.fill.ink }
-    /// The last Today payload we could read — `V5Surface.model` when
-    /// `stale == true`. The panel is real content, not a placeholder: the
-    /// outage is in readiness and the weekly stats, not in today's session.
-    let today: V5Today
-    let onRetry: () -> Void
-    var onOpenAccount: () -> Void = {}
-
-    var body: some View {
-        StateScreenScaffold(panelFill: today.panel.fill) {
-            DayPanel(fill: today.panel.fill) {
-                PlaceHeaderRow(onOpenAccount: onOpenAccount, fill: .onPanel)
-                VStack(alignment: .leading, spacing: V5.S.s20) {
-                    VStack(alignment: .leading, spacing: V5.S.s2) {
-                        if let kicker = today.panel.kicker {
-                            Text(kicker)
-                                .font(.faffText(TypeScaleV5.label13))
-                                .foregroundStyle(panelInk.secondary)
-                        }
-                        Text(today.panel.type)
-                            .faffDisplayV5(TypeScaleV5.display56)
-                            .foregroundStyle(panelInk.primary)
-                    }
-                    if let dose = today.panel.dose {
-                        FaffValueText(dose.value, font: .faffText(28, weight: .semibold),
-                                      color: panelInk.primary, mark: panelInk.mark,
-                                      fault: panelInk.fault)
-                    }
-                }
-                if !today.panel.stats.isEmpty {
-                    PanelStatPlate(stats: today.panel.stats.map {
-                        PanelStat($0.label, $0.value.value,
-                                  ink: $0.toneValue.inkOverride)
-                    })
-                }
-            }
-        } content: {
-            VStack(alignment: .leading, spacing: V5.S.inGroup) {
-                V5SectionLabel(text: "Readiness")
-                OutageBodyV5(onRetry: onRetry)
-            }
-        }
-    }
-}
-
-// MARK: - SCROLLCLOCK-3 regression harness
-//
-// `StateScreenScaffold` is `private` to this file, and none of its five real
-// callers wires `staleBanner` today — which is exactly how the bug this
-// section fixes went unwatched (Rule 15: a mechanism no case can reach is
-// untested). Rather than leaving the fix's correctness resting on the doc
-// comment alone (Rule 20: a rule with no gate is a hypothesis), this view
-// exercises the scaffold's own stale-banner composition directly, reachable
-// from `ScreensCatalogV5` like every other render-verification fixture in
-// this app, and sample-only — no network, no host, nothing to seed.
-// `ScrollHeaderStatusBarCollisionUITests.testStateScreenScaffoldStaleBannerNeverLeavesABlackGapBehindTheStatusBarClock`
-// drives it and samples the pixel behind the status-bar clock, falsified
-// against the pre-fix composition (see that fix's own commit) before this
-// landed.
-struct ScrollClock3RegressionV5: View {
-    private var panelInk: V5.PanelInk { PanelFill.state(.easy).ink }
-
-    var body: some View {
-        StateScreenScaffold(panelFill: .state(.easy),
-                             staleBanner: .init(stale: true,
-                                                 cachedAt: Date().addingTimeInterval(-900),
-                                                 onRetry: {})) {
-            DayPanel(fill: .state(.easy)) {
-                PlaceHeaderRow(fill: .onPanel)
-                Text("Easy")
-                    .faffDisplayV5(TypeScaleV5.display56)
-                    .foregroundStyle(panelInk.primary)
-            }
-        } content: {
-            Text("SCROLLCLOCK-3 regression harness · proves the scaffold's own stale-banner wiring composes after the status-bar cap.")
-                .font(.faffText(TypeScaleV5.body15))
-                .foregroundStyle(V5.textSecondary)
-        }
-    }
-}
+// `DataOutageV5` used to demonstrate the exact composition David rejected
+// outright — OD-20260914-001: "I hate this shit and there is no reason to
+// ever see this" — ErrorNote-with-Retry, a height-reserving Skeleton, and a
+// reassurance CoachSay, kept alive here as a design-gallery specimen even
+// after that ruling. The owner-direction doc is explicit: "Update the
+// applicable iPhone design and backend contract documents rather than
+// preserving the rejected state as a hidden gallery specimen or canonical
+// example." Deleted along with its `ScreensCatalogV5` entry, its
+// `V5Today.sampleOutageV5` fixture, and its `#Preview`. `OutageBodyV5`
+// itself (`SurfaceStoreV5.swift`) still exists — it is still the correct
+// floor for a surface that has genuinely never synced anything at all and
+// has no local snapshot to fall back to (Races/Paces/RaceDetail/etc., and
+// Today/Block's own true first-use case) — this deletion removes only the
+// screen that staged it as Today's routine, load-bearing outage treatment.
 
 // MARK: - Previews
 //
@@ -788,34 +673,6 @@ extension V5OffSeason {
     """)
 }
 
-extension V5Today {
-    /// A cached "before run, easy day" payload — 16a's own panel content
-    /// while readiness and the weekly stats are what failed to refresh.
-    static let sampleOutageV5: V5Today = decode(V5Today.self, """
-    {
-      "dateISO": "2026-08-20",
-      "state": "before_run",
-      "panel": {
-        "dayState": "easy",
-        "quiet": false,
-        "place": "Today",
-        "dateLine": "Thursday 20 August",
-        "weekLine": "Week 6 of 16",
-        "kicker": "55\\u00b0F \\u00b7 light rain, no wind \\u00b7 about 54 min",
-        "type": "Easy",
-        "dose": { "text": "6 mi", "modelled": false },
-        "stats": []
-      },
-      "weekStrip": [],
-      "groups": [],
-      "whereYouAre": [],
-      "beforeYouGo": [],
-      "askedVsRan": [],
-      "whatThisDidToTheWeek": []
-    }
-    """)
-}
-
 #Preview("13a · Injury flare") {
     InjuryFlareV5(model: .sampleV5)
         .preferredColorScheme(.dark)
@@ -828,11 +685,6 @@ extension V5Today {
 
 #Preview("15a · Off-season") {
     OffSeasonV5(model: .sampleV5)
-        .preferredColorScheme(.dark)
-}
-
-#Preview("16a · Data outage") {
-    DataOutageV5(today: .sampleOutageV5, onRetry: {})
         .preferredColorScheme(.dark)
 }
 

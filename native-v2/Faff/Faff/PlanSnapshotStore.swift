@@ -199,16 +199,40 @@ final class PlanSnapshotStore {
         syncState = .failed(reason)
     }
 
-    #if DEBUG
-    /// Test-only escape hatch for exercising "no snapshot has ever synced"
-    /// without touching the real file.
-    func resetForTesting() {
+    /// F022/F024 (2026-09-14) · account isolation. This file is USER-TIED
+    /// exactly like `AppCache`'s own `faff.cache.*` keys, but it lives on
+    /// disk outside `UserDefaults` — `AppCache.clearAll()`'s prefix sweep
+    /// (called from `SessionHygiene.signOut()` and from `AppCache.bindOwner`
+    /// on every identity change) has never touched it. That was a narrow
+    /// gap while this store only backed offline day-navigation; F022 made it
+    /// Today/Block's OWNING fallback on a failed read, which turns the same
+    /// gap into runner B opening the app after runner A signs out (or a
+    /// session simply expires) and being handed runner A's actual
+    /// authored training plan the instant a background refresh so much as
+    /// blips — no network failure required to trigger it, just one. See the
+    /// owner-direction docs' own "no fallback may render another account's
+    /// cached plan" requirement. Called from `AppCache.bindOwner` (every
+    /// identity change, including an expired session that never reaches the
+    /// sign-out button) and from `SessionHygiene.signOut()` directly, the
+    /// same two call sites `AppCache.clearAll()`/`purgeUserTiedStores()`
+    /// already cover.
+    func clearForSignOut() {
         current = nil
         lastSuccessfulSyncAt = nil
         lastError = nil
         syncState = .idle
         syncGeneration = 0
         try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    #if DEBUG
+    /// Test-only escape hatch for exercising "no snapshot has ever synced"
+    /// without touching the real file. Identical to `clearForSignOut()` —
+    /// kept as a separate, DEBUG-only name so test call sites read as
+    /// intent ("set up a no-snapshot fixture"), not as production account
+    /// hygiene, even though the two do the same work.
+    func resetForTesting() {
+        clearForSignOut()
     }
     #endif
 }

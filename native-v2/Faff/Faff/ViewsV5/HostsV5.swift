@@ -243,6 +243,48 @@ struct TodayHostV5: View {
     /// from it.
     private func wantedDate(given model: V5Today) -> String { viewingDate ?? todayISO(model) }
 
+    /// F022 (2026-09-14) · OD-20260914-001. `AppCache.read` no longer gates
+    /// on age (COLDOPEN-1, 2026-09-11) — a `surface.model` seeded from disk
+    /// can now be arbitrarily old. Its own baked `weekStrip[].isToday` row
+    /// (what `todayISO(_:)` reads) is proof of the day the SERVER believed
+    /// was today at the moment it answered, not proof of the CURRENT
+    /// calendar day. A phone offline since yesterday, with no explicit
+    /// navigation (`viewingDate == nil`), would otherwise render that stale
+    /// "today" as a `.match` — exactly the defect the owner-direction doc
+    /// names: "Today derives its date from the local plan, not a stale
+    /// cached Today payload."
+    ///
+    /// Rather than growing a sixth `ContentReadiness` case, this reuses the
+    /// snapshot short-circuit above — the SAME branch a runner's own
+    /// explicit day navigation already renders through, fully offline-safe
+    /// — for the one scenario where the device clock and the cached
+    /// payload's own idea of "today" disagree. `nil` whenever they agree, or
+    /// whenever there is no model to disagree with, or whenever the local
+    /// snapshot has nothing for the real date either (in which case the
+    /// ordinary `readiness()` switch below still applies, and a stale-but-
+    /// matching cached day keeps rendering exactly as it always did — old,
+    /// not wrong, no banner).
+    private var dayRolloverOverride: String? {
+        guard viewingDate == nil, let model = surface.model else { return nil }
+        let real = Self.localTodayISO()
+        guard todayISO(model) != real else { return nil }
+        guard PlanSnapshotStore.shared.current?.day(on: real) != nil else { return nil }
+        return real
+    }
+
+    /// The runner's real calendar day, from the device clock in their own
+    /// stored timezone — never from a network payload, which is exactly the
+    /// thing that can now be stale. `RunnerTimezone.current` already answers
+    /// this same question for HealthKit's local-date bucketing
+    /// (`HealthKitImporter.swift`); this applies the identical answer to
+    /// which day Today renders when nothing else can be trusted.
+    private static func localTodayISO(now: Date = Date()) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = RunnerTimezone.current
+        return f.string(from: now)
+    }
+
     /// STATEGATE-1's actual gate, pulled out of `body` so it is a plain
     /// function a test can call directly rather than a fact only provable by
     /// rendering. `pendingDate` is what distinguishes the two ways `model`
@@ -296,6 +338,56 @@ struct TodayHostV5: View {
     /// same technique `WeekStripV5.neighbour(_:)` already uses for its own
     /// un-fetched neighbour pages — so the strip always has something
     /// honest to draw.
+    /// F022 (2026-09-14) · OD-20260914-001 / ER-20260914-F022. The OWNING
+    /// fallback when there is no live/cached `V5Today` at all
+    /// (`surface.isOutage`) but the versioned local `PlanSnapshotStore` has
+    /// an honest answer for `date`. Same header+strip scaffold `pendingCard`
+    /// already draws with no network model at all
+    /// (`weekStripDays(for:)`/`weekLine(for:)` both degrade gracefully off
+    /// cached/snapshot data — see their own doc comments), and the same
+    /// snapshot-day content (`HeroDayPanelContentV5` + `PlanSnapshotDayView`)
+    /// the browsed-date short-circuit at the top of `body` already draws for
+    /// an open prescription. This is what replaces `OutageBodyV5` here.
+    @ViewBuilder
+    private func snapshotOnlyCard(for date: String, day: PlanSnapshotDay) -> some View {
+        let stripDays = weekStripDays(for: date)
+        ScrollView {
+            VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                DayPanel(fill: day.fill) {
+                    TodayHeaderStripV5(
+                        place: "Today",
+                        viewingDayLabel: nil,
+                        weekLine: weekLine(for: date),
+                        weekStripDays: stripDays,
+                        onBackToToday: { backToToday() },
+                        onCalendar: nil,
+                        initials: initials,
+                        onAccount: { accountOpen = true },
+                        onPickDay: { d in
+                            if let iso = d.dateISO ?? Self.isoDate(embeddedIn: d.id) {
+                                goTo(iso, todayISO: knownTodayISO ?? date)
+                            }
+                        },
+                        onPageWeek: { await stepWeekFromWanted($0, wanted: date) },
+                        canPageBackward: canPageWeek(-1, weekStart: stripDays.first?.dateISO, weekEnd: stripDays.last?.dateISO),
+                        canPageForward: canPageWeek(1, weekStart: stripDays.first?.dateISO, weekEnd: stripDays.last?.dateISO)
+                    )
+                    HeroDayPanelContentV5(
+                        kicker: day.kicker,
+                        type: day.type,
+                        dose: day.dose?.value,
+                        stats: day.stats.map { stat in PanelStat(stat.label, stat.value.value, ink: stat.toneValue.inkOverride) }
+                    )
+                }
+                PlanSnapshotDayView(day: day)
+            }
+            .padding(.horizontal, V5.S.gutter)
+            .padding(.bottom, V5.S.s24)
+            .v5PageWidth()
+        }
+        .background(V5.surfacePage)
+    }
+
     @ViewBuilder
     private func pendingCard(for date: String, phase: PendingPhase) -> some View {
         let stripDays = weekStripDays(for: date)
@@ -513,7 +605,15 @@ struct TodayHostV5: View {
             // through to the `else if let model = surface.model` branch
             // below instead, so it renders `TodayAfterV5`'s real recap —
             // see `shouldRenderFromSnapshot`'s own header for why.
-            if let viewingDate, let snapshotDay = PlanSnapshotStore.shared.current?.day(on: viewingDate),
+            //
+            // F022 (2026-09-14) · `viewingDate ?? dayRolloverOverride`, not
+            // `viewingDate` alone. `dayRolloverOverride` is nil for the
+            // overwhelmingly common case (no navigation, and the cached
+            // model still agrees with the real calendar day) — zero
+            // behaviour change there. See its own doc comment below for the
+            // one case it exists for.
+            if let effectiveDate = viewingDate ?? dayRolloverOverride,
+               let snapshotDay = PlanSnapshotStore.shared.current?.day(on: effectiveDate),
                snapshotDay.matched_run == nil,
                let shellModel = surface.model {
                 // `shellModel` supplies the shell's chrome ONLY (header text,
@@ -598,21 +698,20 @@ struct TodayHostV5: View {
                         // twice on one screen" rule this file elsewhere
                         // enforces on everyone else.
                         //
-                        // OFFLINE MUST NOT LOOK LIKE ONLINE. See
-                        // StaleStateV5.swift. This is the ONLY banner
-                        // reachable from the matched branch, and it names
-                        // exactly one fact — connectivity — because a day
-                        // mismatch can no longer coexist with rendered
-                        // content at all; it is a different `readiness`
-                        // case, rendered as a different screen, never
-                        // stacked as a second card beside this one.
-                        //
-                        // `v5StaleBanner`, not a hand-rolled `.safeAreaInset`
-                        // — see FULLBLEED-1 in StaleStateV5.swift for why a
-                        // plain safeAreaInset here leaves a black gap between
-                        // this banner and the day panel's full-bleed colour.
-                        .v5StaleBanner(stale: surface.stale, cachedAt: surface.cachedAt,
-                                       onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
+                        // F024 (2026-09-14) · the global stale/connection
+                        // banner (`.v5StaleBanner`, `StaleStateV5.swift`) is
+                        // deleted outright — OD-20260914-003, David: "If I
+                        // see the banner again I'm going to lose it. This was
+                        // never happening before." A failed background
+                        // refresh renders silently: the day already on
+                        // screen stays exactly as it is (it is old, not
+                        // wrong) and the surface keeps retrying on its own —
+                        // foreground, reachability, `.refreshable` — with no
+                        // visible disclosure. A day whose CALENDAR date has
+                        // actually rolled past what the cached payload
+                        // believes is "today" is handled above, before this
+                        // branch is ever reached (`dayRolloverOverride`), not
+                        // by a banner over the wrong day's content.
                         // SCROLLCLOCK-2 (2026-09-09) · the review defect this
                         // fixes: `.v5ScrollSafeTop` used to live INSIDE each
                         // of `content(matched)`'s own screens (`TodayAfterV5`,
@@ -697,20 +796,38 @@ struct TodayHostV5: View {
                 }
                 .background(V5.surfacePage)
             } else if surface.isOutage {
-                // Nothing cached and the read failed, for today itself
-                // (again, `viewingDate == nil` here). The design's own
-                // outage screen needs a Today shell to sit in, and we do not
-                // have one, so this is the honest floor: the note and the
-                // reserved space.
-                ScrollView {
-                    VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-                        wayOutHeader
-                        OutageBodyV5(onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
+                // F022 (2026-09-14) · OD-20260914-001 / ER-20260914-F022.
+                // Nothing has ever loaded for Today's own date (again,
+                // `viewingDate == nil` here), but the versioned local plan
+                // snapshot — the OWNING fallback per the owner ruling — may
+                // still have an honest answer for the real calendar day.
+                // Checked BEFORE any outage composition: David, "I hate this
+                // shit and there is no reason to ever see this," about
+                // exactly `OutageBodyV5`'s skeleton+Retry+reassurance shape
+                // reached from here.
+                if let day = PlanSnapshotStore.shared.current?.day(on: Self.localTodayISO()) {
+                    snapshotOnlyCard(for: Self.localTodayISO(), day: day)
+                } else {
+                    // Genuinely never synced: no live/cached Today payload,
+                    // no local snapshot at all. Deliberately NOT
+                    // `OutageBodyV5` — that whole composition is what was
+                    // rejected. This is the compact, calm floor
+                    // OD-20260914-001 §5 permits for a true first-use/
+                    // account state: one fact, one small action, nothing
+                    // pretending to be still-loading content.
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                            wayOutHeader
+                            Silence(reason: "Not synced yet. Connect once to bring today's plan to this phone.")
+                            FaffButton("Try again", variant: .secondary, size: .md, full: false) {
+                                Task { await API.resetConnectionPool(); await surface.load() }
+                            }
+                        }
+                        .padding(.horizontal, V5.S.gutter)
+                        .padding(.top, V5.S.s24)
                     }
-                    .padding(.horizontal, V5.S.gutter)
-                    .padding(.top, V5.S.s24)
+                    .background(V5.surfacePage)
                 }
-                .background(V5.surfacePage)
             } else {
                 // Cold start. Reserve the shape the real content will take.
                 coldStart
@@ -975,7 +1092,11 @@ struct TodayHostV5: View {
     /// rather than the server's own `isToday`, so the pill follows the
     /// runner's selection instantly rather than waiting on a round trip.
     private func stripDays(for model: V5Today) -> [WeekStripDayV5] {
-        let selected = viewingDate ?? model.dateISO
+        // F022 (2026-09-14) · `dayRolloverOverride` before `model.dateISO` so
+        // the strip's own "today" plate lands on the REAL calendar day, not
+        // on a stale cached payload's baked idea of it, in the one scenario
+        // where those two disagree — see that property's own doc comment.
+        let selected = viewingDate ?? dayRolloverOverride ?? model.dateISO
         // PLANSNAPSHOT-1 · `model.weekStrip` is whichever week `model` was
         // itself fetched for — with per-date network fetches gone for any
         // snapshot-covered date, `model` usually still holds TODAY's own
@@ -2696,15 +2817,14 @@ struct BlockHostV5: View {
                         },
                         onOpenRunLog: { path.append(.runLog) },
                         onRetryProposals: { Task { await API.resetConnectionPool(); await surface.load() } })
-                    // Offline must not look like online. See StaleStateV5.swift.
-                    // `v5StaleBanner`, not a hand-rolled `.safeAreaInset` —
-                    // see FULLBLEED-1 there for why a plain safeAreaInset
-                    // leaves a black gap between this banner and the day
-                    // panel's full-bleed colour.
-                    .v5StaleBanner(stale: surface.stale, cachedAt: surface.cachedAt,
-                                   onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
-                    // SCROLLCLOCK-2 (2026-09-09) · applied HERE, after
-                    // `.v5StaleBanner` in the same chain, not inside
+                    // F024 (2026-09-14) · the global stale/connection banner
+                    // (`.v5StaleBanner`, `StaleStateV5.swift`) is deleted
+                    // outright — OD-20260914-003, David: "If I see the
+                    // banner again I'm going to lose it." A failed
+                    // background refresh here now renders silently: the
+                    // last good `BlockV5` payload stays on screen and the
+                    // surface keeps retrying in the background.
+                    // SCROLLCLOCK-2 (2026-09-09) · applied HERE, not inside
                     // `BlockV5`'s own body — see `BlockV5.body`'s own comment
                     // at its old call site for the defect this fixes.
                     .v5ScrollSafeTop(fill: model.panel.fill)
@@ -2718,12 +2838,35 @@ struct BlockHostV5: View {
                 }
                 .background(V5.surfacePage)
             } else if surface.isOutage {
-                ScrollView {
-                    OutageBodyV5(copy: .block, onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
+                // F022 (2026-09-14) · OD-20260914-001 / ER-20260914-F022.
+                // Nothing has ever loaded for Block over the network, but the
+                // versioned local plan snapshot — built for exactly this,
+                // per the owner-direction doc's "known implementation seam"
+                // — may still have the authored days. Checked BEFORE any
+                // outage composition: "I hate this shit and there is no
+                // reason to ever see this" about `OutageBodyV5`'s
+                // skeleton+Retry+reassurance shape reached from here.
+                if let snapshot = PlanSnapshotStore.shared.current, !snapshot.days.isEmpty {
+                    BlockHostV5.snapshotOnlyBody(snapshot)
+                } else {
+                    // Genuinely never synced: no live Block payload, no
+                    // local snapshot at all. Deliberately NOT `OutageBodyV5`
+                    // — that whole composition is what was rejected. This is
+                    // the compact, calm floor OD-20260914-001 §5 permits for
+                    // a true first-use/account state: one fact, one small
+                    // action, nothing pretending to be still-loading content.
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                            Silence(reason: "Not synced yet. Connect once to bring your block to this phone.")
+                            FaffButton("Try again", variant: .secondary, size: .md, full: false) {
+                                Task { await API.resetConnectionPool(); await surface.load() }
+                            }
+                        }
                         .padding(.horizontal, V5.S.gutter)
                         .padding(.top, V5.S.s40)
+                    }
+                    .background(V5.surfacePage)
                 }
-                .background(V5.surfacePage)
             } else {
                 ScrollView {
                     VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
@@ -2750,6 +2893,72 @@ struct BlockHostV5: View {
         // `ForegroundWork.shouldLoadOnForeground`'s doc comment for the
         // incident this closes.
     }
+
+    // MARK: - F022 snapshot-only fallback (2026-09-14)
+    //
+    // Deliberately NOT the full `BlockV5` render — that view carries
+    // proposals, pace-zone summaries and progress percentages this app has
+    // never asked `PlanSnapshotStore` to persist, and inventing values for
+    // them here would be exactly the "confident number measured off the
+    // wrong thing" this codebase's doctrine forbids. This is the honest,
+    // compact subset the snapshot actually HAS: the authored days
+    // themselves, from today forward, plain — never `OutageBodyV5`.
+
+    private static let iso: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    /// The runner's real calendar day, from the device clock in their own
+    /// stored timezone — never from a network payload. Same answer
+    /// `RunnerTimezone.current` already gives HealthKit's local-date
+    /// bucketing, applied here to which days count as "ahead" in the
+    /// snapshot-only list.
+    private static func localTodayISO(now: Date = Date()) -> String {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.timeZone = RunnerTimezone.current
+        return f.string(from: now)
+    }
+
+    private static func dayLabel(_ dateISO: String) -> String {
+        guard let d = Self.iso.date(from: dateISO) else { return dateISO }
+        let f = DateFormatter()
+        f.dateFormat = "EEE d MMM"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f.string(from: d)
+    }
+
+    @ViewBuilder
+    fileprivate static func snapshotOnlyBody(_ snapshot: PlanSnapshot) -> some View {
+        let today = Self.localTodayISO()
+        let upcoming = snapshot.days
+            .filter { $0.date_iso >= today }
+            .sorted { $0.date_iso < $1.date_iso }
+        ScrollView {
+            VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
+                CoachSay(text: "The block did not load. Showing your saved plan — this fills back in once the connection returns.", size: .md)
+                if upcoming.isEmpty {
+                    Silence(reason: "Nothing saved on this phone for the days ahead yet.")
+                } else {
+                    ListGroup {
+                        ForEach(upcoming.prefix(21)) { day in
+                            ListRow(
+                                label: "\(BlockHostV5.dayLabel(day.date_iso)) \u{00B7} \(day.type.capitalized)",
+                                sub: day.is_rest ? "Rest" : (day.distance_mi > 0 ? String(format: "%.1f mi", day.distance_mi) : nil)
+                            )
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, V5.S.gutter)
+            .padding(.top, V5.S.s40)
+            .padding(.bottom, V5.S.s24)
+        }
+        .background(V5.surfacePage)
+    }
 }
 
 // MARK: - Races
@@ -2772,23 +2981,19 @@ struct RacesHostV5: View {
                             onEvidenceTap: { _ in },
                             onOpenRace: { row in path.append(.raceDetail(slug: row.slug)) },
                             onAddRace: { path.append(.addRace) })
-                        // Offline must not look like online. See StaleStateV5.swift.
-                        // `v5StaleBanner`, not a hand-rolled `.safeAreaInset`
-                        // — see FULLBLEED-1 there for why a plain
-                        // safeAreaInset leaves a black gap between this
-                        // banner and the day panel's full-bleed colour (this
-                        // was the exact reported defect: the RACES screen's
-                        // gradient stopping short of the top with a black
-                        // strip above it).
-                        .v5StaleBanner(stale: surface.stale, cachedAt: surface.cachedAt,
-                                       onRetry: { Task { await API.resetConnectionPool(); await surface.load() } })
-                        // SCROLLCLOCK-2 (2026-09-09) · applied HERE, after
-                        // `.v5StaleBanner` in the same chain, not inside
-                        // `RacesV5`'s own body — see `RacesV5.body`'s own
-                        // comment at its old call site for the defect this
-                        // fixes (the same black-gap bug this file's comment
-                        // just above already names for the banner itself,
-                        // one composition layer further out).
+                        // F024 (2026-09-14) · the global stale/connection
+                        // banner (`.v5StaleBanner`, `StaleStateV5.swift`) is
+                        // deleted outright — OD-20260914-003, David: "If I
+                        // see the banner again I'm going to lose it." A
+                        // failed background refresh here now renders
+                        // silently: the last good `RacesV5` payload stays on
+                        // screen and the surface keeps retrying in the
+                        // background (`.faffForegroundRefresh`,
+                        // `.refreshable`) with no visible disclosure.
+                        // SCROLLCLOCK-2 (2026-09-09) · applied HERE, not
+                        // inside `RacesV5`'s own body — see `RacesV5.body`'s
+                        // own comment at its old call site for the defect
+                        // this fixes.
                         .v5ScrollSafeTop(fill: model.panel.fill)
                 } else if let reason = surface.absentReason {
                     ScrollView {

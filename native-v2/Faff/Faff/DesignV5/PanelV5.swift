@@ -660,18 +660,20 @@ struct PanelShape: Shape {
 // SCROLLCLOCK-3 (2026-09-10) · a fourth call site missed by this pass, found
 // on later review: `ViewsV5/StateScreensV5.swift`'s private
 // `StateScreenScaffold` (`InjuryFlareV5`/`WeekOffV5`/`OffSeasonV5`/
-// `DataOutageV5`/`RaceJustFinishedV5`) still called `.v5ScrollSafeTop`
-// directly inside its own body — the identical wrong-side composition this
-// section fixed everywhere else. No `.v5StaleBanner` was wired onto any of
-// these five at the time, so the visible defect had not fired yet, but one of
-// the five (`InjuryFlareV5`, via the real `InjuryPreviewHostV5`) was already
-// reaching this exact code path in a shipping build, not just from a preview
-// or the debug gallery. Rather than relocating the call to a future host
-// (this app's other three fixes' shape), that scaffold now owns an optional
-// `StaleBannerWiring` and composes `.v5StaleBanner` then `.v5ScrollSafeTop`
-// ITSELF, so no future caller of that scaffold can get the order wrong by
-// attaching a banner externally. See that file for the fix and the reasoning
-// for choosing a different structural shape there.
+// `RaceJustFinishedV5`) still called `.v5ScrollSafeTop` directly inside its
+// own body — the identical wrong-side composition this section fixed
+// everywhere else. No `.v5StaleBanner` was ever wired onto any of these at
+// the time, so the visible defect had not fired yet, but one of them
+// (`InjuryFlareV5`, via the real `InjuryPreviewHostV5`) was already reaching
+// this exact code path in a shipping build, not just from a preview or the
+// debug gallery. The fix at the time gave that scaffold an optional
+// `StaleBannerWiring` so no caller could get the composition order wrong by
+// attaching a banner externally.
+//
+// F024 (2026-09-14) · `StaleBannerWiring` is GONE, not merely unused. David
+// rejected the global stale/connection banner outright (OD-20260914-003).
+// `StateScreenScaffold` now composes only `.v5ScrollSafeTop`, unconditionally
+// — there is no banner left for an ordering bug to happen against.
 
 private struct V5FullBleedPanelHeightKey: PreferenceKey {
     static var defaultValue: CGFloat = 0

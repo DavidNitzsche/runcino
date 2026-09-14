@@ -41,6 +41,16 @@ enum SessionHygiene {
 
         StravaConnection.clear()
         AppCache.clearAll()
+        // F022/F024 (2026-09-14) · account isolation. `PlanSnapshotStore`
+        // persists to a file outside UserDefaults, so `AppCache.clearAll()`'s
+        // prefix sweep never reached it, and it is now Today/Block's OWNING
+        // fallback on a failed read — see `PlanSnapshotStore.clearForSignOut()`'s
+        // own doc comment for why leaving it behind is an account-isolation
+        // leak, not a stale-cache nuisance. `AppCache.bindOwner` covers the
+        // expired-session path this button never reaches; this covers the
+        // explicit sign-out path `bindOwner` never reaches (same split as
+        // `AppCache.purgeUserTiedStores()` below).
+        PlanSnapshotStore.shared.clearForSignOut()
         // Runs recorded but never sent, and the interrupted-run checkpoint.
         // Both post under whatever token is current when they drain, so
         // leaving them behind files the previous runner's work into the next
