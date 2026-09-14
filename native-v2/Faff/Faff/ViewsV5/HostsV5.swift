@@ -2939,7 +2939,7 @@ struct BlockHostV5: View {
             .sorted { $0.date_iso < $1.date_iso }
         ScrollView {
             VStack(alignment: .leading, spacing: V5.S.betweenGroups) {
-                CoachSay(text: "The block did not load. Showing your saved plan — this fills back in once the connection returns.", size: .md)
+                CoachSay(text: "The block did not load. Showing your saved plan. This fills back in once the connection returns.", size: .md)
                 if upcoming.isEmpty {
                     Silence(reason: "Nothing saved on this phone for the days ahead yet.")
                 } else {
