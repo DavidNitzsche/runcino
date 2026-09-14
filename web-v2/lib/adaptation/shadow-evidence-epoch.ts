@@ -44,7 +44,7 @@
  *   1 · `2026-09-02.threshold-contract-f967cab1` — the P0 threshold-contract
  *       correction (deployed `f967cab1`, Railway `708a200b`). Superseded the
  *       same day, before the cron wrote a single record under it.
- *   2 · `2026-09-02.phase1-durability-59fed35e` — CURRENT. Phase 1 of the
+ *   2 · `2026-09-02.phase1-durability-59fed35e` — Phase 1 of the
  *       brain completion (`59fed35e` and the commits merged with it):
  *       durability spends representativeness and names a single-long-race
  *       exponent, capacity gains a cross-tier day-to-day continuity cap and a
@@ -54,6 +54,25 @@
  *       the eight pinned belief sources changed, and every one of them moves
  *       what a belief RESOLVES to for the same activities — branch (a) of the
  *       decision below. Shadow evidence restarts here.
+ *   3 · `2026-09-14.f033-taper-window-correction` — CURRENT. F033
+ *       (`web-v2/lib/training/pace-corpus.ts`, `insideCitedRaceWindow`)
+ *       replaced the mechanically week-rounded pre-race taper window
+ *       (`TAPER_WEEKS_BY_DISTANCE`, rounded to whole weeks) with the
+ *       day-granular table `raceWindowFor` already cites from `Research/08`
+ *       §9.1, for `contextFactor` sizing only. Branch (a), not (b): on the
+ *       real account this was found on, it moves the 2026-09-01 threshold
+ *       session's `contextFactor` from 0.75 to 1 (the session sat 12 days
+ *       pre-race — inside the old 14-day week-rounded window but outside the
+ *       real ≤10-day 10K taper the citation describes), which moves
+ *       `resolveThresholdCapacity`'s resolved threshold pace for that
+ *       activity from 440 to 436 s/mi. This is a change in what the belief
+ *       resolves to for the same activity, not a comment/type/refactor, so
+ *       the epoch bumps rather than the pin moving alone. Externally
+ *       reviewed and confirmed before this fix (`RR-20260914-020`) — see
+ *       that review for the full before/after evidence and the
+ *       full-population regression check (narrowing flips only, no new
+ *       widening). Shadow evidence restarts here; records written before
+ *       this bump stay in the log as history, uncounted.
  *
  * THE FIRST BUMP WAS NOT HYPOTHETICAL, and it is the strongest evidence this
  * mechanism is needed: Phase 1 changed all five of those files and left
@@ -63,7 +82,7 @@
  * gate went red on exactly the five changed files and forced this entry to be
  * written.
  */
-export const SHADOW_EVIDENCE_EPOCH = '2026-09-02.runner-owns-readiness';
+export const SHADOW_EVIDENCE_EPOCH = '2026-09-14.f033-taper-window-correction';
 
 /** The epoch format: `YYYY-MM-DD.<slug>`. Pinned by test so a future value
  *  cannot drift into a bare counter or an undated label. */
@@ -195,8 +214,17 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/training/pace-corpus.ts',
-    digest: '2c99348a17a88f68',
-    why: 'Re-pinned WITHOUT an epoch bump (case b) on 2026-09-05 · THRESHOLD-OWNER-1 removed an UNUSED import of the forward VDOT-to-threshold curve from this file and nothing else. '
+    digest: 'f504c4227ca48117',
+    why: 'Re-pinned AT A NEW EPOCH (case a), 2026-09-14 · F033 added `insideCitedRaceWindow`, replacing the '
+      + 'mechanically week-rounded pre-race taper window with the day-granular table `raceWindowFor` already '
+      + 'cites from `Research/08` §9.1, for `contextFactor` sizing only. This moves a resolved value: on the '
+      + 'real account this was found on, the 2026-09-01 threshold session\'s `contextFactor` moves from 0.75 '
+      + 'to 1 (it sat 12 days pre-race — inside the old 14-day week-rounded window, outside the real ≤10-day '
+      + '10K taper), which moves `resolveThresholdCapacity`\'s resolved threshold pace for that activity from '
+      + '440 to 436 s/mi. Externally reviewed and confirmed (`RR-20260914-020`) before this bump, including a '
+      + 'full-population regression check across every user/race with a result — narrowing flips only, no new '
+      + 'widening. Prior re-pins kept below as history: '
+      + 'Re-pinned WITHOUT an epoch bump (case b) on 2026-09-05 · THRESHOLD-OWNER-1 removed an UNUSED import of the forward VDOT-to-threshold curve from this file and nothing else. '
       + 'The reader inverts a pace to a VDOT (`vdotFromTpace`) and never converted one back, so the binding was dead; deleting a dead binding cannot move a resolved value, and no shadow record is invalidated. '
       + 'The behavioural pin from epoch 2 stands: Phase 1 walks the threshold continuity chain rather than sampling it, with a faithful per-day fallback, which moves which sessions carry the belief.',
   },
