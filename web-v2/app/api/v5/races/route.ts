@@ -481,7 +481,7 @@ async function handleGET(req: NextRequest) {
       ];
 
       panel = {
-        dayState: 'long', quiet: false, place: 'Races',
+        dayState: 'race', quiet: false, place: 'Races',
         dateLine: 'Next A race',
         weekLine: upcomingAs.length > 0 ? `${upcomingAs.length} A race${upcomingAs.length === 1 ? '' : 's'} this season` : null,
         kicker: nextA.days >= 0 ? `${nextA.days} days out` : null,
