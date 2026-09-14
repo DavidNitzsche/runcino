@@ -55,6 +55,7 @@ import { isNonBuildingPhaseLabel } from './non-building-week';
 import {
   plannedPeakBound, resolveLoadProgressionContract, loadContractStamp,
   PER_CYCLE_PEAK_GROWTH, WEEKLY_STEP_GROWTH, type DemonstratedLoad,
+  AUTHORING_HEADROOM_RESERVE_SHARE,
 } from './load-progression-contract';
 import { lookupLoadTierTarget, resolveLoadTier, classifyCapacityTier, demonstratedLoadCeilingTier, capacityBandFor, peakWeeklyFloorMi, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
@@ -3642,6 +3643,31 @@ export type LevelKey = 'beginner' | 'intermediate' | 'advanced' | 'advanced_plus
  * only measured quantity in it is `evidence.peakMi`, which is the runner's own
  * biggest week.
  *
+ * AUTHORING-HEADROOM-1 (2026-09-14) · F034 · THIS FUNCTION RESERVES HEADROOM;
+ * THE GATE'S CEILING DOES NOT.
+ *
+ * `WHY-PROPOSEADAPTIVEBUMP-NEVER-FIRES-2026-09-14.md`: this function and
+ * `lib/plan/adaptive-ramp.ts`'s `belowTierUpper` ceiling both call
+ * `plannedPeakBound`, so the block's own composed peak and the ceiling
+ * `belowTierUpper` measures it against were the SAME NUMBER by construction
+ * whenever the runner's demonstrated peak hadn't moved since authoring —
+ * verified at 99.7-99.8% spend on all three of David's tier-banded plans, the
+ * exact Rule 21 "wired, doctrine-bound, cron-mounted, and inert" signature.
+ *
+ * Per the 2026-09-14 coaching consult (Option 1, the only option authorized):
+ * this function now passes `reserveHeadroomShare:
+ * AUTHORING_HEADROOM_RESERVE_SHARE` to `plannedPeakBound`, so the PHYSICAL
+ * calendar this composes is sized below the full per-cycle allowance. The
+ * CEILING `belowTierUpper` compares against — `recomputeAdaptationCeiling`,
+ * and `resolveLoadProgressionContract`'s published `plannedPeakLoad` below in
+ * `composePlan` — both call `plannedPeakBound` WITHOUT a reserve share and so
+ * stay at the full, unreserved bound. That split is the entire fix: reserving
+ * on both sides would rescale the ceiling and the authored peak together and
+ * reproduce zero real headroom. This does not change the runner's ultimate
+ * ceiling for the cycle; it changes when within the cycle he is told about the
+ * top of it, and leaves real, earnable headroom that adaptation can spend
+ * mid-block instead of only ever seeing a block that already spent itself.
+ *
  * Bound by RAMP.cycle-over-cycle-peak-growth.
  */
 export function cycleBoundedPeak(
@@ -3661,6 +3687,12 @@ export function cycleBoundedPeak(
     climbFromMi: evidence?.heldMi ?? evidence?.meanMi ?? null,
     climbWeeksToPeak,
     distanceFloorMi: TIER_TARGETS[cat].developing.peakWeeklyMileageBand[0],
+    // AUTHORING-HEADROOM-1 · F034 · the ONE authoring caller reserves headroom;
+    // the ceiling (`recomputeAdaptationCeiling`, and this same block's own
+    // published `tier_peak_weekly_band` below) does not. See this function's
+    // header and `load-progression-contract.ts`'s `AUTHORING_HEADROOM_RESERVE_
+    // SHARE` for why.
+    reserveHeadroomShare: AUTHORING_HEADROOM_RESERVE_SHARE,
   });
   // Rule 11 · a refusal is "nothing was measured", and the caller's correct
   // response is to keep the doctrine target untouched — not to substitute a

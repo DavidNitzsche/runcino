@@ -56,6 +56,7 @@ import {
   PER_CYCLE_PEAK_GROWTH,
   WEEKLY_STEP_GROWTH,
   ADAPTATION_HEADROOM_SHARE,
+  AUTHORING_HEADROOM_RESERVE_SHARE,
   SHORTFALL_POSTURE,
   type DemonstratedLoad,
   type LoadContractStamp,
@@ -181,8 +182,21 @@ describe('LOADCONTRACT-1 · one time-aware load authority', () => {
       expect(v.vols).toEqual(first.vols);
     }
     // …and the peak is the one the owner's block actually carries.
-    expect(first.peakWk).toBe(60);
+    //
+    // AUTHORING-HEADROOM-1 (2026-09-14) · F034 · `peakWk` (what `cycleBoundedPeak`
+    // actually composes) is now BELOW `bandUpper` (the unreserved ceiling
+    // `belowTierUpper` recomputes against) — 57, not 60.1's own 60 — because
+    // `cycleBoundedPeak` reserves `AUTHORING_HEADROOM_RESERVE_SHARE` and
+    // `resolveLoadProgressionContract`'s published band does not. That gap IS
+    // the fix: before F034 these were 60 and 60.1, 99.8% spent, and
+    // `belowTierUpper` could not pass. `bandUpper` staying exactly 60.1 here is
+    // the assertion that the CEILING is untouched by the authoring reserve.
+    expect(first.peakWk).toBe(57);
     expect(first.bandUpper).toBe(60.1);
+    expect(
+      first.bandUpper - first.peakWk,
+      'F034 · the authored peak must leave real headroom below the unreserved ceiling',
+    ).toBeGreaterThan(first.bandUpper * ADAPTATION_HEADROOM_SHARE);
   });
 
   // ── G3 · RULE 9 · continuity and monotonicity in the evidence ────────────
@@ -409,6 +423,47 @@ describe('LOADCONTRACT-1 · one time-aware load authority', () => {
     // because `peakEarnedWhen` computes the volume that satisfies that line.
     expect(src('lib/plan/adaptive-ramp.ts')).toMatch(/ADAPTATION_HEADROOM_SHARE/);
     expect(src('lib/plan/adaptive-ramp.ts')).not.toMatch(/tierWeeklyUpper \* 0\.05/);
+  });
+
+  // ── G10 · F034 (2026-09-14) · authoring reserves headroom; the ceiling does not ─
+  it('G10 · cycleBoundedPeak reserves headroom below the unreserved ceiling', () => {
+    // Falsified: with `reserveHeadroomShare` unset (0), `authored.mi` equals
+    // `ceiling.mi` here (both `known()` off the identical `cycleBoundMi`), which
+    // is exactly the WHY-PROPOSEADAPTIVEBUMP-NEVER-FIRES defect — this
+    // assertion fails against that code and passes against the fix.
+    const ceiling = plannedPeakBound({
+      demonstratedPeakWeeklyMi: 59.3, climbFromMi: 40,
+      climbWeeksToPeak: CLIMB_WEEKS, distanceFloorMi: MARATHON_FLOOR,
+    });
+    const authored = plannedPeakBound({
+      demonstratedPeakWeeklyMi: 59.3, climbFromMi: 40,
+      climbWeeksToPeak: CLIMB_WEEKS, distanceFloorMi: MARATHON_FLOOR,
+      reserveHeadroomShare: AUTHORING_HEADROOM_RESERVE_SHARE,
+    });
+    if (!ceiling.known || !authored.known) throw new Error('unreachable');
+    expect(authored.basis).toBe('per_cycle_growth_on_demonstrated_peak_reserved');
+    expect(authored.mi).toBeLessThan(ceiling.mi);
+    const headroom = ceiling.mi - authored.mi;
+    expect(
+      headroom, 'F034 · a freshly-authored block must clear the gate\'s own bar with margin',
+    ).toBeGreaterThan(ceiling.mi * ADAPTATION_HEADROOM_SHARE);
+
+    // The two callers this file's own header names as the CEILING —
+    // `resolveLoadProgressionContract`'s `plannedPeakLoad` (published band +
+    // stamped fallback) and `recomputeAdaptationCeiling` (the gate's live
+    // recompute) — must both still read the FULL, unreserved bound, because
+    // reserving on both sides of `belowTierUpper`'s comparison would rescale
+    // it and reproduce zero real headroom.
+    const c = contract({ peakWeeklyMi: 59.3, heldWeeklyMi: 40 }, CLIMB_WEEKS);
+    if (!c.plannedPeakLoad.known) throw new Error('unreachable');
+    expect(c.plannedPeakLoad.mi).toBe(ceiling.mi);
+    const stamp = loadContractStamp(c, { climbWeeksToPeak: CLIMB_WEEKS, distanceFloorMi: MARATHON_FLOOR });
+    const recomputed = recomputeAdaptationCeiling({
+      stamp, liveDemonstratedPeakWeeklyMi: 59.3, stampedCeilingMi: c.plannedPeakLoad.mi,
+    });
+    expect(recomputed.source).toBe('recomputed');
+    if (!recomputed.ceiling.known) throw new Error('unreachable');
+    expect(recomputed.ceiling.mi).toBe(ceiling.mi);
   });
 
   it('states what it exercised (Rule 18 · a gate that read nothing is not clean)', () => {

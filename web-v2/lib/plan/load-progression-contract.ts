@@ -173,11 +173,94 @@ export const WEEKLY_STEP_GROWTH: number = GENERAL_RAMP_CEILING.intermediate;
  */
 export const ADAPTATION_HEADROOM_SHARE = 0.05;
 
+/**
+ * AUTHORING-HEADROOM-1 (2026-09-14) · F034 · how much of the per-cycle growth
+ * allowance `composePlan` reserves rather than spends at authoring time.
+ *
+ * ── THE DEFECT THIS CLOSES ──────────────────────────────────────────────────
+ *
+ * `programme-internal-working/00-master-programme/
+ * WHY-PROPOSEADAPTIVEBUMP-NEVER-FIRES-2026-09-14.md`: `cycleBoundedPeak`
+ * (authoring) and `recomputeAdaptationCeiling` (the adaptation gate's ceiling)
+ * both call `plannedPeakBound`, so a freshly-authored block's own composed
+ * peak and the ceiling `belowTierUpper` compares it against are THE SAME
+ * NUMBER by construction whenever the runner's demonstrated peak hasn't moved
+ * since authoring — verified on all three of David's tier-banded plans,
+ * authored peak sitting at 99.7-99.8% of the recomputed ceiling every time.
+ * `belowTierUpper` needs `peakHeadroomMi > ceiling × ADAPTATION_HEADROOM_SHARE`
+ * (strict `>`), so a plan that spends the full allowance leaves the gate
+ * structurally unable to open until the runner's live evidence outruns a
+ * prescription he was just handed — Rule 21's "wired, doctrine-bound,
+ * cron-mounted, and inert" signature, diagnosed to its exact mechanism.
+ *
+ * ── THE COACHING-DOCTRINE ANSWER (2026-09-14 consult) ───────────────────────
+ *
+ * `for coaching consult/consult-log/2026-09-14-008-f034-adaptive-bump-fix-
+ * direction.md`, Option 1, the only option authorized: "Reserve headroom at
+ * authoring time. Compose the peak week at less than the full permitted
+ * per-cycle growth, so a freshly-authored plan starts with real, spendable
+ * headroom instead of requiring the runner to outrun a prescription he was
+ * just handed." `PER_CYCLE_PEAK_GROWTH` (1.15) is a ceiling for what an
+ * ENTIRE CYCLE may grow by; nothing in doctrine requires the whole allowance
+ * be granted unconditionally, all at once, at the instant of authoring.
+ * `docs/ADAPTATION_PROGRESSION_DOCTRINE.md`: "the calendar proposes
+ * progression, the runner earns it." This does NOT change the runner's
+ * ultimate ceiling for the cycle — the ceiling `belowTierUpper` reads stays
+ * the full, unreserved `demonstratedPeak × PER_CYCLE_PEAK_GROWTH` (see
+ * `plannedPeakBound`'s `reserveHeadroomShare` parameter below, which defaults
+ * to 0 for every caller except `cycleBoundedPeak`). It changes WHEN within
+ * the cycle the runner is told about the top of it — sequencing the same
+ * total permitted growth, not reducing it.
+ *
+ * ── WHY THE VALUE IS ABOVE `ADAPTATION_HEADROOM_SHARE`, NOT EQUAL TO IT ─────
+ *
+ * The consult log names `ADAPTATION_HEADROOM_SHARE` (0.05) as "a reasonable
+ * starting point" but leaves the exact size to calibration. Reserving exactly
+ * 0.05 would author a block whose day-one headroom equals the gate's own bar
+ * (`peakHeadroomMi == ceiling × 0.05`) — the comparison is strict `>`, so that
+ * lands EXACTLY on the boundary, a Rule 9 cliff sensitive to the 0.1 mi
+ * rounding both this file and `volumeCurve` apply on the way to a composed
+ * calendar. Reserving 0.06 clears the gate's own bar by a full percentage
+ * point of headroom (~0.2-0.9 mi in absolute terms at realistic ceilings) —
+ * comfortably outside that rounding noise — while remaining a small fraction
+ * of the per-cycle allowance: a block authored at ~1.081x demonstrated peak
+ * (1.15 × 0.94) instead of 1.15x is still, per the consult log's own
+ * illustrative example ("~9% growth... instead of the full 15%"), "a real,
+ * substantial, safe progression," not an under-prescription.
+ *
+ * ── WHY NOT LARGER, GIVEN MORE MARGIN IS OTHERWISE BETTER ──────────────────
+ *
+ * Calibrated empirically against `lib/plan/_sweep_allusers.test.ts`'s full
+ * 11,687-archetype corpus, not chosen from the boundary math alone. A larger
+ * reserve (tried: 0.07, 0.08) shrinks the composed week enough that the
+ * `density:steady:marathon` probe's FIXED 4 mi threshold session — priced
+ * independently of weekly volume — crosses `lib/plan/dosing.ts`'s weekly
+ * percentage-share cap (a FATAL, Rule-7-cited Daniels dosing-cap check,
+ * `VALIDATOR[cold/strava]` in the sweep's FIRM ledger). Measured: FIRM
+ * failures appear between reserve 0.065 and 0.066 on that one archetype;
+ * 0.06 sits with real distance below that cliff. This is orthogonal to the
+ * `RAMP.cycle-over-cycle-peak-growth` doctrine question and belongs to a
+ * pre-existing, narrow dosing margin in that one archetype, not to this
+ * constant's own doctrine reading — but it is real, and it is why this value
+ * is not larger. See `RAMP.authoring-headroom-reserve-is-above-the-gates-own-
+ * bar`'s `MAX_RESERVE` for the enforced ceiling.
+ *
+ * Bound by RAMP.cycle-over-cycle-peak-growth (via `RAMP.authoring-headroom-
+ * reserve-is-above-the-gates-own-bar` in the doctrine registry, which checks
+ * this constant is strictly greater than `ADAPTATION_HEADROOM_SHARE`, with a
+ * real margin, and no larger than the dosing-safe ceiling above).
+ */
+export const AUTHORING_HEADROOM_RESERVE_SHARE = 0.06;
+
 /** Why a bound is the number it is. Carried on every reading so a surface, a
  *  log line or a gate can say which doctrine rule bound it without re-deriving. */
 export type LoadBasis =
   /** `demonstratedPeakWeeklyMi × PER_CYCLE_PEAK_GROWTH`. */
   | 'per_cycle_growth_on_demonstrated_peak'
+  /** `demonstratedPeakWeeklyMi × PER_CYCLE_PEAK_GROWTH × (1 -
+   *  AUTHORING_HEADROOM_RESERVE_SHARE)` — the AUTHORING-only reserved variant.
+   *  Never produced for a caller that omits `reserveHeadroomShare`. */
+  | 'per_cycle_growth_on_demonstrated_peak_reserved'
   /** The runner's own biggest week — a build may never peak below it. */
   | 'demonstrated_peak_floor'
   /** The least volume the distance table asks of anyone racing this distance. */
@@ -366,6 +449,25 @@ export function plannedPeakBound(args: {
    */
   readonly climbWeeksToPeak: number | null;
   readonly distanceFloorMi: number;
+  /**
+   * AUTHORING-HEADROOM-1 (2026-09-14) · F034 · reserves this share of the
+   * per-cycle growth allowance, applied to the GROWTH TERM only, before the
+   * floor/reachable clamps below — so a runner already floor- or
+   * reachability-bound is never pulled BELOW their own peak or the distance
+   * floor by a reservation meant to apply only to spendable growth headroom.
+   *
+   * Defaults to 0 (no reservation) so every EXISTING caller of this shared
+   * arithmetic — `recomputeAdaptationCeiling` (the adaptation gate's live
+   * ceiling) and `resolveLoadProgressionContract`'s `plannedPeakLoad` (the
+   * published `tier_peak_weekly_band` and the stamped fallback ceiling) — sees
+   * the full, unreserved bound. Those two ARE the ceiling this authoring
+   * number is measured against; reserving there too would rescale both sides
+   * of `belowTierUpper`'s comparison together and reproduce the exact zero-
+   * headroom defect this parameter exists to fix. Only `cycleBoundedPeak` (the
+   * one AUTHORING caller, in `generate.ts`) sets this to
+   * `AUTHORING_HEADROOM_RESERVE_SHARE`.
+   */
+  readonly reserveHeadroomShare?: number;
 }): LoadReading {
   const peak = positive(args.demonstratedPeakWeeklyMi);
   if (peak == null) {
@@ -391,7 +493,13 @@ export function plannedPeakBound(args: {
     );
   }
   const floorMi = Math.max(peak, args.distanceFloorMi);
-  const cycleBoundMi = peak * PER_CYCLE_PEAK_GROWTH;
+  // AUTHORING-HEADROOM-1 · the reserve applies to the GROWTH TERM only, before
+  // the `Math.max(…, floorMi)` clamp below — so a runner whose growth term is
+  // already floor-bound (e.g. a small measured peak near the distance floor)
+  // is never pulled below their own peak or the distance floor by a
+  // reservation that exists to trim spendable headroom, not doctrine's floor.
+  const reserveShare = args.reserveHeadroomShare ?? 0;
+  const cycleBoundMi = peak * PER_CYCLE_PEAK_GROWTH * (1 - reserveShare);
   // What the block can actually climb to from where the runner is, at
   // doctrine's week-over-week ceiling. Continuous in both inputs, and never
   // allowed to pull the answer below `floorMi` — a runner already above what
@@ -406,7 +514,9 @@ export function plannedPeakBound(args: {
       ? (peak >= args.distanceFloorMi ? 'demonstrated_peak_floor' : 'distance_floor')
       : reachableMi < cycleBoundMi
         ? 'reachable_by_weekly_growth'
-        : 'per_cycle_growth_on_demonstrated_peak';
+        : reserveShare > 0
+          ? 'per_cycle_growth_on_demonstrated_peak_reserved'
+          : 'per_cycle_growth_on_demonstrated_peak';
   return known(bounded, basis, CITE_VOLUME_RULES);
 }
 
