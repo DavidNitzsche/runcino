@@ -104,6 +104,16 @@ import {
 import { wireVerdictLandedTheWork } from '@/lib/training/execution-semantics';
 import { distanceMiOfMeta } from '@/lib/race/distance';
 import { resolveAthleteWeeklyDemandCeiling } from '@/lib/adaptation/canonical/demand-ceiling';
+/* F038 (2026-09-14) · the SAME reign-stitched "which plan owned this day"
+ * query `lib/adaptation/load.ts`'s `weekly` read already uses, reused here
+ * rather than reinvented. Only `ownedDaysSql()` — the pure SQL-string builder
+ * — is imported, never `loadOwnedDays()`, which issues its query over the
+ * app's normal WRITABLE `pool` (`@/lib/db/pool`) and would reintroduce
+ * exactly the dependency `read-only-db.ts`'s own header says this directory
+ * must not carry. The SQL string is executed here over `roQuery` instead, so
+ * the read-only fence holds for this reader the same as every other one in
+ * this file. */
+import { ownedDaysSql } from '@/lib/plan/owned-days';
 import {
   contextForWeek, demonstratedWeeksFrom, prescribedWeekQuantities,
   type DemandSubstrate, type RanRace,
@@ -286,6 +296,77 @@ async function readPlanWorkouts(planId: string): Promise<PlanWorkoutRow[]> {
        FROM plan_workouts WHERE plan_id = $1 ORDER BY date_iso`,
     [planId],
   );
+  return r.rows;
+}
+
+/**
+ * F038 (2026-09-14) · a `PlanWorkoutRow` for a day owned per the reign
+ * logic in `ownedDaysSql()`, carrying two extra facts about the plan whose
+ * reign actually covered that date: its authoring mode, and the `is_cutback`
+ * flag off ITS OWN `plan_weeks` row — never the current active plan's.
+ */
+export interface OwnedPlanWorkoutRow extends PlanWorkoutRow {
+  /** `training_plans.mode` of the plan that owned this date — not the
+   *  current active plan's mode. Null when the owning plan carries none. */
+  owning_plan_mode: string | null;
+  /** `plan_weeks.is_cutback` off the week the OWNING plan authored for this
+   *  date. Null when the day's `plan_workouts` row carries no `week_id`, or
+   *  when that plan's `plan_weeks` row cannot be found — kept distinct from
+   *  `false` per Rule 11: "no week row to ask" and "asked, and it said no"
+   *  are different facts. */
+  is_cutback: boolean | null;
+}
+
+/**
+ * F038 (2026-09-14) · THE FIX. Every BACKWARD-LOOKING read in
+ * `buildLiveCanonicalInput` (`weekObservations`, `qualitySessions`,
+ * `longRunObservations`, and their `authoredPlanMode`/`isCutback` witnesses)
+ * used to come from `readPlanWorkouts(plan.id)` — the single ACTIVE plan's
+ * own rows, nothing else. `plan_workouts` never deletes a superseded plan's
+ * rows (CLAUDE.md Rule 14), so a calendar week whose real prescription was
+ * authored by a plan that has SINCE been archived and rebuilt away reads as
+ * `pres = []` → `prescribedMi = 0` — indistinguishable from a week that
+ * genuinely predates any plan at all. Confirmed live 2026-09-14 against the
+ * account this bug was found on: weeks of 2026-08-17 and 2026-08-24 read as
+ * fully absent under `readPlanWorkouts(plan.id)` despite 28-35 real miles
+ * each and a real 17 mi / 38 mi authored prescription sitting in archived
+ * plan rows (`programme-internal-working/00-master-programme/
+ * F038-EVIDENCE-CLOCK-SCOPING-2026-09-14.md` §2).
+ *
+ * This reuses `ownedDaysSql()` (`lib/plan/owned-days.ts`) — the SAME
+ * reign-stitched "which plan owned this day" query `lib/adaptation/load.ts`'s
+ * own `weekly` read already trusts for exactly this class of bug — rather
+ * than re-deriving a second answer to the same question (Rule 16). `DISTINCT
+ * ON (pw.date_iso)` collapses every plan version back to ONE row per date:
+ * whichever plan's reign (`[authored_iso, archived_iso)`, open-ended while
+ * still active) actually contained that date.
+ *
+ * `includePlanWeeks: true` also joins that SAME winning row's own
+ * `plan_weeks` entry, so `is_cutback` and the plan's authoring `mode` are
+ * both read off the plan that actually reigned over the date — never the
+ * current plan's flag applied retroactively (the F038 report's §3.2/§3.3,
+ * the "same root cause class... in miniature" companion issues).
+ *
+ * ONLY for the backward-looking half. `nextWeekPrescribedMi`,
+ * `thisWeekWorkouts`, `belief.weeklyVolumeMi`/`longRunMi` and everything else
+ * that asks "what is the CURRENT plan asking of me" keeps reading
+ * `readPlanWorkouts(plan.id)` — a current-plan question is correctly
+ * current-plan-scoped (F038 report §4), and this function must never be
+ * substituted there.
+ */
+async function readOwnedPlanWorkouts(
+  userUuid: string,
+  fromISO: string,
+  toISO: string,
+): Promise<OwnedPlanWorkoutRow[]> {
+  const sql = ownedDaysSql({
+    columns: `pw.id::text AS id, pw.week_id::text AS week_id, pw.date_iso::text AS date_iso,
+              pw.type, pw.distance_mi, pw.pace_target_s_per_mi, pw.workout_spec,
+              pw.is_quality, pw.is_long, pw.sub_label,
+              tp.mode AS owning_plan_mode, pwk.is_cutback`,
+    includePlanWeeks: true,
+  });
+  const r = await roQuery<OwnedPlanWorkoutRow>(sql, [userUuid, fromISO, toISO]);
   return r.rows;
 }
 
@@ -755,10 +836,26 @@ export async function buildLiveCanonicalInput(
   const racePlanGoal = (race.plan as { goal?: { finish_time_s?: unknown } } | null)?.goal;
   const goalSec = num(racePlanGoal?.finish_time_s);
 
+  const LOOKBACK_DAYS = 84; // 12 weeks — enough for the volume lever's 3-week
+  // window plus margin, and for the long-run lever's 2-lookback with gaps.
+  const sinceISO = addDays(asOf, -LOOKBACK_DAYS);
+
   let weeks: PlanWeekRow[];
   let workouts: PlanWorkoutRow[];
+  let ownedWorkouts: OwnedPlanWorkoutRow[];
   try {
-    [weeks, workouts] = await Promise.all([readPlanWeeks(plan.id), readPlanWorkouts(plan.id)]);
+    [weeks, workouts, ownedWorkouts] = await Promise.all([
+      // FORWARD-looking only from here down (F038 §4): `weeks`/`workouts` are
+      // the CURRENT plan's own rows, read for "what is the plan I have right
+      // now asking of me" — `nextWeekRow`, `futureCutbackWeek`,
+      // `futureRaceWeek`, `thisWeekWorkouts`, `nextWeekWorkouts`, `belief`.
+      readPlanWeeks(plan.id),
+      readPlanWorkouts(plan.id),
+      // BACKWARD-looking (F038 fix). See `readOwnedPlanWorkouts`'s own header:
+      // reign-stitched across every plan version this runner has ever had,
+      // not just the currently active one.
+      readOwnedPlanWorkouts(userUuid, sinceISO, asOf),
+    ]);
   } catch (e) {
     return {
       input: null,
@@ -766,10 +863,6 @@ export async function buildLiveCanonicalInput(
       refusalCode: 'INPUT_READ_FAILED',
     };
   }
-
-  const LOOKBACK_DAYS = 84; // 12 weeks — enough for the volume lever's 3-week
-  // window plus margin, and for the long-run lever's 2-lookback with gaps.
-  const sinceISO = addDays(asOf, -LOOKBACK_DAYS);
 
   let runs: RunRow[];
   try {
@@ -788,34 +881,67 @@ export async function buildLiveCanonicalInput(
 
   /* ── WEEKS · prescribed against completed, current week excluded ────────── */
 
-  const workoutsByDate = new Map<string, PlanWorkoutRow>();
-  for (const w of workouts) workoutsByDate.set(w.date_iso, w);
-  const weekByStart = new Map<string, PlanWeekRow>();
-  for (const w of weeks) weekByStart.set(w.week_start_iso, w);
+  // FORWARD-looking questions ("what is the plan I have right now asking of
+  // me") — `thisWeekWorkouts`, `nextWeekWorkouts`, `belief`,
+  // `futureThresholdSessionIds` below — filter the CURRENT plan's own
+  // `workouts` array directly (F038 §4); they need no date-keyed map. The
+  // backward-looking blocks below read `ownedWorkoutsByDate` instead.
+
+  // BACKWARD-looking (F038 fix). One row per date, already resolved to
+  // whichever plan's reign actually covered it — see `readOwnedPlanWorkouts`.
+  const ownedWorkoutsByDate = new Map<string, OwnedPlanWorkoutRow>();
+  for (const w of ownedWorkouts) ownedWorkoutsByDate.set(w.date_iso, w);
+
+  /** `training_plans.mode`, normalized the same way the pre-fix code
+   *  normalized the CURRENT plan's mode — reused per-week now instead of
+   *  applied uniformly to every week (F038 report §3.3). */
+  const planModeOf = (raw: string | null): 'RECOVERY' | 'TAPER' | 'BUILD' => {
+    const m = (raw ?? '').toLowerCase();
+    if (m === 'recovery') return 'RECOVERY';
+    if (m.includes('taper')) return 'TAPER';
+    return 'BUILD';
+  };
 
   const pastWeekStarts = [...new Set(runData.map((r) => weekStartOf(r.dateISO))
-    .concat(workouts.filter((w) => w.date_iso < asOf).map((w) => weekStartOf(w.date_iso))))]
+    .concat(ownedWorkouts.map((w) => weekStartOf(w.date_iso))))]
     .filter((ws) => ws < weekStartOf(asOf))
     .sort();
 
   const weekObservations: WeekObservation[] = pastWeekStarts.map((ws) => {
     const days = Array.from({ length: 7 }, (_, i) => addDays(ws, i)).filter((d) => d < asOf);
-    const pres = days.map((d) => workoutsByDate.get(d)).filter((w): w is PlanWorkoutRow => w != null);
+    const pres = days.map((d) => ownedWorkoutsByDate.get(d)).filter((w): w is OwnedPlanWorkoutRow => w != null);
     const prescribedMi = sum(pres.map((w) => num(w.distance_mi) ?? 0));
     const inWeek = runData.filter((r) => days.includes(r.dateISO));
     const unreadable = inWeek.filter((r) => runDistanceMi(r.d) === null);
     const completedMi: Measured<number> = unreadable.length > 0
       ? failed(`${unreadable.length} activities in this week have no readable distance`)
       : measured(sum(inWeek.map((r) => runDistanceMi(r.d) ?? 0)));
-    const pw = weekByStart.get(ws) ?? null;
-    const planIsRecovery = (plan!.mode ?? '').toLowerCase() === 'recovery';
-    const planIsTaper = (plan!.mode ?? '').toLowerCase().includes('taper');
-    const authoredPlanMode: AuthoredPlanMode = planIsRecovery ? 'RECOVERY' : planIsTaper ? 'TAPER' : 'BUILD';
+    // Rule 8 · `isCutback` is "trusted to say YES, never NO" (input.ts's own
+    // doc comment on the field). A week whose days were owned by more than
+    // one plan version (a mid-week rebuild) counts as cutback if ANY of its
+    // owning plans' own week row said so — never diluted by the others.
+    const isCutback = pres.some((w) => w.is_cutback === true);
+    // Rule 11 · a week no plan covered at all (this calendar week sits
+    // entirely before the runner's first plan, or `readOwnedPlanWorkouts`
+    // returned no row for any of its days) is UNKNOWN, never silently
+    // defaulted to the CURRENT plan's mode (F038 report §3.3's own example,
+    // confirmed live: weeks 2026-08-17/08-24 were authored under a
+    // `recovery` plan, not today's `race-prep` active plan). Same
+    // "trusted-YES" priority as `isCutback` above when a week spans more than
+    // one owning plan: RECOVERY or TAPER from ANY owning plan wins.
+    const modesPresent = new Set(pres.map((w) => planModeOf(w.owning_plan_mode)));
+    const authoredPlanMode: AuthoredPlanMode = modesPresent.size === 0
+      ? 'UNKNOWN'
+      : modesPresent.has('RECOVERY')
+        ? 'RECOVERY'
+        : modesPresent.has('TAPER')
+          ? 'TAPER'
+          : 'BUILD';
     return {
       weekStartISO: ws,
       prescribedMi,
       completedMi,
-      isCutback: pw?.is_cutback ?? false,
+      isCutback,
       authoredPlanMode,
       dataComplete: unreadable.length === 0,
     };
@@ -823,31 +949,40 @@ export async function buildLiveCanonicalInput(
 
   /* ── PRESCRIPTION↔RUN IDENTITY, via THE ONE resolver (SUPPLEMENTALGRADE-1) ─
    * See `buildPrescriptionRunMatches`'s own header above for the defect this
-   * closes. */
-  const prescriptionRunMatches = buildPrescriptionRunMatches(workouts, runData);
+   * closes. BACKWARD-looking (F038 fix): matched against `ownedWorkouts`, the
+   * reign-stitched set, not the current plan's own `workouts` — a quality
+   * session or long run prescribed under an archived plan must resolve to its
+   * run the same as one prescribed under the active plan. */
+  const prescriptionRunMatches = buildPrescriptionRunMatches(ownedWorkouts, runData);
   const matchedRunFor = (w: PlanWorkoutRow) => {
     const runId = prescriptionRunMatches.get(w.id);
     return runId == null ? undefined : runData.find((r) => r.id === runId);
   };
 
-  /* ── QUALITY SESSIONS · matched activity ↔ prescribed quality workout ───── */
+  /* ── QUALITY SESSIONS · matched activity ↔ prescribed quality workout ─────
+   * BACKWARD-looking (F038 fix): sourced from `ownedWorkouts`, not the
+   * current plan's own `workouts` — see `readOwnedPlanWorkouts`'s header. */
 
   const qualitySessions: GradedSession[] = [];
-  for (const w of workouts.filter((x) => x.is_quality && x.date_iso < asOf)) {
+  for (const w of ownedWorkouts.filter((x) => x.is_quality && x.date_iso < asOf)) {
     const match = matchedRunFor(w);
     if (!match) continue;
     qualitySessions.push(buildGradedSession({ activityId: match.id, dateISO: match.dateISO, run: match.d, workout: w }));
   }
 
-  /* ── LONG RUNS · the two most recent, per the contract's own count ──────── */
+  /* ── LONG RUNS · the two most recent, per the contract's own count ────────
+   * BACKWARD-looking (F038 fix): sourced from `ownedWorkouts`, and the
+   * following-session lookup below reads `ownedWorkoutsByDate` too — a long
+   * run's own follow-up check is itself a question about what already
+   * happened, not what the current plan currently prescribes. */
 
   const longRunObservations: LongRunObservation[] = [];
-  const longWorkouts = workouts.filter((x) => x.is_long && x.date_iso < asOf).sort((a, b) => b.date_iso.localeCompare(a.date_iso));
+  const longWorkouts = ownedWorkouts.filter((x) => x.is_long && x.date_iso < asOf).sort((a, b) => b.date_iso.localeCompare(a.date_iso));
   for (const w of longWorkouts) {
     const match = matchedRunFor(w);
     if (!match) continue;
-    const nextDayWorkout = workoutsByDate.get(addDays(w.date_iso, 1))
-      ?? workoutsByDate.get(addDays(w.date_iso, 2));
+    const nextDayWorkout = ownedWorkoutsByDate.get(addDays(w.date_iso, 1))
+      ?? ownedWorkoutsByDate.get(addDays(w.date_iso, 2));
     const nextRun = nextDayWorkout ? matchedRunFor(nextDayWorkout) : undefined;
     longRunObservations.push({
       provenance: provenanceFor(match.d, match.id, match.dateISO),

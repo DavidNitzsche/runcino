@@ -130,8 +130,9 @@ export const OWNED_DAYS_DEFAULT_COLUMNS = 'pw.date_iso, pw.is_quality, pw.distan
 
 export interface OwnedDaysSqlOptions {
   /**
-   * Which columns to project. Must be `pw.`-qualified (or `tp.`-qualified) —
-   * this is a `DISTINCT ON` query and unqualified names are ambiguous.
+   * Which columns to project. Must be `pw.`-qualified (or `tp.`-qualified, or
+   * `pwk.`-qualified when `includePlanWeeks` is set) — this is a
+   * `DISTINCT ON` query and unqualified names are ambiguous.
    */
   columns?: string;
   /** Placeholder index for the runner's uuid. Default `$1`. */
@@ -140,6 +141,21 @@ export interface OwnedDaysSqlOptions {
   fromParam?: number;
   /** Placeholder index for the EXCLUSIVE end date. Default `$3`. */
   toParam?: number;
+  /**
+   * F038 (2026-09-14) · LEFT JOIN `plan_weeks` (aliased `pwk`) onto the SAME
+   * `pw` row this query already resolved as the day's owner, so `columns` may
+   * also project `pwk.is_cutback` (or any other `plan_weeks` column) with the
+   * correct per-day reign attribution — not a second, independently-resolved
+   * "which plan owns this week" question.
+   *
+   * The join is scoped on BOTH `pwk.id = pw.week_id` and `pwk.plan_id =
+   * pw.plan_id` (Rule 14): `plan_weeks.id` is not guaranteed unique across
+   * every plan version a runner has ever had, so joining on `week_id` alone
+   * risks picking up a different plan's week row that happens to share an id.
+   * Scoping to `pw.plan_id` — the plan `DISTINCT ON` already chose for this
+   * date — makes the joined week row the one that plan itself authored.
+   */
+  includePlanWeeks?: boolean;
 }
 
 /**
@@ -178,12 +194,17 @@ export function ownedDaysSql(opts: OwnedDaysSqlOptions = {}): string {
     userParam = 1,
     fromParam = 2,
     toParam = 3,
+    includePlanWeeks = false,
   } = opts;
+  const planWeeksJoin = includePlanWeeks
+    ? 'LEFT JOIN plan_weeks pwk ON pwk.id = pw.week_id AND pwk.plan_id = pw.plan_id'
+    : '';
   return `
     SELECT DISTINCT ON (pw.date_iso)
            ${columns}
       FROM plan_workouts pw
       JOIN training_plans tp ON tp.id = pw.plan_id
+      ${planWeeksJoin}
      WHERE pw.user_uuid = $${userParam} AND pw.date_iso >= $${fromParam} AND pw.date_iso < $${toParam}
      ORDER BY pw.date_iso,
               ${REIGN_CONTAINS_DATE} DESC,
