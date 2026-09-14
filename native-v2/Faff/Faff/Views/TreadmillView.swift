@@ -526,19 +526,19 @@ struct TreadmillView: View {
         return "\(span) ran with the app in the background · that distance is estimated at the belt speed you last set."
     }
 
+    // TILDE-REMOVAL-PERMANENT (2026-09-14) · this view is legacy v4, reachable
+    // only behind the `-faffLegacy` launch flag (never set in production —
+    // see `RootTabView`/`FaffApp.swift`), so it was out of scope for the
+    // render fix. It still referenced the now-deleted `Theme.V5.modelledMark`
+    // constant, which would have failed to COMPILE once that constant was
+    // removed, so the glyph is stripped here too rather than left as a build
+    // break in dead code. `modelled` is also never passed `true` at any call
+    // site in this file, so this was already visually inert.
     private func topStat(_ k: String, _ v: String, modelled: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             SpecLabel(text: k, size: 9, tracking: 1.5, color: Theme.txt.opacity(0.58))
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                if modelled {
-                    Text(Theme.V5.modelledMark)
-                        .font(.display(21, weight: .bold))
-                        .scaleEffect(0.62, anchor: .bottomTrailing)
-                        .foregroundStyle(Theme.warnText)
-                        .accessibilityLabel("estimated")
-                }
-                Text(v).font(.display(21, weight: .bold)).tracking(-0.5)
-            }
+            Text(v).font(.display(21, weight: .bold)).tracking(-0.5)
+                .accessibilityLabel(modelled ? "estimated \(v)" : v)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

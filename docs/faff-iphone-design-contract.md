@@ -17,8 +17,18 @@ will either be untrue or unbuildable.
 
 **A modelled number must never look measured.** This is the only real sin. A projected
 finish, a pace derived from training rather than a race, a projection after time off —
-all modelled. r2's amber tilde (`~`) is the mark, and it is now a system rule rather than
-one screen's fix. Apply it everywhere a number is estimated.
+all modelled. The distinction is a system rule rather than one screen's fix, and applies
+everywhere a number is estimated.
+
+> **Standing override, locked 2026-09-14, permanent.** The line above used to read "r2's
+> amber tilde (`~`) is the mark" — a visible amber `~` immediately before a modelled
+> value. David, directly and current: *"Regardless I don't want it there. Ever."* This
+> supersedes that written rule outright, per CLAUDE.md's own standing override of the
+> same date. The rule that a modelled number must never look measured is unchanged and
+> still enforced end to end (VoiceOver still says "estimated" before the figure, the
+> engine's `modelled`/`basis` flag is unchanged) — only the visible glyph is retired,
+> permanently. See `docs/PRODUCT_DECISIONS.md` 2026-09-14 for the full record. Do not
+> restore the tilde by citing the paragraph above as still-current; it is historical.
 
 **One signal never changes a session.** Readiness grades from five independent domains and
 requires *three* to converge before it can downgrade a session. That is asserted as a build
@@ -103,9 +113,12 @@ Real in both directions, and r2's three-variant split is correct.
 - **Zones do not move by the same amount.** Measured on a three-point fitness drop:
   threshold `+24 s/mi`, interval `+22`, rep `+19`. There is no single headline delta —
   per-zone rows only.
-- `faster-race` is hard evidence: no tilde, and a single action. A race result is not
-  noise to dismiss.
-- `slower` and `faster-training` are modelled: tilde on every value, and dismissible.
+- `faster-race` is hard evidence: no glyph regardless, and a single action. A race result
+  is not noise to dismiss.
+- `slower` and `faster-training` are modelled: dismissible, and were "tilde on every
+  value" before the 2026-09-14 standing override above retired the visible mark
+  app-wide — the underlying modelled/measured distinction driving the dismissibility is
+  unchanged, only the glyph is gone.
 - **Do not assert a cause.** The engine detects the re-anchor; it does not diagnose
   "accumulated fatigue". State the fact; where the diagnosis is not confirmed, say so.
 

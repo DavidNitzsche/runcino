@@ -51,7 +51,7 @@ extension Theme {
         /// highlighted bar in any chart. NEVER means "good".
         static let signal    = Color(hex: 0xFF5A1F)
         /// Outside its target range, stale data, a decision waiting. NEVER means
-        /// "error". Also inks the modelled-number tilde (see `modelledMark`).
+        /// "error".
         static let attention = Color(hex: 0xF2B03C)
         /// We could not read this value. Never used to render a real value.
         static let fault     = Color(hex: 0xFF4438)
@@ -60,10 +60,19 @@ extension Theme {
         // number as "good". (`DayState.easy` is a day-state gradient, not a
         // verdict — it says which kind of day this is, not that it went well.)
 
-        /// The one mark for "this number is estimated": a small amber tilde
-        /// immediately before the value. Backed by the design contract's first
-        /// rule — a modelled number must never look measured.
-        static let modelledMark = "~"
+        // TILDE-REMOVAL-PERMANENT (2026-09-14) · `modelledMark` ("~") used to
+        // live here as the one mark for "this number is estimated". David's
+        // standing, permanent override — "Regardless I don't want it there.
+        // Ever." (CLAUDE.md, locked 2026-09-14) — retires the visible glyph
+        // app-wide, superseding MARKER-RESTORE-1 (2026-09-09). The constant is
+        // deleted rather than left unused so nothing can reference it back
+        // into existence; `check-modelled-mark.sh` also fails the build if it
+        // reappears. A modelled value's BASIS is still tracked and still
+        // reaches VoiceOver as "estimated" — see `ValuesV5.swift`'s
+        // `FaffValue`/`FaffValueText`. If a future need for visible
+        // modelled-value provenance arises, that is a fresh design decision
+        // from David, not a revival of this specific mark — see
+        // `docs/PRODUCT_DECISIONS.md` 2026-09-14 for the full record.
 
         // ───── Day-state gradients ─────
         // Three stops each, 135°, interpolated in oklab in the design so the

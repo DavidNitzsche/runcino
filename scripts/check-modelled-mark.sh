@@ -4,9 +4,24 @@
 #
 #   "A modelled number must never look measured. This is the only real sin.
 #    A projected finish, a pace derived from training rather than a race, a
-#    projection after time off — all modelled. The amber tilde is the mark,
-#    and it is a system rule rather than one screen's fix."
+#    projection after time off — all modelled. The distinction is a system
+#    rule rather than one screen's fix."
 #        — docs/faff-iphone-design-contract.md §1
+#
+#   "Regardless I don't want it there. Ever."
+#        — David, 2026-09-14, on the visible amber tilde specifically. Standing,
+#          permanent override, logged in CLAUDE.md and
+#          docs/PRODUCT_DECISIONS.md (TILDE-REMOVAL-PERMANENT).
+#
+# TILDE-REMOVAL-PERMANENT (2026-09-14) FLIPPED GUARD 2. It used to enforce that
+# the mark WAS rendered (and specifically that only `ValuesV5.swift` was
+# allowed to draw it). It now enforces the opposite: the mark may not be drawn
+# ANYWHERE in the v5 surface, `ValuesV5.swift` included. This is the third
+# state of this specific guard (never enforced pre-2026-08-21, enforced-present
+# 2026-08-21 through today, enforced-absent from here on) and the round-trip is
+# exactly why this guard exists rather than a comment — see Rule 18: a rule
+# with no gate is a hypothesis, and a gate that only ever checked ONE direction
+# is how the 2026-09-09 restore happened without anything objecting.
 #
 # A rule that lives in eighteen screens' worth of `if projected { "~" }` is a
 # rule the nineteenth screen breaks. `FaffValue` makes the right thing easy —
@@ -41,10 +56,16 @@
 #       `GoalAssessment.basis == 'projected'` covers, plus the projection and
 #       trajectory fields. Reaching them means going through V5Number.
 #
-#   2 · NO HAND-DRAWN TILDE. The mark is `Theme.V5.modelledMark`, rendered by
-#       `FaffValueText` as its own amber run. A literal "~" glued into a string
-#       can be copied, truncated, or formatted away, and — worse — can be
-#       written by a caller who has no idea whether the number is modelled.
+#   2 · NO MODELLED-VALUE TILDE, ANYWHERE, PERIOD. Flipped 2026-09-14. The mark
+#       used to be `Theme.V5.modelledMark`, rendered by `FaffValueText` as its
+#       own amber run, and that constant no longer exists — deleted, not left
+#       unused, so nothing can reference it back into being. This guard fails
+#       the build on EITHER shape reappearing: a literal "~" glued into a
+#       string (the original guard 2 sin — it can be copied, truncated, or
+#       formatted away, and can be written by a caller with no idea whether the
+#       number is modelled), or a bare reference to `modelledMark` itself
+#       (the shape every real render site actually used, which a
+#       literal-tilde-only regex would have missed entirely).
 #
 #   3 · NO HEX IN A V5 VIEW. Not rule one, but the same class of problem and
 #       the same place to catch it: a v5 screen paints from the token layer or
@@ -130,16 +151,33 @@ while IFS= read -r f; do
   fi
 done < <(sources "$V5_VIEWS" "$V5_KIT")
 
-# ── 2 · the mark is not hand-drawn ───────────────────────────────────────────
+# ── 2 · the mark is never drawn, anywhere ────────────────────────────────────
 #
-# ValuesV5.swift renders it and is the one file allowed to name it.
+# TILDE-REMOVAL-PERMANENT (2026-09-14): this guard used to exempt
+# ValuesV5.swift on the premise that it, and only it, was allowed to draw the
+# mark. David's permanent override retires the glyph outright, so the
+# exemption is gone — ValuesV5.swift is checked exactly like every other file
+# here. Two shapes both fail the build now:
+#
+#   · a literal "~" glued into a string (the original sin this guard always
+#     caught), and
+#   · a bare reference to `modelledMark` (the shape the real render sites
+#     actually used — `Text(Theme.V5.modelledMark)` — which the literal-tilde
+#     regex alone never matched, and which is why the pre-2026-09-14 version
+#     of this guard would have stayed silent even while `ValuesV5.swift` and
+#     `PacesMovedV5.swift` were both drawing the mark on real screens).
+#
+# A comment line (the file header above, doc comments explaining this very
+# history) is not a violation — `not_a_comment` below drops any line whose
+# first non-space content opens a `//` comment, same posture as guard 8's
+# `not_comment` on the web side.
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  case "$f" in */ValuesV5.swift) continue;; esac
-  hits=$(grep -nE '"[^"]*~[^"]*"' "$f" | grep -vE '^\s*[0-9]+:\s*//|// *ok:' || true)
+  hits=$(grep -nE '"[^"]*~[^"]*"|modelledMark' "$f" | grep -vE '^\s*[0-9]+:\s*//|// *ok:' || true)
   if [ -n "$hits" ]; then
     while IFS= read -r h; do
-      bad "hand-drawn tilde · ${f#$ROOT/}:${h%%:*} — use FaffValue.modelled and let FaffValueText draw the mark"
+      bad "modelled-value tilde reintroduced · ${f#$ROOT/}:${h%%:*} — David's 2026-09-14 standing override (\"Regardless I don't want it there. Ever.\") retires this mark permanently; render through FaffValue/FaffValueText with no glyph"
+      printf '      %s\n' "$(printf '%s' "$h" | cut -d: -f2- | sed 's/^[0-9]*://' | head -c 140)"
     done <<< "$hits"
   fi
 done < <(sources "$V5_VIEWS" "$V5_KIT")
@@ -279,22 +317,28 @@ done < <(composer_sources)
 
 # ── 6 · the mark is not hand-drawn on the server either ──────────────────────
 #
-# Guard 2 forbids a literal `~` in a v5 view. The v5 WIRE carries `modelled`,
-# so a composer feeding it has the same obligation and the same alternative.
+# Guard 2 forbids a literal `~` (or a `modelledMark` reference) in a v5 view.
+# The v5 WIRE carries `modelled`, so a composer feeding it has the same
+# obligation not to bake a visual glyph into a string the phone displays
+# verbatim — that would leak the retired mark onto the phone through a path
+# guard 2 cannot see, since guard 2 only scans Swift.
 #
 # `lib/faff/glance-adapter.ts` is exempt with a reason: it composes the v4
 # Poster (`lib/faff/types.ts`), whose `Stat`/`MiniTile` have NO provenance
 # field at all, so its `~${minutes} min` is the only honesty available there.
 # Removing it would make that surface less honest, not more. Delete this
 # exemption when types.ts grows a provenance carrier — and if it never does,
-# that is itself the finding.
+# that is itself the finding. NOT reassessed for liveness by the 2026-09-14
+# pass (which was scoped to the phone's own rendering code, per instruction);
+# if this composer turns out to feed only the now-confirmed-dead legacy v4
+# phone shell, that is a separate finding for whoever next touches this guard.
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   case "$f" in */glance-adapter.ts) continue;; esac
   hits=$(grep -nE "(['\`\"])~" "$f" | grep -vE '// *ok:|^\s*[0-9]+:\s*(//|\*)' || true)
   if [ -n "$hits" ]; then
     while IFS= read -r h; do
-      bad "hand-drawn tilde in a composer · ${f#$ROOT/}:${h%%:*} — set modelled:true and let FaffValueText draw the mark"
+      bad "hand-drawn tilde in a composer · ${f#$ROOT/}:${h%%:*} — the phone never draws this mark (2026-09-14); do not bake it into a wire string either"
     done <<< "$hits"
   fi
 done < <(composer_sources)

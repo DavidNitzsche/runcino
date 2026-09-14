@@ -7,8 +7,21 @@
 //
 //  The design contract calls this "the only real sin". A projected finish, a
 //  pace derived from training rather than from a race, a projection taken
-//  after time off — all modelled. The mark is a small amber tilde immediately
-//  before the value, and it is a SYSTEM rule, not one screen's fix.
+//  after time off — all modelled. The DISTINCTION is a SYSTEM rule, not one
+//  screen's fix, and it is enforced here regardless of how it is presented.
+//
+//  TILDE-REMOVAL-PERMANENT (2026-09-14) · David, directly and current:
+//  "Regardless I don't want it there. Ever." No visible amber `~` on a
+//  modelled value, permanently, superseding MARKER-RESTORE-1 (2026-09-09,
+//  which itself reverted the 2026-08-21 removal). This is not a third swing
+//  of the same pendulum to be treated cautiously — CLAUDE.md's standing
+//  override (locked 2026-09-14) makes this explicit: David's direct,
+//  current word is authoritative over the design brief's own written tilde
+//  rule, and the brief text describing a visible tilde is superseded, not
+//  current. See `docs/PRODUCT_DECISIONS.md` 2026-09-14 for the full record
+//  and `docs/faff-iphone-design-contract.md` §1 for the doc-side update. If
+//  a future need for visible modelled-value provenance arises, it needs a
+//  fresh design decision from David, not a revival of this specific mark.
 //
 //  A rule that lives in eighteen screens' worth of `if isProjected { "~" }`
 //  is a rule that will be broken by the nineteenth screen. So it lives here
@@ -16,14 +29,18 @@
 //  where the number came from:
 //
 //      FaffValue.measured("1:41:53")      →   1:41:53
-//      FaffValue.modelled("3:16:45")      →  ~3:16:45      (tilde in amber)
+//      FaffValue.modelled("3:16:45")      →   3:16:45      (VoiceOver only: "estimated")
 //      FaffValue.unreadable               →   —            (in fault red)
 //
 //  There is deliberately no `FaffValue(text:)`. Every construction names a
-//  basis, so "I forgot" is not a reachable state — the compiler asks.
+//  basis, so "I forgot" is not a reachable state — the compiler asks. The
+//  basis is still tracked end to end — nothing about how a modelled value is
+//  computed, trusted, or announced to VoiceOver has changed. Only the visible
+//  glyph is gone.
 //
 //  `scripts/check-modelled-mark.sh` is the build-side half: it fails the build
-//  if a v5 view prints a known-modelled field as a bare String.
+//  if a v5 view prints a known-modelled field as a bare String, OR if the
+//  retired tilde glyph reappears anywhere in the v5 surface.
 //
 //  ─────────────────────────────────────────────────────────────────────────
 //  WHAT COUNTS AS MODELLED · decided by the engine, not by the screen
@@ -50,7 +67,9 @@ enum FaffBasis: String, Equatable, Hashable, Codable {
     /// a heart rate off the wrist.
     case measured
     /// Derived from a model — a projection, a training-derived pace, an
-    /// equivalence off the Daniels table. Carries the amber tilde.
+    /// equivalence off the Daniels table. Announced to VoiceOver as
+    /// "estimated"; carries no visible glyph since TILDE-REMOVAL-PERMANENT
+    /// (2026-09-14, see this file's header).
     case modelled
     /// We could not read this. Fault red, and never a real value beside it.
     case unreadable
@@ -76,7 +95,9 @@ struct FaffValue: Equatable, Hashable {
     /// Read from something that happened.
     static func measured(_ text: String) -> FaffValue { .init(text: text, basis: .measured) }
 
-    /// Derived from a model. Renders with the amber tilde.
+    /// Derived from a model. Rendered plainly since TILDE-REMOVAL-PERMANENT
+    /// (2026-09-14) — see this file's header — but VoiceOver still says
+    /// "estimated" first; the basis is carried all the way through either way.
     static func modelled(_ text: String) -> FaffValue { .init(text: text, basis: .modelled) }
 
     /// We could not read it.
@@ -134,16 +155,17 @@ struct FaffValue: Equatable, Hashable {
     /// True when this value must not be presented as evidence of fitness.
     var isModelled: Bool { basis == .modelled }
 
-    /// WHAT A SCREEN READER SAYS. MARKER-RESTORE-1 (2026-09-09) · between
-    /// 2026-08-21 and today this was the ONLY thing carrying rule one at the
-    /// point of render, while the visible tilde was retired. David has since
-    /// reinstated the visible mark (see `FaffValueText.body`'s `.modelled`
-    /// case for the full history) — this string is now the COMPLEMENT to the
-    /// glyph, not its replacement, exactly per his own framing: "VoiceOver is
-    /// complementary, not a replacement for visible provenance."
+    /// WHAT A SCREEN READER SAYS, and since TILDE-REMOVAL-PERMANENT
+    /// (2026-09-14) the ONLY thing carrying rule one at the point of render
+    /// again. History, so the next session does not re-litigate this: the
+    /// glyph was retired 2026-08-21, reinstated 2026-09-09 (MARKER-RESTORE-1)
+    /// on a since-superseded reading of the design brief, and retired again,
+    /// permanently, 2026-09-14 on David's own direct and current word — see
+    /// `FaffValueText.body`'s `.modelled` case and `docs/PRODUCT_DECISIONS.md`
+    /// for the full record.
     ///
     /// It lives here rather than inline in `FaffValueText.body` so it can be
-    /// tested independently of whether the glyph is drawn.
+    /// tested independently of whether a glyph is ever drawn again.
     var voiceOverLabel: String {
         switch basis {
         case .measured:   return text
@@ -219,45 +241,34 @@ struct FaffValueText: View {
                 .foregroundStyle(color)
 
         case .modelled:
-            // THE MARK IS DRAWN AGAIN (2026-09-09) · MARKER-RESTORE-1.
+            // TILDE-REMOVAL-PERMANENT (2026-09-14) · THE MARK IS NOT DRAWN.
             //
-            // Retired 2026-08-21 on David's own ruling ("we dont need the
-            // tilde. its obvious and implied the number is calculated"), kept
-            // as a one-line-back change per this file's own comment at the
-            // time. David has now explicitly reversed that, in the terms he
-            // used: "Treat the current brief as authoritative: modelled
-            // numbers must visibly carry the amber `~` marker. An older
-            // August ruling does not override the current explicit
-            // design-system requirement." The current design handoff
-            // (`design_handoff_faff_iphone_app v5/README.md`, locked
-            // 2026-08-19, restated in `docs/faff-iphone-design-contract.md`
-            // §1) states it as a system rule, not a per-screen choice: "A
-            // modelled/projected number... carries a small amber `~` (tilde)
-            // immediately before its value — the app's one mark for 'this
-            // number is estimated'... Apply it everywhere a number is
-            // estimated." `check-modelled-mark.sh`'s own header already
-            // quoted that same contract line and Guard 2 already assumed
-            // this is where the glyph lives — the gate's documentation and
-            // this file's rendering had quietly drifted apart since 08-21;
-            // this closes that gap rather than opening a new one.
+            // David, directly and current, quoted verbatim in CLAUDE.md's
+            // standing override (locked 2026-09-14): "Regardless I don't want
+            // it there. Ever." This supersedes MARKER-RESTORE-1 (2026-09-09),
+            // which itself had reverted the 2026-08-21 removal on a reading of
+            // the design brief that CLAUDE.md's override now explicitly
+            // overrules: David's direct, current instruction is authoritative
+            // over the brief's own written tilde rule, not the reverse. This
+            // is not a third cautious swing of the same pendulum — treat it
+            // as settled. `docs/faff-iphone-design-contract.md` §1 and the
+            // design handoff README carry the corresponding dated override
+            // note rather than being silently left to contradict this.
             //
-            // VoiceOver is UNCHANGED, not replaced: `value.voiceOverLabel`
-            // still says "estimated" before the figure for a reader who
-            // cannot see the glyph at all — visible and spoken provenance are
-            // both required, per David's explicit "VoiceOver is
-            // complementary, not a replacement for visible provenance."
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text(Theme.V5.modelledMark)
-                    .font(font)
-                    .scaleEffect(markScale, anchor: .bottomTrailing)
-                    .foregroundStyle(mark)
-                    .accessibilityHidden(true)
-                Text(value.text)
-                    .font(font)
-                    .foregroundStyle(color)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(value.voiceOverLabel)
+            // `mark` and `markScale` are kept as parameters (harmless, unused
+            // by this case) rather than torn out of every call site, so a
+            // future genuinely-fresh design decision from David is a
+            // one-case change here, not a re-plumb of every caller.
+            //
+            // VoiceOver is UNCHANGED: `value.voiceOverLabel` still says
+            // "estimated" before the figure. That was always the ONLY thing
+            // this file's own header calls "the whole visible-to-assistive-
+            // tech half of the rule" — nothing about trusting or announcing a
+            // modelled value has moved, only the visible glyph is gone.
+            Text(value.text)
+                .font(font)
+                .foregroundStyle(color)
+                .accessibilityLabel(value.voiceOverLabel)
 
         case .unreadable:
             // `fault`, not `V5.fault`. On a gradient panel the red is

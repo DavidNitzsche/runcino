@@ -6,6 +6,94 @@ so that changing it is a choice rather than an accident.
 
 ---
 
+## 2026-09-14 · TILDE-REMOVAL-PERMANENT — the amber tilde is retired, permanently, for the third and final time
+
+**The instruction, verbatim and current.** David, directly and today: *"Regardless I
+don't want it there. Ever."* A standing, permanent override of the design brief's own
+written rule that a modelled/estimated value carries a visible amber `~` immediately
+before its value. Logged in `CLAUDE.md` (locked 2026-09-14) as the standing text
+governing this, ahead of the brief.
+
+**Why this is not treated as a third cautious swing of the same pendulum.** The tilde has
+round-tripped once already:
+
+- Removed 2026-08-21 (commit `89bab20d7`) on David's own contemporaneous ruling — "we
+  dont need the tilde. its obvious and implied the number is calculated" — which lived
+  only as a code comment and was never logged here (the gap MARKER-RESTORE-1 named).
+- Restored 2026-09-09 (MARKER-RESTORE-1, above/below in this file) on an "explicit
+  instruction" attributed to David that, per that entry's own record, David has since
+  disputed ever giving, reconciled against the design brief's still-written tilde rule
+  at the time.
+- Retired again here, 2026-09-14, on an instruction David gave directly, in this
+  session, unattributed to any brief text and not contingent on reconciling one. CLAUDE.md
+  is explicit that this is not a reversal to treat cautiously: David's direct, current
+  word overrides the design brief outright, and the standing-override paragraph exists
+  specifically so a future session does not re-open this by citing the brief's still-written
+  tilde language as though it were still current.
+
+**The fix, on the phone (`native-v2`).** Three live rendering sites hand-drawn or
+token-drawn the glyph; all three are removed:
+
+- `native-v2/Faff/Faff/DesignV5/ValuesV5.swift` — `FaffValueText.body`'s `.modelled` case
+  (the canonical, single render path per the file's own header) no longer draws
+  `Theme.V5.modelledMark`. VoiceOver is unchanged: `value.voiceOverLabel` still announces
+  "estimated `<value>`" — the basis is still tracked end to end, only the visible glyph
+  is gone.
+- `native-v2/Faff/Faff/ViewsV5/PacesMovedV5.swift` — `modelledCaption` (the "Modelled from
+  training · not confirmed by a race" caption on the Paces-moved screen) no longer draws
+  a leading tilde bullet ahead of that sentence.
+- `native-v2/Faff/Faff/ThemeV5.swift` — the `Theme.V5.modelledMark` constant itself is
+  deleted, not merely left unreferenced, so nothing can silently reference it back into
+  existence. A comment in its place records why and points here.
+
+**A second live-path check, per this session's brief.** The instruction cited one
+already-confirmed-dead path (`TodayPreRunBodyV3.swift`, behind the `-faffLegacy` launch
+flag never set in production) and asked whether a second live path existed beyond
+`ValuesV5.swift`. Two more were found by grepping every hand-drawn `"~"` and every
+`Theme.V5.modelledMark` reference across `native-v2`:
+
+- `PacesMovedV5.swift`'s `modelledCaption` — LIVE (reached from `HostsV5.swift`, part of
+  the v5 shell). Fixed above.
+- `native-v2/Faff/Faff/Views/TreadmillView.swift`'s `topStat(...)` and
+  `native-v2/Faff/Faff/Components/Toolkit/K_TargetsProjection.swift` /
+  `K_TargetsProjectionDepth.swift` (`specTime`, `projectionTimeText`, and one caption
+  string) all hand-draw a tilde — but all three are reachable ONLY through
+  `RootTabView`/`TargetsView`, the legacy v4 shell gated behind `-faffLegacy`, confirmed
+  never set in any Xcode scheme. Genuinely dead, same class as `TodayPreRunBodyV3.swift`,
+  and left as dead code per the same instruction — **except** `TreadmillView.swift`,
+  whose `topStat` referenced the now-deleted `Theme.V5.modelledMark` constant and would
+  have failed to COMPILE (not just stayed dead) once that constant was removed. Its
+  tilde-drawing branch is stripped for that reason; `K_TargetsProjection*.swift` use a
+  literal `"~"` and were unaffected by the constant's deletion, so they are left
+  untouched as confirmed-dead legacy code, consistent with `TodayPreRunBodyV3.swift`.
+
+**The gate.** `scripts/check-modelled-mark.sh`'s Guard 2 used to enforce the OPPOSITE of
+this — it exempted `ValuesV5.swift` on the premise that it, and only it, is allowed to
+draw the mark. Flipped: no file may draw it, `ValuesV5.swift` included, and the guard now
+also greps for the `modelledMark` identifier itself (not only a literal `"~"`), so a
+revived constant referenced from a v5 view fails the build even before anyone hand-types
+a tilde again. Falsified both directions per Rule 18: confirmed to fail against a
+deliberately reintroduced tilde, then confirmed clean again on the restored fix. Full
+transcript in `programme-internal-working/00-master-programme/TILDE-REMOVAL-PERMANENT-2026-09-14.md`.
+
+**Docs.** `docs/faff-iphone-design-contract.md` §1 and the Paces-moved section carry a
+dated override note rather than being left to silently contradict this; the external
+design handoff (`design_handoff_faff_iphone_app v5/README.md`) carries the same note
+under its Fidelity section. None of the historical text describing why the mark existed
+or where it would have shown was deleted — the override is additive, dated, and
+attributed, matching this file's own convention.
+
+**What this does not change.** The internal `modelled`/`basis` distinction, VoiceOver's
+"estimated" announcement, and every doctrine rule about a modelled value never being
+presented as measured are all unchanged. This is scoped to the visible tilde glyph only.
+
+**Standing instruction going forward, restated from MARKER-RESTORE-1's own close:** if a
+design-system ruling on this specific mark is ever revisited again, it needs a fresh,
+explicit, current instruction from David — not a citation of brief text this entry and
+CLAUDE.md have both marked superseded.
+
+---
+
 ## 2026-09-05 · ACTIONCOMPLETE-2 · the propose lane can carry a JUDGEMENT, the
 runner can take a session's shape back, and "complete" now means fourteen things
 rather than eleven.
