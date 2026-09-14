@@ -392,12 +392,12 @@ import {
 import {
   loadPrescribedWindows,
   excludePrescribedDays,
-  isPrescribedNonNormal,
   REPRESENTATIVE_LOOKBACK_MAX_DAYS,
   REPRESENTATIVE_LOOKBACK_STEP_DAYS,
   REPRESENTATIVE_STALENESS_HALF_LIFE_DAYS,
   type PrescribedWindow,
 } from '@/lib/training/normal-window';
+import { raceWindowFor } from '@/lib/coach/easy-discipline';
 import { SINGLE_ACTIVITY_EVIDENCE_CEILING } from '@/lib/evidence/activity-evidence';
 import { classifyRecentActivities } from '@/lib/evidence/load-activity-evidence';
 
@@ -1605,6 +1605,66 @@ export function classifyEasyCandidates(
  * continuous GPS/pace stream, while a phase is the boundary the watch itself
  * drew around the rep as it ran it.
  */
+/**
+ * DAY-granular Rule 8 window, for `contextFactor` sizing only (F033,
+ * 2026-09-14). `windows` (from `normal-window.ts`) rounds
+ * `TAPER_WEEKS_BY_DISTANCE` to WHOLE WEEKS — correct and intentionally left
+ * alone for the shared `PrescribedWindow` list itself (the habit exclusion in
+ * `resolveEasyPaceCorpus`, and every other caller across the app: safety
+ * guards, ramp base, adaptation). CLAUDE.md's Rule 8 section ("Where the two
+ * windows in this app disagree, and why") already documents that the
+ * week-rounded table over-excludes a 10K's PRE-RACE (taper) window by up to 4
+ * days (7-10 real days round UP to 14) — safe for a full HABIT exclusion, but
+ * this file's `contextFactor` only DISCOUNTS a CAPACITY reader, and a
+ * proven-clean, maximally-corroborating threshold session (2026-09-01, 12
+ * days before a 10K) was being caught by that 4-day overreach: two days
+ * before the genuine taper the doctrine citation describes would even open.
+ *
+ * SCOPED TO THE TAPER SIDE ONLY. `TAPER_WEEKS_BY_DISTANCE` is not
+ * priority-scaled (normal-window.ts's own header: "TAPER IS NOT
+ * PRIORITY-SCALED HERE"), and neither is `raceWindowFor`'s pre-race day
+ * count, so substituting one priority-blind number for another priority-blind
+ * number on this side is a pure granularity fix with no other behavior
+ * change. The POST-race side is deliberately NOT touched: `postRaceRecoveryWeeks(cat,
+ * priority)` (lib/plan/goal-tiers.ts) scales a lower-priority tune-up's
+ * recovery down (a real, doctrine-motivated property — DOCTRINE-1), while
+ * `raceWindowFor`'s post-race count is priority-BLIND, built for
+ * `easy-discipline.ts`'s own habit-flagging purpose. Swapping it in here
+ * would silently DROP that priority-scaling and widen the discount for any
+ * lower-priority race's recovery days — confirmed against the real account:
+ * a `raceWindowFor`-only substitution (tried and rejected) flips 2026-05-11
+ * through 2026-05-13 from admitted to discounted after the Sombrero half (a
+ * sub-A-priority race whose engine-computed 1-week recovery is shorter than
+ * `raceWindowFor`'s flat, priority-blind 14 days), which is a new defect this
+ * fix must not introduce. F033 diagnosed the TAPER side only; the post-race
+ * side is unreported and unchanged.
+ *
+ * `raceWindowFor` (`lib/coach/easy-discipline.ts`) is the DAY-granular table
+ * this project already cites straight from `Research/08` §9.1 and gates
+ * (`EASY.pre-race-context-window` / `EASY.post-race-context-window`) — reused
+ * here directly for the taper side, per this project's one-canonical-resolver
+ * rule, rather than re-deriving a THIRD table of day counts that could drift.
+ */
+function insideCitedRaceWindow(
+  iso: string,
+  windows: readonly PrescribedWindow[],
+): boolean {
+  for (const w of windows) {
+    const daysSinceRace = Math.round(
+      (Date.parse(iso + 'T12:00:00Z') - Date.parse(w.raceDateISO + 'T12:00:00Z')) / 86400000,
+    );
+    if (daysSinceRace > 0) {
+      // Post-race recovery · untouched, priority-scaled boundary (see above).
+      if (iso <= w.toISO) return true;
+    } else {
+      // Pre-race taper · F033's fix, day-granular and still priority-blind.
+      const taperDays = raceWindowFor(w.raceDistanceMi, false);
+      if (-daysSinceRace <= taperDays) return true;
+    }
+  }
+  return false;
+}
+
 export function classifyThresholdCandidates(
   rows: readonly CandidateRow[],
   ctx: HrContext,
@@ -1767,8 +1827,8 @@ export function classifyThresholdCandidatesDetailed(
       reasons.push('EVIDENCE_ENGINE_UNAVAILABLE');
     }
 
-    // Context · Rule 8
-    const representative = !(windows && isPrescribedNonNormal(row.date, windows));
+    // Context · Rule 8 · day-granular window (F033) — see `insideCitedRaceWindow`.
+    const representative = !(windows && insideCitedRaceWindow(row.date, windows));
     const contextFactor = representative ? 1 : PRESCRIBED_WINDOW_AUTHORITY;
     if (!representative) reasons.push('INSIDE_PRESCRIBED_WINDOW');
     if ((seg.abandonedPhases ?? 0) > 0) reasons.push('ABANDONED_PHASES_DROPPED');
