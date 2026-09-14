@@ -149,11 +149,20 @@ struct PostRunV5: Decodable, Equatable {
     /// the one thing prose two sections above cannot do for a runner whose eye
     /// lands on the table first.
     let coverage: PostRunCoverageV5?
+    /// U4-POST-RACE-TRUTH-4 (2026-09-13) · the runner's own logged effort,
+    /// 1-10. `lib/postrun/wire.ts` names the finding this closes: "was
+    /// ALREADY computed... and simply never reached this wire" — read off
+    /// `cost.rpe` server-side, decoded here for the first time.
+    let rpe: Int?
+    /// Course notes, the target/measured gap and the goal-outcome
+    /// classification for a race — nil on any run that is not one. See
+    /// `PostRunRaceV5`.
+    let race: PostRunRaceV5?
 
     enum K: String, CodingKey {
         case version, runId, decisionVersion, headline, summary, targetProvenanceNote, cost
         case learned, change, changeState, changes, next, why, accessibilitySummary
-        case capture, strides, coverage, noPrescribedStructure
+        case capture, strides, coverage, noPrescribedStructure, rpe, race
     }
 
     /// LENIENT BY DESIGN, and written out rather than borrowed.
@@ -186,6 +195,8 @@ struct PostRunV5: Decodable, Equatable {
         capture = optStr(.capture)
         strides = (try? c.decodeIfPresent(PostRunStridesV5.self, forKey: .strides)) ?? nil
         coverage = (try? c.decodeIfPresent(PostRunCoverageV5.self, forKey: .coverage)) ?? nil
+        rpe = (try? c.decodeIfPresent(Int.self, forKey: .rpe)) ?? nil
+        race = (try? c.decodeIfPresent(PostRunRaceV5.self, forKey: .race)) ?? nil
     }
 
     /// Memberwise, for previews and tests only. The wire path is `init(from:)`.
@@ -195,7 +206,7 @@ struct PostRunV5: Decodable, Equatable {
          accessibilitySummary: String,
          capture: String? = nil, strides: PostRunStridesV5? = nil,
          coverage: PostRunCoverageV5? = nil, targetProvenanceNote: String? = nil,
-         noPrescribedStructure: Bool = false) {
+         noPrescribedStructure: Bool = false, rpe: Int? = nil, race: PostRunRaceV5? = nil) {
         self.version = version
         self.runId = runId
         self.decisionVersion = decisionVersion
@@ -214,6 +225,65 @@ struct PostRunV5: Decodable, Equatable {
         self.capture = capture
         self.strides = strides
         self.coverage = coverage
+        self.rpe = rpe
+        self.race = race
+    }
+}
+
+/// U4-POST-RACE-TRUTH-4 (2026-09-13) · course notes, the target/measured
+/// gap, and the goal-outcome classification for a race. See
+/// `lib/postrun/experience.ts#PostRunRaceContext` for the full reasoning —
+/// this is its wire twin.
+///
+/// `goalOutcome` is a CODE ('met' / 'missed' / 'target_invalidated' /
+/// 'not_assessable'), never rendered verbatim — the design contract's "never
+/// encode an outcome only by colour" rule, applied to a status string:
+/// `raceOutcomeLine(_:)` below is the ONE place that turns it into a
+/// sentence, so the sentence cannot silently drift from the code that gates
+/// it.
+struct PostRunRaceV5: Decodable, Equatable {
+    let courseNotes: String?
+    let targetSec: Int?
+    let measuredSec: Int?
+    let gapSec: Int?
+    let goalOutcome: String?
+    let goalOutcomeReasons: [String]
+
+    enum K: String, CodingKey { case courseNotes, targetSec, measuredSec, gapSec, goalOutcome, goalOutcomeReasons }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: K.self)
+        courseNotes = (try? c.decodeIfPresent(String.self, forKey: .courseNotes)) ?? nil
+        targetSec = (try? c.decodeIfPresent(Int.self, forKey: .targetSec)) ?? nil
+        measuredSec = (try? c.decodeIfPresent(Int.self, forKey: .measuredSec)) ?? nil
+        gapSec = (try? c.decodeIfPresent(Int.self, forKey: .gapSec)) ?? nil
+        goalOutcome = (try? c.decodeIfPresent(String.self, forKey: .goalOutcome)) ?? nil
+        goalOutcomeReasons = ((try? c.decodeIfPresent([String].self, forKey: .goalOutcomeReasons)) ?? []) ?? []
+    }
+
+    init(courseNotes: String?, targetSec: Int?, measuredSec: Int?, gapSec: Int?,
+         goalOutcome: String?, goalOutcomeReasons: [String]) {
+        self.courseNotes = courseNotes; self.targetSec = targetSec
+        self.measuredSec = measuredSec; self.gapSec = gapSec
+        self.goalOutcome = goalOutcome; self.goalOutcomeReasons = goalOutcomeReasons
+    }
+}
+
+/// U4-POST-RACE-TRUTH-5 (2026-09-13) · Santa Monica forensic debrief: "build
+/// a real distinction so the runner-facing copy can honestly say 'you
+/// executed well; the target given to you was the problem' when that's
+/// actually the case." ONE sentence, gated on the code
+/// `resolveGoalOutcome` actually returned — never re-derived from raw
+/// fields, and never asserted when the outcome is a genuine `missed`.
+func raceTargetOutcomeLine(_ race: PostRunRaceV5?) -> String? {
+    guard let outcome = race?.goalOutcome else { return nil }
+    switch outcome {
+    case "target_invalidated", "not_assessable":
+        return "The target for this race wasn't well supported by your evidence going in. Read the result on its own — it's not a miss on your execution."
+    default:
+        // `met` / `missed` over a VALID target need no extra sentence here —
+        // `PostRunVerdictV5`'s existing headline/summary already say so.
+        return nil
     }
 }
 
@@ -478,6 +548,12 @@ struct PostRunLearnedV5: View {
         static let capture = Sections(rawValue: 1 << 0)
         /// The stride rows. Layer 2, with the rest of the session.
         static let strides = Sections(rawValue: 1 << 1)
+        /// U4-POST-RACE-TRUTH-4 (2026-09-13) · course notes, the RPE the
+        /// runner logged, and — when the goal-outcome resolver says so — the
+        /// target-was-the-problem sentence. Layer 2, with the session: this
+        /// is what the race WAS, not a coaching read about it (that stays in
+        /// `PostRunVerdictV5`).
+        static let race = Sections(rawValue: 1 << 2)
         // `.meaning` (learned/change/next/why) REMOVED 2026-09-03 —
         // `PostRunVerdictV5` (DesignV5/WorkoutResultV5.swift) draws that
         // content now, over the same `PostRunV5` object, as one coaching
@@ -485,7 +561,7 @@ struct PostRunLearnedV5: View {
         // sentence. Both call sites (`RunDetailV5`, `TodayAfterV5`) were
         // updated in the same pass; nothing constructs this case anymore,
         // so it is gone rather than kept as an unreachable option.
-        static let all: Sections = [.capture, .strides]
+        static let all: Sections = [.capture, .strides, .race]
     }
 
     var includes: Sections = .all
@@ -524,6 +600,23 @@ struct PostRunLearnedV5: View {
         return s
     }
 
+    /// U4-POST-RACE-TRUTH-4 (2026-09-13) · course notes, verbatim, or nil.
+    private var courseNotes: String? {
+        guard let n = model.race?.courseNotes?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !n.isEmpty else { return nil }
+        return n
+    }
+
+    /// The ONE sentence this file adds for a race whose published target
+    /// failed the goal-outcome resolver's own bar. See
+    /// `raceTargetOutcomeLine(_:)`.
+    private var targetOutcomeLine: String? { raceTargetOutcomeLine(model.race) }
+
+    /// Whether the race section has anything at all to draw — course notes
+    /// or the target-outcome line. RPE is drawn separately (it applies to
+    /// every run, not only races) and does not gate this on its own.
+    private var hasRaceContent: Bool { courseNotes != nil || targetOutcomeLine != nil }
+
     /// Nothing to say means nothing drawn. A header over an empty tile is the
     /// same defect as a zero standing in for a missing reading.
     ///
@@ -533,6 +626,7 @@ struct PostRunLearnedV5: View {
     private var hasContent: Bool {
         (includes.contains(.capture) && capture != nil)
             || (includes.contains(.strides) && strides != nil)
+            || (includes.contains(.race) && (hasRaceContent || model.rpe != nil))
     }
 
     var body: some View {
@@ -642,6 +736,41 @@ struct PostRunLearnedV5: View {
                         }
                         .padding(.horizontal, V5.S.s4)
                     }
+                    .padding(.bottom, V5.S.s6)
+                }
+
+                /* U4-POST-RACE-TRUTH-4 (2026-09-13) · course notes, the
+                 * target-was-the-problem sentence, and the RPE the runner
+                 * logged. The Santa Monica forensic debrief's §6b finding:
+                 * every one of these was already computed or already
+                 * stored, and no post-run screen read any of them.
+                 *
+                 * NOT A CARD. One or two plain sentences, same treatment as
+                 * `capture` above — a fact about the run, not a verdict
+                 * about it (that stays `PostRunVerdictV5`'s job). */
+                if includes.contains(.race), hasRaceContent || model.rpe != nil {
+                    VStack(alignment: .leading, spacing: V5.S.s6) {
+                        if let line = targetOutcomeLine {
+                            Text(line)
+                                .font(.faffText(TypeScaleV5.body15))
+                                .foregroundStyle(V5.textPrimary)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let notes = courseNotes {
+                            Text(notes)
+                                .font(.faffText(TypeScaleV5.label14))
+                                .foregroundStyle(V5.textSecondary)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let rpe = model.rpe {
+                            Text("Effort logged: \(rpe) of 10.")
+                                .font(.faffText(TypeScaleV5.label14))
+                                .foregroundStyle(V5.textQuiet)
+                        }
+                    }
+                    .padding(.horizontal, V5.S.s4)
                     .padding(.bottom, V5.S.s6)
                 }
 

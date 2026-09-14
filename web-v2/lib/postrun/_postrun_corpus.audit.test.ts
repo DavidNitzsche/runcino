@@ -145,8 +145,13 @@ describe.skipIf(!RO)('post-run · the whole corpus of this runner s real runs', 
       if (!x.execution.summary.trim()) defects.push(`${date}: empty summary`);
       if (!x.evidence.runnerSummary.trim()) defects.push(`${date}: empty evidence summary`);
       if (!x.plan.runnerSummary.trim()) defects.push(`${date}: empty plan summary`);
-      if (x.decisionVersion.split('|').length !== 4) {
-        defects.push(`${date}: decisionVersion is not the four-part identity — ${x.decisionVersion}`);
+      // U4-POST-RACE-TRUTH-4 (2026-09-13) · a fifth part, `goal:<outcome>`,
+      // joined `composePostRunExperience` alongside run/plan/grade/evidence —
+      // the same "what both surfaces must agree on, byte for byte" identity,
+      // extended to cover the new goal-outcome classification so two
+      // surfaces rendering one race cannot silently disagree about it either.
+      if (x.decisionVersion.split('|').length !== 5) {
+        defects.push(`${date}: decisionVersion is not the five-part identity — ${x.decisionVersion}`);
       }
     }
 

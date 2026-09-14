@@ -71,8 +71,14 @@
  */
 import type { WorkoutVerdict, GradedPhase } from '@/lib/execution/verdict';
 import { looksLikeStrideLabel } from '@/lib/training/expand-spec';
-import { sessionLadder } from '@/lib/training/execution-semantics';
+import { sessionLadder, type SessionGrade } from '@/lib/training/execution-semantics';
 import { fmtMi, fmtPace, fmtPaceSlash } from '@/lib/format/run';
+import {
+  resolveGoalOutcome,
+  type GoalOutcomeInput,
+  type GoalOutcome,
+  type GoalOutcomeReason,
+} from '@/lib/race/goal-outcome-resolver';
 import type {
   ActivityEvidenceResult,
   CapacityEvidence,
@@ -92,7 +98,22 @@ export const POST_RUN_MODEL_VERSION = 'postrun-1';
 /** The brief's §6 `ExecutionInterpretation.status`, verbatim. */
 export type PostRunExecutionStatus =
   | 'EXECUTED' | 'CONTROLLED' | 'FAST' | 'SLOW' | 'PARTIAL_PRODUCTIVE'
-  | 'INCOMPLETE' | 'MODIFIED' | 'SENSOR_LIMITED' | 'INDETERMINATE';
+  | 'INCOMPLETE' | 'MODIFIED' | 'SENSOR_LIMITED' | 'INDETERMINATE'
+  /**
+   * U4-POST-RACE-TRUTH-5 (2026-09-13) · Santa Monica forensic debrief.
+   * "The current copy conflates 'missed the target' with 'something went
+   * wrong' — build a real distinction." A grade that would otherwise read
+   * `SLOW` or `PARTIAL_PRODUCTIVE` over a real target miss reads
+   * `TARGET_INVALIDATED` instead when `resolveGoalOutcome`
+   * (`lib/race/goal-outcome-resolver.ts`) says the PUBLISHED TARGET, not the
+   * runner's execution, failed the bar — insufficient preparation support,
+   * unreliable target evidence, or both. This is a status a consumer can
+   * switch on, not a sentence it has to parse: the same discipline
+   * `changeState` already applies to plan-impact ("never encode an outcome
+   * only by colour and a phone that switched on a sentence would break the
+   * moment the sentence changed" — `wire.ts`'s own header).
+   */
+  | 'TARGET_INVALIDATED';
 
 export type StimulusDelivered = 'FULL' | 'EQUIVALENT' | 'PARTIAL' | 'NOT_DELIVERED' | 'UNKNOWN';
 
@@ -362,6 +383,68 @@ export interface PostRunExperienceV1 {
   strides: PostRunStrides | null;
   /** Stage 3's typed contract, so `auditExplanation` reaches this copy. */
   briefing: CoachingExplanation;
+  /**
+   * U4-POST-RACE-TRUTH-4 (2026-09-13) · course notes, the target-vs-actual
+   * gap, and the goal-outcome classification for a race — null on any run
+   * that is not a race with something here to say. See
+   * `PostRunRaceContext`'s own header for what each field answers and why
+   * none of it lived on `PostRunExecution` itself.
+   */
+  race: PostRunRaceContext | null;
+}
+
+/**
+ * The Santa Monica forensic debrief's §6b "missing content" finding, given a
+ * home: course shape, the numeric target and gap size, and the RPE were all
+ * either already computed elsewhere or already stored, and no post-run
+ * surface read any of them. RPE stays on `PostRunCost.rpe` (Rule 16 — one
+ * owner, already there); this type carries the three that had NO owner at
+ * all until now.
+ */
+export interface PostRunRaceContext {
+  /** `races.meta.notableMiles`, verbatim — already-authored prose, never
+   *  generated or paraphrased here. Null when the race carries none. */
+  courseNotes: string | null;
+  /** The published target this run was raced against, seconds. Null when
+   *  none was resolved. */
+  targetSec: number | null;
+  /** The runner's own measured performance, seconds — independent of
+   *  whether `races.actual_result` has been sealed (see
+   *  `GoalOutcomeInput.measuredFinishSec`'s own doc). */
+  measuredSec: number | null;
+  /** `measuredSec - targetSec`. Positive is slower than target. Null unless
+   *  both quantities resolved (Rule 11 — half a gap is not a gap). */
+  gapSec: number | null;
+  /**
+   * `resolveGoalOutcome`'s own verdict, carried through UNCHANGED — this
+   * file renders it, it does not re-derive it. Null when
+   * `input.raceGoalOutcomeInput` was null (not a race, or nothing to judge).
+   */
+  goalOutcome: { outcome: GoalOutcome; reasons: GoalOutcomeReason[] } | null;
+}
+
+/**
+ * U4-POST-RACE-TRUTH-4 (2026-09-13) · builds `PostRunRaceContext`, and
+ * resolves the ONE goal-outcome verdict this run carries — never re-derived
+ * by `readExecution` or any other reader. `resolveGoalOutcome` is pure and
+ * total; this is the one place its result gets attached to a run.
+ */
+export function readRaceContext(input: PostRunInput): PostRunRaceContext | null {
+  const hasNotes = input.raceCourseNotes != null && input.raceCourseNotes.trim().length > 0;
+  const notes = hasNotes ? input.raceCourseNotes : null;
+  const goalInput = input.raceGoalOutcomeInput;
+  if (notes == null && goalInput == null) return null;
+  const resolved = goalInput ? resolveGoalOutcome(goalInput) : null;
+  const targetSec = goalInput?.publishedTargetSec ?? null;
+  const measuredSec = goalInput?.measuredFinishSec ?? null;
+  const gapSec = targetSec != null && measuredSec != null ? measuredSec - targetSec : null;
+  return {
+    courseNotes: notes,
+    targetSec,
+    measuredSec,
+    gapSec,
+    goalOutcome: resolved ? { outcome: resolved.outcome, reasons: resolved.reasons } : null,
+  };
 }
 
 /* ══════════════════════════════ 2 · the input ═══════════════════════════ */
@@ -427,6 +510,20 @@ export interface PostRunInput {
    *  EMPTY ARRAY means "we looked and there were none"; `null` means the look
    *  failed, and the two produce different plan-impact statuses (Rule 11). */
   adaptations: PostRunAdaptation[] | null;
+  /**
+   * Has `lib/postrun/load.ts`'s own adaptation-review window
+   * (`PLAN_CHANGE_REVIEW_WINDOW_DAYS`, scanned relative to TODAY, not to
+   * `dateISO`) already closed with `adaptations` still empty.
+   *
+   * U4-POST-RACE-TRUTH-3 (2026-09-13) · without this, `readPlan`'s
+   * `HELD_FOR_EVIDENCE` sentence ("the next review will look at it") stayed
+   * true-shaped forever — a recap opened long after the run's own review
+   * window had already run and found nothing still promised a look that had
+   * already happened. This is what lets that branch tell "still waiting"
+   * apart from "the window closed with nothing to show for it" (Rule 11
+   * again, applied to a promise rather than a number).
+   */
+  reviewWindowElapsed: boolean;
   /** False when there is no active plan at all. */
   hasActivePlan: boolean;
   /** For `decisionVersion`. */
@@ -471,6 +568,25 @@ export interface PostRunInput {
    * and the two totals are measurements.
    */
   clockAudit: { driftSec: number | null; wallSec: number | null; countedSec: number | null } | null;
+  /**
+   * U4-POST-RACE-TRUTH-4/5 (2026-09-13) · already-resolved facts for
+   * `resolveGoalOutcome` (`lib/race/goal-outcome-resolver.ts`) — null on any
+   * run that is not a race with a published target to judge, or one whose
+   * facts a caller could not resolve. `load.ts` supplies this; this file
+   * never re-derives target validity from raw evidence fields itself (that
+   * is exactly the "second answer to one question" the resolver's own
+   * header exists to prevent).
+   */
+  raceGoalOutcomeInput: GoalOutcomeInput | null;
+  /**
+   * Free-text course notes for the race this run belongs to
+   * (`races.meta.notableMiles` — mile-by-mile terrain callouts already
+   * authored on the race row for the pre-race screen). Null when this run is
+   * not a matched race, or the race carries none. The Santa Monica debrief's
+   * §6b finding: this prose already existed, in the same database, and no
+   * post-run surface ever read it.
+   */
+  raceCourseNotes: string | null;
 }
 
 /* ══════════════════════════════ 3 · execution ═══════════════════════════ */
@@ -582,7 +698,14 @@ function workPhases(v: WorkoutVerdict, stridesPrescribed: number | null): Graded
  * and whether the sensors were good enough to grade it. It never re-grades a
  * phase and never compares a pace.
  */
-export function readExecution(input: PostRunInput, strides: PostRunStrides | null): PostRunExecution {
+export function readExecution(
+  input: PostRunInput,
+  strides: PostRunStrides | null,
+  /** Only `.outcome` is read here — the SAME `resolveGoalOutcome` verdict
+   *  `readRaceContext` attaches to this run's `race` field, never a second
+   *  resolution of it (Rule 16). */
+  raceOutcome: { outcome: GoalOutcome } | null = null,
+): PostRunExecution {
   const v = input.verdict;
   const work = workPhases(v, input.stridesPrescribed);
   /* THE SESSION GRADE, OVER THE RIGHT POPULATION (Rule 14).
@@ -613,6 +736,16 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
       });
   const reasons: string[] = [];
   const stimulus = stimulusFor(input);
+  /* U4-POST-RACE-TRUTH-5 (2026-09-13) · "the current copy conflates 'missed
+   * the target' with 'something went wrong' — build a real distinction."
+   * `raceOutcome` is `resolveGoalOutcome`'s own, unmodified verdict — this
+   * file never re-derives target validity. Only a MATCHED race (a real
+   * `races` row for this date) may use this framing: a training session
+   * graded against a plan target is never "invalidated" by this resolver,
+   * because it was never given a goal-outcome input to resolve in the first
+   * place (`load.ts` only supplies one for a race). */
+  const targetInvalid = input.raceMatched && raceOutcome != null
+    && (raceOutcome.outcome === 'target_invalidated' || raceOutcome.outcome === 'not_assessable');
   /* THE STRIDES ARE APPENDED TO THE SENTENCE, NEVER GRADED INTO IT.
    *
    * One clause, stating completion, after the sentence about the work. A coach
@@ -842,6 +975,20 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
 
   if (s.verdict === 'off_target') {
     reasons.push('MOST_WORK_PIECES_FELL_SHORT');
+    if (targetInvalid) {
+      reasons.push('TARGET_INVALIDATED_NOT_EXECUTION_FAILURE');
+      return {
+        status: 'TARGET_INVALIDATED',
+        headline: 'You executed it. The target was the problem.',
+        summary: `Most of the ${noun} ${outsideBound}, against a target that wasn't well supported by your evidence going in. This reads as a target problem, not an execution one.${strideClause}`,
+        intendedStimulus: stimulus,
+        stimulusDelivered: 'FULL',
+        confidence: 'MODERATE',
+        targetProvenance: input.targetProvenance,
+        targetProvenanceNote,
+        reasons,
+      };
+    }
     /* RACE-VOICE-1, 2026-09-04 · "Work landed outside the window" /
      * "sat outside the prescribed range" is internal-composer language —
      * "work", "window", "prescribed range" are this file's own vocabulary
@@ -881,6 +1028,30 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
 
   if (s.verdict === 'uneven') {
     reasons.push('WORK_PIECES_DISAGREE');
+    /* U4-POST-RACE-TRUTH-5 (2026-09-13) · Santa Monica's own shape. Two
+     * race segments graded (one `fast`, one `slow`) is `uneven` by
+     * `sessionLadder`'s own arithmetic, and the generic fallback below would
+     * have read as a mixed, middling execution — when the debrief's actual
+     * finding is the opposite: effort was held through the climb, the last
+     * full mile was his second-fastest at his highest HR, and the miss is
+     * entirely explained by a target built on weak evidence. Checked before
+     * `isMultiPurposeStructure` (which is false for every race by
+     * construction — see `isMultiPurposeStructure`'s own definition — so
+     * this never competes with that branch for a race). */
+    if (targetInvalid) {
+      reasons.push('TARGET_INVALIDATED_NOT_EXECUTION_FAILURE');
+      return {
+        status: 'TARGET_INVALIDATED',
+        headline: 'You executed it. The target was the problem.',
+        summary: `${unevenFallbackSentence(s, noun, bound, insideBound)} That target wasn't well supported by your evidence going in, so the gap here is a target problem, not an execution one.${strideClause}`,
+        intendedStimulus: stimulus,
+        stimulusDelivered: 'FULL',
+        confidence: 'MODERATE',
+        targetProvenance: input.targetProvenance,
+        targetProvenanceNote,
+        reasons,
+      };
+    }
     /* KEY-PHASE-1, 2026-09-04 · replaces the since-deleted `paceShortfalls`
      * check, which INVERTED ceiling semantics: it flagged a ceiling phase
      * running SLOWER than its ceiling as a "shortfall", when doctrine is
@@ -950,7 +1121,7 @@ export function readExecution(input: PostRunInput, strides: PostRunStrides | nul
     return {
       status: 'PARTIAL_PRODUCTIVE',
       headline: 'Mixed set',
-      summary: `Some of the ${noun} ${insideBound} and some did not.${strideClause}`,
+      summary: `${unevenFallbackSentence(s, noun, bound, insideBound)}${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
       confidence: 'MODERATE',
@@ -1055,6 +1226,46 @@ function soloBlockSentence(p: GradedPhase | undefined, insidePlain: string): str
   if (pace == null) return null;
   const unit = mi === 1 ? 'mile' : 'miles';
   return `${mi1(mi)} ${unit} at ${pace}. ${insidePlain}.`;
+}
+
+/**
+ * U4-POST-RACE-TRUTH-1 (2026-09-13) · Santa Monica forensic debrief, item 1.
+ *
+ * "Some of the {noun} landed inside the window and some did not." was
+ * printed for EVERY `uneven` session, regardless of whether anything
+ * actually landed inside. `sessionLadder`'s own arithmetic makes `uneven`
+ * reachable with `hits === 0` — Santa Monica's two race segments graded one
+ * `fast`, one `slow` (`landed = fasts = 1`, `graded = 2`, `landed*2 >=
+ * graded`), so the app told the runner "some ... landed inside the window"
+ * over a session where literally zero segments did. An outright false
+ * sentence on a runner-facing screen (the debrief's own classification,
+ * §6 item 2).
+ *
+ * The fix names what is actually true off `s.hits`/`s.fasts`/`s.workVerdicts`
+ * — the SAME per-phase verdicts `sessionLadder` already computed, never
+ * re-graded here (Rule 16). `s.hits > 0` is the ONLY condition under which
+ * "some landed inside" is a true sentence; every other case states the real
+ * split between running ahead of the bound and running behind it, and never
+ * claims a landing that did not happen.
+ */
+function unevenFallbackSentence(
+  s: Pick<SessionGrade, 'hits' | 'fasts' | 'workVerdicts'>,
+  noun: string,
+  bound: 'ceiling' | 'window' | 'target',
+  insideBound: string,
+): string {
+  if (s.hits > 0) {
+    return `Some of the ${noun} ${insideBound} and some did not.`;
+  }
+  const slows = s.workVerdicts.filter((v) => v === 'slow').length;
+  const incompletes = s.workVerdicts.filter((v) => v === 'incomplete').length;
+  const boundNoun = bound === 'window' ? 'window' : bound === 'ceiling' ? 'ceiling' : 'target';
+  const clauses: string[] = [];
+  if (s.fasts > 0) clauses.push(`${numberWord(s.fasts)} ran ahead of it`);
+  if (slows > 0) clauses.push(`${numberWord(slows)} ran behind it`);
+  if (incompletes > 0) clauses.push(`${numberWord(incompletes)} ended before finishing`);
+  const detail = clauses.length > 0 ? listWords(clauses) : 'none of them reached it';
+  return `None of the ${noun} landed inside the ${boundNoun}: ${detail}.`;
 }
 
 /* ═══════════════════ 3b · strides · 2026-09-02 ══════════════════════════ */
@@ -1525,12 +1736,36 @@ export function readEvidence(input: PostRunInput): PostRunEvidenceImpact {
      *
      * Both arms name the direction, and both name the NUMBER under question
      * ("your current threshold pace") rather than the old "whether the
-     * number moves", which never said which number. */
+     * number moves", which never said which number.
+     *
+     * ── U4-POST-RACE-TRUTH-2 (2026-09-13) · THE CONTRADICTORY PAIR ──────────
+     *
+     * "One session does not move it. The next one like it will." was printed
+     * UNCONDITIONALLY here, regardless of `ev.anchorMoveCandidate` — the SAME
+     * flag `readPlan` below reads to decide whether to print "This run is
+     * strong enough to act on, so the next review will look at it."
+     * (`HELD_FOR_EVIDENCE`). When both fire on one run (Santa Monica: a real
+     * tension read AND `anchorMoveCandidate: true`), the panel asserted two
+     * things that cannot both be true about the same review — this one
+     * "does not move it" while the plan sentence beside it says THIS one is
+     * "strong enough to act on". A precedence collision, not two true
+     * statements about different timeframes (the debrief's own diagnosis,
+     * §6 item 5).
+     *
+     * The fix: one boolean, one framing, asserted once. When the run is NOT
+     * an anchor-move candidate, "one session does not move it" is the honest
+     * frame — `readPlan` will independently print `UNCHANGED` for this run,
+     * so nothing beside it contradicts it. When it IS a candidate, this
+     * sentence says so directly, in the SAME words `readPlan`'s
+     * `HELD_FOR_EVIDENCE` sentence uses ("the next review will weigh it") —
+     * matching framings instead of opposite ones. */
     const beliefWord = BELIEF_WORD[DOMAIN_FOR_CAPACITY[tension.capacity] ?? 'THRESHOLD'];
-    const runnerSummary =
-      tension.direction === 'observation_stronger_than_belief'
-        ? `You held that pace deeper into the session than your current ${beliefWord} predicts. One session does not move it. The next one like it will.`
-        : `That came in slower than your current ${beliefWord} predicts. One session does not move it. The next one like it will.`;
+    const directionClause = tension.direction === 'observation_stronger_than_belief'
+      ? `You held that pace deeper into the session than your current ${beliefWord} predicts.`
+      : `That came in slower than your current ${beliefWord} predicts.`;
+    const runnerSummary = ev.anchorMoveCandidate
+      ? `${directionClause} This one is strong enough on its own that the next review will weigh it.`
+      : `${directionClause} One session does not move it. The next one like it will.`;
     return {
       role: 'CHALLENGES',
       domains: supporting.length > 0 ? supporting : [DOMAIN_FOR_CAPACITY[tension.capacity] ?? 'THRESHOLD'],
@@ -1713,6 +1948,28 @@ export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): 
     // is a hold awaiting the adaptation pass, not a decision that nothing
     // changes — and Rule 23 is the reason the distinction is real: the pass is
     // scheduled, and a schedule is not a guarantee.
+    //
+    // U4-POST-RACE-TRUTH-3 (2026-09-13) · Santa Monica forensic debrief §9,
+    // "'Under review' names a process that cannot resolve the way it
+    // implies." Two real gaps stood between this sentence and a mechanism
+    // that could keep it: `PLAN_CHANGE_REASONS` (`load.ts`) did not
+    // recognise the one reason a race's own repricing actually writes
+    // (`plan_adapt_recompute_paces` — now added, so a real race-driven
+    // adaptation CAN clear this the way the sentence promises), and this
+    // branch had no way to tell "still inside the review window" apart from
+    // "the window already closed with nothing to show for it" — the same
+    // sentence stood forever, on a recap read at any distance from the run.
+    // `input.reviewWindowElapsed` is that missing fact. Rule 11: a promise
+    // still open and one that already had its chance and produced nothing
+    // are two different facts, and only one of them may say "the next
+    // review will look at it."
+    if (input.reviewWindowElapsed) {
+      return {
+        status: 'HELD_FOR_EVIDENCE',
+        runnerSummary: 'The plan is unchanged. This run was strong enough to act on, but no automated review resolved it in the usual window — nothing further is currently scheduled to look at it.',
+        changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+      };
+    }
     return {
       status: 'HELD_FOR_EVIDENCE',
       runnerSummary: 'The plan is unchanged for now. This run is strong enough to act on, so the next review will look at it.',
@@ -1858,7 +2115,11 @@ export function buildBriefing(
 export function composePostRunExperience(input: PostRunInput): PostRunExperienceV1 {
   const strides = readStrides(input);
   const capture = readCapture(input);
-  const execution = readExecution(input, strides);
+  // U4-POST-RACE-TRUTH-4/5 (2026-09-13) · resolved ONCE, here, and read by
+  // both `race` (below) and `readExecution` — never a second resolution of
+  // the same `resolveGoalOutcome` verdict (Rule 16).
+  const race = readRaceContext(input);
+  const execution = readExecution(input, strides, race?.goalOutcome ?? null);
   const cost = readCost(input);
   const evidence = readEvidence(input);
   const plan = readPlan(input, evidence);
@@ -1868,6 +2129,7 @@ export function composePostRunExperience(input: PostRunInput): PostRunExperience
     `plan:${input.activePlanId ?? 'no-plan'}`,
     `grade:${input.verdict.sessionClass}/${input.verdict.session.verdict}`,
     `evidence:${input.evidence?.modelVersion ?? 'unread'}`,
+    `goal:${race?.goalOutcome?.outcome ?? 'none'}`,
   ].join('|');
   const briefing = buildBriefing(input, execution, cost, evidence, plan, next, decisionVersion);
   return {
@@ -1883,5 +2145,6 @@ export function composePostRunExperience(input: PostRunInput): PostRunExperience
     capture,
     strides,
     briefing,
+    race,
   };
 }

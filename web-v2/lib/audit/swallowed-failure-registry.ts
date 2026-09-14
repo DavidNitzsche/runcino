@@ -114,6 +114,21 @@ export const SWALLOW_EXEMPTIONS: readonly SwallowExemption[] = [
     reason: 'covers both rowCount tallies in this function; expiry and the mislabel cleanup are idempotent and ride a daily cron, so an uncounted pass expires the same rows tomorrow and reports zero for what THIS run achieved, which is true.',
   },
   {
+    // U4-POST-RACE-TRUTH-3, 2026-09-13 · `reviewWindowElapsed` (a runnerToday
+    // date lookup) feeds ONE decision: whether readPlan's HELD_FOR_EVIDENCE
+    // sentence may say "no automated review resolved it in the usual
+    // window" instead of "the next review will look at it." `false` is also
+    // the correct answer for a window genuinely still open, so a failed read
+    // renders the identical, less assertive promise sentence a live-but-
+    // unexpired window would — never the stronger claim that the window has
+    // closed with nothing to show for it. The one behaviour this field can
+    // change is gated on TRUE, so a failure defaulting to false can only ever
+    // under-claim, never manufacture the "review already had its chance"
+    // sentence on an unproven failure.
+    id: 'lib/postrun/load.ts::loadPostRunExperience',
+    reason: 'false is also the correct state for a window still genuinely open; a failed runnerToday() read then renders the same open-ended "the next review will look at it" sentence the composer already prints before the window closes, and the one behaviour this field gates (the stronger "no automated review resolved it" claim) fires only on a proven elapsed window, never on an unproven failure.',
+  },
+  {
     id: 'lib/race/auto-result.ts::detectAndLogProvisionalResults',
     reason: 'rowCount 0 makes the loop `continue`, skipping the post-result chain for that race — the safe direction, because the chain must only run for a result this pass actually wrote.',
   },

@@ -38,7 +38,7 @@ import { pool } from '@/lib/db/pool';
 import { CANONICAL_ROW_SQL } from '@/lib/runs/volume';
 import { runDaySql, runDistanceMiSql, runIdentityMatchSql } from '@/lib/runs/run-shape';
 import { resolveDayExecutions, primaryPrescription } from '@/lib/execution/day-resolver';
-import { runnerTimezoneOrPacific } from '@/lib/runtime/runner-tz';
+import { runnerTimezoneOrPacific, runnerToday } from '@/lib/runtime/runner-tz';
 import { resolveWorkoutVerdict, phasesFromCompletion } from '@/lib/execution/verdict';
 import { classifyStoredActivity } from '@/lib/evidence/load-activity-evidence';
 import { resolveThresholdCapacity } from '@/lib/training/capacity-resolver';
@@ -60,7 +60,20 @@ import type { ActivityEvidenceResult } from '@/lib/evidence/activity-evidence';
  *  An explicit list, not a `LIKE 'plan_adapt%'`, so a future reason has to be
  *  classified deliberately rather than inherited by its prefix. `vdot_auto_recalc`
  *  is here because a re-anchor reprices every unsealed workout, which is a plan
- *  change the runner can see. */
+ *  change the runner can see.
+ *
+ *  `plan_adapt_recompute_paces` (U4-POST-RACE-TRUTH-3, 2026-09-13) · the
+ *  Santa Monica forensic debrief's own §9 finding: "the state that would
+ *  clear 'Under review' only recognizes 7 specific coach-intent reasons, and
+ *  none of the reasons a race actually produces are on that list." Confirmed
+ *  exactly — `lib/plan/adapt.ts`'s own action→reason map writes
+ *  `'plan_adapt_recompute_paces'` for BOTH of the race-evidence adaptations
+ *  that can actually fire off a race (`pr_bank`'s upward re-anchor and
+ *  `fitness_regression`'s `source: 'race'` downward re-anchor both emit a
+ *  `recompute_paces` action), and that exact string was absent here. Without
+ *  it, a race-driven repricing could fire, land in `coach_intents`, and
+ *  `readPlan`'s `HELD_FOR_EVIDENCE` → `UPDATED` transition would still never
+ *  see it — a rule with no gate (Rule 20), now closed. */
 export const PLAN_CHANGE_REASONS: readonly string[] = [
   'plan_adapt_downgrade',
   'plan_adapt_reschedule',
@@ -68,8 +81,31 @@ export const PLAN_CHANGE_REASONS: readonly string[] = [
   'plan_adapt_overridden',
   'plan_adapt_long_floor',
   'plan_adapt_gap',
+  'plan_adapt_recompute_paces',
   'vdot_auto_recalc',
 ];
+
+/**
+ * How many days `readPlan`'s `HELD_FOR_EVIDENCE` state honestly gets to say
+ * "the next review will look at it" before that becomes a promise the
+ * mechanism has already had its chance to keep. THE SAME window the
+ * adaptations query below scans — one number, read by both, so "did we look
+ * long enough" and "did we look at the right rows" can never independently
+ * drift (Rule 16).
+ */
+export const PLAN_CHANGE_REVIEW_WINDOW_DAYS = 2;
+
+/** Pure day-count between two `YYYY-MM-DD` strings. `0` on anything that
+ *  fails to parse — the caller (`reviewWindowElapsed`, below) treats that as
+ *  "not yet elapsed", the same conservative direction Rule 11 already asks
+ *  for elsewhere in this file: a read that cannot answer must not manufacture
+ *  the answer that closes off a promise still worth keeping. */
+function daysBetweenISO(fromISO: string, toISO: string): number {
+  const a = Date.parse(`${fromISO}T00:00:00Z`);
+  const b = Date.parse(`${toISO}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.round((b - a) / 86400000);
+}
 
 /**
  * The engine's own sentence, minus the parts written for an engineer.
@@ -382,6 +418,12 @@ export async function loadPostRunExperience(
    * different facts (Rule 16), and a run that races when the plan called
    * for an easy day should not silently look plan-prescribed. */
   let raceMatched = false;
+  /* U4-POST-RACE-TRUTH-4 (2026-09-13) · the matched race's own slug and meta
+   * — kept alongside `raceMatched` rather than re-queried a second time
+   * below for the goal-outcome/course-notes reads (Rule 16: one query, one
+   * population). `null` unless `matchRaceForRun` actually names a race. */
+  let matchedRaceSlug: string | null = null;
+  let matchedRaceMeta: Record<string, unknown> | null = null;
   try {
     const distanceMi = Number(data.distanceMi) || 0;
     if (dateISO) {
@@ -389,8 +431,9 @@ export async function loadPostRunExperience(
         `SELECT slug, meta FROM races WHERE user_uuid = $1 AND meta->>'date' LIKE $2 || '%'`,
         [userId, dateISO],
       );
+      const metaBySlug = new Map(raceRows.rows.map((raw) => [String(raw.slug), (raw.meta ?? {}) as Record<string, unknown>]));
       const racesForMatch: RaceForMatch[] = raceRows.rows.map((raw) => {
-        const meta = (raw.meta ?? {}) as Record<string, unknown>;
+        const meta = metaBySlug.get(String(raw.slug)) ?? {};
         const explicit = meta.distanceMi != null ? Number(meta.distanceMi) : null;
         return {
           slug: String(raw.slug),
@@ -404,7 +447,12 @@ export async function loadPostRunExperience(
       const workoutTypeHint = normalizeDataWorkoutType(data.workoutType)
         ?? normalizeDataWorkoutType(data.type)
         ?? null;
-      raceMatched = matchRaceForRun({ date: dateISO, distanceMi, workoutTypeHint }, racesForMatch) != null;
+      const matched = matchRaceForRun({ date: dateISO, distanceMi, workoutTypeHint }, racesForMatch);
+      raceMatched = matched != null;
+      if (matched) {
+        matchedRaceSlug = matched.slug;
+        matchedRaceMeta = metaBySlug.get(matched.slug) ?? null;
+      }
     }
   } catch (e) {
     // Best-effort, matching run-state.ts's own posture on this exact query —
@@ -521,6 +569,12 @@ export async function loadPostRunExperience(
    * "supports your current threshold range". The belief resolver is a heavy
    * multi-query read and a post-run screen must not fail because it did. */
   let currentBelief: { thresholdPaceSecPerMi: number; thresholdConfidence: number; asOf: string } | null = null;
+  /* U4-POST-RACE-TRUTH-4 · this app's own corroboration bar
+   * (`resolveThresholdCapacity`'s own `evidenceIds`), read here rather than
+   * a second resolution — the same estimate `currentBelief` above already
+   * asked for. `>= 2` matches `readEvidence`'s own header citation
+   * ("threshold pace moves on at least 2 corroborating sessions"). */
+  let thresholdEvidenceCorroborated = false;
   try {
     const belief = await resolveThresholdCapacity(userId, dateISO);
     if (belief?.paceSecPerMi != null && Number.isFinite(belief.paceSecPerMi)) {
@@ -530,9 +584,60 @@ export async function loadPostRunExperience(
         asOf: dateISO,
       };
     }
+    thresholdEvidenceCorroborated = (belief?.evidenceIds?.length ?? 0) >= 2;
   } catch (e) {
     console.error('[postrun/load] threshold belief unresolved — tension read will refuse:', e);
   }
+
+  /* U4-POST-RACE-TRUTH-4 (2026-09-13) · the goal-outcome resolver's inputs,
+   * for a matched race with a published target. Read-only, best-effort:
+   * `resolveGoalOutcome` (`lib/race/goal-outcome-resolver.ts`) already
+   * treats a `null` weight as unknown rather than zero (Rule 11), so a
+   * failure here degrades to "cannot judge the target's evidence" rather
+   * than manufacturing an invalidation or a false pass.
+   *
+   * `publishedTargetSec` reads `workout_spec.race_execution.target_sec` —
+   * the frozen plan snapshot the race was actually authored against
+   * (`lib/race/race-row-refresh.ts`'s own field), not a live recompute that
+   * can drift from what the runner actually saw on race morning (the
+   * debrief's own §5.1 "five finish-time numbers" finding). Which of a
+   * race's several live target numbers is THE canonical one is Wave 2 /
+   * U7's territory, not re-litigated here.
+   *
+   * `preparationSupport` is deliberately `{ ok: false, reason: 'not_measured' }`
+   * — see `goal-outcome-resolver.ts`'s own header for why a generic
+   * per-distance rehearsal detector is explicitly out of scope here (Track
+   * 6 / Phase 3's job). A caller with a specifically-resolved preparation
+   * read for a known race may construct a richer `GoalOutcomeInput`
+   * directly; this loader's default path does not fabricate one. */
+  let raceGoalOutcomeInput: PostRunInput['raceGoalOutcomeInput'] = null;
+  if (matchedRaceSlug) {
+    const targetSec = (() => {
+      const exec = (planRow?.workout_spec as Record<string, unknown> | null | undefined)?.race_execution as
+        Record<string, unknown> | null | undefined;
+      const t = Number(exec?.target_sec);
+      const isRealTarget = Number.isFinite(t) && t > 0;
+      return isRealTarget ? t : null;
+    })();
+    let targetRaceEvidenceWeight: number | null = null;
+    try {
+      const { resolveRaceOutlookBySlug } = await import('@/lib/race/race-outlook');
+      const outlook = await resolveRaceOutlookBySlug(userId, matchedRaceSlug, dateISO);
+      targetRaceEvidenceWeight = outlook?.currentProjection.durabilityWeight ?? null;
+    } catch (e) {
+      console.error('[postrun/load] race-evidence weight unresolved — goal outcome will treat it as unknown:', e);
+    }
+    raceGoalOutcomeInput = {
+      raceId: matchedRaceSlug,
+      measuredFinishSec: Number.isFinite(Number(data.durationSec)) ? Number(data.durationSec) : null,
+      publishedTargetSec: targetSec,
+      targetRaceEvidenceWeight,
+      targetEvidenceCorroborated: thresholdEvidenceCorroborated,
+      preparationSupport: { ok: false, reason: 'not_measured' },
+    };
+  }
+  const hasRaceCourseNotes = typeof matchedRaceMeta?.notableMiles === 'string' && matchedRaceMeta.notableMiles.trim().length > 0;
+  const raceCourseNotes = hasRaceCourseNotes ? (matchedRaceMeta!.notableMiles as string) : null;
 
   let evidence: ActivityEvidenceResult | null = null;
   if (/^-?\d+$/.test(runRow.id)) {
@@ -617,6 +722,26 @@ export async function loadPostRunExperience(
     adaptations = null;
   }
 
+  /* U4-POST-RACE-TRUTH-3 (2026-09-13) · has the review window this composer
+   * ITSELF just scanned (above) actually elapsed, as of TODAY — not as of
+   * the run's own date.
+   *
+   * `readPlan`'s `HELD_FOR_EVIDENCE` sentence ("...so the next review will
+   * look at it") was unconditionally true-shaped: the query above always
+   * scans the same fixed `[dateISO, dateISO+2d)` window regardless of when
+   * the runner is READING this screen, so a recap opened ten days after the
+   * run still promised a review that already had, and missed, its one
+   * window. Per the forensic debrief's §9 ruling — "'Under review' names a
+   * process that cannot resolve the way it implies" — this is what makes
+   * that fact available to the composer honestly, rather than leaving the
+   * promise standing forever. A failed read of "today" leaves this false —
+   * the conservative direction, matching `daysBetweenISO`'s own posture
+   * (Rule 11: an uncertain "has the window closed" must not be spent as
+   * "yes, it has"). */
+  const reviewWindowElapsed = await runnerToday(userId)
+    .then((today) => daysBetweenISO(dateISO, today) >= PLAN_CHANGE_REVIEW_WINDOW_DAYS)
+    .catch(() => false);
+
   /* THE CEILINGS, PER SCOPE, from their one owner.
    *
    * `workHrCeiling` reads the spec's own `pass` rule — "Pass: avgHr <= 164 on
@@ -652,6 +777,7 @@ export async function loadPostRunExperience(
     wholeRunHrBpm: runAvgHr(data as any),
     rpe: rpe != null ? Number(rpe) : null,
     adaptations,
+    reviewWindowElapsed,
     hasActivePlan: activePlanId != null,
     activePlanId,
     sensorLimited,
@@ -715,6 +841,8 @@ export async function loadPostRunExperience(
       // must not travel beside three real measurements (Rule 11).
       return { driftSec: n(r.driftSec), wallSec: n(r.wallSec), countedSec: n(r.countedSec) };
     })(),
+    raceGoalOutcomeInput,
+    raceCourseNotes,
   };
   return composePostRunExperience(input);
 }

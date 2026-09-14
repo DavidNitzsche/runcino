@@ -505,6 +505,8 @@ describe('after_run · TODAYHERO-1 · no prescribed structure to grade against',
         splitCount: null, splitDistanceMi: null,
       },
       strides: null,
+      rpe: null,
+      race: null,
     };
   }
 
