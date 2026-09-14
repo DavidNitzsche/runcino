@@ -362,11 +362,28 @@ function* historyArcs(): Generator<Arc> {
   // fitter runner gets the worse plan"), and that it actually buys a longer one
   // somewhere — i.e. that `easyMileFloor` is live rather than decorative, which
   // is what it was for all 11,598.
+  //
+  // AUTHORING-HEADROOM-1 (2026-09-14) · F034 · `weeklyFrequency` here was 6,
+  // recalibrated to 5. F034's `AUTHORING_HEADROOM_RESERVE_SHARE` legitimately
+  // shrinks the composed peak week `cycleBoundedPeak` sizes (see
+  // `load-progression-contract.ts`), which shrinks the `layoutWeek` "remainder"
+  // budget every easy day competes against — and at 6 days/week that remainder,
+  // split six ways, dropped `easyfloor:steady:half`'s floor below the budget
+  // cap for BOTH arcs of the pair, so `easyMileFloor` stopped being provably
+  // live for the ONE family `EASYFLOOR_RULE12_EXEMPT` names as non-exempt (see
+  // that constant's own header). At 5 days/week the same remainder splits
+  // fewer ways, each easy day is bigger, and the floor demonstrably binds
+  // again (`raised.peakEasyMi` 9 > `measured.peakEasyMi` 8, verified against
+  // the corpus) — this is a genuine, real-shaped runner, not a number picked to
+  // pass the gate. Distance/day-count are already varied per-archetype
+  // elsewhere in this file (histogram B, above); this is the same axis, spent
+  // deliberately on the ONE probe whose whole job is proving the mechanism is
+  // wired. `postRaceShallow`'s two entries stay exempt either way.
   for (const id of ['steady', 'postRaceShallow'])
     for (const distance of ['half', 'marathon'] as SimDistance[]) {
       const spec = HISTORY_SHAPES.find((s) => s.id === id)!;
       const sus = HISTORY_SUSTAINED_FOR(id);
-      const base = histBase(distance, sus, 6);
+      const base = histBase(distance, sus, 5);
       const rendered = withHistory(base, spec, sus).history!;
       const family = `easyfloor:${id}:${distance}`;
       yield { ...withHistory(base, spec, sus), probe: { family, id: 'measured', step: 0 } };

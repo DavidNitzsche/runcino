@@ -254,6 +254,11 @@ import {
   HOLD_CYCLE_GROWTH,
   MP_LONG_TEMPO_MIN_GAP_DAYS,
 } from '@/lib/plan/generate';
+// AUTHORING-HEADROOM-1 (2026-09-14) · F034 · the authoring-only headroom
+// reserve, and the gate's own headroom share it must stay strictly above.
+import {
+  AUTHORING_HEADROOM_RESERVE_SHARE, ADAPTATION_HEADROOM_SHARE,
+} from '@/lib/plan/load-progression-contract';
 // COMBINED-STRESS-1 (2026-09-02) · the race→long-run window and its resolver.
 import {
   RETURN_TO_LONG_DAYS, returnToLongDays, longRunFactorAfterRace,
@@ -2713,14 +2718,138 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         // binds a runner in range, rather than the tier target it used to be
         // `min`-ed against. A runner at the advanced target grows by the
         // doctrine factor, not to a table row a label selected.
+        //
+        // AUTHORING-HEADROOM-1 (2026-09-14) · F034 · `cycleBoundedPeak` now
+        // spends `PER_CYCLE_PEAK_GROWTH × (1 - AUTHORING_HEADROOM_RESERVE_
+        // SHARE)`, not the bare per-cycle figure — see this constant's own
+        // header in `load-progression-contract.ts` for why. The pre-existing
+        // 0.15 mi tolerance below is retained; the EXPECTED value now folds in
+        // the reserve so this assertion tracks the actual authoring formula
+        // rather than the un-reserved one `cycleBoundedPeak` no longer computes.
         const inRange = cycleBoundedPeak(advTarget, { ...EVIDENCE_ZERO, peakMi: advTarget }, cat);
-        const expected = Math.round(advTarget * CYCLE_GROWTH_CEILING.intermediate! * 10) / 10;
+        const expected = Math.round(
+          advTarget * CYCLE_GROWTH_CEILING.intermediate! * (1 - AUTHORING_HEADROOM_RESERVE_SHARE) * 10,
+        ) / 10;
         if (Math.abs(inRange - expected) > 0.15) {
           throw new Error(
             `cycleBoundedPeak(${cat}) put a ${advTarget} mi/wk runner at ${inRange}; the ` +
-              `per-cycle row allows ${expected}`,
+              `reserved per-cycle row allows ${expected}`,
           );
         }
+      }
+    },
+  },
+
+  // ══ AUTHORING-HEADROOM RESERVE (F034) ═════════════════════════════════════
+  {
+    id: 'RAMP.authoring-headroom-reserve-is-above-the-gates-own-bar',
+    binds: [
+      'lib/plan/load-progression-contract.ts#AUTHORING_HEADROOM_RESERVE_SHARE',
+      'lib/plan/load-progression-contract.ts#plannedPeakBound.reserveHeadroomShare',
+      'lib/plan/generate.ts#cycleBoundedPeak',
+    ],
+    doc: 'Research/00a-distance-running-training.md',
+    anchor: '### Volume progression rules',
+    claim:
+      'F034 (`programme-internal-working/00-master-programme/WHY-PROPOSEADAPTIVEBUMP-' +
+      'NEVER-FIRES-2026-09-14.md`, actioned per `for coaching consult/consult-log/2026-09-14-' +
+      '008-f034-adaptive-bump-fix-direction.md` Option 1): a freshly-authored block must leave ' +
+      'real, spendable headroom below the adaptation gate\'s own recomputed ceiling, not merely ' +
+      'the SAME headroom the gate requires to open (`belowTierUpper` is a STRICT `>` on ' +
+      '`peakHeadroomMi > ceiling × ADAPTATION_HEADROOM_SHARE`). Reserving exactly the gate\'s own ' +
+      'share would land the day-one headroom EXACTLY on that boundary — a Rule 9 cliff sensitive ' +
+      'to rounding — so `AUTHORING_HEADROOM_RESERVE_SHARE` must sit strictly above ' +
+      '`ADAPTATION_HEADROOM_SHARE`, with a real margin, not an equal or lesser figure. And the ' +
+      'reserve must apply to authoring only: the ceiling the gate recomputes from LIVE evidence ' +
+      '(`recomputeAdaptationCeiling`) and the ceiling authoring itself publishes ' +
+      '(`resolveLoadProgressionContract`\'s `plannedPeakLoad`) must both stay at the FULL, ' +
+      'unreserved per-cycle bound — reserving on both sides would rescale the comparison\'s two ' +
+      'sides together and reproduce zero real headroom, the exact defect this claim exists to ' +
+      'keep fixed.',
+    check() {
+      // Liveness — falsified 2026-09-14 by setting AUTHORING_HEADROOM_RESERVE_SHARE
+      // to 0.05 (equal to the gate's own share): this assertion caught it.
+      if (!(AUTHORING_HEADROOM_RESERVE_SHARE > ADAPTATION_HEADROOM_SHARE)) {
+        throw new Error(
+          `AUTHORING_HEADROOM_RESERVE_SHARE (${AUTHORING_HEADROOM_RESERVE_SHARE}) is not ` +
+            `strictly greater than ADAPTATION_HEADROOM_SHARE (${ADAPTATION_HEADROOM_SHARE}) · ` +
+            'a freshly-authored block would land exactly on belowTierUpper\'s own boundary, a ' +
+            'Rule 9 cliff, instead of clearing it with margin',
+        );
+      }
+      // A margin so thin it is rounding noise is the same cliff with extra steps.
+      // At realistic ceilings (~20-90 mi/wk) a 0.01 margin is 0.2-0.9 mi of
+      // absolute headroom above the bar — comfortably clear of the 0.1 mi
+      // rounding `volumeCurve` applies on the way to a composed calendar.
+      // Falsified 2026-09-14 at 0.051 (0.001 above the gate's share): failed here.
+      const MIN_MARGIN = 0.01;
+      // 1e-9 tolerance · floating-point subtraction of two decimal literals
+      // (0.06 - 0.05) is not exactly 0.01 in IEEE 754, and this claim must not
+      // flip on that noise (Rule 9 applies to the CHECK too, not just the
+      // engine).
+      if (!(AUTHORING_HEADROOM_RESERVE_SHARE - ADAPTATION_HEADROOM_SHARE >= MIN_MARGIN - 1e-9)) {
+        throw new Error(
+          `AUTHORING_HEADROOM_RESERVE_SHARE (${AUTHORING_HEADROOM_RESERVE_SHARE}) clears ` +
+            `ADAPTATION_HEADROOM_SHARE (${ADAPTATION_HEADROOM_SHARE}) by less than ${MIN_MARGIN} ` +
+            '· too thin a margin to survive the 0.1 mi rounding volumeCurve applies on the way ' +
+            'to a composed calendar',
+        );
+      }
+      // Not dramatically larger either — an under-prescription is its own defect
+      // (CLAUDE.md's own framing: "pushing harder means spending the headroom
+      // doctrine already allows... never weakening a guard to manufacture it" —
+      // reserving too much manufactures an ARTIFICIALLY SMALL block instead).
+      //
+      // AUTHORING-HEADROOM-1 · F034 · this ceiling is not just the "reads as
+      // under-prescription" argument — it is load-bearing. `_sweep_allusers
+      // .test.ts`'s `density:steady:marathon` probe doses a FIXED 4 mi
+      // threshold session against a `weekDose`-derived weekly-share cap
+      // (`lib/plan/dosing.ts`), and that session's share of the composed
+      // weekly total climbs as the reserve shrinks the week around it —
+      // because the session's own absolute distance does not re-scale with
+      // the smaller composed peak. Measured 2026-09-14: FIRM (fatal,
+      // Rule 7 "Daniels' weekly dosing caps") failures start between reserve
+      // 0.065 and 0.066 on that probe alone, out of the full 11,687-archetype
+      // corpus — a genuine, narrow, pre-existing fragility in that one
+      // archetype's dosing margin that the reserve's continuous volume
+      // reduction pushes over. 0.10 leaves real distance from that cliff.
+      const MAX_RESERVE = 0.10;
+      if (!(AUTHORING_HEADROOM_RESERVE_SHARE <= MAX_RESERVE)) {
+        throw new Error(
+          `AUTHORING_HEADROOM_RESERVE_SHARE (${AUTHORING_HEADROOM_RESERVE_SHARE}) exceeds ` +
+            `${MAX_RESERVE} · a reserve this large reads as an under-prescription, not "a real, ` +
+            'substantial, safe progression" per the 2026-09-14 consult, AND (measured 2026-09-14) ' +
+            'risks tripping a fatal Daniels dosing-cap violation on at least one corpus archetype ' +
+            '(density:steady:marathon) whose fixed-mileage quality session does not re-scale with ' +
+            'a shrinking composed week — re-run `_sweep_allusers.test.ts` before raising this',
+        );
+      }
+      // The split itself — reserve is authoring-only. A demonstrated peak with
+      // no reserve must be strictly larger than the SAME peak with the reserve
+      // applied, and the reserved figure must equal the unreserved figure times
+      // `(1 - AUTHORING_HEADROOM_RESERVE_SHARE)` within rounding — i.e. this is
+      // genuinely a scaled-down variant of the same arithmetic, not a
+      // second, independently-typed implementation (Rule 16).
+      const cat: DistCategory = 'm';
+      const peakMi = 60;
+      const evidence = { ...EVIDENCE_ZERO, peakMi };
+      const target = TIER_TARGETS[cat].advanced.peakWeeklyMileageBand[0];
+      const reserved = cycleBoundedPeak(target, evidence, cat);
+      const unreservedExpected = Math.round(peakMi * CYCLE_GROWTH_CEILING.intermediate! * 10) / 10;
+      const reservedExpected = Math.round(
+        peakMi * CYCLE_GROWTH_CEILING.intermediate! * (1 - AUTHORING_HEADROOM_RESERVE_SHARE) * 10,
+      ) / 10;
+      if (!(reserved < unreservedExpected)) {
+        throw new Error(
+          `cycleBoundedPeak(${cat}) at peak ${peakMi} returned ${reserved}, not below the ` +
+            `unreserved bound ${unreservedExpected} · the authoring reserve may not be wired`,
+        );
+      }
+      if (Math.abs(reserved - reservedExpected) > 0.15) {
+        throw new Error(
+          `cycleBoundedPeak(${cat}) at peak ${peakMi} returned ${reserved}; the reserved ` +
+            `formula computes ${reservedExpected}`,
+        );
       }
     },
   },
