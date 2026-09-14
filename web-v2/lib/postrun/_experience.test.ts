@@ -24,9 +24,10 @@
  * other more than two to one.
  */
 import { describe, it, expect } from 'vitest';
-import { gradeStoredPhases } from '@/lib/execution/verdict';
+import { gradeStoredPhases, type WorkoutVerdict, type GradedPhase, type WorkSummary } from '@/lib/execution/verdict';
 import { auditExplanation, layerOne } from '@/lib/faff/explanation';
 import { workHrCeiling, overallHrCeiling, displayedHrAsk } from '@/lib/prescription/hr-ceiling';
+import type { GoalOutcomeInput } from '@/lib/race/goal-outcome-resolver';
 import {
   composePostRunExperience,
   numberWord,
@@ -167,6 +168,8 @@ function makeInput(o: InputOverrides = {}): PostRunInput {
     recordedDistanceMi: 8.5,
     recordedDurationSec: 4098,
     clockAudit: null,
+    raceGoalOutcomeInput: null,
+    raceCourseNotes: null,
     ...o,
   } as PostRunInput;
 }
@@ -686,6 +689,265 @@ describe('Rule 21 · the evidence layer can say a run was strong enough to push'
     expect(out.plan.status).toBe('UPDATED');
     expect(out.plan.changes).toEqual(['Friday reduced to 5 mi.']);
     expect(out.plan.descriptionContractSatisfied).toBe(false);
+  });
+});
+
+/* ────────────────── U4-POST-RACE-TRUTH · Santa Monica 10K ───────────────── */
+
+/**
+ * `WorkoutVerdict` for the debrief's own reconstruction of Santa Monica: two
+ * graded race segments, one `fast` and one `slow`, zero `hit` — the exact
+ * shape that produced `sessionLadder`'s `uneven` verdict with `hits === 0`
+ * (§1 of the debrief, `landed = fasts = 1`, `graded = 2`,
+ * `landed*2 >= graded`). Hand-built rather than run through
+ * `gradeStoredPhases` so the fixture states the exact per-phase verdicts the
+ * debrief found on the real row, independent of whatever the grading
+ * pipeline would derive from a synthetic phase array.
+ */
+function santaMonicaVerdict(): WorkoutVerdict {
+  const phases = [
+    {
+      index: 0, type: 'work', label: 'Miles 1-2', shape: 'window',
+      targetSecPerMi: 415, toleranceSec: 15, avgSecPerMi: 416,
+      actualDurationSec: 831, actualDistanceMi: 2.0,
+      targetDurationSec: null, targetDistanceMi: null,
+      avgHr: 160, maxHr: 164, avgCadence: 178,
+      completed: true, completionReason: 'as_prescribed',
+      isFinishSegment: false, isStrideSegment: false,
+      verdict: 'fast', statusLabel: 'Fast', storedVerdict: null,
+      timeInToleranceSec: null, timeOutOfToleranceSec: null,
+      targetSpeedMph: null, actualSpeedMph: null,
+      targetInclinePct: null, actualInclinePct: null, hrRole: 'observational',
+    },
+    {
+      index: 1, type: 'work', label: 'Miles 3-6.2', shape: 'window',
+      targetSecPerMi: 415, toleranceSec: 15, avgSecPerMi: 452,
+      actualDurationSec: 1922, actualDistanceMi: 4.25,
+      targetDurationSec: null, targetDistanceMi: null,
+      avgHr: 172, maxHr: 178, avgCadence: 172,
+      completed: true, completionReason: 'as_prescribed',
+      isFinishSegment: true, isStrideSegment: false,
+      verdict: 'slow', statusLabel: 'Slow', storedVerdict: null,
+      timeInToleranceSec: null, timeOutOfToleranceSec: null,
+      targetSpeedMph: null, actualSpeedMph: null,
+      targetInclinePct: null, actualInclinePct: null, hrRole: 'observational',
+    },
+  ] as unknown as GradedPhase[];
+  const session = {
+    verdict: 'uneven' as const, workVerdicts: ['fast', 'slow'] as const,
+    hits: 0, fasts: 1, graded: 2, lateCollapse: false, recoveriesHonest: null,
+  };
+  const work = {
+    count: 2, graded: 2, landed: 1, fellShort: 1, incomplete: false,
+    paceSPerMi: null, hrAvg: 169,
+  } as unknown as WorkSummary;
+  return { sessionClass: 'other', basis: 'watch-phases', phases, session, work } as unknown as WorkoutVerdict;
+}
+
+const SANTA_MONICA_GOAL_INPUT: GoalOutcomeInput = {
+  raceId: 'santa-monica-10k-2026-09-13',
+  measuredFinishSec: 2753,
+  publishedTargetSec: 2585,
+  targetRaceEvidenceWeight: 0.02,
+  targetEvidenceCorroborated: false,
+  preparationSupport: { ok: true, demonstratedSec: 422, demandSec: 2580 },
+};
+
+function santaMonicaInput(o: InputOverrides = {}): PostRunInput {
+  return makeInput({
+    verdict: santaMonicaVerdict(),
+    raceMatched: true,
+    targetProvenance: 'plan',
+    plannedType: 'race',
+    plannedTypeDisplay: 'Race',
+    raceGoalOutcomeInput: SANTA_MONICA_GOAL_INPUT,
+    raceCourseNotes: 'Mi 1.6-4.7: continuous climb, ~165 ft. Mi 4.7-6.2: descent.',
+    workHrCeilingBpm: null, overallHrCeilingBpm: null, wholeRunHrBpm: 169,
+    rpe: 9,
+    recordedDistanceMi: 6.28, recordedDurationSec: 2753,
+    ...o,
+  });
+}
+
+describe('U4-1 · "some landed inside the window" is never said when zero did', () => {
+  it('Santa Monica: zero hits, one fast, one slow — the summary never claims a landing', () => {
+    const out = composePostRunExperience(santaMonicaInput());
+    expect(out.execution.summary).not.toMatch(/some.*landed inside/i);
+    // The debrief's exact false sentence, verbatim, must not appear.
+    expect(out.execution.summary).not.toBe(
+      'Some of the reps landed inside the window and some did not.',
+    );
+  });
+
+  it('FALSIFIER: with at least one real hit, "some landed inside" IS the honest sentence and still fires', () => {
+    const v = santaMonicaVerdict();
+    (v.session as any).hits = 1;
+    (v.session as any).workVerdicts = ['hit', 'slow'];
+    const out = composePostRunExperience(santaMonicaInput({
+      verdict: v,
+      // Neutralise the target-invalidation branch so this exercises the
+      // PLAIN uneven fallback sentence, not the target-invalidated one.
+      raceGoalOutcomeInput: { ...SANTA_MONICA_GOAL_INPUT, targetRaceEvidenceWeight: 0.95, targetEvidenceCorroborated: true, preparationSupport: { ok: true, demonstratedSec: 2600, demandSec: 2580 } },
+    }));
+    expect(out.execution.summary).toMatch(/some of the .* landed inside the window and some did not/i);
+  });
+
+  it('THE ACTUAL BUG CASE, isolated: zero hits AND a valid target — the false "some landed inside" sentence must never appear, and the honest split (ahead/behind) must', () => {
+    // `targetInvalid` false (a valid, well-supported target) AND hits === 0
+    // (Santa Monica's own shape) at once — the ONE combination that
+    // distinguishes the fixed `unevenFallbackSentence` from the original
+    // unconditional sentence, since the target-invalidated branch and the
+    // hits>0 branch both produce the SAME text under old and new code.
+    const out = composePostRunExperience(santaMonicaInput({
+      raceGoalOutcomeInput: { ...SANTA_MONICA_GOAL_INPUT, targetRaceEvidenceWeight: 0.95, targetEvidenceCorroborated: true, preparationSupport: { ok: true, demonstratedSec: 2600, demandSec: 2580 } },
+    }));
+    expect(out.race?.goalOutcome?.outcome).toBe('missed'); // confirms the target IS valid here
+    expect(out.execution.summary).not.toMatch(/some of the .* landed inside the window and some did not/i);
+    expect(out.execution.summary).toMatch(/none of the .* landed inside the window/i);
+    expect(out.execution.summary).toMatch(/ran ahead of it/i);
+    expect(out.execution.summary).toMatch(/ran behind it/i);
+  });
+
+  it('a fully-fast, fully-slow-free session never reaches this fallback at all (sanity)', () => {
+    // Two hits, zero fast/slow — this should read as executed, not uneven.
+    const out = compose({});
+    expect(out.execution.status).not.toBe('PARTIAL_PRODUCTIVE');
+  });
+});
+
+describe('U4-2 · the evidence/plan contradiction — one framing per underlying fact', () => {
+  it('anchorMoveCandidate TRUE: evidence and plan sentences AGREE this run will be weighed, never "does not move it"', () => {
+    const out = compose({
+      evidence: evidenceFixture({ tension: true, anchorMoveCandidate: true }),
+    });
+    expect(out.evidence.role).toBe('CHALLENGES');
+    expect(out.evidence.planAuthorityEligible).toBe(true);
+    expect(out.evidence.runnerSummary).not.toMatch(/one session does not move it/i);
+    expect(out.plan.status).toBe('HELD_FOR_EVIDENCE');
+    expect(out.plan.runnerSummary).toMatch(/strong enough to act on/i);
+    // Neither sentence may say the opposite of the other.
+    const contradictory = /does not move it/i.test(out.evidence.runnerSummary)
+      && /strong enough to act on/i.test(out.plan.runnerSummary);
+    expect(contradictory).toBe(false);
+  });
+
+  it('anchorMoveCandidate FALSE: "one session does not move it" stands, and the plan stays UNCHANGED (not HELD_FOR_EVIDENCE)', () => {
+    const out = compose({
+      evidence: evidenceFixture({ tension: true, anchorMoveCandidate: false }),
+    });
+    expect(out.evidence.runnerSummary).toMatch(/one session does not move it/i);
+    expect(out.plan.status).toBe('UNCHANGED');
+  });
+
+  it('FALSIFIER: reverting to the unconditional sentence would fail the agreement check above', () => {
+    // Simulates the pre-fix behaviour directly: the CHALLENGES sentence
+    // hard-coded "one session does not move it" regardless of
+    // anchorMoveCandidate, which the HELD_FOR_EVIDENCE branch's "strong
+    // enough to act on" then contradicted whenever anchorMoveCandidate was
+    // true. Asserting both substrings on ONE payload proves this specific
+    // pair is what the fix removes.
+    const broken = 'You held that pace deeper into the session than your current threshold pace predicts. One session does not move it. The next one like it will.';
+    const other = 'The plan is unchanged for now. This run is strong enough to act on, so the next review will look at it.';
+    const bothPresent = /does not move it/i.test(broken) && /strong enough to act on/i.test(other);
+    expect(bothPresent).toBe(true); // proves the OLD pair really was contradictory
+  });
+});
+
+describe('U4-3/U4-4 · target-invalidated vs execution failure, and the race context', () => {
+  it('Santa Monica resolves target_invalidated, both reasons, execution reads as a target problem not a failure', () => {
+    const out = composePostRunExperience(santaMonicaInput());
+    expect(out.race?.goalOutcome?.outcome).toBe('target_invalidated');
+    expect(out.race?.goalOutcome?.reasons).toEqual(
+      expect.arrayContaining(['target_evidence_unreliable', 'insufficient_preparation_support']),
+    );
+    expect(out.execution.status).toBe('TARGET_INVALIDATED');
+    expect(out.execution.headline.toLowerCase()).toContain('target');
+    expect(out.execution.summary.toLowerCase()).not.toMatch(/slower than your race plan/);
+  });
+
+  it('the measured performance stays a real number regardless of goal-outcome classification', () => {
+    const out = composePostRunExperience(santaMonicaInput());
+    expect(out.race?.measuredSec).toBe(2753);
+    expect(out.race?.targetSec).toBe(2585);
+    expect(out.race?.gapSec).toBe(2753 - 2585);
+  });
+
+  it('course notes reach the payload — the debrief\'s §6b "never surfaced" finding, closed', () => {
+    const out = composePostRunExperience(santaMonicaInput());
+    expect(out.race?.courseNotes).toContain('165 ft');
+  });
+
+  it('RPE reaches the cost object even with no HR ceiling on a race row', () => {
+    const out = composePostRunExperience(santaMonicaInput());
+    expect(out.cost.rpe).toBe(9);
+  });
+
+  it('FALSIFIER: a well-supported target on the SAME grading shape reads as a real miss, not TARGET_INVALIDATED', () => {
+    const out = composePostRunExperience(santaMonicaInput({
+      raceGoalOutcomeInput: {
+        ...SANTA_MONICA_GOAL_INPUT,
+        targetRaceEvidenceWeight: 0.95,
+        targetEvidenceCorroborated: true,
+        preparationSupport: { ok: true, demonstratedSec: 2600, demandSec: 2580 },
+      },
+    }));
+    expect(out.race?.goalOutcome?.outcome).toBe('missed');
+    expect(out.execution.status).not.toBe('TARGET_INVALIDATED');
+  });
+
+  it('a NON-race run (raceMatched false) never reads TARGET_INVALIDATED even if a goal-outcome input were somehow supplied', () => {
+    const v = santaMonicaVerdict();
+    const out = composePostRunExperience(santaMonicaInput({ raceMatched: false, verdict: v }));
+    expect(out.execution.status).not.toBe('TARGET_INVALIDATED');
+  });
+});
+
+describe('U4-5 · "Under review" resolves honestly once its own window has elapsed', () => {
+  it('within the window: the promise sentence stands', () => {
+    const out = compose({
+      evidence: evidenceFixture({ anchorMoveCandidate: true, capacities: { threshold: capacity('threshold', 'evidence') } }),
+      reviewWindowElapsed: false,
+    });
+    expect(out.plan.status).toBe('HELD_FOR_EVIDENCE');
+    expect(out.plan.runnerSummary).toMatch(/the next review will look at it/i);
+  });
+
+  it('window elapsed with nothing resolved: the sentence states the honest current fact instead', () => {
+    const out = compose({
+      evidence: evidenceFixture({ anchorMoveCandidate: true, capacities: { threshold: capacity('threshold', 'evidence') } }),
+      reviewWindowElapsed: true,
+    });
+    expect(out.plan.status).toBe('HELD_FOR_EVIDENCE');
+    expect(out.plan.runnerSummary).not.toMatch(/the next review will look at it/i);
+    expect(out.plan.runnerSummary.toLowerCase()).toMatch(/no automated review|nothing further/);
+  });
+
+  it('FALSIFIER: the two sentences are not byte-identical — the fix could not have shipped as a no-op', () => {
+    const withinWindow = compose({
+      evidence: evidenceFixture({ anchorMoveCandidate: true, capacities: { threshold: capacity('threshold', 'evidence') } }),
+      reviewWindowElapsed: false,
+    }).plan.runnerSummary;
+    const elapsed = compose({
+      evidence: evidenceFixture({ anchorMoveCandidate: true, capacities: { threshold: capacity('threshold', 'evidence') } }),
+      reviewWindowElapsed: true,
+    }).plan.runnerSummary;
+    expect(withinWindow).not.toBe(elapsed);
+  });
+
+  it('an adaptation actually recorded with the newly-recognised reason clears HELD_FOR_EVIDENCE to UPDATED', () => {
+    // U4-POST-RACE-TRUTH-3's other half: `plan_adapt_recompute_paces` is now
+    // a recognised PLAN_CHANGE_REASON in lib/postrun/load.ts. This proves the
+    // COMPOSER side of that fix: readPlan already returns UPDATED the moment
+    // a real adaptation is present, regardless of reason string (that
+    // recognition lives in load.ts's SQL filter, not here) — recorded so a
+    // regression in readPlan's own precedence (adaptations-present check
+    // ahead of planAuthorityEligible) would fail this test, not just load.ts's.
+    const out = compose({
+      evidence: evidenceFixture({ anchorMoveCandidate: true, capacities: { threshold: capacity('threshold', 'evidence') } }),
+      reviewWindowElapsed: true,
+      adaptations: [{ reason: 'plan_adapt_recompute_paces', display: 'Paces re-anchored to your race result.' }],
+    });
+    expect(out.plan.status).toBe('UPDATED');
   });
 });
 

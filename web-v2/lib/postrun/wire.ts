@@ -121,6 +121,37 @@ export interface PostRunWire {
    * carry. Nothing here is a verdict — see `readStrides`.
    */
   strides: PostRunStridesWire | null;
+  /**
+   * U4-POST-RACE-TRUTH-4 (2026-09-13) · the runner's own logged effort,
+   * 1-10. Was ALREADY computed (`PostRunCost.rpe`) and simply never reached
+   * this wire — the Santa Monica forensic debrief's own §6b finding, named
+   * verbatim: "the RPE (9/10, logged and simply never wired into the
+   * post-run payload)". Read off `PostRunCost.rpe` rather than duplicated
+   * (Rule 16 — one owner); this is that number's first appearance on the
+   * wire, not a second copy of it.
+   */
+  rpe: number | null;
+  /** See `PostRunRaceContext`. Null on any run that is not a race with
+   *  something here to say. */
+  race: PostRunRaceWire | null;
+}
+
+export interface PostRunRaceWire {
+  /** `races.meta.notableMiles`, verbatim. */
+  courseNotes: string | null;
+  /** Seconds. Raw, so the phone formats it however the screen calls for —
+   *  same posture as `coverage`'s raw distances/durations below. */
+  targetSec: number | null;
+  measuredSec: number | null;
+  /** `measuredSec - targetSec`. Positive is slower than target. */
+  gapSec: number | null;
+  /** `resolveGoalOutcome`'s own verdict — 'met' | 'missed' |
+   *  'target_invalidated' | 'not_assessable'. */
+  goalOutcome: string | null;
+  /** Machine reason codes behind `goalOutcome` — never rendered verbatim
+   *  (that is `lib/postrun/experience.ts`'s job, through coach-voice-gated
+   *  copy); a caller that wants to explain WHY reads these, not this array. */
+  goalOutcomeReasons: string[];
 }
 
 export interface PostRunStrideWire {
@@ -236,6 +267,15 @@ export function postRunWire(x: PostRunExperienceV1): PostRunWire {
       })),
       recoveryCount: x.strides.recoveryCount,
       recoveryDistanceMi: x.strides.recoveryDistanceMi,
+    },
+    rpe: x.cost.rpe,
+    race: x.race == null ? null : {
+      courseNotes: x.race.courseNotes,
+      targetSec: x.race.targetSec,
+      measuredSec: x.race.measuredSec,
+      gapSec: x.race.gapSec,
+      goalOutcome: x.race.goalOutcome?.outcome ?? null,
+      goalOutcomeReasons: x.race.goalOutcome?.reasons ?? [],
     },
   };
 }

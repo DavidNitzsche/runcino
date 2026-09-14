@@ -1012,15 +1012,51 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   });
   const todayPrimary = resolvedToday ? primaryPrescription(resolvedToday) : null;
   const prescriptionUnmatched = todayPrimary != null && todayPrimary.matchedRun == null;
-  const ranToday = glanceToday && glanceToday.doneMi >= 0.5 && !prescriptionUnmatched;
+  /* U4-POST-RACE-TRUTH-1 (2026-09-13) · Santa Monica forensic debrief, item 6/7.
+   *
+   * `prescriptionUnmatched` used to be the WHOLE story: a real run existing
+   * today that did not satisfy today's prescription (`day-resolver.ts`'s
+   * `supplementalRuns` — "a real run, real training, real mileage — never a
+   * completion") collapsed into the exact same boolean as "nothing has
+   * happened yet today", and `ranToday` below read both as false. Three
+   * distinguishable facts (Rule 11) were living inside one: matched,
+   * supplemental, and truly nothing yet. The consequence was not cosmetic —
+   * the whole `if (ranToday)` after-run render was skipped for a real
+   * logged run, so the runner got the ordinary PRE-RUN prescription card
+   * (as if the day had not happened) and the "Before You Go" row's
+   * "Move or skip" invitation (below), which is honest for a day that
+   * genuinely has not run, is not honest for one that has.
+   *
+   * `todaySupplementalRun` is the day's real, unmatched run — the same fact
+   * `lib/postrun/load.ts#dayBiggestCanonicalRun` already surfaces for the
+   * by-date recap path, read here from the SAME resolver
+   * (`resolveDayExecutions`) rather than re-derived a second way (Rule 16).
+   */
+  const todaySupplementalRun = resolvedToday?.supplementalRuns?.[0] ?? null;
+  const ranSupplementalToday = prescriptionUnmatched && todaySupplementalRun != null;
+  const ranToday = glanceToday && glanceToday.doneMi >= 0.5 && (!prescriptionUnmatched || ranSupplementalToday);
+  /* A supplemental run is graded against NOTHING it did not itself carry —
+   * exactly the `targetProvenance: 'self_authored' | 'none'` posture
+   * `lib/postrun/experience.ts` already gives an unmatched run. Reading
+   * `todayPlan` (today's PRESCRIPTION) to describe what this run WAS would
+   * resurrect WORKOUT-EXECUTION-ID-1's exact defect — a friend's unrelated
+   * run rendering as "INTERVALS · done" — for the one population that fix
+   * did not yet reach: today's own supplemental branch, newly reachable now
+   * that `ranToday` can be true here. `null` reads exactly like an
+   * unplanned/rest-day run already does elsewhere in this file. */
+  const executedAgainstPlan = ranSupplementalToday ? null : todayPlan;
   if (ranToday) {
     // The resolver already found the exact/legacy match for today's
     // prescription — use it directly rather than re-deriving "which run" a
-    // second time. Only re-queries (the old, unmatched-population-safe way)
-    // when today carries no prescription at all, so an unplanned/rest-day
-    // run still renders sensibly with nothing to misattribute against.
+    // second time. Falls back to the day's real supplemental run when the
+    // prescription itself went unmatched, and only re-queries (the old,
+    // unmatched-population-safe way) when today carries no prescription at
+    // all, so an unplanned/rest-day run still renders sensibly with nothing
+    // to misattribute against.
     const runRow = todayPrimary?.matchedRun
       ? { id: todayPrimary.matchedRun.runId, data: todayPrimary.matchedRun.data as Record<string, any>, shoe_id: todayPrimary.matchedRun.shoeId }
+      : ranSupplementalToday && todaySupplementalRun
+      ? { id: todaySupplementalRun.runId, data: todaySupplementalRun.data as Record<string, any>, shoe_id: todaySupplementalRun.shoeId }
       : (await pool.query<{ id: string; data: Record<string, any> }>(
           `SELECT id::text AS id, data, shoe_id FROM runs
             WHERE user_uuid = $1 AND ${runNotMergedSql()}
@@ -1113,7 +1149,16 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       }
 
       // Asked pace/HR: today's plan target where present, else null (by feel).
-      const planRow = (await pool.query<{ pace_target_s_per_mi: number | null; workout_spec: any }>(
+      //
+      // U4-POST-RACE-TRUTH-1 · this query is BY DATE alone, same shape
+      // `lib/postrun/load.ts`'s own POSTRUN-DATE-GRADE-1 comment names as the
+      // exact defect it replaced ("the plan row for this date" is not "the
+      // plan row THIS RUN satisfied"). For a supplemental run it would hand
+      // today's mismatched prescription's own pace/HR/spec to `grade` below,
+      // reviving that defect for the one population newly reachable here.
+      // `null` when supplemental — the same honest "no spec to grade
+      // against" state a genuine unplanned run already gets.
+      const planRow = ranSupplementalToday ? undefined : (await pool.query<{ pace_target_s_per_mi: number | null; workout_spec: any }>(
         `SELECT pace_target_s_per_mi, workout_spec FROM plan_workouts
           WHERE plan_id = $1 AND date_iso = $2 LIMIT 1`,
         [activePlan.id, today],
@@ -1133,7 +1178,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
        * else that grades. The session class comes from the plan row — the
        * same `classifySession` the wrist and run detail use. */
       const grade = resolveWorkoutVerdict({
-        type: todayPlan?.type ?? (data.workoutType as string | null) ?? null,
+        type: executedAgainstPlan?.type ?? (data.workoutType as string | null) ?? null,
         spec: planRow?.workout_spec ?? null,
         phases: completionPhases,
         // COMPLETIONREASON-1 (2026-09-12) · so `GradedPhase.completionReason`
@@ -1398,7 +1443,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         workAvgHrBpm: recapWorkHr,
         readings: recapReadings,
         type: purposeType, phase: purposePhase,
-        plannedMi: todayPlan?.distanceMi ?? 0,
+        plannedMi: executedAgainstPlan?.distanceMi ?? 0,
         plannedPaceSPerMi: askedPaceSPerMi,
         plannedPaceBandSPerMi: askedPaceBand,
         lthrBpm: recapLthrBpm,
@@ -1417,7 +1462,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
       });
 
       const shoes = await loadShoes(userId);
-      const shoeType = planTypeToShoeType(todayPlan?.type ?? null);
+      const shoeType = planTypeToShoeType(executedAgainstPlan?.type ?? null);
       // THE SHOE HE ACTUALLY WORE, or nothing.
       //
       // This read `data.shoe_id` — the jsonb key — which is NULL on every row
@@ -1533,7 +1578,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // an unknown type quietly resolving to "easy" would give a rep session
         // an easy run's breakdown and an easy run's aggregates.
         workoutType: canonicalSessionType(
-          (todayPlan?.type ?? data.workoutType ?? data.type ?? null) as string | null,
+          (executedAgainstPlan?.type ?? data.workoutType ?? data.type ?? null) as string | null,
         ),
         // WORKOUTPHASES-1 (2026-09-04) · `runs.data.phases`, the watch
         // completion payload persisted verbatim on the run row, straight
@@ -1658,7 +1703,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         askedPaceSPerMi, askedHrCap, askedHrIsHardCap,
         // The same number this route already hands `deriveRecap` as
         // `plannedMi`, now also reaching the table named asked-vs-ran.
-        askedMi: todayPlan?.distanceMi ?? null,
+        askedMi: executedAgainstPlan?.distanceMi ?? null,
         effortAsked: null,
         effortLogged: rpe?.rpe ?? null,
         // SAID ONCE. `deriveRecap` returns four parts and `deriveWin` a
@@ -1673,7 +1718,7 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           const spoken = composeRecap({
             win: deriveWin({
           type: purposeType, phase: purposePhase,
-          plannedMi: todayPlan?.distanceMi ?? 0,
+          plannedMi: executedAgainstPlan?.distanceMi ?? 0,
           plannedPaceSPerMi: askedPaceSPerMi,
           plannedHrCap: askedHrCap,
           actualMi: distanceMi,
@@ -1765,8 +1810,8 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
         // The race row's zone is its DISTANCE's row in Research/08 §6.1, so the
         // planned distance has to travel with the type. `zoneTarget` stays for
         // the phone's existing Int decode and is null when the ask is a set.
-        zoneTarget: zoneTargetForWorkout(todayPlan?.type ?? null, todayPlan?.distanceMi ?? null),
-        zoneTargets: zoneTargetsForWorkout(todayPlan?.type ?? null, todayPlan?.distanceMi ?? null),
+        zoneTarget: zoneTargetForWorkout(executedAgainstPlan?.type ?? null, executedAgainstPlan?.distanceMi ?? null),
+        zoneTargets: zoneTargetsForWorkout(executedAgainstPlan?.type ?? null, executedAgainstPlan?.distanceMi ?? null),
         elevationSamples: indoor ? null : elevationFromSplits(data.splits),
         // THE BEST INSTRUMENT, not the row's own field.
         //
@@ -2297,7 +2342,23 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   if (fueling?.needed) {
     beforeYouGo.push({ id: 'fuel', label: 'Fuel', sub: fueling.shortLine, value: null, action: null });
   }
-  if (todayPlan && todayPlan.type !== 'rest') {
+  /* U4-POST-RACE-TRUTH-1 (2026-09-13) · Santa Monica forensic debrief, item 7:
+   * "never invite a false skip record for a day the runner ran." This row
+   * used to gate on `todayPlan.type !== 'rest'` alone — with no check for
+   * whether a real run had already happened today, matched or supplemental.
+   * A runner who logged a genuine run that did not satisfy today's
+   * prescription (`ranSupplementalToday`, above) saw the identical "Move to
+   * another day, or skip it" a day that has not started yet would see —
+   * the ONE action ("mark as skipped") that cannot be true of a day with a
+   * real logged run on it. `ranToday` now covers both "completed" and
+   * "supplemental" (see its own comment above), so a real run of any kind
+   * suppresses the invitation rather than risking a false skip.
+   *
+   * Not replaced with a "Logged" row here: `postRun`'s own after-run render
+   * (above, when `ranToday`) already tells the runner what happened, and
+   * repeating that as a second row here would be Rule 17 — one sentence,
+   * once, in the place it is most useful. */
+  if (todayPlan && todayPlan.type !== 'rest' && !ranToday) {
     beforeYouGo.push(alreadySkipped
       ? { id: 'move', label: 'Skipped', sub: 'You can still move it, or put it back', value: null, action: 'move_skip', skipped: true }
       : { id: 'move', label: 'Move or skip', sub: 'Move to another day, or skip it', value: null, action: 'move_skip' });
