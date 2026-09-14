@@ -128,7 +128,7 @@ export function resolveElevationGain(
   return pickElevationGain([
     { ft: canonical.elevGainFt, source: canonical.elevGainSource, ingest: canonical.source },
     ...twins.map((t) => ({ ft: t.elevGainFt, source: t.elevGainSource, ingest: t.source })),
-  ]);
+  ], canonical.distanceMi);
 }
 
 /**

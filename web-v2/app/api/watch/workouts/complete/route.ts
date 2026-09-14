@@ -1038,7 +1038,7 @@ export async function POST(req: NextRequest) {
   // Elevation gain · device-measured from the watch's barometer-fused altitude
   // (build 17x+). Read camelCase body.elevGainFt (same wire lesson as
   // routePolyline). Route through elev-sanity so an absurd barometric value
-  // gets clamped, and stamp provenance 'watch' so the GPS-estimate fallback
+  // gets clamped, and stamp provenance so the GPS-estimate fallback
   // (post-write-hooks enrichElevIfMissing) defers to the device value — it
   // only fires when elevGainFt is null or elevGainSource is 'absent'.
   if (source === 'treadmill' && typeof body.elevGainFt === 'number' && body.elevGainFt >= 0) {
@@ -1055,8 +1055,29 @@ export async function POST(req: NextRequest) {
       splits: Array.isArray(data.splits) ? data.splits : [],
     });
     if (elevSane.value != null) {
+      // ELEVTRUST-1 (2026-09-13) · stamp the ANCHOR `sanitizeElevGain` ACTUALLY
+      // COMPUTED ('raw' or 'recomputed' — never 'absent' in this branch,
+      // since that source only accompanies a null value), not the literal
+      // string 'watch'.
+      //
+      // This used to always write 'watch' regardless of which of the two
+      // `elevSane.source` said. `lib/runs/elevation.ts`'s `ELEVATION_TRUST`
+      // table ranks 'raw' (barometer, trust 100) and 'recomputed'
+      // (splits-corroborated correction, trust 20) — both of which
+      // `sanitizeElevGain` already understands and this route already
+      // imports — but 'watch' was never a row in that table, so every row
+      // written through here scored trust 0 and lost to EVERY ranked
+      // candidate, including a `gps_derived` twin known to run 2.3x the
+      // barometer. Confirmed on the 2026-09-13 Santa Monica 10K: canonical
+      // 176 ft (this route, mislabeled 'watch') lost to a HealthKit twin's
+      // 466 ft `gps_derived` reading whenever no Strava twin's `raw` figure
+      // happened to be available to win on its behalf.
+      //
+      // Rule 10: a persisted derived value carries its anchor, or it is
+      // recomputed. `elevSane.source` IS the anchor — collapsing it to a
+      // constant discarded the one thing a reader needed to rank the value.
       data.elevGainFt = elevSane.value;
-      data.elevGainSource = 'watch';
+      data.elevGainSource = elevSane.source;
     }
   }
   // 2026-06-03 · auto-populate profile.timezone from the device's TZ on

@@ -432,10 +432,17 @@ export async function loadLogState(
        * trustworthy survives. Null is the correct answer for an untrusted
        * figure: the log's climb column simply stays blank rather than
        * carrying a number the runner cannot check. */
+      // ELEVTRUST-1 (2026-09-13) · `distanceMi` passed through so a
+      // `'watch'`-sourced candidate gets re-checked against its own ft/mi
+      // before this reader trusts it — see `lib/runs/elevation.ts`. This is
+      // the exact 2026-08-23 row the comment above quotes (3195 ft, source
+      // `watch`, 290 ft/mi over 11.01 mi): without the recheck, adding
+      // `'watch'` to `ELEVATION_TRUST` at parity with `raw` would have made
+      // THIS reader show 3195 rather than refuse it.
       elev_gain_ft: pickElevationGain([
         { ft: Number(a.elevGainFt) || null, source: (a.elevGainSource as string | null) ?? null, ingest: a.source ?? null },
         ...twins.map((t) => ({ ft: t.elevGainFt ?? null, source: t.elevGainSource ?? null, ingest: t.source })),
-      ])?.ft ?? null,
+      ], distanceMi)?.ft ?? null,
       workoutType,
       phaseLabel: date ? phaseFor(date) : null,
       shoeName,
