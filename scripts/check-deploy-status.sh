@@ -97,8 +97,8 @@ if status == "SUCCESS":
     print("check-deploy-status: OK · main is live at this commit")
     sys.exit(0)
 
-if status == "BUILDING" or status == "QUEUED":
-    print(f"check-deploy-status: PENDING · a build is in progress ({status}) — re-run once it finishes, this is not yet a verdict")
+if status in ("BUILDING", "QUEUED", "DEPLOYING", "INITIALIZING"):
+    print(f"check-deploy-status: PENDING · a build/deploy is in progress ({status}) — re-run once it finishes, this is not yet a verdict")
     sys.exit(1)
 
 # status is FAILED, CRASHED, or something else non-SUCCESS: walk back to find
