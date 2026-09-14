@@ -6,7 +6,67 @@ so that changing it is a choice rather than an accident.
 
 ---
 
-<<<<<<< HEAD
+## 2026-09-14 · OWNER-DIRECTION-1 · what this product is for, and how it must behave toward the runner
+
+David's own ruling, recorded verbatim in substance rather than paraphrased away, as the standing
+direction for every future decision in this file:
+
+1. **The product supports improvement goals without requiring a scheduled race.** A runner who
+   wants to get faster or build a base is a first-class user, not a degraded case of someone
+   training for something.
+2. **Its central promise is adaptive continuity** across progression, time off, races, recovery,
+   and maintenance — one coherent story the app tells about the runner across every phase, not a
+   different app depending on which phase they're in.
+3. **It must tell runners when and how they are improving, in normal coaching language** — not
+   buried in a metric, not silent, not jargon.
+4. **Holding back a capable runner and pushing an unready runner are both serious failures.** This
+   is the same asymmetry CLAUDE.md's own hero statement and Rule 21 already name — recorded here as
+   the explicit, symmetric standard both directions are held to.
+5. **Earned progression should be proposed as soon as evidence and safety support it.** Not
+   batched, not delayed for administrative convenience.
+6. **Ambiguous evidence should produce an explained recommendation with a meaningful choice** —
+   never a silent default and never a refusal dressed up as neutrality.
+7. **Subjective feedback is evidence whose authority depends on consistency and corroboration** —
+   it is real evidence, not noise, but it is weighed, not taken as an unconditional override.
+8. **Repeated non-adherence triggers recommitment or recalibration** — the plan asks the runner a
+   real question at that point, not a silent downgrade.
+9. **Ambitious goals remain visible while plausible; changed reality must be explained rather than
+   silently rewriting the goal.** A goal is retired or revised out loud, with the evidence that
+   changed, never quietly.
+10. **Runs, plans, and race goals must never change silently overnight. Adaptations are proposals
+    the runner accepts or declines** — this is the same standing rule already locked elsewhere in
+    this file (`AUTOMATIC_ADAPTATION_AUTHORITY = false`) and in CLAUDE.md; recorded here again as
+    part of the same coherent direction, not a new carve-out.
+11. **Material pace and plan-change proposals should notify the runner.** A change that affects
+    what the runner actually does tomorrow is not something to discover by accident on the next
+    screen open.
+12. **Apple Watch executes the planned workout and may offer an optional end-of-run modification
+    when the runner is clearly struggling** — the watch's own authority is scoped to that one
+    moment, not a second place plan decisions get made.
+13. **The next runner-visible priority is a trustworthy adaptive plan.** Named explicitly so the
+    next block of work is judged against this, not against code cleanliness alone.
+14. **Plan changes and fitness findings require the strongest evidence** — the same evidentiary bar
+    this file's own entries (`OWNER-AGREEMENT-1`, `ACTIONCOMPLETE-2`, and everything below) already
+    hold engineering claims to, extended explicitly to runner-facing coaching claims.
+15. **David must be consulted on major structural changes, new product concepts, and new
+    features.** Recorded so this is a known, named gate, not an assumption any future session has
+    to rediscover.
+
+### Why this entry exists
+
+This file's own git history had committed, unresolved merge-conflict markers at three points
+(`<<<<<<< HEAD`, `=======`, `>>>>>>> origin/action-kinds-complete`), discovered by external review
+and logged as a finding (see `for external review/findings/00-register.md` — recorded as **F021**,
+not F019: F019 was already assigned to an unrelated, earlier self-reported finding tonight, and per
+this project's own never-reuse-an-ID rule for stable finding identifiers, a new finding never
+overwrites an existing one). The conflict has been resolved by keeping BOTH sides' content in full
+(`OWNER-AGREEMENT-1` and `ACTIONCOMPLETE-2` below, both dated 2026-09-05, both genuine, neither a
+duplicate of the other) — nothing was dropped. This entry is the separate, dated record of the
+owner-direction decisions above, added at the same time as that mechanical repair but logically
+distinct from it.
+
+---
+
 ## 2026-09-05 · OWNER-AGREEMENT-1 · twelve quantities, one owner each, and a gate
 that RESOLVES two owners and compares the numbers
 
@@ -87,7 +147,9 @@ account: 18 days on post-race recovery for a marathon, 24 s/mi on marathon
 pace, 11 s/mi on interval pace, 8.5 mi on the marathon-pace session ceiling.
 The gate does not fix them; it stops them growing and fails the moment one
 closes and its exemption is left standing.
-=======
+
+---
+
 ## 2026-09-05 · ACTIONCOMPLETE-2 · the propose lane can carry a JUDGEMENT, the
 runner can take a session's shape back, and "complete" now means fourteen things
 rather than eleven.
@@ -191,7 +253,6 @@ And one in the new shell gate: emptying `ALL_ACTION_KINDS` made it exit 1 saying
 NOTHING, because `set -euo pipefail` killed the script before its own liveness
 message could print. A gate that fails without naming the defect is barely
 better than one that passes.
->>>>>>> origin/action-kinds-complete
 
 ---
 
