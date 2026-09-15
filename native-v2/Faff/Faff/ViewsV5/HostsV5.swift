@@ -1837,11 +1837,25 @@ struct TodayHostV5: View {
         !force && to == from
     }
 
-    /// RETRYSTORM-1 · `skipWeekPrefetch` exists for exactly one caller,
-    /// `retryPending` — threaded through to `prefetchAround`'s own
-    /// `includeWeekFetches`, see that function's doc comment for why a
-    /// retry of one specific day has no reason to re-warm three weeks of
-    /// neighbouring data that the original navigation already fetched once.
+    /// RETRYSTORM-1 / BA01-3 (2026-09-15) · `skipWeekPrefetch` exists for
+    /// exactly one caller, `retryPending`, so a retry of one specific day has
+    /// no reason to re-warm a whole week of neighbouring data the original
+    /// navigation already fetched once. Originally threaded through to
+    /// `prefetchAround`'s own `includeWeekFetches`; BA01-1 removed the
+    /// `prefetchAround` call from `goTo` entirely, and the equivalent guard
+    /// on the ONE remaining week-level fetch below (`fetchAndCacheWeek`) was
+    /// never added — `skipWeekPrefetch` kept being accepted as a parameter
+    /// but nothing in `goTo`'s body ever read it again, so every Retry on an
+    /// uncached date silently re-fired a week fetch anyway. Caught while
+    /// writing BA-01 required test #3 ("a Retry test proves ... no
+    /// neighbor/week prefetch"), extracted as a plain, static,
+    /// input-to-output function — same reasoning as `shouldSkipNavigation`
+    /// above — so the decision is directly testable rather than provable
+    /// only by driving a live host through a real retry.
+    static func shouldPrefetchWeek(dateAlreadyCached: Bool, skipWeekPrefetch: Bool) -> Bool {
+        !skipWeekPrefetch && !dateAlreadyCached
+    }
+
     private func goTo(_ iso: String, todayISO today: String, force: Bool = false, skipWeekPrefetch: Bool = false) {
         let from = viewingDate ?? today
         guard !Self.shouldSkipNavigation(from: from, to: iso, force: force) else { return }
@@ -1899,7 +1913,13 @@ struct TodayHostV5: View {
         // sooner a "Loading…" label becomes a real type/dose. Independent
         // of `navigationTask`: it never touches `surface.model`, same
         // reasoning as `prefetchAround` below.
-        if dayCache[iso] == nil { Task { await fetchAndCacheWeek(anchoredOn: iso) } }
+        // BA01-3 · gated on `shouldPrefetchWeek` — see that function's own
+        // doc comment for the real gap this closes: `skipWeekPrefetch` was
+        // accepted here but never actually consulted, so a Retry re-fired
+        // this exact week fetch on every uncached date.
+        if Self.shouldPrefetchWeek(dateAlreadyCached: dayCache[iso] != nil, skipWeekPrefetch: skipWeekPrefetch) {
+            Task { await fetchAndCacheWeek(anchoredOn: iso) }
+        }
 
         navigationTask?.cancel()
         // FETCHOWNER-1 · only an `isHome` navigation is allowed to

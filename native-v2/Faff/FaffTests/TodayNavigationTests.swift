@@ -163,4 +163,44 @@ final class TodayNavigationTests: XCTestCase {
     func testForcedNavigationToADifferentDateIsAlsoNeverSkipped() {
         XCTAssertFalse(TodayHostV5.shouldSkipNavigation(from: "2026-09-14", to: "2026-09-15", force: true))
     }
+
+    // MARK: - shouldPrefetchWeek(dateAlreadyCached:skipWeekPrefetch:) — BA01-3
+    //
+    // BA-01 required test #3 (ASAP-IMPLEMENTATION-SEQUENCE.md): "A Retry
+    // test proves exactly one owning request and no neighbor/week
+    // prefetch." `retryPending` calls `goTo(..., skipWeekPrefetch: true)`,
+    // but `goTo`'s own week-prefetch line never actually read that
+    // parameter — it fired `fetchAndCacheWeek` whenever the date wasn't
+    // already in `dayCache`, on every caller, retry or not. Since a Retry
+    // exists specifically because the date's own fetch FAILED, the date is
+    // essentially always uncached at that moment — so every real Retry tap
+    // silently re-fired a week-level fetch, exactly the "neighbor/week
+    // prefetch" this required test exists to forbid. Found and fixed while
+    // writing this test, not before.
+
+    /// The regression itself, restated as a fact the function must get
+    /// right: `skipWeekPrefetch: true` (retryPending's own call shape) must
+    /// refuse to prefetch the week even when the date is genuinely
+    /// uncached — the exact state a failed date is normally in.
+    func testRuleEighteenFalsifier_retryOnAnUncachedDateMustNotPrefetchTheWeek() {
+        XCTAssertFalse(
+            TodayHostV5.shouldPrefetchWeek(dateAlreadyCached: false, skipWeekPrefetch: true),
+            "RULE 18: this is the exact bug shape — an uncached date (the normal state of a "
+            + "failed retry target) must not trigger a week prefetch when the caller asked to skip it")
+    }
+
+    /// Ordinary (non-retry) navigation to a date not yet in `dayCache` must
+    /// keep priming the week — this is WEEKCACHE-1's own existing,
+    /// legitimate behavior, and the fix must not regress it.
+    func testOrdinaryNavigationToAnUncachedDateStillPrefetchesTheWeek() {
+        XCTAssertTrue(TodayHostV5.shouldPrefetchWeek(dateAlreadyCached: false, skipWeekPrefetch: false))
+    }
+
+    /// A date already in `dayCache` never needs the week re-primed,
+    /// regardless of `skipWeekPrefetch` — this was already true before
+    /// BA01-3 and must stay true after it.
+    func testAlreadyCachedDateNeverPrefetchesTheWeekEitherWay() {
+        XCTAssertFalse(TodayHostV5.shouldPrefetchWeek(dateAlreadyCached: true, skipWeekPrefetch: false))
+        XCTAssertFalse(TodayHostV5.shouldPrefetchWeek(dateAlreadyCached: true, skipWeekPrefetch: true))
+    }
 }
