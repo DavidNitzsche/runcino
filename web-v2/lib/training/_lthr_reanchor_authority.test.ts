@@ -46,7 +46,7 @@
  * used by `lib/training/durability-anchor.ts`) into this candidate pipeline.
  */
 import { describe, it, expect } from 'vitest';
-import { selectLthrAnchor, LTHR_QUALIFYING_MIN_MI, LTHR_QUALIFYING_MAX_MI, type LthrRaceCandidate } from './lthr-reanchor';
+import { selectLthrAnchor, selectLthrAnchorDetailed, LTHR_QUALIFYING_MIN_MI, LTHR_QUALIFYING_MAX_MI, type LthrRaceCandidate } from './lthr-reanchor';
 import { REPRESENTATIVE_FLOOR, RUNNER_REPORTED_AUTHORITY_CAP, authorityTier, selectionAuthority } from '@/lib/race/effort-authority';
 
 const TODAY = '2026-06-01';
@@ -172,5 +172,61 @@ describe('the non-authority gates are unaffected by F139 and still filter indepe
 
   it('an empty candidate pool returns null, same as always', () => {
     expect(selectLthrAnchor([], TODAY)).toBeNull();
+  });
+});
+
+describe('F139 follow-up (consult-log 039) · selectLthrAnchorDetailed names WHY null happened', () => {
+  it('a genuinely empty pool is "no-qualifying-candidate", not "awaiting-confirmation"', () => {
+    const result = selectLthrAnchorDetailed([], TODAY);
+    expect(result.anchor).toBeNull();
+    expect(result.refusalReason).toBe('no-qualifying-candidate');
+    expect(result.unconfirmedCandidate).toBeNull();
+  });
+
+  it('a candidate that fails a DATA-SHAPE gate (bad distance) is still "no-qualifying-candidate"', () => {
+    const tooShort = candidate({ slug: 'too-short', dateISO: '2026-05-20', distanceMi: 3.1 });
+    const result = selectLthrAnchorDetailed([tooShort], TODAY);
+    expect(result.anchor).toBeNull();
+    expect(result.refusalReason).toBe('no-qualifying-candidate');
+    expect(result.unconfirmedCandidate).toBeNull();
+  });
+
+  it('RULE 18 · a candidate that clears every data-shape gate but has no runner report is "awaiting-confirmation", naming the exact race', () => {
+    const c = candidate({ slug: 'unconfirmed-half', name: 'Unconfirmed Half', dateISO: '2026-05-20' });
+    const result = selectLthrAnchorDetailed([c], TODAY);
+    expect(result.anchor).toBeNull();
+    expect(result.refusalReason).toBe('awaiting-confirmation');
+    expect(result.unconfirmedCandidate).not.toBeNull();
+    expect(result.unconfirmedCandidate?.slug).toBe('unconfirmed-half');
+    expect(result.unconfirmedCandidate?.name).toBe('Unconfirmed Half');
+    expect(result.unconfirmedCandidate?.lthr).not.toBeNull();
+    // FALSIFIER: an explicit 'unrepresentative' report on the SAME
+    // otherwise-qualifying shape produces the identical reason — the
+    // distinction is data-shape vs authority-tier, not "has a report" vs
+    // "doesn't", which is exactly the point (both are "no measured signal
+    // that clears the gate", Rule 11's own three-state discipline).
+    const reported = candidate({ slug: 'reported-unrep', dateISO: '2026-05-20', runnerAuthorityTier: 'unrepresentative' });
+    const reportedResult = selectLthrAnchorDetailed([reported], TODAY);
+    expect(reportedResult.refusalReason).toBe('awaiting-confirmation');
+  });
+
+  it('when a real anchor IS selected, refusalReason and unconfirmedCandidate are both null', () => {
+    const c = candidate({ slug: 'confirmed', dateISO: '2026-05-20', runnerAuthorityTier: 'representative' });
+    const result = selectLthrAnchorDetailed([c], TODAY);
+    expect(result.anchor).not.toBeNull();
+    expect(result.refusalReason).toBeNull();
+    expect(result.unconfirmedCandidate).toBeNull();
+  });
+
+  it('among two unconfirmed candidates, the reason names the MOST RECENT one', () => {
+    const older = candidate({ slug: 'older-unconfirmed', dateISO: '2026-04-01' });
+    const newer = candidate({ slug: 'newer-unconfirmed', dateISO: '2026-05-20' });
+    const result = selectLthrAnchorDetailed([older, newer], TODAY);
+    expect(result.unconfirmedCandidate?.slug).toBe('newer-unconfirmed');
+  });
+
+  it('selectLthrAnchor itself is unaffected — same anchor value either way', () => {
+    const c = candidate({ slug: 'parity-check', dateISO: '2026-05-20', runnerAuthorityTier: 'representative' });
+    expect(selectLthrAnchor([c], TODAY)).toEqual(selectLthrAnchorDetailed([c], TODAY).anchor);
   });
 });

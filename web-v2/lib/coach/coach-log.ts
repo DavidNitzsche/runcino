@@ -793,11 +793,16 @@ function easyMeta(f: EasyDisciplineFinding, state: string): Record<string, unkno
 export interface LthrReanchorEntryInput {
   /** 'moved' · the anchor was re-derived. 'held' · a tested anchor is past the
    *  re-test cadence and a fresh race disagrees with it, and the engine will
-   *  not overwrite a tested value. */
-  kind: 'moved' | 'held';
+   *  not overwrite a tested value. 'awaiting_confirmation' (F139 follow-up,
+   *  2026-09-15) · a qualifying half met every data-shape gate and is sitting
+   *  unconfirmed — see `selectLthrAnchorDetailed`'s own doc comment for why
+   *  this is now distinguishable from "no candidate at all". */
+  kind: 'moved' | 'held' | 'awaiting_confirmation';
   previousLthr: number | null;
   /** The number the evidence reads. On 'held' this is what the race says, NOT
-   *  what is stored — the whole point of the line is the disagreement. */
+   *  what is stored — the whole point of the line is the disagreement.
+   *  Unused on 'awaiting_confirmation' — there is no measured LTHR to name
+   *  yet, that is exactly what confirmation would unlock. */
   evidenceLthr: number;
   raceName: string;
   raceDateISO: string;
@@ -818,6 +823,13 @@ export interface LthrReanchorEntryInput {
 export function composeLthrReanchorEntry(
   i: LthrReanchorEntryInput,
 ): { title: string; body: string } {
+  if (i.kind === 'awaiting_confirmation') {
+    return {
+      title: 'THRESHOLD HR',
+      body: `${i.raceName} qualifies to re-anchor your threshold HR, but it's still `
+        + `sitting unconfirmed — say whether it counted and this updates automatically.`,
+    };
+  }
   if (i.kind === 'held') {
     return {
       title: 'THRESHOLD HR',
@@ -853,7 +865,7 @@ export function composeLthrReanchorEntry(
 async function updateLthrReanchorLog(userId: string, todayISO: string): Promise<number> {
   try {
     const {
-      decideLthrReanchor, selectLthrAnchor, lthrProvenanceOf, LTHR_MATERIAL_CHANGE_BPM,
+      decideLthrReanchor, selectLthrAnchorDetailed, lthrProvenanceOf, LTHR_MATERIAL_CHANGE_BPM,
     } = await import('@/lib/training/lthr-reanchor');
     const { loadLthrRaceCandidates } = await import('@/lib/training/lthr-reanchor-store');
     const row = (await rowsOrNull<{ lthr: number | null; lthr_method: string | null; lthr_set_at: string | null }>(
@@ -867,8 +879,32 @@ async function updateLthrReanchorLog(userId: string, todayISO: string): Promise<
     if (!row) return 0;
     const candidates = await loadLthrRaceCandidates(userId, todayISO);
     if (candidates === null) return 0;   // read failed · say nothing
-    const anchor = selectLthrAnchor(candidates, todayISO);
-    if (!anchor) return 0;
+    const selection = selectLthrAnchorDetailed(candidates, todayISO);
+    const anchor = selection.anchor;
+    if (!anchor) {
+      // F139 follow-up (consult-log 039) · a real, otherwise-qualifying race
+      // sitting unconfirmed is worth ONE line, not silence — the coach log
+      // is exactly "somewhere a runner can act on it" this finding asked
+      // for. Idempotent per race slug, same pattern as 'moved'/'held'
+      // below, so this fires once per unconfirmed race, not every cron
+      // tick it stays unconfirmed.
+      const u = selection.unconfirmedCandidate;
+      if (selection.refusalReason === 'awaiting-confirmation' && u) {
+        const composed = composeLthrReanchorEntry({
+          kind: 'awaiting_confirmation',
+          previousLthr: row.lthr,
+          evidenceLthr: u.lthr ?? 0,
+          raceName: u.name,
+          raceDateISO: u.dateISO,
+          storedAgeDays: null,
+        });
+        return (await writeEntry(userId, 'lthr_reanchor', `lthr:awaiting:${u.slug}`, {
+          ...composed, dateISO: u.dateISO,
+          meta: { raceSlug: u.slug, lthr: u.lthr },
+        })) ? 1 : 0;
+      }
+      return 0;
+    }
 
     const decision = decideLthrReanchor({
       stored: { lthr: row.lthr, method: row.lthr_method, setAtISO: row.lthr_set_at },

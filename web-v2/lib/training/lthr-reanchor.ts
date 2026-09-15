@@ -226,6 +226,38 @@ export function daysBetween(fromISO: string, toISO: string): number | null {
 }
 
 /**
+ * F139 follow-up (2026-09-15 consult-log 039, `RR-20260914-050`) · WHY
+ * `selectLthrAnchor` refused, when it refuses.
+ *
+ * Before F139, a `null` return had one honest reading: no race met the
+ * data-shape/cadence gates. After F139, `null` can ALSO mean a race met
+ * every data-shape gate and is simply sitting unconfirmed — a completely
+ * different situation for a caller (or a runner) to act on. Collapsing
+ * both into the same `null` is exactly the "don't know" vs "confirmed
+ * absent" conflation Rule 11 exists to name, so this type exists to keep
+ * them apart without changing `selectLthrAnchor`'s own gating logic at
+ * all — see `selectLthrAnchorDetailed` below, which is the only place
+ * this reason is computed.
+ */
+export type LthrAnchorRefusalReason =
+  | 'no-qualifying-candidate'
+  | 'awaiting-confirmation';
+
+export interface LthrAnchorSelection {
+  /** Identical to `selectLthrAnchor`'s own return value. */
+  anchor: LthrAnchor | null;
+  /** Null exactly when `anchor` is non-null. */
+  refusalReason: LthrAnchorRefusalReason | null;
+  /**
+   * The best-graded candidate that met every data-shape/cadence gate but
+   * failed the authority-tier gate — set only when `refusalReason` is
+   * `'awaiting-confirmation'`. Carries the race a runner would need to
+   * confirm to unblock re-anchoring, for a caller that wants to name it.
+   */
+  unconfirmedCandidate: { slug: string; name: string; dateISO: string; lthr: number | null } | null;
+}
+
+/**
  * The one race that anchors LTHR today, or null.
  *
  * Gates, in the order a candidate meets them:
@@ -239,12 +271,29 @@ export function daysBetween(fromISO: string, toISO: string): number | null {
  * Ranking is date-descending, then authority-descending: the most recent
  * qualifying race wins (decision 3), and two races on the same day break toward
  * the better-graded one.
+ *
+ * A thin wrapper over `selectLthrAnchorDetailed` for the many existing
+ * callers that only ever wanted the anchor itself — unchanged signature,
+ * unchanged behavior.
  */
 export function selectLthrAnchor(
   candidates: readonly LthrRaceCandidate[],
   todayISO: string,
 ): LthrAnchor | null {
+  return selectLthrAnchorDetailed(candidates, todayISO).anchor;
+}
+
+/**
+ * Same selection as `selectLthrAnchor`, plus WHY a `null` anchor is null.
+ * See `LthrAnchorRefusalReason`'s own doc comment for what that
+ * distinguishes and why it matters.
+ */
+export function selectLthrAnchorDetailed(
+  candidates: readonly LthrRaceCandidate[],
+  todayISO: string,
+): LthrAnchorSelection {
   const pool: LthrAnchor[] = [];
+  let bestUnconfirmed: { slug: string; name: string; dateISO: string; lthr: number | null } | null = null;
   for (const c of candidates ?? []) {
     if (!c?.dateISO) continue;
     const ageDays = daysBetween(c.dateISO, todayISO);
@@ -295,16 +344,34 @@ export function selectLthrAnchor(
       : reported === 'representative' ? REPRESENTATIVE_FLOOR
       : RUNNER_REPORTED_AUTHORITY_CAP.unrepresentative;
     const tier = authorityTier(authority);
-    if (tier !== 'representative') continue;
+    if (tier !== 'representative') {
+      // Met every data-shape/cadence gate above — a real, otherwise-usable
+      // race — and refused ONLY for lack of a confirmed measured signal.
+      // Kept as the most recent such candidate so a caller that wants to
+      // say WHY selection came up empty can name the actual race, not just
+      // the fact that one exists. Does not affect `pool`/ranking/authority
+      // at all — a pure side channel for `selectLthrAnchorDetailed`.
+      if (!bestUnconfirmed || c.dateISO > bestUnconfirmed.dateISO) {
+        bestUnconfirmed = {
+          slug: c.slug, name: c.name, dateISO: c.dateISO,
+          lthr: lthrFromRace(distanceMi, avgHr),
+        };
+      }
+      continue;
+    }
     // The distance/HR plausibility gate is `lthrFromRace`'s, not a second copy.
     const lthr = lthrFromRace(distanceMi, avgHr);
     if (lthr == null) continue;
     pool.push({ slug: c.slug, name: c.name, dateISO: c.dateISO, ageDays, lthr, authority, tier });
   }
-  if (pool.length === 0) return null;
+  if (pool.length === 0) {
+    return bestUnconfirmed
+      ? { anchor: null, refusalReason: 'awaiting-confirmation', unconfirmedCandidate: bestUnconfirmed }
+      : { anchor: null, refusalReason: 'no-qualifying-candidate', unconfirmedCandidate: null };
+  }
   pool.sort((a, b) =>
     a.dateISO === b.dateISO ? b.authority - a.authority : (a.dateISO < b.dateISO ? 1 : -1));
-  return pool[0];
+  return { anchor: pool[0], refusalReason: null, unconfirmedCandidate: null };
 }
 
 // ── The decision ───────────────────────────────────────────────────────────
