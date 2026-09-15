@@ -211,6 +211,31 @@ struct DecisionRowV5: View {
                 .foregroundStyle(V5.textPrimary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            // F060 (2026-09-14) · THE CARD'S OWN DIFFERENTIATOR.
+            //
+            // A HOLD (and every other RECORD_ONLY kind) has a fixed template
+            // sentence for both `headline` and `why` — the reasoning is a
+            // categorical judgement, not a computed quantity, so two
+            // genuinely different HOLD decisions, raised weeks apart against
+            // two different workouts, render as one byte-identical card
+            // shown twice: once STILL OPEN, once SETTLED. That read as a
+            // glitch on the one screen built to prove the coach's decisions
+            // are real and distinct, even though both rows are correct data
+            // (design review confirmed this against `plan_workout_proposals`
+            // directly — two genuine rows, not a duplicate write).
+            //
+            // `dateISO` already carries the fix: it is the ONE field on this
+            // row that is never templated, because it is read straight off
+            // the workout the decision was raised against. It was decoded
+            // off the wire and never drawn. This does not touch which HOLD
+            // fires, when, or why — only which day it says this was about.
+            if let context = DecisionRowV5.contextLine(decision) {
+                Text(context)
+                    .font(.faffText(TypeScaleV5.label13))
+                    .foregroundStyle(V5.textQuiet)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
             if !decision.why.isEmpty {
                 Text(decision.why)
                     .font(.faffText(TypeScaleV5.label13))
@@ -235,6 +260,20 @@ struct DecisionRowV5: View {
         .padding(.horizontal, V5.S.tilePad)
         .padding(.vertical, V5.S.s14)
         .accessibilityElement(children: .combine)
+    }
+
+    /// "About the session on Sep 20." — nil for a block-level decision
+    /// (`p`-prefixed), which is about the whole plan and has no single day,
+    /// exactly where `dateISO` is already nil on the wire (see
+    /// `V5DecisionWire`'s own doc comment). Never nil for a `w`-prefixed row:
+    /// `lib/faff/v5-decisions.ts` sets `dateISO: r.workoutDateISO`
+    /// unconditionally for every per-workout decision, HOLD included.
+    ///
+    /// F060 (2026-09-14) · this is the whole fix. See the call site's
+    /// comment for why a plain date line is what closes it.
+    static func contextLine(_ d: V5Decision) -> String? {
+        guard let workoutDateISO = d.dateISO else { return nil }
+        return "About the session on \(shortDate(workoutDateISO))."
     }
 
     /// "Raised Sep 2" or "Settled Aug 7".
