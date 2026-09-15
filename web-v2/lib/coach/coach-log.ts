@@ -827,7 +827,7 @@ export function composeLthrReanchorEntry(
     return {
       title: 'THRESHOLD HR',
       body: `${i.raceName} qualifies to re-anchor your threshold HR, but it's still `
-        + `sitting unconfirmed — say whether it counted and this updates automatically.`,
+        + `sitting unconfirmed. Say whether it counted and this updates automatically.`,
     };
   }
   if (i.kind === 'held') {
