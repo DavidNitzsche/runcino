@@ -14,6 +14,22 @@ with no active owner is a programme failure and gets assigned in the same check.
 
 ---
 
+## FULL PROGRAMME STAND-DOWN IN EFFECT — 2026-09-15, David's direct instruction via David's Desk
+
+**"I need all agents and work to STOP immediately. I need all 30 min timers to stop. Nothing
+running. Nothing checking in. Full stand down."** Followed immediately by the sole exception:
+F156 (the offline/missing-run-data failure family that survived three independent "fixed and
+confirmed" verdicts tonight — F056, F147, F152), full priority, all hands, "until we fix this
+nothing else moves."
+
+- Programme lead's own 30-min self-check cron (`8987d97c`) **cancelled**, confirmed via `CronList` returning empty.
+- Coach consultant, independent product review, design & UX review: **stood down explicitly**, told not to resume without direct word.
+- Code agent: **redirected to F156 as sole active work** — widen investigation to the real backend data path, not client-code tracing alone; confirm exact build David's failing test ran on; the third symptom (missing post-run data) was never actually root-caused.
+- External review lead: **standing by**, explicitly told not to start a parallel independent trace — one coherent investigation, not two.
+- **Do not resume ANY other work, dispatch ANY other task, or re-arm the 30-min cron until David (via David's Desk) explicitly says so.** This line stays at the top of the board until stand-down lifts.
+
+---
+
 ## Board (last verified against real `list_sessions` state: 2026-09-15 ~14:00 UTC)
 
 **Cycle 20 (interstitial — F151/F152/F153 crisis fully resolved, not a scheduled 30-min check)**: David reproduced F147's exact "offline" symptom on build 296, the build that had just been triple-confirmed shipped — immediately logged as F151 (urgent), no premature conclusion either direction. Device state confirmed first (David genuinely on 296, ruling out staleness). Code agent traced a real, concrete second mechanism (F152: a Retry-button same-date guard, silently a no-op, unrelated to F147) and correctly declined to self-merge given the stakes. External reviewer independently re-ran the Rule 18 falsification themselves and proved the load-bearing claim with hard evidence (`git show` on F147's shipped commit: zero references to F152's code) — F151 closed on that result, not on reasoning alone. Process lesson written and memory saved: the real lesson is narrower than "the chain can't be trusted" — a symptom can have more than one cause, confirming a fix for one doesn't rule out a second coexisting one. Merge authorized, new TestFlight build in progress. In parallel, David's separately-requested run debrief (F155) and the elevation-gain accuracy investigation he flagged (F153, real and recurring across 54 days, root-caused to netting-granularity noise, ruled by the coach consultant as Option B) both closed cleanly, plus an independently-found citation defect (F154) fixed and deployed same-night. Register push during this stretch hit an extraordinarily long `next build` (52+ min CPU, genuinely still progressing not hung, on a host that spiked past 400 load earlier) — 36 commits queued locally without data loss risk (git commits are durable on disk regardless of push timing), eventually landed via a fresh isolated-worktree push once general load eased, in under 3 minutes. Hub republished honestly at every step of this arc — urgent when genuinely urgent, resolved only once actually proven, never claiming more than was known at each point.
