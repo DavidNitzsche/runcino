@@ -68,7 +68,13 @@ const ALLOWED: Record<string, string[]> = {
   'available training days': [
     'availableDows', 'trainingDaysPerWeek', 'longRunDow', 'qualityDows', 'restDow',
   ],
-  'completed versus future dates': ['date', 'startMondayISO', 'isMidBlock'],
+  // FIRSTDAY-1 (2026-09-14) / F063 · `firstOwnedDayISO` is not a new
+  // authority over the plan's CONTENT — it is `startMondayISO`'s own
+  // companion date, the runner's literal first day rather than the
+  // training-week boundary (WEEK-ALIGN-1), read by exactly one place
+  // (`frontLoadFirstRun`'s guard/target) to decide WHEN day one's
+  // prescription is written, never WHAT is prescribed.
+  'completed versus future dates': ['date', 'startMondayISO', 'firstOwnedDayISO', 'isMidBlock'],
   // CADENCE-1 · the block's OWN authored deload cadence, inherited on rebuild.
   // This is the replacement for tsbAtStart: the cadence is a periodisation
   // decision belonging to the block, not a reading taken on the morning of a

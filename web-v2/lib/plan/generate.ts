@@ -10287,8 +10287,41 @@ export interface ComposePlanInput {
   /** Race day ISO date (YYYY-MM-DD). */
   raceDateISO: string;
   /** Monday of the plan start week (YYYY-MM-DD). Caller computes from
-   *  today() · keeps composePlan pure (no Date.now()). */
+   *  today() · keeps composePlan pure (no Date.now()). WEEK-ALIGN-1
+   *  (2026-08-24) · this is ALWAYS the training-week BOUNDARY
+   *  (`weekStartBoundaryOf`, the day after `long_run_day`) — never the
+   *  literal day the runner's plan visually starts. See
+   *  `firstOwnedDayISO` below for that question. */
   startMondayISO: string;
+  /** FIRSTDAY-1 (2026-09-14) · the runner's actual FIRST VISIBLE day
+   *  (YYYY-MM-DD), i.e. `requestedBlockStartISO(...)`'s result — the same
+   *  value the persist layer clips against as `clipBeforeISO`. Optional.
+   *  `null`/absent does NOT mean "same as `startMondayISO`" — the one
+   *  consumer (`frontLoadFirstRun`'s guard) instead runs its OLD,
+   *  pre-WEEK-ALIGN-1 check verbatim when this is absent, so every caller
+   *  that does not supply it — `_cold_start_fixtures`, `_brain_acceptance`,
+   *  the sim/bench harnesses, `_layout_contract`'s corpus, a lifecycle
+   *  regen (whose `requestedBlockStartISO` is `null` by design) — stays
+   *  byte-identical. A caller passing a literal non-Monday date as
+   *  `startMondayISO` (the pre-WEEK-ALIGN-1 shape several of the above
+   *  still use) would otherwise have this mitigation silently disabled by
+   *  a fallback that compared `startMondayISO` against itself.
+   *
+   *  F063 CAUSE B · added because `composePlan`'s own "get them running on
+   *  day one" mitigation (search `frontLoadFirstRun`) used to read
+   *  `startMondayISO` as its proxy for "this runner signed up mid-week".
+   *  That proxy was correct before WEEK-ALIGN-1 (when `startMondayISO` WAS
+   *  the literal start day) and silently wrong after: `startMondayISO` is
+   *  now always the boundary, so for the single most common long-run day
+   *  (Sunday → boundary is always Monday) the mitigation could never fire
+   *  again, for any onboarder, mid-week or not. `composePlan` needs the
+   *  runner's actual first day to answer "did they join mid-week", and
+   *  `ComposePlanInput` had no field carrying it — only the persist layer,
+   *  downstream of this call, ever computed `requestedBlockStartISO`. This
+   *  field closes that gap without touching `requestedBlockStartISO`,
+   *  `clipBeforeISO` or `persistsComposedDay` themselves, which are correct
+   *  and were never the bug. */
+  firstOwnedDayISO?: string | null;
   level: LevelKey;
   recentWeeklyMi: number;
   /** RAMPBASE-1 (2026-08-17) · the volume the build ramps FROM. Equals
@@ -11662,15 +11695,57 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   applyCutbackLongDrop(weeks, vols);
 
   // 2026-06-10 · "get them running on day one." A mid-week onboarder
-  // (today-anchored · start day is not a Monday) whose preferred run days
-  // fall later in the week would otherwise stare at several rest days
-  // before their first run (David: "if someone signs up lets get them
-  // running and then the schedule can even out · they're going to be
-  // ready and excited to run"). When week 0's start day is a rest day,
-  // relocate an easy run onto it — stolen from the latest easy day so the
-  // weekly count (and the long/quality days) are untouched. Week 1+ keeps
-  // the normal day-of-week rhythm. Monday-anchored regens skip this.
-  if (weeks.length > 0 && new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay() !== 1) {
+  // whose preferred run days fall later in the week would otherwise stare
+  // at several rest days before their first run (David: "if someone signs
+  // up lets get them running and then the schedule can even out · they're
+  // going to be ready and excited to run"). When the runner's own first day
+  // is a rest day, relocate an easy run onto it — stolen from the latest
+  // easy day so the weekly count (and the long/quality days) are untouched.
+  // Week 1+ keeps the normal day-of-week rhythm. A runner who joins exactly
+  // on the week's own boundary day skips this — day one is already the
+  // week's first templated day, which is `layoutWeek`'s call, not this
+  // mitigation's.
+  //
+  // WEEK-ALIGN-1 (2026-08-24) / F063 CAUSE B (2026-09-14) · THE GUARD USED
+  // TO ASK THE WRONG QUESTION.
+  //
+  // This used to compare `startMondayISO`'s weekday against the literal
+  // constant `1` (Monday) as its proxy for "mid-week onboarder, week 0
+  // doesn't start on the natural boundary". That proxy was retired the
+  // moment WEEK-ALIGN-1 landed: `startMondayISO` is now ALWAYS the
+  // training-week BOUNDARY (`weekStartBoundaryOf`, the day after
+  // `long_run_day`), never the literal day the runner's plan visually
+  // starts — see `requestedBlockStartISO`'s doc comment, which is the
+  // function that now answers "which day is the runner's first". For the
+  // single most common long-run day (Sunday → boundary is always Monday)
+  // `getUTCDay() !== 1` was permanently false, so this mitigation could
+  // never fire again for ANY Sunday-long-run onboarder, mid-week signup or
+  // not — and for other long-run days the guard fired on the BOUNDARY's
+  // weekday, which `persistsComposedDay`/`clipBeforeISO` may drop as
+  // pre-signup, "fixing" a day that is never shown while leaving the
+  // runner's real day one untouched.
+  //
+  // `firstOwnedDayISO` (FIRSTDAY-1, see `ComposePlanInput`) is the field
+  // that closes the gap: the runner's actual first VISIBLE day. The guard
+  // and the relocation target both read it, when a caller supplies it.
+  //
+  // BYTE-STABILITY, ON PURPOSE: when a caller has NO `firstOwnedDayISO` —
+  // every fixture, bench, sim and `_layout_contract`'s own 8,781-archetype
+  // corpus, none of which were touched by this fix — this runs the OLD
+  // guard verbatim, comparing `startMondayISO` against literal Monday,
+  // rather than falling back to "compare against itself" (which would
+  // silently and permanently disable the mitigation for any caller still
+  // passing a literal non-Monday date as `startMondayISO`, the pre-
+  // WEEK-ALIGN-1 shape several of those callers still use). Only a caller
+  // that explicitly names the runner's real first day gets the new
+  // behaviour — today, that is only the actual onboarding/start-today path
+  // in `loadGeneratorInputs`.
+  if (input.firstOwnedDayISO != null) {
+    if (weeks.length > 0 && input.firstOwnedDayISO !== input.startMondayISO) {
+      // FRONTLOAD-AVAIL-1 · the destination must be a day the runner can run.
+      frontLoadFirstRun(weeks[0].days, new Date(input.firstOwnedDayISO + 'T12:00:00Z').getUTCDay(), input.availableDows ?? null);
+    }
+  } else if (weeks.length > 0 && new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay() !== 1) {
     // FRONTLOAD-AVAIL-1 · the destination must be a day the runner can run.
     frontLoadFirstRun(weeks[0].days, new Date(input.startMondayISO + 'T12:00:00Z').getUTCDay(), input.availableDows ?? null);
   }
@@ -18377,6 +18452,14 @@ async function loadGeneratorInputs(
       thesisAtAuthoring,
       raceDateISO,
       startMondayISO,
+      // FIRSTDAY-1 (2026-09-14) / F063 CAUSE B · `blockStartISO` above IS
+      // `requestedBlockStartISO(todayISO, startAnchor, startDateISO)` — the
+      // runner's actual first VISIBLE day, the same value `clipBeforeISO`
+      // clips against at persist time (see the WEEK-ALIGN-1 block above).
+      // `null` on a lifecycle regen (`startAnchor: 'monday'`), which has no
+      // "runner's literal first day" distinct from the boundary — composer
+      // falls back to `startMondayISO` in that case, unchanged behaviour.
+      firstOwnedDayISO: blockStartISO,
       level,
       recentWeeklyMi: recentMi,
       // RULE8-1 · `null` is the reader REFUSING — it could not assemble 28
