@@ -217,6 +217,7 @@
 		BB1C4601097CD218223E7F97 /* StaleStateV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270E206761D6C2E5F2A3E4F7 /* StaleStateV5.swift */; };
 		BB4BDF90BCB0400D90CCC711 /* Fonts in Resources */ = {isa = PBXBuildFile; fileRef = 563BE14031D81E39DC6ED1EB /* Fonts */; };
 		BBA603C1BA581CA74ECEFB35 /* PlanVersionInvalidationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C7F0C958D7BCB61A44F07CC /* PlanVersionInvalidationTests.swift */; };
+		50336E25079737940F3BA84B /* WeekStripSnapshotReconciliationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA9765188DE7B6FD5B1ECE75 /* WeekStripSnapshotReconciliationTests.swift */; };
 		BD055CFEF09795F990AD96F3 /* Watch.swift in Sources */ = {isa = PBXBuildFile; fileRef = 29E036C5FD2EC231D2FCDC1A /* Watch.swift */; };
 		BDCBA5E2AE44B58C6AD6AE10 /* FaffWidgetContent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E20B32808244C5EC8C98C05 /* FaffWidgetContent.swift */; };
 		BE16EF93C69109B2763FC577 /* GalleryV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = A4141967D7277D2DF4252A9A /* GalleryV5.swift */; };
@@ -384,6 +385,7 @@
 		0BF573E25421532FFE0349AD /* SettingsFailureStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsFailureStateTests.swift; sourceTree = "<group>"; };
 		0C18DDEE14414B527EFBB143 /* FaffMesh.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffMesh.swift; sourceTree = "<group>"; };
 		0C7F0C958D7BCB61A44F07CC /* PlanVersionInvalidationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlanVersionInvalidationTests.swift; sourceTree = "<group>"; };
+		AA9765188DE7B6FD5B1ECE75 /* WeekStripSnapshotReconciliationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekStripSnapshotReconciliationTests.swift; sourceTree = "<group>"; };
 		0F562BA41AED08247EB40613 /* FaffLogoMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FaffLogoMark.swift; sourceTree = "<group>"; };
 		12F0216F8FF9AE20E14B49D4 /* K_TargetsProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = K_TargetsProjection.swift; sourceTree = "<group>"; };
 		139264554EDD5A64F64E384F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -753,6 +755,7 @@
 				EE6DEE8E1E5A40B942A2E036 /* V5RaceStatsColumnsTests.swift */,
 				4B06CB04BB75562F9A1BC187 /* V5RaceWireTests.swift */,
 				34130E2348685DF2259472DC /* WalkBackCompletionLabelTests.swift */,
+				AA9765188DE7B6FD5B1ECE75 /* WeekStripSnapshotReconciliationTests.swift */,
 				0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */,
 				861C565055555BF5D5275FE2 /* WatchWorkoutPhaseRestampTests.swift */,
 				2CED47C2665D8AD913FB6A8A /* WriteHonestyTests.swift */,
@@ -1443,6 +1446,7 @@
 				CD6CDE532ADFEC86D020C8E6 /* PlanSnapshotNavigationTests.swift in Sources */,
 				B6A6774CA499DC489DCEC981 /* PlanSnapshotStoreTests.swift in Sources */,
 				BBA603C1BA581CA74ECEFB35 /* PlanVersionInvalidationTests.swift in Sources */,
+				50336E25079737940F3BA84B /* WeekStripSnapshotReconciliationTests.swift in Sources */,
 				A2221A3F9596AA26A0DA2BE4 /* RPECaptureTests.swift in Sources */,
 				EFAA4C1C630B5B39F42C3003 /* RecorderConcurrencyTests.swift in Sources */,
 				AE498C495063F6C98677718F /* RegisterSweepTests.swift in Sources */,

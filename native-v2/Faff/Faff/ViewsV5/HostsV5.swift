@@ -1107,11 +1107,62 @@ struct TodayHostV5: View {
         if !modelWeekISOs.contains(selected), let snapshotWeek = snapshotWeekStripDays(selected: selected, alignedTo: model) {
             return snapshotWeek
         }
+        // F029 (2026-09-14) · David hit this live, twice, on two different
+        // days: the day-detail card for a just-corrected day (e.g. Thursday
+        // 9/17 moved quality→easy) showed the right colour while THIS strip,
+        // drawn one screen up, kept showing the OLD one. Root-caused below —
+        // it is not the plan-version cache-eviction gap first suspected.
+        //
+        // `.onReceive(.faffPlanMutated)` above calls ONLY `syncPlanSnapshot()`
+        // for a plan correction — never `surface.load()`. That is deliberate
+        // (PLANSNAPSHOT-SINGLEFLIGHT-1: the snapshot sync is the cheap, right
+        // answer for "did the plan just change"), and it means
+        // `PlanSnapshotStore.shared.current` — the thing `body`'s browsed-day
+        // branch reads for the hero/day-detail card — updates immediately,
+        // while `model` (this function's param; `surface.model`/`shellModel`
+        // at the call site) is untouched until the next `surface.load()`
+        // (launch, foreground, pull-to-refresh). A correction to a day INSIDE
+        // the week `model` already has loaded — the ordinary case, since
+        // corrections land on days close to today — never hits the
+        // `snapshotWeek` branch just above, because that branch only fires
+        // when `selected` falls OUTSIDE `model`'s week. So it fell all the
+        // way through to `model.weekStrip` below with no reconciliation at
+        // all: the exact opposite of `PlanSnapshotStore.swift`'s own header
+        // promise that it is "the only thing Today/the week strip are
+        // allowed to read for date navigation."
+        //
+        // Fix: reconcile every cell's TYPE against the snapshot, not just
+        // the ones this function already routes through it. Deliberately
+        // narrow — only `state`/`isRest` (what `rail(_:)` paints) come from
+        // the snapshot; `isDone`/`resolution` keep reading `model`, because
+        // finishing a run is NOT one of `syncPlanSnapshot`'s five triggers,
+        // and preferring the snapshot there would swap this bug for its
+        // mirror image (a just-finished run reading "not done" on the strip
+        // until the next foreground). A day the snapshot has no entry for
+        // (not yet synced, or outside its authored range) is returned
+        // unchanged — same "degrade to what `model` already says" contract
+        // `snapshotWeekStripDays` above keeps.
+        let snapshot = PlanSnapshotStore.shared.current
         return model.weekStrip.map { d in
             var s = d.strip
             s.isToday = d.dateISO == selected
-            return s
+            return Self.reconcileStripDayType(s, snapshot: snapshot)
         }
+    }
+
+    /// The pure half of F029's fix, factored out so it can be tested
+    /// directly rather than through a rendered `TodayHostV5` — same reason
+    /// `reconciledDayCache` above is a static function `@State` only wraps.
+    /// Overrides a week-strip cell's day-TYPE fields with the local plan
+    /// snapshot's answer for that date, when the snapshot has one; returns
+    /// `day` untouched otherwise. See `stripDays(for:)`'s own F029 comment
+    /// for why only `state`/`isRest` are in scope here.
+    static func reconcileStripDayType(_ day: WeekStripDayV5, snapshot: PlanSnapshot?) -> WeekStripDayV5 {
+        guard let iso = day.dateISO, let snapshotDay = snapshot?.day(on: iso) else { return day }
+        var reconciled = day
+        reconciled.state = dayState(for: snapshotDay)
+        reconciled.isRest = snapshotDay.is_rest
+        return reconciled
     }
 
     /// Rebuilds a week strip for `selected` entirely from the local
