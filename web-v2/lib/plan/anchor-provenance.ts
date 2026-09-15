@@ -191,6 +191,85 @@ export const EFFORT_CUED_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * F037 (2026-09-14) · THE SEASON ANCHOR'S FRESHNESS, NOT JUST ITS SOURCE.
+ *
+ * `isUnverifiedAnchor` above answers "was this VDOT ever OBSERVED". It is a
+ * different question from "is it still TRUE", and a persisted anchor can fail
+ * on the second axis while passing the first cleanly — an anchor the app
+ * genuinely measured in May does not stop having been measured, but it does
+ * stop being CURRENT. `pace_blend.season_anchor_source: 'measured_vdot'` /
+ * `season_anchor_provisional: false` asserts both "observed" and "current" at
+ * once, and nothing before this fix ever re-checked the second half.
+ *
+ * The register's F032/F037 finding, resolved by the coach consultant
+ * (`for coaching consult/consult-log/2026-09-14-006-progression-mechanism-
+ * reconciliation.md`, Q2): `pace_blend.season_anchor_vdot` traced back to
+ * `users.vdot_last_reviewed`, unreviewed since 2026-05-19 — a 4-month-old
+ * onboarding-era artifact still labelled as a fresh measurement. Explicitly
+ * NOT the same defect as F032: `t_pace_s_per_mi` (the pace actually
+ * prescribed) is confirmed to come from `resolveThresholdCapacity()` through
+ * a completely separate, fresh, race-blind path and never reads this anchor
+ * or `vdot_last_reviewed` at all. This fix is confined to what a reader may
+ * BELIEVE about `season_anchor_vdot`'s currency — a progress/evidence-display
+ * honesty question, not a training-pace question.
+ *
+ * Cite: `Research/01-pace-zones-vdot.md` §"Freshness window" (:659-677) — a
+ * VDOT signal 12+ weeks (84 days) past its origin is "Expired... don't anchor
+ * pace prescription on this VDOT." `season_anchor_vdot` is exactly the kind
+ * of signal that table describes, so this is the one doctrine-cited number a
+ * reader checks before trusting the anchor's AGE, the same way
+ * `isUnverifiedAnchor` is the one predicate checked before trusting its
+ * SOURCE.
+ */
+export const SEASON_ANCHOR_EXPIRY_DAYS = 84;
+
+/**
+ * True when a `season_anchor_stamped_at` instant is too old to trust — or
+ * absent, which this treats the SAME as too old.
+ *
+ * THE MISSING-STAMP CASE IS THE LOAD-BEARING ONE. Every `pace_blend` written
+ * before this fix has no `season_anchor_stamped_at` at all — including the
+ * exact row F037 named (a 4-month-old onboarding artifact, stamped nothing,
+ * claiming `measured_vdot`). `REANCHOR_STATUS_UNKNOWN` in
+ * `lib/adaptation/authoring-convergence.ts` already set this codebase's
+ * precedent for exactly this ambiguity: "be honest about this state rather
+ * than defaulting to 'assumed fine'" (Rule 11). An anchor that cannot PROVE
+ * its own age gets the same answer a provably-stale one does — EXPIRED — not
+ * the benefit of the doubt a present-but-old stamp at least earns by existing.
+ */
+export function isAnchorStampExpired(
+  stampedAtIso: string | null | undefined,
+  asOfISO: string,
+): boolean {
+  if (stampedAtIso == null) return true;
+  const stamped = new Date(stampedAtIso);
+  const asOf = new Date(asOfISO);
+  if (!Number.isFinite(stamped.getTime()) || !Number.isFinite(asOf.getTime())) return true;
+  const days = (asOf.getTime() - stamped.getTime()) / 86_400_000;
+  return days >= SEASON_ANCHOR_EXPIRY_DAYS;
+}
+
+/**
+ * `isAnchorStampExpired` applied to a raw `pace_blend` object, for a reader
+ * that has the whole jsonb blob rather than the extracted stamp. Mirrors
+ * `paceBlendAnchorIsProvisional`'s shape on purpose — a reader checks SOURCE
+ * with one and AGE with the other, and neither alone is the full honesty
+ * check `season_anchor_vdot` needs.
+ *
+ * Returns `false` when there is no anchor at all (`season_anchor_vdot ==
+ * null`) — an absent anchor has no age to be dishonest about; that is a
+ * different, already-handled state (Rule 11's "nothing to report" rather than
+ * "something stale to report").
+ */
+export function paceBlendAnchorIsExpired(paceBlend: unknown, asOfISO: string): boolean {
+  if (paceBlend == null || typeof paceBlend !== 'object') return false;
+  const pb = paceBlend as Record<string, unknown>;
+  if (pb.season_anchor_vdot == null) return false;
+  const stamp = typeof pb.season_anchor_stamped_at === 'string' ? pb.season_anchor_stamped_at : null;
+  return isAnchorStampExpired(stamp, asOfISO);
+}
+
+/**
  * AUTHORING-CANONICAL-1 (2026-09-01) · THE CANONICAL SOURCE MODE, TRANSLATED.
  *
  * Authoring used to derive an `AnchorSource` from which legacy cascade tier

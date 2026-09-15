@@ -55,6 +55,11 @@ const ALLOWED: Record<string, string[]> = {
   ],
   'demonstrated pace capacity': [
     'tPaceSec', 'bestRecentVdot', 'seasonAnchorVdot', 'seasonAnchorSource',
+    // F037 (2026-09-14) · when the inherited seasonAnchorVdot above was last
+    // actually confirmed — the freshness half of the same provenance
+    // question seasonAnchorSource already answers for SOURCE. See
+    // anchor-provenance.ts's isAnchorStampExpired.
+    'seasonAnchorStampedAt',
     'paceAnchors', 'belowTableAnchor',
   ],
   'physiological anchors for HR prescription': ['lthr', 'maxHr'],

@@ -668,6 +668,11 @@ async function reanchorOffCanonicalPrior(
           season_anchor_vdot: priorVdot,
           season_anchor_source: sourceMode,
           season_anchor_provisional: sourceMode === 'user_prior' || sourceMode === 'population_prior',
+          // F037 (2026-09-14) · this instant IS the confirmation — stamp it
+          // so a later reader/rebuild can tell this anchor apart from one
+          // that has since sat unconverged. See anchor-provenance.ts's
+          // isAnchorStampExpired / SEASON_ANCHOR_EXPIRY_DAYS.
+          season_anchor_stamped_at: new Date().toISOString(),
           reanchored_at: new Date().toISOString(),
           reanchored_from: 'canonical_prior',
         })],
@@ -1168,6 +1173,8 @@ async function reanchorRacePrep(
         season_anchor_vdot: measuredVdot,
         season_anchor_source: 'measured_vdot',
         season_anchor_provisional: false,
+        // F037 (2026-09-14) · same reasoning as the canonical-prior arm above.
+        season_anchor_stamped_at: new Date().toISOString(),
         reanchored_at: new Date().toISOString(),
       })],
     );

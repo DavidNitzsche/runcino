@@ -60,7 +60,7 @@ import {
 import { lookupLoadTierTarget, resolveLoadTier, classifyCapacityTier, demonstratedLoadCeilingTier, capacityBandFor, peakWeeklyFloorMi, type TierTarget, type GoalTier, pickPlanMode, MAINTENANCE_BY_TIER, POST_RACE_RECOVERY_WEEKS, postRaceRecoveryWeeks, RECOVERY_WEEKLY_PCT_OF_BASE, RECOVERY_RUN_DAYS, RECOVERY_LONG_PCT, RECOVERY_HALF_WEEKLY_MINUTES, recoveryBlockCeilingPct, BUILD_WINDOW_WEEKS, type PlanMode, type DistCategory, taperFactor, GENERAL_RAMP_CEILING, COMEBACK_RAMP_CEILING, CYCLE_GROWTH_CEILING, PEAK_HOLD_WEEKS, MLR_MAX_WEEK_SHARE, MLR_MIN_MI, TIER_TARGETS } from './goal-tiers';
 import {
   type AnchorSource, isProvisionalAnchor, isUnverifiedAnchor, paceBlendAnchorIsProvisional,
-  anchorSourceFromCapacityMode,
+  anchorSourceFromCapacityMode, isAnchorStampExpired,
   CALIBRATION_INTRO_WEEKS, EFFORT_CUED_TYPES,
 } from './anchor-provenance';
 import { syntheticPaceAnchors } from './authoring-anchors';
@@ -10510,13 +10510,42 @@ export interface ComposePlanInput {
    *  measures against where the season's ambition was priced, not against
    *  the most recent rebuild (which would reset the gate to ~0 every
    *  time). null/undefined → this authoring IS the season start and its
-   *  own estimatedCurrentVdot becomes the anchor. */
+   *  own estimatedCurrentVdot becomes the anchor.
+   *
+   *  F037 (2026-09-14) · THE MEASURED-PROGRESS GATE THIS WAS BUILT FOR IS
+   *  DELETED (AUTHORING-CANONICAL-1, see the block comment at this function's
+   *  measured-progress-fraction removal) — no production loader has
+   *  populated this field since, and `_authoring_input_surface.test.ts`
+   *  keeps it live only for a caller that might still supply one. That
+   *  matters because an inherited value FROZEN in this field is exactly the
+   *  bug the register found downstream: a `season_anchor_vdot` carried
+   *  forward for months, stamped `measured_vdot` / `season_anchor_provisional:
+   *  false` forever with no way to tell it apart from a fresh read. See
+   *  `seasonAnchorStampedAt` below — an inherited value with no PROVABLY
+   *  fresh stamp is no longer trusted as-is; this authoring recomputes it
+   *  live instead, the same way `estimatedCurrentVdot` (below) already does
+   *  for `t_pace_s_per_mi`. */
   seasonAnchorVdot?: number | null;
   /** COLD-3 (2026-08-17) · provenance of an INHERITED `seasonAnchorVdot`. A
    *  rebuild may only carry forward an anchor that was itself measured; an
    *  inherited provisional is a fabrication compounding across rebuilds.
    *  Undefined when no anchor is inherited. */
   seasonAnchorSource?: AnchorSource;
+  /**
+   * F037 (2026-09-14) · WHEN `seasonAnchorVdot` WAS LAST ACTUALLY CONFIRMED.
+   *
+   * The instant the inherited anchor was itself either freshly authored or
+   * explicitly re-anchored (`pace_blend.season_anchor_stamped_at` /
+   * `reanchored_at` on the plan this rebuild inherits from). Checked against
+   * `Research/01` §"Freshness window"'s 12-week/84-day expiry
+   * (`isAnchorStampExpired`, `./anchor-provenance`) before the inherited
+   * value below is trusted at all — undefined/null is treated as EXPIRED
+   * (Rule 11: an anchor that cannot prove its age gets no benefit of the
+   * doubt), which is deliberately also what every `pace_blend` written before
+   * this fix looks like, so an old, unstamped inheritance is corrected on its
+   * very next rebuild rather than carried forward a second time.
+   */
+  seasonAnchorStampedAt?: string | null;
 }
 
 export interface ComposedWeek {
@@ -11033,7 +11062,25 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
   // SELFREPORT-1's distinction survives intact and is now STRUCTURAL rather
   // than a boolean the loader had to remember to set: `user_prior` is exactly
   // "the runner told us", and `population_prior` is exactly "we have nothing".
-  const seasonAnchorSource: AnchorSource = input.seasonAnchorVdot != null
+  //
+  // F037 (2026-09-14) · AN INHERITED ANCHOR MUST ALSO PROVE ITS AGE, NOT JUST
+  // ITS SOURCE. `input.seasonAnchorVdot != null` used to be sufficient on its
+  // own to inherit the anchor (and its label) verbatim — which is exactly how
+  // a genuinely-measured-once VDOT from months ago kept re-stamping itself
+  // `measured_vdot` / `season_anchor_provisional: false` on every rebuild,
+  // the defect the register traced to `users.vdot_last_reviewed` (unreviewed
+  // since 2026-05-19). `isAnchorStampExpired` (`./anchor-provenance`, cites
+  // `Research/01` §"Freshness window") is now checked FIRST: an inherited
+  // anchor with no provably-fresh `seasonAnchorStampedAt` is treated as if it
+  // were never inherited at all, and this authoring falls through to the same
+  // live, race-blind canonical resolver that already prices `t_pace_s_per_mi`
+  // — recompute, not relabel, exactly Rule 10's first legitimate posture for
+  // a persisted derived value whose inputs survive. Only a PROVABLY fresh
+  // inheritance (a stamp inside the 84-day window) still trusts the caller's
+  // label; nothing else does.
+  const seasonAnchorInherited = input.seasonAnchorVdot != null
+    && !isAnchorStampExpired(input.seasonAnchorStampedAt, input.startMondayISO);
+  const seasonAnchorSource: AnchorSource = seasonAnchorInherited
     ? (input.seasonAnchorSource ?? 'measured_vdot')
     : anchorSourceFromCapacityMode(anchors.basis.threshold.sourceMode);
   const anchorIsProvisional = isProvisionalAnchor(seasonAnchorSource);
@@ -12346,19 +12393,26 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
             basis_modelled: achievableRace.basisModelled,
           }
         : null,
-      // 2026-08-17 · coaching-loop reconciliation · the blend anchors, so
-      // recomputePacesForPlan (adaptation-time pace rewrite) can gate the
-      // weekly blend on measured evidence against the SAME season anchor
-      // this authoring ran on. season_anchor_vdot is the fitness the
-      // season's ambition was priced against; measured_progress_fraction
-      // records the gate this authoring itself used (null = calendar-
-      // trusted forecast). Cite: Research/01 §Recalibrate-Paces.
+      // 2026-08-17 · coaching-loop reconciliation, corrected AUTHORING-
+      // CANONICAL-1 (2026-09-01) · the season anchor is still recorded as a
+      // BASELINE the adaptation engine and projection surfaces can read, but
+      // NOT for the weekly currentT→goalT blend that motivated it originally
+      // — that gate (`measured_progress_fraction` capping a calendar blend)
+      // is deleted, not moved (see the removal note above, at this
+      // function's measured-progress-fraction deletion). season_anchor_vdot
+      // is the fitness this block was ACTUALLY priced against; Cite:
+      // Research/01 §Recalibrate-Paces for why a baseline is still useful.
       // Only the ANCHORS are recorded — never the derived T-paces, which
       // recomputePacesForPlan re-derives from vdotNow (and whose exact
       // values legitimately vary with resolution-tier internals a
       // recompute doesn't need · see _audit_slow_runner P1-56 byte-safety).
       pace_blend: {
-        season_anchor_vdot: input.seasonAnchorVdot ?? estimatedCurrentVdot,
+        // F037 (2026-09-14) · `seasonAnchorInherited` is false whenever the
+        // inheritance failed its freshness check above (or there was none to
+        // inherit) — either way, the live canonical VDOT that is ALREADY
+        // pricing this very block is the honest anchor to persist, not a
+        // number this authoring cannot vouch for.
+        season_anchor_vdot: seasonAnchorInherited ? input.seasonAnchorVdot : estimatedCurrentVdot,
         // COLD-3 (2026-08-17) · the anchor's PROVENANCE, written alongside the
         // number it qualifies. Without it a mileage-derived estimate is
         // indistinguishable from a race result once persisted, and three
@@ -12366,6 +12420,19 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
         // single boolean a reader checks before believing the VDOT.
         season_anchor_source: seasonAnchorSource,
         season_anchor_provisional: anchorIsUnverified,
+        // F037 (2026-09-14) · WHEN this specific number was last actually
+        // confirmed. A trusted inheritance carries its ORIGINAL stamp
+        // forward unchanged (re-stamping it "now" would launder an old
+        // measurement into a fresh-looking one, the opposite of this fix);
+        // a fresh derivation is stamped with this authoring's own date
+        // (`startMondayISO` · composePlan is pure, so `new Date()` is not
+        // used here — see the `prescribed_race_pace` note above on why a
+        // wall-clock timestamp broke `_travel_invariants`' byte-identical
+        // gate). `isAnchorStampExpired` (`./anchor-provenance`) is what a
+        // future reader/rebuild checks this against.
+        season_anchor_stamped_at: seasonAnchorInherited
+          ? (input.seasonAnchorStampedAt ?? null)
+          : input.startMondayISO,
         goal_vdot: goalVdot,
         build_weeks: composeBuildWeeks,
         // AUTHORING-CANONICAL-1 · written as an explicit null rather than
@@ -13142,7 +13209,7 @@ export function composeMaintenancePlan(input: ComposeNonRaceInput): ComposePlanR
       // EVIDENCE-2 · carry the season anchor forward (see ComposeNonRaceInput).
       // SELFREPORT-1 · the anchor's provenance, not an assumption about it.
       ...(input.bestRecentVdot != null
-        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: (input.bestRecentVdotSelfReported ? 'self_reported_race' : 'measured_vdot') as AnchorSource, season_anchor_provisional: input.bestRecentVdotSelfReported === true, goal_vdot: null, build_weeks: TOTAL_WEEKS, measured_progress_fraction: null } }
+        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: (input.bestRecentVdotSelfReported ? 'self_reported_race' : 'measured_vdot') as AnchorSource, season_anchor_provisional: input.bestRecentVdotSelfReported === true, /* F037 (2026-09-14) · bestRecentVdot is always freshly derived (computeBestRecentVdot, loadGeneratorInputs) — never inherited — so this authoring's own date is an honest stamp; see anchor-provenance.ts's isAnchorStampExpired. */ season_anchor_stamped_at: input.startMondayISO, goal_vdot: null, build_weeks: TOTAL_WEEKS, measured_progress_fraction: null } }
         : {}),
       citations: blocks.phases.map((p) => p.citation),
     },
@@ -13479,7 +13546,7 @@ export function composeRecoveryPlan(input: ComposeNonRaceInput): ComposePlanResu
       // blend ungated. Record the fitness the block was entered at.
       // SELFREPORT-1 · the anchor's provenance, not an assumption about it.
       ...(input.bestRecentVdot != null
-        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: (input.bestRecentVdotSelfReported ? 'self_reported_race' : 'measured_vdot') as AnchorSource, season_anchor_provisional: input.bestRecentVdotSelfReported === true, goal_vdot: null, build_weeks: weeks.length, measured_progress_fraction: null } }
+        ? { pace_blend: { season_anchor_vdot: input.bestRecentVdot, season_anchor_source: (input.bestRecentVdotSelfReported ? 'self_reported_race' : 'measured_vdot') as AnchorSource, season_anchor_provisional: input.bestRecentVdotSelfReported === true, /* F037 (2026-09-14) · bestRecentVdot is always freshly derived (computeBestRecentVdot, loadGeneratorInputs) — never inherited — so this authoring's own date is an honest stamp; see anchor-provenance.ts's isAnchorStampExpired. */ season_anchor_stamped_at: input.startMondayISO, goal_vdot: null, build_weeks: weeks.length, measured_progress_fraction: null } }
         : {}),
       citations: blocks.phases.map((p) => p.citation),
     },
