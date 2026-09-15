@@ -27,6 +27,7 @@ import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import {
   composePlan,
   inlinePrescriptions,
+  weekStartBoundaryOf,
   type ComposePlanInput,
   type DOW,
 } from './generate';
@@ -478,6 +479,109 @@ describe('DAY PLACEMENT & AVAILABILITY · exhaustive sweep (inv 8, 9, 2)', () =>
     const wk0 = composePlan(buildInput(layout, SCENARIOS[1].sc, '2026-01-07')).weeks[0];
     const anchor = wk0.days.find((d) => d.dow === 3);
     expect(anchor?.distanceMi ?? 0).toBeGreaterThan(0);
+  });
+
+  // ─── F063 CAUSE B (2026-09-14) · frontLoadFirstRun's guard/target read the
+  // BOUNDARY instead of the runner's real first day ───────────────────────
+  //
+  // STARTDOW-1's own header (above) already names the reason every test in
+  // this file so far cannot see this bug: `buildInput` passes the raw
+  // onboarding weekday straight into `startMondayISO`. That was the correct
+  // shape once — `startMondayISO` WAS the literal start day, before
+  // WEEK-ALIGN-1 (2026-08-24). It has not been the shape production sends
+  // since: `loadGeneratorInputs` now always computes `startMondayISO` as
+  // `weekStartBoundaryOf(...)` — the training-week BOUNDARY — and carries the
+  // runner's literal first day separately, as `requestedBlockStartISO(...)`'s
+  // result (`clipBeforeISO` at the persist layer). Every sweep above, run
+  // against the pre-WEEK-ALIGN-1 shape, proves nothing about a guard that
+  // reads a field production stopped writing that way three weeks before
+  // this test was added.
+  //
+  // Sunday is the case the finding names, and the one this test uses:
+  // weekStartDow = (longRunDow + 1) % 7 = (0 + 1) % 7 = 1 (Monday), so the
+  // boundary for a Sunday-long-run runner is ALWAYS Monday — the OLD guard
+  // (`new Date(startMondayISO...).getUTCDay() !== 1`) was permanently FALSE
+  // for this runner regardless of which day they actually signed up on.
+  describe('FIRSTDAY-1 · frontLoadFirstRun reads the runner\'s real first day', () => {
+    const LONG_SUN: DOW = 0;
+    const WEEK_START_DOW = (LONG_SUN + 1) % 7; // 1 · Monday, for every Sunday-long-run runner
+    const MIDWEEK_SIGNUP_ISO = '2026-01-07'; // a Wednesday
+    const BOUNDARY_ISO = weekStartBoundaryOf(MIDWEEK_SIGNUP_ISO, WEEK_START_DOW);
+    const SIGNUP_DOW = new Date(MIDWEEK_SIGNUP_ISO + 'T12:00:00Z').getUTCDay(); // 3 · Wednesday
+
+    // freq=3 · long(Sun) + 1 quality(Tue, `prefsWithAvail`'s own default) +
+    // 1 easy — chosen (and pinned by the sanity check below) because it is
+    // the smallest frequency this runner's template lands an EASY day on at
+    // all, which `frontLoadFirstRun` must have one of to relocate
+    // (`easies.length === 0` is a no-op). `available_days` left unset
+    // (`null`): `deriveLayout` only recomputes `qualityDows` by proximity to
+    // Wednesday when 2+ explicit days are given (see its own body), which
+    // would otherwise make Wednesday the quality day itself and defeat this
+    // fixture — and `null` also means `frontLoadFirstRun` never has to pick
+    // between candidates (FRONTLOAD-AVAIL-1's own, separate question), so
+    // this test isolates the guard/target question this describe block
+    // exists to check.
+    const layout = deriveLayout(prefsWithAvail(LONG_SUN, null), 3);
+
+    function productionShapedInput(firstOwnedDayISO: string | undefined): ComposePlanInput {
+      // `buildInput`'s own `startISO` param sets `startMondayISO` literally —
+      // exactly the pre-WEEK-ALIGN-1 contract this describe block exists to
+      // stop relying on. Build off it, then overwrite `startMondayISO` with
+      // the real boundary, so the input this test feeds `composePlan` is
+      // byte-for-byte what `loadGeneratorInputs` actually sends today.
+      const base = buildInput(layout, SCENARIOS[1].sc, MIDWEEK_SIGNUP_ISO);
+      return { ...base, startMondayISO: BOUNDARY_ISO, firstOwnedDayISO };
+    }
+
+    it('sanity · the boundary genuinely differs from the literal signup day', () => {
+      expect(BOUNDARY_ISO).toBe('2026-01-05');
+      expect(BOUNDARY_ISO).not.toBe(MIDWEEK_SIGNUP_ISO);
+      // The exact reading that broke the old guard.
+      expect(new Date(BOUNDARY_ISO + 'T12:00:00Z').getUTCDay()).toBe(1);
+    });
+
+    it('sanity · this runner\'s template puts an easy day somewhere in week 0 to relocate', () => {
+      // Confirms the fixture is capable of exercising the relocation at all —
+      // if this ever fails, the frequency/day choice above needs revisiting,
+      // not the assertions below.
+      const wk0 = composePlan(productionShapedInput(BOUNDARY_ISO)).weeks[0];
+      expect(wk0.days.some((d) => d.type === 'easy' && d.distanceMi > 0)).toBe(true);
+    });
+
+    // RULE 18, FIRST HALF · the bug reproduces. `firstOwnedDayISO` absent is
+    // the exact contract production had for three weeks after WEEK-ALIGN-1
+    // landed (and the exact contract every OTHER existing caller — fixtures,
+    // bench, sim, lifecycle regen — still has): composePlan cannot tell the
+    // runner joined mid-week, falls back to the boundary, and the guard never
+    // fires. Day one — the runner's actual Wednesday — lands exactly as the
+    // week-boundary template drew it: a rest day, with no prescription.
+    it('RULE 18 · pre-fix shape (no firstOwnedDayISO) reproduces day one landing dose-less', () => {
+      const wk0 = composePlan(productionShapedInput(undefined)).weeks[0];
+      const dayOne = wk0.days.find((d) => d.dow === SIGNUP_DOW);
+      expect(dayOne?.type).toBe('rest');
+      expect(dayOne?.distanceMi ?? 0).toBe(0);
+    });
+
+    // RULE 18, SECOND HALF · the fix. Supplying `firstOwnedDayISO` (what
+    // `loadGeneratorInputs` now does, via `requestedBlockStartISO`) lets the
+    // guard see that day one (Wednesday) differs from the boundary (Monday),
+    // so `frontLoadFirstRun` relocates a run onto the runner's ACTUAL first
+    // day rather than onto the boundary's (which `clipBeforeISO` would have
+    // dropped as pre-signup and the runner would never have seen).
+    it('FIXED · firstOwnedDayISO lets frontLoadFirstRun seat a real run on the runner\'s actual day one', () => {
+      const wk0 = composePlan(productionShapedInput(MIDWEEK_SIGNUP_ISO)).weeks[0];
+      const dayOne = wk0.days.find((d) => d.dow === SIGNUP_DOW);
+      expect(dayOne?.type).toBe('easy');
+      expect(dayOne?.distanceMi ?? 0).toBeGreaterThan(0);
+      // The relocation is conservative, not additive: the weekly running-day
+      // count this runner was promised (freq=3) is unchanged, and the day
+      // donating its mileage (Thursday, dow4 · the only other easy day this
+      // template placed) is now rest.
+      const runDays = wk0.days.filter((d) => d.distanceMi > 0);
+      expect(runDays.length).toBe(3);
+      const donor = wk0.days.find((d) => d.dow === 4);
+      expect(donor?.type).toBe('rest');
+    });
   });
 
   // ─── PLACE-A regression guard (was a live defect, fixed 2026-06-21) ────
