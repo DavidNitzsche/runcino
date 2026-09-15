@@ -2413,7 +2413,9 @@ extension API {
                 decoded = try JSONDecoder().decode(T.self, from: data)
             } catch {
                 await RequestDiagnosticsLog.shared.recordDecodeFailure(
-                    endpoint: url.path, dateParam: url.faffDiagnosticDateParam, error: error)
+                    endpoint: url.path, dateParam: url.faffDiagnosticDateParam,
+                    correlationId: http.value(forHTTPHeaderField: "x-faff-correlation-id") ?? "unknown",
+                    error: error)
                 throw error
             }
             if let cache { AppCache.writeRaw(cache, data: data) }

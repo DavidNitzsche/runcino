@@ -58,6 +58,16 @@ struct RequestDiagnosticEntry: Identifiable, Equatable {
     let id: Int // generation, assigned at send time, monotonic for the process lifetime
     let endpoint: String // path only — no host, no query string, nothing that could carry a token
     let dateParam: String?
+    // CORRELATIONID-1 · the same id sent as `x-faff-correlation-id` on the
+    // wire (see `authedSend`) and read back by `middleware.ts`/
+    // `lib/observability/*` server-side. This is the whole point of this
+    // field: it lets a specific row in this on-device log be matched to a
+    // specific row in the server's `request_failures` table (once migration
+    // 170 is applied — see that migration's own header) or a specific
+    // Railway log line, closing the gap F156/F159 named — every incident
+    // tonight had to work from disconnected, point-in-time evidence because
+    // nothing tied a device request to a server log line.
+    let correlationId: String
     let startedAt: Date
     var finishedAt: Date?
     var outcome: RequestOutcome?
@@ -80,10 +90,11 @@ actor RequestDiagnosticsLog {
 
     /// Called at the moment a request is actually handed to URLSession.
     /// Returns the generation id the caller must pass back to `finish`.
-    func begin(endpoint: String, dateParam: String?) -> Int {
+    func begin(endpoint: String, dateParam: String?, correlationId: String) -> Int {
         let gen = nextGeneration
         nextGeneration += 1
         entries.append(RequestDiagnosticEntry(id: gen, endpoint: endpoint, dateParam: dateParam,
+                                               correlationId: correlationId,
                                                startedAt: Date(), finishedAt: nil, outcome: nil))
         if entries.count > cap { entries.removeFirst(entries.count - cap) }
         return gen
@@ -100,10 +111,11 @@ actor RequestDiagnosticsLog {
     /// recorded as its own standalone entry rather than mutating the
     /// already-finished one, so the log shows both "the transport succeeded"
     /// and "the decode did not" as the two separate facts they are.
-    func recordDecodeFailure(endpoint: String, dateParam: String?, error: Error) {
+    func recordDecodeFailure(endpoint: String, dateParam: String?, correlationId: String, error: Error) {
         let gen = nextGeneration
         nextGeneration += 1
         var entry = RequestDiagnosticEntry(id: gen, endpoint: endpoint, dateParam: dateParam,
+                                            correlationId: correlationId,
                                             startedAt: Date(), finishedAt: nil, outcome: nil)
         entry.finishedAt = entry.startedAt
         entry.outcome = .decodingError(String(describing: error).prefix(200).description)

@@ -332,6 +332,18 @@ enum API {
         // has already set its own (a longer upload, say) is left alone.
         if req.timeoutInterval == 60 { req.timeoutInterval = 12 }
         API.stampClientEnvironment(&req)
+        // CORRELATIONID-1 (2026-09-15) · matches `CORRELATION_ID_HEADER` in
+        // `web-v2/lib/observability/constants.ts`. `middleware.ts` reuses
+        // this id rather than minting its own when present — the whole
+        // reason it's generated here rather than server-side is the one
+        // failure class the server can never see itself (EDGE, a request
+        // that never reaches the app at all): the only way to recognize that
+        // gap later is a client self-report carrying the SAME id it sent
+        // before the request left the device. Every authenticated request
+        // funnels through this function, so this is the one place this
+        // needs to be set.
+        let correlationId = UUID().uuidString.lowercased()
+        req.setValue(correlationId, forHTTPHeaderField: "x-faff-correlation-id")
         // Snapshot the token before the request (nonisolated keychain read — no
         // main-actor hop). Used below to guard against three spurious/missed-
         // expiry vectors:
@@ -353,7 +365,7 @@ enum API {
         // response, 401, and the final return). See RequestDiagnostics.swift.
         let diagEndpoint = req.url?.path ?? "?"
         let diagDateParam = req.url?.faffDiagnosticDateParam
-        let diagGen = await RequestDiagnosticsLog.shared.begin(endpoint: diagEndpoint, dateParam: diagDateParam)
+        let diagGen = await RequestDiagnosticsLog.shared.begin(endpoint: diagEndpoint, dateParam: diagDateParam, correlationId: correlationId)
         let data: Data
         let resp: URLResponse
         do {
@@ -1739,7 +1751,9 @@ enum API {
         } catch {
             await RequestDiagnosticsLog.shared.recordDecodeFailure(
                 endpoint: comps.url?.path ?? "/api/plan/week",
-                dateParam: date, error: error)
+                dateParam: date,
+                correlationId: http.value(forHTTPHeaderField: "x-faff-correlation-id") ?? "unknown",
+                error: error)
             throw error
         }
         // Current-week only — date-overridden fetches are previews and

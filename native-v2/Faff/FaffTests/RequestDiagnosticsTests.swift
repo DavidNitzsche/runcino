@@ -11,7 +11,7 @@ final class RequestDiagnosticsTests: XCTestCase {
 
     func testBeginThenFinishRoundTrips() async {
         let log = RequestDiagnosticsLog()
-        let gen = await log.begin(endpoint: "/api/v5/today", dateParam: "2026-09-05")
+        let gen = await log.begin(endpoint: "/api/v5/today", dateParam: "2026-09-05", correlationId: "cid-1")
         await log.finish(gen, outcome: .success(status: 200))
         let snapshot = await log.snapshot()
         XCTAssertEqual(snapshot.count, 1)
@@ -22,11 +22,24 @@ final class RequestDiagnosticsTests: XCTestCase {
         XCTAssertNotNil(snapshot[0].finishedAt)
     }
 
+    // CORRELATIONID-1 · the whole point of the field is that it survives
+    // into the snapshot a screenshot of the diagnostics sheet would show,
+    // untouched by `finish`. A test that only checks `begin`'s return value
+    // wouldn't catch a future edit that dropped the id on the way into the
+    // stored entry.
+    func testCorrelationIdSurvivesIntoTheSnapshot() async {
+        let log = RequestDiagnosticsLog()
+        let gen = await log.begin(endpoint: "/api/v5/today", dateParam: nil, correlationId: "cid-abc-123")
+        await log.finish(gen, outcome: .success(status: 200))
+        let snapshot = await log.snapshot()
+        XCTAssertEqual(snapshot[0].correlationId, "cid-abc-123")
+    }
+
     func testGenerationIsMonotonicAcrossConcurrentBegins() async {
         let log = RequestDiagnosticsLog()
         var gens: [Int] = []
         for _ in 0..<10 {
-            gens.append(await log.begin(endpoint: "/api/v5/block", dateParam: nil))
+            gens.append(await log.begin(endpoint: "/api/v5/block", dateParam: nil, correlationId: "cid"))
         }
         // Strictly increasing, no duplicates — proves the actor serializes
         // `begin` correctly even though callers can invoke it concurrently
@@ -37,7 +50,7 @@ final class RequestDiagnosticsTests: XCTestCase {
 
     func testFinishOnUnknownGenerationIsANoOp() async {
         let log = RequestDiagnosticsLog()
-        let gen = await log.begin(endpoint: "/api/v5/today", dateParam: nil)
+        let gen = await log.begin(endpoint: "/api/v5/today", dateParam: nil, correlationId: "cid")
         // A finish for a generation that was never begun (or already evicted)
         // must not crash or corrupt the real entry.
         await log.finish(gen + 999, outcome: .cancelled)
@@ -48,17 +61,19 @@ final class RequestDiagnosticsTests: XCTestCase {
 
     func testDecodeFailureIsARecordedStandaloneEntryNotAMutation() async {
         let log = RequestDiagnosticsLog()
-        let gen = await log.begin(endpoint: "/api/v5/today", dateParam: "2026-09-05")
+        let gen = await log.begin(endpoint: "/api/v5/today", dateParam: "2026-09-05", correlationId: "cid-transport")
         await log.finish(gen, outcome: .success(status: 200))
         struct FakeError: Error, CustomStringConvertible { var description: String { "fake decode error" } }
-        await log.recordDecodeFailure(endpoint: "/api/v5/today", dateParam: "2026-09-05", error: FakeError())
+        await log.recordDecodeFailure(endpoint: "/api/v5/today", dateParam: "2026-09-05", correlationId: "cid-decode", error: FakeError())
         let snapshot = await log.snapshot()
         // Two distinct entries: the transport success, and the decode
         // failure — not one entry silently overwritten by the other.
         XCTAssertEqual(snapshot.count, 2)
         let transportEntry = snapshot.first { $0.id == gen }
         XCTAssertEqual(transportEntry?.outcome, .success(status: 200))
+        XCTAssertEqual(transportEntry?.correlationId, "cid-transport")
         let decodeEntry = snapshot.first { $0.id != gen }
+        XCTAssertEqual(decodeEntry?.correlationId, "cid-decode")
         if case .decodingError(let msg)? = decodeEntry?.outcome {
             XCTAssertTrue(msg.contains("fake decode error"))
         } else {
@@ -71,7 +86,7 @@ final class RequestDiagnosticsTests: XCTestCase {
         // Cap is 300 (private, but its effect is observable): push past it
         // and confirm the earliest entries are gone while the newest survive.
         for i in 0..<320 {
-            let gen = await log.begin(endpoint: "/api/v5/today", dateParam: "\(i)")
+            let gen = await log.begin(endpoint: "/api/v5/today", dateParam: "\(i)", correlationId: "cid-\(i)")
             await log.finish(gen, outcome: .success(status: 200))
         }
         let snapshot = await log.snapshot()

@@ -11,6 +11,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct RequestDiagnosticsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -157,6 +158,20 @@ struct RequestDiagnosticsView: View {
             }
             .font(.faffText(TypeScaleV5.label12))
             .foregroundStyle(V5.textQuiet)
+            // CORRELATIONID-1 · shown so a screenshot alone is enough to
+            // start a server-side lookup, tap-to-copy so the exact id
+            // (not a hand-transcribed guess) is what actually gets relayed
+            // — this row exists because every incident tonight had to work
+            // from disconnected, point-in-time evidence with no way to say
+            // "this exact device request is this exact server log line."
+            Text("id=\(entry.correlationId) · tap to copy")
+                .font(.faffText(TypeScaleV5.label12))
+                .foregroundStyle(V5.textQuiet)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .onTapGesture {
+                    UIPasteboard.general.string = entry.correlationId
+                }
         }
         .padding(V5.S.s8)
         .frame(maxWidth: .infinity, alignment: .leading)
