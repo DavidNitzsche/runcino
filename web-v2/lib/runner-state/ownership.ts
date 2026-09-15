@@ -501,6 +501,24 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
         + '8 corollary, opposite sides. Recorded with all four sites named in '
         + 'lib/runner-state/quantity-owners.ts RUNNING_FREQUENCY, where they '
         + 'are measured against the owner rather than only listed.',
+      /**
+       * VERIFIED 2026-09-15 (F118, coach-consultant sweep). This entry's
+       * `because` text still names `adapt.ts`, `mutate.ts`, and
+       * `injury-builder.ts` as spending raw `weekly_frequency` with no
+       * fallback when null — stale. All three were fixed together, dated
+       * and cited by name, `RUNFREQ-OWNER-1` (2026-09-07): each now falls
+       * back to the Rule-8-filtered measured frequency
+       * (`derivedTrainingDaysPerWeek`) when the stated value is absent,
+       * closing exactly the gap this entry still describes as open. Not a
+       * defect — the code is already right, only this registry entry had
+       * gone stale. Verdict stays `OPEN` (the four-sites-vs-canonical
+       * question above this note is still real and unrouted) — this note
+       * only corrects the specific "3 sites still unfixed" claim, which is
+       * no longer true. One loose thread, not traced further here:
+       * `injury-builder.ts`'s own comment says its exported entry point
+       * (`buildInjuryPlan`) currently refuses unconditionally, so this fix
+       * has no live effect yet.
+       */
     },
     movesUpOn: [
       {
