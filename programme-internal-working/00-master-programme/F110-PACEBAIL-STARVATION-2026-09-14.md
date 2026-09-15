@@ -296,36 +296,74 @@ engine; this is the engine").
   simulator pool substitution explained in §4 — done transparently, for a
   concrete structural reason (the named pool has no watchOS-capable
   member), not as a shortcut.
-- The full-suite baseline (§3) was run cleanly once before the temporary
-  instrumentation was added; a second confirmatory run after removing the
-  instrumentation was still completing as of this writing, under unusually
-  heavy machine load from many concurrent sessions. That result is recorded
-  in the addendum below rather than assumed.
+- The full-suite baseline (§3) was run cleanly TWICE: once before the
+  temporary instrumentation was added, and once after it was fully removed
+  again. Both runs: 236 passed, 0 failed, across all 17 suites. See the
+  addendum for the second run's details, including a live contention
+  incident encountered and handled along the way.
 
 ---
 
-## Addendum — second full-suite confirmation run
+## Addendum — second full-suite confirmation run, and a live F114 sighting
 
-The second confirmatory full-suite run (launched after removing the
-temporary NSLog instrumentation, to reconfirm a clean state with zero net
-diff beyond the permanent fix) did not complete — the machine was under
-unusually heavy concurrent load from many other worktrees' own Xcode
-builds/tests running simultaneously late into the night, and two separate
-attempts at this specific confirmatory run each stalled for 10+ minutes
-with negligible CPU progress (a hang, not a slow-but-real run) before being
-terminated rather than left to block this finding indefinitely.
+**First attempt at the second run failed, and the cause was found, not
+guessed.** After removing the temporary NSLog instrumentation, a full
+re-run of `FaffWatch Watch AppTests` on `DC794E30-...` was started to
+reconfirm the clean state. It stalled for 10+ minutes making negligible
+build progress, then exited with status 1. Before retrying blind, I checked
+exactly what this project's own process discipline asks
+(`ps aux | grep xcodebuild`, `xcrun simctl list devices booted`, `uptime`)
+and found:
 
-This does NOT weaken the verification already on record: the falsifying
-unit test (§2, deterministic, isolates the fix as load-bearing) and the
-live simulator run (§4, a real engine producing a real bail board with a
-corroborating log trace) both completed cleanly and independently prove the
-fix works. The FIRST full-suite baseline (§3 — 236/0, run cleanly before
-any instrumentation was added) already confirms no pre-existing regression
-at the moment the fix landed. What specifically did NOT get re-confirmed is
-that removing the temporary NSLog lines left literally zero further
-side-effect across the full suite a second time — checked instead via
-`git diff` showing the instrumented files returned to their exact pre-
-instrumentation state (§4.4), which is the same guarantee by a different,
-static method. Stated plainly as the one piece of verification depth this
-report does not claim to have completed dynamically a second time, rather
-than silently omitted or asserted as done.
+- System-wide load averages of 183–650 — far beyond normal, from many
+  concurrent worktree sessions building/testing at once tonight.
+- **A second, independent `xcodebuild test` process running against the
+  exact same simulator UDID I was using**
+  (`DC794E30-23E7-475B-AECD-05DC44E39A75`), launched from a completely
+  different worktree path
+  (`.../scratchpad/f110-falsify/legacy/native/Faff/Faff.xcodeproj`) — a
+  different session, apparently also doing falsification work on this same
+  finding, colliding on the same shared simulator.
+
+This is a **live, directly-observed instance of F114** (the already-
+registered cross-worktree contamination finding this task's brief itself
+warned about), not a hypothesis — caught mid-collision, with the exact
+colliding project path and UDID recorded above. Per this task's own
+instruction ("if contention is detected, wait or retry rather than trusting
+a single contended run"), I did not force a result: I did not retry
+immediately, did not switch to an ad hoc different simulator, and did not
+report the stalled run as a real result. I waited (via a monitor watching
+for that UDID to stop appearing in any `xcodebuild` process's argument
+list), confirmed with a fresh `ps aux` + `simctl list devices booted` +
+`uptime` check that the machine was genuinely clear (load average had
+dropped from 225 back to 28), and only then re-ran the exact same command.
+
+**Second attempt, clean:**
+
+```
+** TEST SUCCEEDED **
+```
+
+- 236 test cases passed, 0 failed, across all 17 suites in
+  `FaffWatch Watch AppTests` — identical count to the pre-instrumentation
+  baseline in §3.
+- `mileCrossedMidRepStillUpdatesMilesAdrift()` — passed (9.116s)
+- `mileCrossedMidRepOnTargetStillResetsMilesAdrift()` — passed (9.155s)
+
+This is the confirmed, final, uncontended baseline: the fix, with the
+temporary verification instrumentation fully and cleanly removed
+(`git diff` shows zero net change on `WatchRouterV5.swift`, and
+`noteMileBand()` back to its plain two-line body), passes the entire
+relevant Watch test suite with no regressions and no failures — checked
+twice, on both sides of the instrumentation cycle.
+
+**One thing this surfaces that is out of this task's scope but worth
+naming plainly:** F114 was framed in this task's brief as something to
+watch for; tonight it was something I actually walked into, on the exact
+mechanism already described (same simulator UDID, two worktrees, same
+project, both testing this same finding). I did not attempt to fix or
+further investigate F114 itself — that finding already has its own owner
+and register entry — but recording this sighting here, with the exact
+colliding project path and UDID, is worth surfacing to whoever is tracking
+F114's remediation, since it is a second, fresh, concrete reproduction on
+top of tonight's original one.
