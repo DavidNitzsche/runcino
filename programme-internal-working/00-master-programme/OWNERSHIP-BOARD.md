@@ -20,6 +20,7 @@
 | **BA-03** — brain off the read path | Not yet assigned | — | Not started | Sequenced after BA-02 | — | Sequenced after BA-02 | — | — | — |
 | **BA-04** — Railway-hosted live updates | Not yet assigned | — | Not started | Sequenced after BA-03 | — | Sequenced after BA-03 | — | — | — |
 | **BA-05** — migrate surfaces, delete old freshness machinery | Not yet assigned | — | Not started | Sequenced after BA-04 | — | Sequenced after BA-04 | — | — | — |
+| **F177** — remote diagnostics access, so David stops manually screenshotting | Not yet assigned | — | Not started — scoping only, sent to backend session | Decide: fold into BA-02's observability layer, or ship sooner as a standalone "send full diagnostics" action reusing F161's `request_failures` infrastructure | — | None yet — explicitly tracked here per David's Desk's own concern so it doesn't get lost once BA-01 ships and pressure eases | David, direct via David's Desk, 2026-09-15 — real friction all night, every diagnostic capture tonight depended on him personally screenshotting | — | — |
 
 **Production resource policy (David's own words, standing until he says otherwise)**: no additional Railway replica, larger tier, paid Redis/cache, separate paid worker, Cloudflare, or any other recurring infra increase without David's explicit approval — bring him the measured threshold, proposed change, monthly cost, expected headroom, and rollback plan first. Railway only; Cloudflare explicitly out of scope for this build.
 
