@@ -926,28 +926,26 @@ struct TodayHostV5: View {
             seedCachesFromDisk()
             await surface.load()
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "today")
-            // Not awaited: the launch gate above is keyed to `surface.load()`
-            // landing, not to the (much larger) whole-block sync. The first
-            // frame paints from whatever `loadFromDiskSynchronously()` just
-            // restored; this fills in a fresher snapshot behind it exactly
-            // as `WEEKCACHE-1`'s prefetch does for the week strip.
-            Task { await syncPlanSnapshot() }
-            // CALCELLWEEK-1 · not awaited, same reasoning: `blockSurface.
-            // model` already reads whatever `prefetchAllOnLaunch()` cached,
-            // so the calendar sheet works even on the very first frame;
-            // this only refreshes it behind that, for a runner who opens
-            // the calendar before Block's own tab has loaded this session.
-            Task { await blockSurface.load() }
-            // The FIRST tap a runner makes is overwhelmingly a neighbour of
-            // today — yesterday, tomorrow. `goTo` prefetches around wherever
-            // it lands, but that is by definition one step too late for the
-            // very first navigation of the session. Priming today's own
-            // neighbours here means that first tap gets the instant path
-            // too, not just the second one onward.
-            if let m = surface.model {
-                await prefetchAround(m.dateISO)
-                await fetchAndCacheWeek(anchoredOn: m.dateISO)
-            }
+            // BA01-1 (2026-09-15, backend-architecture-brief/ASAP-
+            // IMPLEMENTATION-SEQUENCE Stage 0/BA-01) · `blockSurface.load()`,
+            // `prefetchAround`, and `fetchAndCacheWeek` were REMOVED from
+            // this launch path. Confirmed on David's own real device, on a
+            // build already carrying the interim radius/concurrency
+            // reduction (41f033d3a): launch still produced a simultaneous
+            // batch of /api/v5/today, /api/v5/block, /api/v5/races, and
+            // /api/v5/plan-snapshot, all timing out together at ~12.9s, plus
+            // eight separate /api/v5/today?date=... calls and three
+            // /api/plan/week calls in the same session — the interim
+            // reduction shrank the day-radius burst but did not touch this
+            // launch-time fan-out at all, which is a fully separate source
+            // firing at the exact same moment. `PlanSnapshotStore` already
+            // gives `goTo` a zero-network path for any date inside the
+            // current block (see `goTo`'s own snapshot-first branch) — the
+            // whole-block sync started above is what keeps that snapshot
+            // current, and that is the ONE thing this launch path needs to
+            // fire eagerly. `blockSurface`/`dayCache`/`weekCache` now warm
+            // lazily, from their own hosts' foreground/navigation paths,
+            // not redundantly here on every single launch.
         }
         // Learn the real today the instant any payload actually carries it —
         // see `todayISO(_:)`. A plain side effect, not a render-time read: a
@@ -1933,7 +1931,24 @@ struct TodayHostV5: View {
                 if pendingDate == iso { pendingDate = nil }
             }
         }
-        Task { await prefetchAround(iso, includeWeekFetches: !skipWeekPrefetch) }
+        // BA01-1 (2026-09-15, ASAP-IMPLEMENTATION-SEQUENCE Stage 0/BA-01) ·
+        // the unconditional `prefetchAround` that used to fire here on
+        // EVERY navigation to a date outside the current snapshot block is
+        // REMOVED. Spec item 4: "For a date outside the snapshot, fetch one
+        // bounded fallback only. Do not prefetch neighboring days or weeks
+        // from that action." Spec item 5: "Retry never invokes
+        // prefetchAround" — `retryPending` calls into this same function,
+        // so removing it here satisfies both at once. Confirmed as a real,
+        // live contributor on David's own device: eight separate
+        // `/api/v5/today?date=...` calls and three separate
+        // `/api/plan/week?date=...` calls landed in one session's trace,
+        // consistent with each navigation to an uncovered date firing its
+        // own ±3-day/week fan-out on top of the one date actually
+        // requested. A date INSIDE the current snapshot block still paints
+        // instantly with zero network calls (the early-return branch
+        // above, `shouldRenderFromSnapshot` — verified directly, not
+        // assumed). This only removes eager neighbor-priming for dates
+        // OUTSIDE that block, which is the minority of real navigation.
     }
 
     /// Read the days either side of `iso` quietly, and keep whatever comes

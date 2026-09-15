@@ -1850,48 +1850,52 @@ enum API {
         }
     }
 
-    /// Fire every per-tab endpoint in parallel on app launch so the
-    /// cache is warm by the time the user taps any tab. Best-effort;
-    /// failures are silent — the per-tab .task in each View will retry.
+    /// BA01-1 (2026-09-15, ASAP-IMPLEMENTATION-SEQUENCE Stage 0/BA-01) ·
+    /// bounded launch coordinator, replacing the 7-endpoint concurrent
+    /// fan-out this function used to fire on every single launch.
     ///
-    /// Called once from FaffApp.task at boot. 2026-05-27: shipped after
-    /// David asked "before that first tap? we can just go through the
-    /// app and load things." This is the iPhone equivalent of opening
-    /// every web page once on session start so subsequent navigations
-    /// are warm.
+    /// Confirmed as a real, live contributor on David's own device: a
+    /// simultaneous batch of /api/v5/today, /api/v5/block, /api/v5/races,
+    /// and /api/v5/plan-snapshot all timed out together at ~12.9s in one
+    /// captured trace — this function was firing Today/Block/Races
+    /// concurrently with exactly the same moment TodayHostV5's own launch
+    /// `.task` was independently loading Today and starting the
+    /// whole-block snapshot sync, two entirely separate eager-load paths
+    /// racing for the same connection pool with no coordination between
+    /// them.
+    ///
+    /// Per the spec: do not prefetch Today, Block, or Races here — each
+    /// now has its own host-owned `.task { await surface.load() }` that
+    /// fires the moment that tab is actually shown (confirmed directly:
+    /// `TodayHostV5`, `BlockHostV5`, `RacesHostV5` each already load
+    /// themselves), so this was double-loading them, eagerly, unconditionally,
+    /// on every launch, whether or not the runner ever opens those tabs
+    /// this session. Only what's genuinely needed before first interaction
+    /// stays: units/identity (settings, profile) and the Watch packet
+    /// (read directly by the launch gate's `hasCachedSurfaces` check and
+    /// the watch push). Capped at 2 simultaneous network operations, per
+    /// spec — settings+profile run together, the Watch packet follows
+    /// rather than joining a 3-way batch.
+    ///
+    /// Called once from FaffApp.task at boot. Best-effort; failures are
+    /// silent — Settings/Profile are re-read by every surface that needs
+    /// them anyway, and the Watch packet has its own retry path. Original
+    /// intent, 2026-05-27, David: "before that first tap? we can just go
+    /// through the app and load things" — still true for what actually
+    /// needs to be ready before first interaction; Today/Block/Races are
+    /// no longer part of that set (see BA01-1 above).
     static func prefetchAllOnLaunch() async {
-        // 2026-08-21 · PREFETCH WHAT THE APP ACTUALLY RENDERS.
-        //
-        // This list was written for the v4 shell and never revisited when v5
-        // replaced it. Measured over a full driven session: fifteen requests
-        // per launch, and TWELVE of the keys they warm had ZERO reads — their
-        // only readers live under `Views/`, which is reachable solely via
-        // `-faffLegacy`. Meanwhile the three surfaces the v5 shell does
-        // render — Today, Block, Races — were not prefetched at all. The app
-        // was warming the screens it does not show and cold-starting the ones
-        // it does.
-        //
-        // Removing the dead thirteen measured -209 ms off every launch. The
-        // legacy shell is unaffected in any way that matters: its views each
-        // re-fetch in their own `.task`, so it loses a warm cache, not data,
-        // and only behind a debug flag.
-        //
-        // Fire-and-forget. Each helper writes to AppCache on success; every
-        // view still re-fetches, so a stale prefetch never sticks.
-        async let t  = (try? await fetchV5Today())
-        async let bl = (try? await fetchV5Block())
-        async let rc = (try? await fetchV5Races())
-        // Kept for the launch gate's `hasCachedSurfaces` check and the watch
-        // push, both of which read these directly.
-        async let w  = (try? await fetchWatchWorkout())
-        async let pw = (try? await fetchPlanWeek())
-        // Units (`Units.swift`) and the runner timezone
-        // (`RunnerTimezone.current`) are read from these on nearly every
-        // surface, not just one tab.
+        // BA01-1 · settings + profile first, capped at 2 concurrent (units
+        // and the runner's timezone are read from these on nearly every
+        // surface, so genuinely worth having before first interaction).
         async let su = (try? await fetchSettings())
         async let pf = (try? await fetchProfile())
-        _ = await (t, bl, rc)
-        _ = await (w, pw, su, pf)
+        _ = await (su, pf)
+        // The Watch packet follows rather than joining that pair — kept for
+        // the launch gate's `hasCachedSurfaces` check and the watch push,
+        // both of which read it directly — sequenced, not concurrent, to
+        // hold the 2-simultaneous bound rather than making it 3.
+        _ = try? await fetchWatchWorkout()
     }
 
     /// The handful of surfaces TodayView paints from on first render. The
