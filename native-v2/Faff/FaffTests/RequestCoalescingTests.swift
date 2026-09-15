@@ -343,6 +343,19 @@ final class CountingTransportStub: URLProtocol {
         }.count
     }
 
+    /// Every request that reached the wire, regardless of URL — for callers
+    /// that need a TOTAL count. Deliberately NOT `hits(matching: "")`:
+    /// `String.contains("")` on a Foundation-bridged `URL.absoluteString`
+    /// returned `false` in a falsification run against LaunchOrchestrationTests
+    /// (2026-09-15) even though it returns `true` for a plain Swift string
+    /// literal like `"hello"` — a real bridging discrepancy, not a fluke. An
+    /// empty-needle `hits(matching:)` call is not a safe way to ask "how many
+    /// total," which is exactly why this exists as its own accessor.
+    nonisolated static func totalHitCount() -> Int {
+        lock.lock(); defer { lock.unlock() }
+        return seen.count
+    }
+
     nonisolated override class func canInit(with request: URLRequest) -> Bool { true }
     nonisolated override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
