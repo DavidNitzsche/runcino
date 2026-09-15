@@ -1,0 +1,115 @@
+{
+  "programme": "faff-live-data-backend-architecture",
+  "manifest_version": 1,
+  "created_at": "2026-09-15",
+  "audited_base_sha": "b6d972fded126cde46f639fcddb21088cd5f81fe",
+  "hosting": {
+    "active": "railway",
+    "cloudflare_in_scope": false,
+    "new_recurring_spend_authorized": false
+  },
+  "capacity_contract": {
+    "active_runners": 1000,
+    "mostly_idle_live_connections": 5000,
+    "burst_runners": 2000,
+    "production_capacity_posture": "current-demand-only"
+  },
+  "units": [
+    {
+      "id": "BA-01R",
+      "name": "finish-live-incident",
+      "status": "ready",
+      "depends_on": [],
+      "release_gate": "physical-device launch/date/retry trace has no client timeout, false offline, hidden-surface fetch, or unexplained snapshot generation"
+    },
+    {
+      "id": "BA-00A",
+      "name": "automated-additive-schema-deployment",
+      "status": "ready",
+      "depends_on": [],
+      "release_gate": "checksummed allowlisted migration runner is idempotent, serialized, rollback-safe, and blocks a deploy on failure"
+    },
+    {
+      "id": "BA-00B",
+      "name": "workload-budgets-and-route-stage-metrics",
+      "status": "ready-after-BA-00A",
+      "depends_on": ["BA-00A"],
+      "release_gate": "one trace identifies route stages, query count/time, pool wait, workload class, and deadline stage"
+    },
+    {
+      "id": "BA-02A",
+      "name": "runner-versions-and-projection-store",
+      "status": "queued",
+      "depends_on": ["BA-00A"],
+      "release_gate": "monotonic per-runner versions and atomic cross-projection publication pass concurrency and isolation tests"
+    },
+    {
+      "id": "BA-02B",
+      "name": "shadow-projection-builders",
+      "status": "queued",
+      "depends_on": ["BA-02A"],
+      "release_gate": "seven days of dark-build parity with zero unexplained semantic differences"
+    },
+    {
+      "id": "BA-02C",
+      "name": "bootstrap-calendar-version-api",
+      "status": "queued",
+      "depends_on": ["BA-02B"],
+      "release_gate": "prepared reads use no coaching owner, make at most three queries, support ETag/304, and meet p95 under 500ms"
+    },
+    {
+      "id": "BA-02D",
+      "name": "iphone-app-snapshot-store",
+      "status": "queued",
+      "depends_on": ["BA-02C", "BA-01R"],
+      "release_gate": "cached launch, atomic publication, schema incompatibility, corruption, cancellation, and fallback tests pass on device"
+    },
+    {
+      "id": "BA-03A",
+      "name": "command-receipts-and-outbox",
+      "status": "queued",
+      "depends_on": ["BA-00A", "BA-02A"],
+      "release_gate": "fact, receipt, and event commit atomically and duplicate commands return the original receipt"
+    },
+    {
+      "id": "BA-03B",
+      "name": "per-runner-worker",
+      "status": "queued",
+      "depends_on": ["BA-03A", "BA-02B"],
+      "release_gate": "crash-boundary, idempotency, fairness, serialization, and trace-chain tests pass in shadow"
+    },
+    {
+      "id": "BA-03C",
+      "name": "high-value-write-migration",
+      "status": "queued",
+      "depends_on": ["BA-03B"],
+      "release_gate": "run completion, feedback, health, race, plan, and reschedule commands each pass receipt-to-displayed-version proof"
+    },
+    {
+      "id": "BA-04",
+      "name": "sse-and-apns-version-hints",
+      "status": "queued",
+      "depends_on": ["BA-02D", "BA-03B"],
+      "release_gate": "burst coalescing, lost-signal healing, one-stream-per-device, restart, and 5000-connection tests pass"
+    },
+    {
+      "id": "BA-05",
+      "name": "surface-migration-and-deletion",
+      "status": "queued",
+      "depends_on": ["BA-04", "BA-03C"],
+      "release_gate": "all active surfaces use one freshness authority and old supported-build traffic reaches zero before deletion"
+    }
+  ],
+  "global_prohibitions": [
+    "cloudflare work",
+    "unapproved recurring infrastructure spend",
+    "screen-read coaching computation",
+    "one request per calendar day",
+    "per-screen freshness or live streams",
+    "unbounded parallelism or retries",
+    "blind replay of historical migrations 100-171",
+    "projection-owned coaching decisions",
+    "calling a timeout offline",
+    "reviewing a SHA and shipping a different SHA"
+  ]
+}
