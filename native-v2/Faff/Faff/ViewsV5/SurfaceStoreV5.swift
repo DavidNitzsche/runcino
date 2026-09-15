@@ -333,13 +333,36 @@ final class V5Surface<Model: Decodable>: ObservableObject {
         // only against its own two calls, blind to this observer entirely.
         // See `ForegroundWork.shouldLoadOnForeground`'s doc comment for the
         // full incident.
+        //
+        // REQUESTSTORM-3 (2026-09-14) · THE THROTTLE COULD SWALLOW THE ONE
+        // POST IT WAS NEVER SUPPOSED TO. `lastForegroundLoadAt` used to be
+        // stamped here unconditionally, at load-START — so if this surface's
+        // OWN load from the immediate post was still in flight when the
+        // post-import post (or `WatchSync.flushPendingCompletions`'s own
+        // completion-landed post, same notification, same observer) arrived
+        // inside the 3s window, it read as "the tail of the same burst" and
+        // never called `load()` again. The first load's fetch had already
+        // run and answered before the run in question existed server-side.
+        // A completed run then genuinely did not appear until the process
+        // was killed and relaunched — `.distantPast` is what a relaunch
+        // resets `lastForegroundLoadAt` to, which is the entire reason that
+        // "fixed" it and a plain foreground did not. See
+        // `ForegroundWork.mustLoadKey`'s doc comment for why reshaping the
+        // window (measuring from load-finish instead of load-start) does not
+        // close this — the two posts race two CONCURRENT tasks, not a
+        // sequential pair, so the finish edge is not reliably later than the
+        // second post either. The actual fix: a post that is tagged
+        // `mustLoadKey` in its `userInfo` is never coalesced, at any gap.
         foreground = NotificationCenter.default.addObserver(
             forName: .faffForegroundRefresh, object: nil, queue: .main
-        ) { [weak self] _ in
+        ) { [weak self] note in
+            let mustLoad = (note.userInfo?[ForegroundWork.mustLoadKey] as? Bool) == true
             Task { @MainActor in
                 guard let self else { return }
                 let now = Date()
-                guard ForegroundWork.shouldLoadOnForeground(now: now, lastLoadAt: self.lastForegroundLoadAt) else { return }
+                guard ForegroundWork.shouldLoadOnForeground(
+                    now: now, lastLoadAt: self.lastForegroundLoadAt, mustLoad: mustLoad
+                ) else { return }
                 self.lastForegroundLoadAt = now
                 await self.load()
             }

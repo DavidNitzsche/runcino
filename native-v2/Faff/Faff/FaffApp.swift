@@ -450,7 +450,23 @@ struct FaffApp: App {
                 // OAuth return but too early for this: the import is what
                 // brings today's run in, so a surface that read before it
                 // finished still shows a day with no run on it.
-                NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+                //
+                // REQUESTSTORM-3 (2026-09-14) · tagged `mustLoad` because this
+                // post is the one `V5Surface.shouldLoadOnForeground` must
+                // never coalesce away. The immediate post above may still
+                // land inside another surface's 3s window and get folded in —
+                // that is fine, nothing has changed for it to see yet. THIS
+                // post is different: it exists only because something might
+                // have changed (the import just ran), and if the first load
+                // was still in flight when this fires, the first load's own
+                // fetch already ran without seeing it. Coalescing this one is
+                // exactly the bug — see `ForegroundWork.mustLoadKey`'s doc
+                // comment for why moving the throttle's edge cannot fix it
+                // and bypass is the only thing that does.
+                NotificationCenter.default.post(
+                    name: .faffForegroundRefresh, object: nil,
+                    userInfo: [ForegroundWork.mustLoadKey: true]
+                )
             }
         }
     }
