@@ -412,10 +412,22 @@ async function handleGET(req: NextRequest) {
       const weeksAway = nextA.days / 7;
       const taperWeeks = distanceMi ? taperWeeksForDistance(distanceMi) : 0;
 
+      // F080 · RULE 16 / ownership.ts GOAL_FEASIBILITY · resolved BEFORE
+      // `assessGoal` below (moved up from where "Projected" used to read it,
+      // further down this same handler) so the one outlook this route
+      // resolves for this race feeds BOTH consumers instead of `assessGoal`
+      // reaching its own verdict off a stale VDOT snapshot while "Projected"
+      // reads the live outlook a few lines later. See `GoalAssessmentInput.
+      // outlook`'s doc comment.
+      const nextAOutlook = (distanceMi != null && distanceMi > 0)
+        ? await resolveRaceOutlookBySlug(userId, nextA.slug, todayISO).catch(() => null)
+        : null;
+
       const assessment = (distanceMi != null && distanceMi > 0 && goalSec != null && goalDateISO)
         ? assessGoal({
             distanceMi, goalSec, goalDateISO, todayISO,
             currentVdot: vdot, executionQuality: null, recentWeeklyMi: weeklyMi,
+            outlook: nextAOutlook,
             context: {
               inTaperOrRaceWeek: nextA.days <= 7 || weeksAway <= taperWeeks,
               inPostRaceRecovery: null,
@@ -463,10 +475,8 @@ async function handleGET(req: NextRequest) {
       // Falls back to the static equivalence at cold start or on failure.
       // 2026-09-01 · P0 · THE race-pace brain, the same two functions the
       // detail route reads. "Projected" = `outlook.expectedRaceDay` (race
-      // day, this build, goal-free improvement).
-      const nextAOutlook = (distanceMi != null && distanceMi > 0)
-        ? await resolveRaceOutlookBySlug(userId, nextA.slug, todayISO).catch(() => null)
-        : null;
+      // day, this build, goal-free improvement). F080 · `nextAOutlook` now
+      // resolves earlier, above, so `assessGoal` can consume it too.
       const { projectedSec } = raceProjectionFromOutlook(nextAOutlook);
       const gapSec = (projectedSec != null && goalSec != null) ? projectedSec - goalSec : null;
 
