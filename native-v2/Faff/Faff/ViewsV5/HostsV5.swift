@@ -3326,28 +3326,74 @@ struct CourseImportHostV5: View {
 
 struct ShoesHostV5: View {
     @Environment(\.dismiss) private var dismiss
-    @State private var shoes: [Shoe] = []
+    @State private var shoes: [Shoe]?
+    /// F061 (2026-09-15) · same fix pattern as `SettingsHostV5.loadFailure`
+    /// a few hundred lines above (`SETTINGSFAIL-1`) — `load()` used to be
+    /// `shoes = (try? await API.fetchShoes())?.shoes ?? []`, so ANY failure
+    /// (a network blip, a bad status, a decode error) silently became "you
+    /// own zero shoes," with no error state and no retry. Non-nil only when
+    /// `shoes` is ALSO nil: a load that fails after we already have a good
+    /// list leaves the runner looking at what they had, same posture as
+    /// every other host that's had this fix.
+    @State private var loadFailure: SettingsLoadFailure?
+    @State private var loadTask: Task<Void, Never>?
 
     var body: some View {
-        ShoesV5(shoes: shoes,
-                onWear: { id in Task { await patch(id, ["preferred": true]) } },
-                onRetire: { id in Task { await patch(id, ["retired": true]) } },
-                onAddPair: { brand, model, shoeType, startMi in
-                    Task { await addPair(brand: brand, model: model,
-                                         shoeType: shoeType, startMi: startMi) }
-                },
-                onBack: { dismiss() })
-            .task { await load() }
-            .navigationBarBackButtonHidden(true)
+        Group {
+            if let shoes {
+                ShoesV5(shoes: shoes,
+                        onWear: { id in Task { await patch(id, ["preferred": true]) } },
+                        onRetire: { id in Task { await patch(id, ["retired": true]) } },
+                        onAddPair: { brand, model, shoeType, startMi in
+                            Task { await addPair(brand: brand, model: model,
+                                                 shoeType: shoeType, startMi: startMi) }
+                        },
+                        onBack: { dismiss() })
+            } else if let loadFailure {
+                VStack(spacing: 0) {
+                    AppBar(title: "Shoes", onBack: { dismiss() })
+                    ScrollView {
+                        ErrorNote(text: loadFailure.genericMessage(subject: "shoes"),
+                                  onRetry: { requestLoad() })
+                            .padding(.horizontal, V5.S.gutter)
+                            .padding(.top, V5.S.s40)
+                    }
+                    .background(V5.surfacePage)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    AppBar(title: "Shoes", onBack: { dismiss() })
+                    ScrollView { Skeleton(lines: 4).padding(.horizontal, V5.S.gutter) }
+                        .background(V5.surfacePage)
+                }
+            }
+        }
+        .task { requestLoad() }
+        .navigationBarBackButtonHidden(true)
+    }
+
+    private func requestLoad() {
+        loadTask?.cancel()
+        loadTask = Task { await load() }
     }
 
     private func load() async {
-        shoes = (try? await API.fetchShoes())?.shoes ?? []
+        do {
+            let response = try await API.fetchShoes()
+            if Task.isCancelled { return }
+            loadFailure = nil
+            shoes = response?.shoes ?? []
+        } catch {
+            if Task.isCancelled { return }
+            // SETTINGSFAIL-1's same posture: never blank a screen that
+            // already has good content.
+            if shoes == nil { loadFailure = SettingsLoadFailure.categorize(error) }
+        }
     }
 
     private func patch(_ id: Int, _ fields: [String: Any]) async {
         _ = try? await API.patchShoe(id: id, fields: fields)
-        await load()
+        requestLoad()
     }
 
     /// The cap is nil unless the runner typed one. The retirement band is the
@@ -3360,7 +3406,7 @@ struct ShoesHostV5: View {
     private func addPair(brand: String, model: String, shoeType: String, startMi: Double) async {
         _ = try? await API.createShoeV5(brand: brand, model: model,
                                         shoeType: shoeType, baselineMi: startMi)
-        await load()
+        requestLoad()
     }
 }
 
@@ -3430,6 +3476,28 @@ enum SettingsLoadFailure: Equatable, Sendable {
             return "That read was cancelled. Try again."
         case .unknown:
             return "Try again."
+        }
+    }
+
+    /// F061 (2026-09-15) · `message`/`shortCause` above are Settings' own
+    /// wording ("...to see your settings"). Every other host that needs the
+    /// same failed-vs-empty distinction (Rule 11) reuses this categorizer
+    /// rather than duplicating the enum, so this is the generic copy for
+    /// them — `subject` names what failed to load, lowercase, e.g. "shoes".
+    func genericMessage(subject: String) -> String {
+        switch self {
+        case .offline:
+            return "Can't reach faff. Check your connection and try again."
+        case .timeout:
+            return "faff is taking too long to respond. Try again."
+        case .unauthorized:
+            return "Your session has expired. Sign in again to see your \(subject)."
+        case .serverError(let code):
+            return "faff hit an error (\(code)) loading your \(subject). Try again."
+        case .cancelled:
+            return "That read was cancelled before it finished. Try again."
+        case .unknown:
+            return "Could not load your \(subject). Try again."
         }
     }
 
