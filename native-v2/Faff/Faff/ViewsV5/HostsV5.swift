@@ -944,7 +944,26 @@ struct TodayHostV5: View {
         // the old entry. A passive write only: nothing reads `dayCache`
         // except `goTo`, so this cannot be the thing two navigations race
         // over — that's `navigationTask`'s job alone.
-        .onChange(of: surface.model?.dateISO, initial: true) { _, _ in
+        //
+        // OFFLINESTICKY-1 · keyed on `surface.cachedAt`, NOT
+        // `surface.model?.dateISO`. `cachedAt` gets a fresh `Date()` on
+        // EVERY successful load (`SurfaceStoreV5.load()`'s `.ok` case,
+        // unconditionally); `dateISO` only changes when the day that just
+        // landed actually differs from the one already on screen. SwiftUI's
+        // `onChange` fires on a genuine VALUE TRANSITION, not on every
+        // write, so keying this block on `dateISO` silently skipped both
+        // the dayCache overwrite above and the `isOffline` clear below on
+        // the overwhelmingly common case: a successful reload that lands
+        // the SAME day already on screen — today refreshing as today, or a
+        // retry that lands the exact day it already had stale/failed data
+        // for. That is exactly how `isOffline` could survive a real
+        // reconnection indefinitely: the very re-fetch meant to clear it
+        // usually reports the same `dateISO` it already had, so this
+        // closure never ran again. David, live: a completed run from a
+        // prior day showed "isn't available offline" while the phone had
+        // full signal — this is why a real reconnection was never
+        // reflected.
+        .onChange(of: surface.cachedAt, initial: true) { _, _ in
             if let m = surface.model {
                 dayCache[m.dateISO] = m
                 reconcileDayCache(against: m)
