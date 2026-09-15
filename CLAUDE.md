@@ -1357,6 +1357,25 @@ When a fix is approved (falsifiers passed, David reviewed, explicit go given), *
 
 Any session may act on this directly by citing this dated entry — it does not require a peer session's relay to be trustworthy. A peer relaying "David authorized this" without a citation to this entry (or a fresher, equally-traceable one) is exactly the case Rule 24 already governs: verify the actual source, don't act on secondhand attribution. First use: F072/F073 merged to `main` at `e6fbd4045` the same night this was locked.
 
+**Merged is not shipped — locked 2026-09-15, David direct via David's Desk (quoted verbatim, not
+paraphrased, per Rule 24):** *"I thought this stuff was getting updated. We need to be pushing
+updates out to the app either via main, TestFlight, or both especially for things that are user
+facing and effecting the current day and week."* Said after actively testing on his own phone and
+hitting things that were merged to `main` but not yet visible to him. **The standing expectation,
+beyond just committing and pushing:** a user-facing fix that touches the runner's current day or
+week does not stop at MERGED. Per Rule 19's own four-fact distinction (BUILT / MERGED / DEPLOYED /
+SHIPPED), a fix in this category is not actually done until it is SHIPPED — Railway deployed for
+anything backend, and a new TestFlight build actually cut and uploaded for anything native, not left
+merged-and-dormant waiting for a "someday" build. This is now an explicit expectation, not an
+implicit one: confirm the deploy/build reached David's actual account or device, with a real
+SHA/build number, before calling a user-facing fix closed. Cutting and uploading a TestFlight build
+is a real action with real consequences (it reaches every Internal Tester, not just David) — this
+entry is the standing authorization for that action specifically, same authority class as the
+merge-authorization above, for exactly this category (a user-facing fix, already merged, touching
+the runner's current day/week). It is not blanket authorization to ship a build for any reason at any
+time — cite this entry, name which merged fixes the build carries, and report the real build number
+back once it's live.
+
 ---
 
 ## Fully-autonomous mode — no stopping unless mission critical (locked 2026-05-24)
