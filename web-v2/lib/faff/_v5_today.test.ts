@@ -497,7 +497,7 @@ describe('after_run · TODAYHERO-1 · no prescribed structure to grade against',
       targetProvenanceNote: null,
       noPrescribedStructure,
       cost: null, learned: '', change: 'UNCHANGED', changeState: 'UNCHANGED',
-      changes: [], next: null, why: [], accessibilitySummary: '',
+      changes: [], reviewWindowElapsed: false, next: null, why: [], accessibilitySummary: '',
       capture: null,
       coverage: {
         totalDistanceMi: null, structuredDistanceMi: null,

@@ -80,6 +80,21 @@ export interface PostRunWire {
   change: string;
   changeState: string;
   changes: string[];
+  /**
+   * F057-SENTENCE-3 (2026-09-14) · `plan.reviewWindowElapsed` verbatim — the
+   * fact `readPlan` already uses to pick between its two `HELD_FOR_EVIDENCE`
+   * sentences, now on the wire as its own field rather than only inside
+   * `change`'s prose. `changeState` alone cannot carry this: it stays
+   * `'HELD_FOR_EVIDENCE'` whether the review window is still open or has
+   * already elapsed with nothing pending, and a renderer switching on
+   * `changeState` alone (`WorkoutResultV5.swift`'s `planStatusLine`, before
+   * this fix) had no way to tell the two apart — it showed "Under review."
+   * in both, which is exactly false in the elapsed case. True whenever
+   * `readPlan`'s own review-window check (`lib/postrun/load.ts`) says the
+   * window has closed, independent of `changeState` — a caller must not
+   * assume this is only meaningful when `changeState === 'HELD_FOR_EVIDENCE'`.
+   */
+  reviewWindowElapsed: boolean;
   next: string | null;
   why: string[];
   accessibilitySummary: string;
@@ -234,6 +249,7 @@ export function postRunWire(x: PostRunExperienceV1): PostRunWire {
     change: x.plan.runnerSummary,
     changeState: x.plan.status,
     changes: x.plan.changes,
+    reviewWindowElapsed: x.plan.reviewWindowElapsed,
     next: x.next.summary,
     /* THE "WHY" BODY.
      *

@@ -232,6 +232,31 @@ export interface PostRunPlanImpact {
   /** Hard-typed false. Sealed history is not editable by this path and the
    *  type says so rather than a comment promising it (Rule 20). */
   sealedHistoryChanged: false;
+  /**
+   * F057-SENTENCE-3 (2026-09-14) · the SAME fact `readPlan` already consults
+   * to choose between the two `HELD_FOR_EVIDENCE` sentences below
+   * (`input.reviewWindowElapsed`, computed once in `lib/postrun/load.ts` and
+   * never re-derived here), now carried on the object itself rather than
+   * living only inside the prose those two branches produce.
+   *
+   * Before this field existed the fact reached `runnerSummary` as TEXT and
+   * nowhere else: `status` stays `'HELD_FOR_EVIDENCE'` in both the
+   * still-open and the already-elapsed case, so a caller that switches on
+   * `status` alone — exactly what `WorkoutResultV5.swift`'s `planStatusLine`
+   * did — could not tell them apart and rendered the SAME "Under review."
+   * label once the window had closed with nothing pending, sitting next to
+   * a "Why" disclosure that had just said, in the runner's own sentence,
+   * that nothing further was scheduled to look at it. Same contradiction
+   * shape as the sentence-5 bug this session's fix already closed: two
+   * adjacent pieces of copy asserting things that cannot both be true.
+   *
+   * Set on EVERY branch of `readPlan`, not only `HELD_FOR_EVIDENCE` — it is
+   * `input.reviewWindowElapsed` verbatim, a fact about elapsed time that
+   * exists whether or not this run's plan is currently held for evidence at
+   * all, so a caller reading it never has to also check `status` first to
+   * know whether the value means anything.
+   */
+  reviewWindowElapsed: boolean;
 }
 
 export interface PostRunNextAction {
@@ -1890,6 +1915,7 @@ export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): 
     return {
       status: 'NO_PLAN', runnerSummary: 'There is no plan for this to change.',
       changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+      reviewWindowElapsed: input.reviewWindowElapsed,
     };
   }
   if (input.adaptations == null) {
@@ -1898,6 +1924,7 @@ export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): 
     return {
       status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.',
       changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+      reviewWindowElapsed: input.reviewWindowElapsed,
     };
   }
   if (input.adaptations.length > 0) {
@@ -1935,12 +1962,14 @@ export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): 
       changes: readableChanges,
       descriptionContractSatisfied: readableChanges.length === input.adaptations.length,
       sealedHistoryChanged: false,
+      reviewWindowElapsed: input.reviewWindowElapsed,
     };
   }
   if (evidence.role === 'UNREAD') {
     return {
       status: 'UNKNOWN', runnerSummary: 'Whether the plan moved on this run has not been read yet.',
       changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+      reviewWindowElapsed: input.reviewWindowElapsed,
     };
   }
   if (evidence.planAuthorityEligible) {
@@ -1968,17 +1997,20 @@ export function readPlan(input: PostRunInput, evidence: PostRunEvidenceImpact): 
         status: 'HELD_FOR_EVIDENCE',
         runnerSummary: 'The plan is unchanged. This run was strong enough to act on, but no automated review resolved it in the usual window — nothing further is currently scheduled to look at it.',
         changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+        reviewWindowElapsed: true,
       };
     }
     return {
       status: 'HELD_FOR_EVIDENCE',
       runnerSummary: 'The plan is unchanged for now. This run is strong enough to act on, so the next review will look at it.',
       changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+      reviewWindowElapsed: false,
     };
   }
   return {
     status: 'UNCHANGED', runnerSummary: 'The plan is unchanged.',
     changes: [], descriptionContractSatisfied: true, sealedHistoryChanged: false,
+    reviewWindowElapsed: input.reviewWindowElapsed,
   };
 }
 

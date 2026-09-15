@@ -113,6 +113,20 @@ struct PostRunV5: Decodable, Equatable {
     let changeState: String
     /// One line per recorded change. Empty on every state but `UPDATED`.
     let changes: [String]
+    /// F057-SENTENCE-3 (2026-09-14) · has the review window `readPlan` scans
+    /// (`lib/postrun/load.ts`'s `reviewWindowElapsed`) actually elapsed — a
+    /// fact `changeState` alone cannot carry, because it stays
+    /// `HELD_FOR_EVIDENCE` both while the window is still open and once it
+    /// has closed with nothing pending. Before this field existed,
+    /// `WorkoutResultV5.swift`'s `planStatusLine` had no way to tell those
+    /// two apart and showed "Under review." in both — the exact
+    /// contradiction the Santa Monica forensic debrief's §9 named for this
+    /// sentence, now closed by reading this flag alongside `changeState`
+    /// rather than `changeState` alone. Defaults to `false` (the
+    /// conservative reading — see `daysBetweenISO`'s own posture
+    /// server-side) on a decode from an older payload that does not carry
+    /// this key yet.
+    let reviewWindowElapsed: Bool
     /// Only when this run produced something the plan does not already say.
     let next: String?
     /// The disclosure body: what was withheld and why, plus the hedge that
@@ -163,6 +177,7 @@ struct PostRunV5: Decodable, Equatable {
         case version, runId, decisionVersion, headline, summary, targetProvenanceNote, cost
         case learned, change, changeState, changes, next, why, accessibilitySummary
         case capture, strides, coverage, noPrescribedStructure, rpe, race
+        case reviewWindowElapsed
     }
 
     /// LENIENT BY DESIGN, and written out rather than borrowed.
@@ -189,6 +204,7 @@ struct PostRunV5: Decodable, Equatable {
         change = str(.change)
         changeState = str(.changeState)
         changes = strs(.changes)
+        reviewWindowElapsed = ((try? c.decodeIfPresent(Bool.self, forKey: .reviewWindowElapsed)) ?? false) ?? false
         next = optStr(.next)
         why = strs(.why)
         accessibilitySummary = str(.accessibilitySummary)
@@ -206,7 +222,8 @@ struct PostRunV5: Decodable, Equatable {
          accessibilitySummary: String,
          capture: String? = nil, strides: PostRunStridesV5? = nil,
          coverage: PostRunCoverageV5? = nil, targetProvenanceNote: String? = nil,
-         noPrescribedStructure: Bool = false, rpe: Int? = nil, race: PostRunRaceV5? = nil) {
+         noPrescribedStructure: Bool = false, rpe: Int? = nil, race: PostRunRaceV5? = nil,
+         reviewWindowElapsed: Bool = false) {
         self.version = version
         self.runId = runId
         self.decisionVersion = decisionVersion
@@ -219,6 +236,7 @@ struct PostRunV5: Decodable, Equatable {
         self.change = change
         self.changeState = changeState
         self.changes = changes
+        self.reviewWindowElapsed = reviewWindowElapsed
         self.next = next
         self.why = why
         self.accessibilitySummary = accessibilitySummary
