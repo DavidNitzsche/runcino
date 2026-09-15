@@ -509,6 +509,11 @@ struct TodayHostV5: View {
     /// blanket `surface.load()` (that only ever re-reads `viewingDate`);
     /// this re-enters `goTo` so a retry on a date the runner has since
     /// swiped past does not silently override a newer selection.
+    ///
+    /// RETRYNOOP-1 · `force: true` is load-bearing, not decorative. `date`
+    /// here is, by construction, always the date already being viewed — see
+    /// `goTo`'s own doc comment for why the plain (non-forced) call this
+    /// used to make was a silent no-op on exactly this path.
     private func retryPending(_ date: String) {
         // PLANSNAPSHOT-1 · an explicit Retry is one of the named triggers
         // for a fresh whole-block sync — not awaited here so the per-date
@@ -516,7 +521,7 @@ struct TodayHostV5: View {
         // by it; if the snapshot sync lands first, `date` may resolve
         // straight from it without `goTo` needing its own fetch at all.
         Task { await syncPlanSnapshot() }
-        goTo(date, todayISO: knownTodayISO ?? date)
+        goTo(date, todayISO: knownTodayISO ?? date, force: true)
     }
 
     /// The best available week-strip data for `date` — exact cached day,
@@ -1773,9 +1778,39 @@ struct TodayHostV5: View {
         to > from ? 1 : -1
     }
 
-    private func goTo(_ iso: String, todayISO today: String) {
+    /// RETRYNOOP-1 (2026-09-15) · `force` exists for exactly one caller,
+    /// `retryPending`. Every other caller navigates FROM the current date TO
+    /// a different one, so `iso == from` correctly means "nothing to do" —
+    /// but a Retry tap on a `.failed`/`.offlineNoCache` pending card is, by
+    /// construction, always retrying the date already being viewed
+    /// (`pendingCard`'s own `wantedDate` IS `viewingDate ?? today`). Without
+    /// `force`, this function's own first line made every Retry tap on that
+    /// card a silent no-op: `from` computed to the same date being retried,
+    /// the guard returned immediately, and NOTHING re-fetched — not the
+    /// snapshot check, not `navigationTask`, nothing below this line ever
+    /// ran. The runner saw the identical error stay on screen and read it as
+    /// "still broken", because it was: Retry never asked the network
+    /// anything. This was live and reachable the whole time this guard
+    /// existed — unrelated to, and not fixed by, F147's `isOffline`
+    /// stickiness fix a few lines below in this same file; a genuinely
+    /// different mechanism producing an outwardly identical symptom, found
+    /// tracing the SAME report a second time rather than assuming the first
+    /// fix was the whole story.
+    /// RETRYNOOP-1 · pulled out of `goTo`'s own guard, same reasoning as
+    /// `shouldRenderFromSnapshot`/`planVersionAcceptable` above: a plain,
+    /// static, input-to-output function is directly testable, where the
+    /// original inline `guard` inside a `private func` touching a dozen
+    /// `@State` properties was provable only by driving a live host through
+    /// a real navigation. See `goTo`'s own doc comment for the regression
+    /// this exists to prevent — a Retry tap always retries the date already
+    /// being viewed, and `force` is retryPending's way of saying so.
+    static func shouldSkipNavigation(from: String, to: String, force: Bool) -> Bool {
+        !force && to == from
+    }
+
+    private func goTo(_ iso: String, todayISO today: String, force: Bool = false) {
         let from = viewingDate ?? today
-        guard iso != from else { return }
+        guard !Self.shouldSkipNavigation(from: from, to: iso, force: force) else { return }
 
         // PANELMOTION-1 · the only place both the old and new date are known
         // synchronously, before anything async starts.
