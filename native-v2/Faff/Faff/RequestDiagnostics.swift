@@ -92,6 +92,21 @@ actor RequestDiagnosticsLog {
     private var nextGeneration = 1
     private let cap = 300
 
+    // STAGE0-REPORTBATCH-1 (2026-09-15, backend-architecture-brief Stage 0)
+    // · the brief's own words on client failure reporting: "Reporting must
+    // be batched and must never create another refresh storm." Before this,
+    // every `.timeout`/`.transportError` outcome fired its own immediate
+    // POST — during a real burst (F162's repro: ~12 requests failing
+    // together) that is ~12 simultaneous self-reports, which is exactly the
+    // shape the brief is warning against, even though this endpoint does
+    // one cheap INSERT and the practical load is trivial next to what
+    // caused the original incident. At most one report leaves the device
+    // per window; anything else in that window is folded into the next
+    // report's own `suppressedCount` rather than sent separately.
+    private var lastReportSentAt: Date?
+    private var suppressedSinceLastReport = 0
+    private static let reportWindowSec: TimeInterval = 5
+
     /// Called at the moment a request is actually handed to URLSession.
     /// Returns the generation id the caller must pass back to `finish`.
     func begin(endpoint: String, dateParam: String?, correlationId: String, httpMethod: String) -> Int {
@@ -110,20 +125,36 @@ actor RequestDiagnosticsLog {
     /// request" — which by definition NOTHING server-side can ever
     /// observe on its own. F162 confirmed this gap live: the correlation
     /// id existed only on-device, in this exact log, with no path off the
-    /// phone. Fire-and-forget, off the actor (`Task.detached`), so a flaky
-    /// network reporting its own flakiness can never slow down or block
-    /// the diagnostics log itself — the same "observability must not be
-    /// the thing that makes it worse" discipline `outage()` was just given
-    /// server-side.
+    /// phone. At most one report actually leaves the device per
+    /// `reportWindowSec` (STAGE0-REPORTBATCH-1) — a burst of many
+    /// failures together (the exact shape of F162's own repro) folds into
+    /// one report plus a suppressed count, never one POST per failure.
+    /// The one that does fire is sent fire-and-forget, off the actor
+    /// (`Task.detached`), so a flaky network reporting its own flakiness
+    /// can never slow down or block the diagnostics log itself — the same
+    /// "observability must not be the thing that makes it worse"
+    /// discipline `outage()` was just given server-side.
     func finish(_ generation: Int, outcome: RequestOutcome) {
         guard let idx = entries.firstIndex(where: { $0.id == generation }) else { return }
         entries[idx].finishedAt = Date()
         entries[idx].outcome = outcome
 
         if let kind = Self.clientReportKind(for: outcome) {
+            let now = Date()
+            guard Self.shouldSendReport(now: now, lastSentAt: lastReportSentAt, window: Self.reportWindowSec) else {
+                // Inside the window since the last report actually sent —
+                // fold this one in as a suppressed count rather than firing
+                // a second request. Still a real, observable fact (visible
+                // in the next report's own body), just not a second POST.
+                suppressedSinceLastReport += 1
+                return
+            }
             let entry = entries[idx]
+            let suppressed = suppressedSinceLastReport
+            lastReportSentAt = now
+            suppressedSinceLastReport = 0
             Task.detached(priority: .background) {
-                await Self.reportToServer(entry: entry, kind: kind)
+                await Self.reportToServer(entry: entry, kind: kind, suppressedCount: suppressed)
             }
         }
     }
@@ -171,6 +202,16 @@ actor RequestDiagnosticsLog {
         }
     }
 
+    /// STAGE0-REPORTBATCH-1 · the whole batching decision, extracted as a
+    /// pure input-to-output function for the same reason `clientReportKind`
+    /// is: directly testable with fixed timestamps, rather than provable
+    /// only by racing real `Date()` calls against a real 5-second wall-clock
+    /// wait in a test. `nil` (never sent before) always sends.
+    static func shouldSendReport(now: Date, lastSentAt: Date?, window: TimeInterval) -> Bool {
+        guard let lastSentAt else { return true }
+        return now.timeIntervalSince(lastSentAt) >= window
+    }
+
     /// Static, not an actor method — this runs off a `Task.detached`, after
     /// the entry has already been captured as a value, so it needs no
     /// actor isolation and cannot race or block the log itself.
@@ -184,7 +225,7 @@ actor RequestDiagnosticsLog {
     /// upward. Silence on failure is correct here: this is itself a report
     /// about a flaky network, so failing to file it is not a new fact worth
     /// interrupting anything for.
-    private static func reportToServer(entry: RequestDiagnosticEntry, kind: String) async {
+    private static func reportToServer(entry: RequestDiagnosticEntry, kind: String, suppressedCount: Int) async {
         var req = URLRequest(url: API.baseURL.appendingPathComponent("api/observability/client-report"))
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -203,6 +244,9 @@ actor RequestDiagnosticsLog {
         ]
         if let durationMs = entry.durationMs {
             body["observedDurationMs"] = durationMs
+        }
+        if suppressedCount > 0 {
+            body["suppressedCount"] = suppressedCount
         }
         guard let data = try? JSONSerialization.data(withJSONObject: body) else { return }
         req.httpBody = data

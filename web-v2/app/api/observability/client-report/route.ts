@@ -58,6 +58,12 @@ interface ClientReportBody {
   httpMethod?: unknown;
   kind?: unknown;
   observedDurationMs?: unknown;
+  // STAGE0-REPORTBATCH-1 (2026-09-15) · the client now sends at most one
+  // report per short window (see RequestDiagnostics.swift's own comment) —
+  // this is how many OTHER timeout/transport-error outcomes were folded
+  // into this one instead of firing their own report. Optional and
+  // defaults to 0 so an older client build omitting the field still works.
+  suppressedCount?: unknown;
 }
 
 export async function POST(req: NextRequest) {
@@ -74,6 +80,8 @@ export async function POST(req: NextRequest) {
   const kind = typeof body.kind === 'string' ? body.kind : '';
   const observedDurationMs = typeof body.observedDurationMs === 'number' && Number.isFinite(body.observedDurationMs)
     ? Math.round(body.observedDurationMs) : null;
+  const suppressedCount = typeof body.suppressedCount === 'number' && Number.isFinite(body.suppressedCount) && body.suppressedCount >= 0
+    ? Math.round(body.suppressedCount) : 0;
 
   if (!correlationId || !routePath) {
     return NextResponse.json({ error: 'correlationId and routePath are required' }, { status: 400 });
@@ -116,7 +124,12 @@ export async function POST(req: NextRequest) {
     durationMs: observedDurationMs,
     error: `client-reported ${kind}`,
     userUuid,
-    metadata: { detail: `client self-report (${kind}); ${serverRowsFound} server-side row(s) already exist for this correlation id`, serverRowsFound },
+    metadata: {
+      detail: `client self-report (${kind}); ${serverRowsFound} server-side row(s) already exist for this correlation id`
+        + (suppressedCount > 0 ? `; ${suppressedCount} other timeout/transport-error outcome(s) folded into this report rather than sent separately` : ''),
+      serverRowsFound,
+      suppressedCount,
+    },
     source: 'app/api/observability/client-report',
     clientReported: true,
   });

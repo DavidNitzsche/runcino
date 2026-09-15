@@ -137,6 +137,48 @@ final class RequestDiagnosticsTests: XCTestCase {
         XCTAssertNil(RequestDiagnosticsLog.clientReportKind(for: .decodingError("bad json")))
     }
 
+    // STAGE0-REPORTBATCH-1 · the whole point of batching: a burst of many
+    // failures together (F162's own repro shape) must produce at most one
+    // report per window, not one per failure — the brief's own words,
+    // "Reporting must be batched and must never create another refresh
+    // storm." Fixed timestamps, no real wall-clock wait.
+    func testShouldSendReportMapping() {
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        // Never sent before -> always sends.
+        XCTAssertTrue(RequestDiagnosticsLog.shouldSendReport(now: t0, lastSentAt: nil, window: 5))
+        // 1 second after the last send, inside a 5s window -> suppressed.
+        XCTAssertFalse(RequestDiagnosticsLog.shouldSendReport(now: t0.addingTimeInterval(1), lastSentAt: t0, window: 5))
+        // Exactly at the window boundary -> sends (>=, not >, so the window
+        // is a real cooldown rather than a limit nothing ever reaches).
+        XCTAssertTrue(RequestDiagnosticsLog.shouldSendReport(now: t0.addingTimeInterval(5), lastSentAt: t0, window: 5))
+        // Well past the window -> sends.
+        XCTAssertTrue(RequestDiagnosticsLog.shouldSendReport(now: t0.addingTimeInterval(30), lastSentAt: t0, window: 5))
+    }
+
+    // The end-to-end shape through the real actor: a burst of failing
+    // requests, only the first sends (verified indirectly — no network
+    // double is wired into these tests, so this asserts on `outcome`/
+    // `finishedAt` still landing correctly for every entry regardless of
+    // whether its own report was sent or suppressed; testShouldSendReport
+    // Mapping above is what proves the suppression decision itself).
+    func testBurstOfTimeoutsStillRecordsEveryEntryRegardlessOfReportSuppression() async {
+        let log = RequestDiagnosticsLog()
+        var gens: [Int] = []
+        for i in 0..<5 {
+            gens.append(await log.begin(endpoint: "/api/v5/today", dateParam: "2026-09-\(10 + i)", correlationId: "cid-\(i)", httpMethod: "GET"))
+        }
+        for gen in gens {
+            await log.finish(gen, outcome: .timeout)
+        }
+        let snapshot = await log.snapshot()
+        // Every entry in the burst is still recorded LOCALLY with its real
+        // outcome — suppression only affects whether a SERVER report fires,
+        // never the on-device diagnostics sheet's own accuracy.
+        XCTAssertEqual(snapshot.count, 5)
+        XCTAssertTrue(snapshot.allSatisfy { $0.outcome == .timeout })
+        XCTAssertTrue(snapshot.allSatisfy { $0.finishedAt != nil })
+    }
+
     func testDateParamExtractionFromURL() {
         let withDate = URL(string: "https://www.faff.run/api/v5/today?date=2026-09-05")!
         XCTAssertEqual(withDate.faffDiagnosticDateParam, "2026-09-05")
