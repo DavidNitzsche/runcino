@@ -1662,10 +1662,28 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
         module: 'lib/training/goal-assessment.ts',
         symbol: 'assessGoal',
         at: 'lib/training/goal-assessment.ts:243',
-        computes: 'A second verdict, on a different and overlapping '
-          + 'vocabulary, from a doctrine gain band rather than from the '
-          + 'projection range, and off a different fitness number.',
-        canDisagree: true,
+        computes: 'ROUTED 2026-09-14 (F080). Takes `RaceOutlook` as an '
+          + 'optional input (`GoalAssessmentInput.outlook`) and, whenever the '
+          + 'caller passes one and the outlook itself resolved (`status` not '
+          + '\'no_goal\'/\'unavailable\'), READS `feasibility` off '
+          + '`goalFeasibility.status` (via `feasibilityFromOutlookStatus`) '
+          + 'and `safeTargetSec`/`stretchTargetSec` off `expectedRaceDay` — '
+          + 'the same "pure mapping, nothing computed" shape '
+          + '`lib/training/race-projection.ts` already uses for this file\'s '
+          + 'own "Projected" quantity. Computes an independent verdict from '
+          + 'the doctrine gain band and a stored-snapshot fitness number '
+          + 'ONLY as a fallback, when no outlook is usable (cold start, '
+          + 'open-ended, or an outlook that itself refused) — Rule 11: an '
+          + 'absent outlook is a different fact from one that resolved '
+          + '\'aggressive\', so the fallback is a degrade, not a second '
+          + 'opinion. All three production call sites now pass one: '
+          + '`lib/plan/goal-gap.ts#loadGoalAssessment` (the outlook it '
+          + 'already resolves for `gapSec`), `app/api/v5/races/route.ts` '
+          + '(the outlook moved earlier, ahead of the `assessGoal` call, '
+          + 'from where "Projected" used to read it alone) and '
+          + '`app/api/targets/projection/route.ts` (hoisted out of its '
+          + '`race-outlook` try-block into the wider handler scope).',
+        canDisagree: false,
       },
       {
         module: 'lib/training/goal-ready.ts',
@@ -1687,7 +1705,7 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
     surveyed: 'lib/training, lib/race, lib/plan for anything returning a '
       + 'feasibility verdict or a goal gap.',
     conflict: {
-      verdict: 'OPEN',
+      verdict: 'ROUTED',
       between: [
         'lib/race/race-outlook.ts#composeRaceOutlook',
         'lib/training/goal-assessment.ts#assessGoal',
@@ -1695,16 +1713,33 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
       shouldOwn: 'lib/race/race-outlook.ts#composeRaceOutlook',
       because: 'Constitution L says Goal Feasibility consumes Goal plus Race '
         + 'Prediction, and the outlook is the race prediction. assessGoal '
-        + 'reaches a verdict WITHOUT going through it, on a fitness number '
-        + 'that comes from a stored snapshot rather than the live anchor, '
-        + 'and both verdicts render on the same race surface. A goal can '
-        + 'read realistic on one and aggressive on the other, and the two '
-        + 'vocabularies do not even share their members.',
-      notRoutedBecause: 'assessGoal also carries the runway and volume '
-        + 'cautions that the outlook does not, so routing it away would lose '
-        + 'runner-facing content. The correct fix is for assessGoal to '
-        + 'consume the outlook verdict rather than compute its own, which '
-        + 'is a change inside the goal-assessment owner.',
+        + 'used to reach a verdict WITHOUT going through it, on a fitness '
+        + 'number that came from a stored snapshot rather than the live '
+        + 'anchor, and the two disagreed for an ordinary required-gain case: '
+        + '\'realistic\' here, \'aggressive\' on the outlook, for the same '
+        + 'runner on the same day (IPR-20260914-007 / F080). ROUTED BY F080 '
+        + '(2026-09-14): assessGoal now consumes `composeRaceOutlook`\'s own '
+        + '`goalFeasibility` and `expectedRaceDay` fields when a caller '
+        + 'passes them, per the competing-owner entry above. '
+        + 'CORRECTED 2026-09-14 (F080): this entry previously read "both '
+        + 'verdicts render on the same race surface" — independent product '
+        + 'review checked that against the actual render tree and found it '
+        + 'inaccurate before this fix even landed. assessGoal\'s only render '
+        + 'path was gutted in August down to a quiet badge on 4 unrelated '
+        + 'trigger cards (`app/api/v5/races/route.ts#composeRaceCard`), and '
+        + 'the outlook\'s own `goalFeasibility` is serialized and decoded '
+        + 'client-side but rendered nowhere in native Swift. The two '
+        + 'verdicts were never actually shown together — the disagreement '
+        + 'was live in the data and dormant on screen, which is why F080 '
+        + 'was framed as "fix before anyone wires this to a screen", not as '
+        + 'an active user-facing incident. `lib/training/'
+        + '_goal_assessment.test.ts`\'s F080 describe block holds the '
+        + 'reviewer\'s exact diverging fixture: the pre-fix standalone read '
+        + '(still reachable with no `outlook` passed, for the fallback\'s '
+        + 'own tests) reproduces \'realistic\'; the same fixture WITH the '
+        + 'outlook consumed reads \'aggressive\', matching the outlook by '
+        + 'construction.',
+      notRoutedBecause: '',
     },
     movesUpOn: [
       {

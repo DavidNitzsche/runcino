@@ -303,6 +303,10 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
   //    Every input gets its own context resolution below, per CLAUDE.md
   //    §"Per-finding context filters" — the assessment's cautions do NOT
   //    inherit a single surface-level guard.
+  //    F080 · `outlookForGap` (step 2b, above) is already resolved here at
+  //    zero extra cost — threaded into `loadGoalAssessment` so `assessGoal`
+  //    consumes THIS file's own outlook rather than reaching for a second,
+  //    stale one. See `GoalAssessmentInput.outlook`'s doc comment.
   const assessment = await loadGoalAssessment({
     userUuid,
     distanceMi: raceDistanceMi,
@@ -312,6 +316,7 @@ export async function computeGoalGap(userUuid: string): Promise<GoalGap | null> 
     currentVdot: latest.vdot ?? null,
     weeksRemaining,
     recentWeeklyMi,
+    outlook: outlookForGap,
   }).catch(() => null);
 
   // 8. What closes it · limiter-led, status- and gap-magnitude aware
@@ -374,6 +379,8 @@ async function loadGoalAssessment(args: {
   currentVdot: number | null;
   weeksRemaining: number | null;
   recentWeeklyMi: number | null;
+  /** F080 · see `GoalAssessmentInput.outlook`. */
+  outlook: RaceOutlook | null;
 }): Promise<GoalAssessment | null> {
   const { userUuid, distanceMi, goalSec, goalDateISO, todayISO, weeksRemaining, recentWeeklyMi } = args;
 
@@ -428,6 +435,7 @@ async function loadGoalAssessment(args: {
     todayISO,
     currentVdot,
     recentWeeklyMi,
+    outlook: args.outlook,
     context: {
       inTaperOrRaceWeek: inTaper,
       inPostRaceRecovery,

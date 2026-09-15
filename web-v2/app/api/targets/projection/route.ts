@@ -79,6 +79,11 @@ import { loadMarathonSpecificTraining } from '@/lib/training/plan-target';
 import { resolveRaceExponent, projectWithDurabilityExponent, type RaceExponentRead } from '@/lib/training/durability-anchor';
 import { distanceCategoryOrNull } from '@/lib/race/distance-category';
 import { composeTargetsSummaryLine } from '@/lib/training/targets-summary';
+// F080 · type-only, no runtime edge — this route already lazy-loads
+// `resolveRaceOutlookBySlug` itself via dynamic `import()` below; this is
+// only the shape needed to carry its result to the `assessGoal` call further
+// down the same handler.
+import type { RaceOutlook } from '@/lib/race/race-outlook';
 
 export const dynamic = 'force-dynamic';
 
@@ -469,12 +474,20 @@ export async function GET(req: NextRequest) {
     if (projectionSec != null) {
       projectionBasis = trajProjectedSecHonest != null ? 'trajectory' : 'equivalence';
     }
+    // F080 · RULE 16 / ownership.ts GOAL_FEASIBILITY · hoisted out of the
+    // `try` below so the `goalAssessment` block further down this handler
+    // (which used to resolve nothing of its own and left `assessGoal` to
+    // read a stale VDOT snapshot) can consume the SAME outlook this route
+    // already resolves for "Projected", instead of the two disagreeing. See
+    // `GoalAssessmentInput.outlook`'s doc comment.
+    let raceOutlookForAssessment: RaceOutlook | null = null;
     if (race?.slug) {
       try {
         const { resolveRaceOutlookBySlug } = await import('@/lib/race/race-outlook');
         const { raceProjectionFromOutlook } = await import('@/lib/training/race-projection');
         const { runnerToday } = await import('@/lib/runtime/runner-tz');
         const outlook = await resolveRaceOutlookBySlug(userId, race.slug, await runnerToday(userId));
+        raceOutlookForAssessment = outlook;
         const owned = raceProjectionFromOutlook(outlook);
         if (owned.projectedSec != null) {
           projectionSec = owned.projectedSec;
@@ -820,6 +833,7 @@ export async function GET(req: NextRequest) {
           currentVdot: vdot,
           executionQuality: traj?.executionQuality ?? null,
           recentWeeklyMi: weeklyMi,
+          outlook: raceOutlookForAssessment,
           context: {
             inTaperOrRaceWeek:
               raceWeek || (weeksAway != null && weeksAway <= taperWeeksForDistance(distanceMi)),

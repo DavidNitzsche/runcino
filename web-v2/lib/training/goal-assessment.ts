@@ -82,6 +82,11 @@ import {
 } from './vdot-gain-rate';
 import { taperWeeksForDistance } from './fitness-trajectory';
 import { distanceCategoryOrNull, type DistanceCategory } from '@/lib/race/distance-category';
+// F080 (2026-09-14) · type-only, no runtime edge — the same shape
+// `lib/training/race-projection.ts` already imports `RaceOutlook` with, and
+// for the same reason: a pure mapping FROM the outlook must not gain a
+// runtime dependency on the (async, DB-backed) module that produces it.
+import type { RaceOutlook } from '@/lib/race/race-outlook';
 
 /**
  * How the stated goal sits against what the build can deliver.
@@ -162,6 +167,42 @@ export interface GoalAssessmentInput {
   /** Measured recent weekly mileage, miles. */
   recentWeeklyMi?: number | null;
   context?: GoalAssessmentContext;
+  /**
+   * F080 · RULE 16 / ownership.ts GOAL_FEASIBILITY · CONSUME, DO NOT
+   * RECOMPUTE.
+   *
+   * `lib/runner-state/ownership.ts`'s GOAL_FEASIBILITY entry names
+   * `lib/race/race-outlook.ts#composeRaceOutlook` as the one owner of "how
+   * does the stated goal compare with the outlook" (Constitution L: Goal
+   * Feasibility consumes Goal plus Race Prediction), with `assessGoal` as
+   * the one competing owner. IPR-20260914-007 (F080) confirmed the two can
+   * disagree for an ordinary required-gain case — this function reading
+   * "realistic", the outlook reading "aggressive" — because they used to run
+   * on different evidence: this function took `currentVdot` off a STORED
+   * `projection_snapshots`/`loadLatestVdotWithAnchor` row, days old, with no
+   * `executionQuality` at most call sites (which defaults to 1.0, perfect
+   * execution assumed below); the outlook reads the LIVE
+   * `resolveThresholdCapacity` ladder and discounts `expectedRaceDay` by the
+   * runner's ACTUAL measured execution.
+   *
+   * The fix follows the precedent `lib/training/race-projection.ts` already
+   * sets for the exact same shape of problem on the finish-time/"Projected"
+   * side of this file's own domain: that module's header says it plainly —
+   * "this module is a pure mapping from [the outlook]... nothing is computed
+   * here... so two screens holding the same outlook cannot disagree." This
+   * field is `assessGoal`'s equivalent: when a usable outlook is handed in,
+   * `feasibility`/`safeTargetSec`/`stretchTargetSec` are READ off it rather
+   * than re-derived from the doctrine gain-rate band, below.
+   *
+   * Optional and nullable, not required: a caller with no outlook resolved
+   * yet (or one for whom the outlook itself refused — `goalFeasibility.
+   * status` 'no_goal' or 'unavailable') gets the pre-existing standalone
+   * gain-band read. That is an honest degrade (Rule 11 — "could not consume
+   * the canonical verdict" is a different fact from "consumed it and it said
+   * comfortable"), not a silent reopening of the two-formula defect for the
+   * callers that DO pass it.
+   */
+  outlook?: RaceOutlook | null;
 }
 
 export interface GoalAssessment {
@@ -234,6 +275,31 @@ function fmt(sec: number | null): string {
 function weeksPhrase(weeks: number): string {
   const w = Math.max(0, Math.round(weeks));
   return w === 1 ? '1 week' : `${w} weeks`;
+}
+
+/**
+ * F080 · maps `RaceOutlook.goalFeasibility.status` onto `GoalFeasibility`.
+ *
+ * `comfortable`/`realistic`/`aggressive` are the SAME word in both
+ * vocabularies BY CONSTRUCTION — Rule 16 says two owners of one question must
+ * not need a lookup table to agree on the ordinary cases, and those three are
+ * exactly the ordinary cases (including the one IPR-20260914-007 found
+ * diverging). The only real decision is `unlikely_currently`: the outlook's
+ * single worst non-comfortable band, mapped to this function's own worst
+ * band, `out-of-reach`. `no_goal` and `unavailable` never reach here —
+ * `assessGoal`'s `outlookUsable` gate below refuses both and falls back to
+ * the standalone read instead of guessing.
+ */
+export function feasibilityFromOutlookStatus(
+  status: RaceOutlook['goalFeasibility']['status'],
+): GoalFeasibility {
+  switch (status) {
+    case 'comfortable': return 'comfortable';
+    case 'realistic': return 'realistic';
+    case 'aggressive': return 'aggressive';
+    case 'unlikely_currently': return 'out-of-reach';
+    default: return 'unreadable';
+  }
 }
 
 /**
@@ -416,18 +482,31 @@ export function assessGoal(input: GoalAssessmentInput): GoalAssessment {
   // Execution scales the SAFE edge only. The stretch edge is what a clean
   // block delivers, which is what makes it a stretch. An absent execution
   // signal scores 1.0: absence of evidence is not evidence of a bad block.
+  //
+  // STILL COMPUTED UNCONDITIONALLY, even when the outlook below takes over
+  // `feasibility`/`safeTargetSec`/`stretchTargetSec`: this is the STANDALONE
+  // fallback for a caller that has not migrated onto the outlook (and the
+  // ONLY read at all for the cold-start/open-ended/date-passed branches
+  // above, which are untouched by F080 — the reviewer's disagreement is an
+  // ORDINARY required-gain case, not one of those refusals).
   const exec =
     input.executionQuality == null ? 1 : Math.max(0, Math.min(1, input.executionQuality));
   const bw = buildWeeks ?? 0;
-  const safeGain = Math.min(MAX_BLOCK_GAIN_VDOT, plausible.conservative * bw * exec);
-  const stretchGain = Math.min(MAX_BLOCK_GAIN_VDOT, plausible.max * bw);
+  const legacySafeGain = Math.min(MAX_BLOCK_GAIN_VDOT, plausible.conservative * bw * exec);
+  const legacyStretchGain = Math.min(MAX_BLOCK_GAIN_VDOT, plausible.max * bw);
 
-  const safeTargetSec = predictRaceTime(currentVdot + safeGain, distanceMi);
-  const stretchTargetSec = predictRaceTime(currentVdot + stretchGain, distanceMi);
+  const legacySafeTargetSec = predictRaceTime(currentVdot + legacySafeGain, distanceMi);
+  const legacyStretchTargetSec = predictRaceTime(currentVdot + legacyStretchGain, distanceMi);
 
   // A goal off the bottom of the Daniels table (slower than VDOT 30) has no
   // requiredVdot to compare. The seconds comparison is still honest, so read
   // it directly rather than synthesising a VDOT for the goal.
+  //
+  // requiredGain/requiredVdotRatePerWeek are a DIFFERENT belief than
+  // feasibility ("how many VDOT points a week does the goal need", not "is
+  // the goal realistic") and are not part of the Rule 16 conflict — kept
+  // exactly as before, off `currentVdot`, regardless of which branch below
+  // decides `feasibility`.
   const goalIsSlowerThanToday = goalSec >= currentEquivalentSec;
   const requiredGain = requiredVdot == null ? (goalIsSlowerThanToday ? 0 : null) : requiredVdot - currentVdot;
 
@@ -436,26 +515,56 @@ export function assessGoal(input: GoalAssessmentInput): GoalAssessment {
       ? Math.round((requiredGain / weeksAvailable) * 1000) / 1000
       : null;
 
+  // ── F080 · RULE 16 / ownership.ts GOAL_FEASIBILITY · CONSUME, DO NOT
+  //    RECOMPUTE — see `GoalAssessmentInput.outlook`'s doc comment for the
+  //    full citation. `outlookUsable` mirrors the outlook's OWN refusal
+  //    states (Rule 11): a `status` of 'no_goal' or 'unavailable', or a
+  //    missing `expectedRaceDay`/`likelyRangeSec`, means the outlook itself
+  //    had nothing to say, so this function falls back to the standalone
+  //    gain-band read rather than consuming a verdict that does not exist.
+  const gf = input.outlook?.goalFeasibility ?? null;
+  const rd = input.outlook?.expectedRaceDay ?? null;
+  const outlookUsable =
+    gf != null && rd != null &&
+    gf.status !== 'no_goal' && gf.status !== 'unavailable' &&
+    rd.expectedSec != null && rd.likelyRangeSec != null;
+
   let feasibility: GoalFeasibility;
-  if (requiredGain == null) {
-    // Off the TOP of the table (faster than VDOT 85). generate.ts's GOAL-4
-    // guard is the designated gate for that; from here it is unreadable.
-    feasibility = 'unreadable';
-  } else if (requiredGain <= 0) {
-    feasibility = 'comfortable';
-  } else if (bw <= 0) {
-    // A goal that needs a gain with no build weeks left: the taper expresses
-    // fitness, it does not add any. Whether that is aggressive or out of
-    // reach is decided by the latent headroom alone.
-    feasibility = requiredGain <= LATENT_VDOT_UPGRADE_MAX ? 'aggressive' : 'out-of-reach';
-  } else if (requiredGain <= safeGain) {
-    feasibility = 'realistic';
-  } else if (requiredGain <= stretchGain) {
-    feasibility = 'ambitious';
-  } else if (requiredGain <= stretchGain + LATENT_VDOT_UPGRADE_MAX) {
-    feasibility = 'aggressive';
+  let safeTargetSec: number | null;
+  let stretchTargetSec: number | null;
+  // The number the STATEMENT calls "today's fitness" — the live capacity
+  // read (`currentProjection.expectedSec`) once the outlook is consumed,
+  // never the stale stored-snapshot equivalence beside it.
+  let effectiveCurrentEquivalentSec = currentEquivalentSec;
+
+  if (outlookUsable) {
+    effectiveCurrentEquivalentSec = input.outlook!.currentProjection.expectedSec ?? currentEquivalentSec;
+    safeTargetSec = rd!.expectedSec;
+    stretchTargetSec = rd!.likelyRangeSec![0];
+    feasibility = feasibilityFromOutlookStatus(gf!.status);
   } else {
-    feasibility = 'out-of-reach';
+    safeTargetSec = legacySafeTargetSec;
+    stretchTargetSec = legacyStretchTargetSec;
+    if (requiredGain == null) {
+      // Off the TOP of the table (faster than VDOT 85). generate.ts's GOAL-4
+      // guard is the designated gate for that; from here it is unreadable.
+      feasibility = 'unreadable';
+    } else if (requiredGain <= 0) {
+      feasibility = 'comfortable';
+    } else if (bw <= 0) {
+      // A goal that needs a gain with no build weeks left: the taper expresses
+      // fitness, it does not add any. Whether that is aggressive or out of
+      // reach is decided by the latent headroom alone.
+      feasibility = requiredGain <= LATENT_VDOT_UPGRADE_MAX ? 'aggressive' : 'out-of-reach';
+    } else if (requiredGain <= legacySafeGain) {
+      feasibility = 'realistic';
+    } else if (requiredGain <= legacyStretchGain) {
+      feasibility = 'ambitious';
+    } else if (requiredGain <= legacyStretchGain + LATENT_VDOT_UPGRADE_MAX) {
+      feasibility = 'aggressive';
+    } else {
+      feasibility = 'out-of-reach';
+    }
   }
 
   // Report against the goal while the goal is inside what the build delivers.
@@ -468,7 +577,7 @@ export function assessGoal(input: GoalAssessmentInput): GoalAssessment {
   const statement = composeStatement({
     feasibility,
     goalSec,
-    currentEquivalentSec,
+    currentEquivalentSec: effectiveCurrentEquivalentSec,
     safeTargetSec,
     weeksAvailable,
     weeksToReach: null,
@@ -484,6 +593,8 @@ export function assessGoal(input: GoalAssessmentInput): GoalAssessment {
 
   return {
     ...base,
+    currentEquivalentSec:
+      effectiveCurrentEquivalentSec == null ? null : Math.round(effectiveCurrentEquivalentSec),
     requiredVdotRatePerWeek,
     feasibility,
     safeTargetSec: safeTargetSec == null ? null : Math.round(safeTargetSec),

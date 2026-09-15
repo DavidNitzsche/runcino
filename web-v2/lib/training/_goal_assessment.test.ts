@@ -20,9 +20,11 @@ import { describe, it, expect } from 'vitest';
 import {
   assessGoal,
   composeCautions,
+  feasibilityFromOutlookStatus,
   MIN_WEEKLY_MI_FOR_DISTANCE,
   type GoalAssessment,
 } from './goal-assessment';
+import type { RaceOutlook } from '@/lib/race/race-outlook';
 import {
   VDOT_GAIN_PER_WEEK_MAX,
   VDOT_GAIN_PER_WEEK_CONSERVATIVE,
@@ -235,6 +237,108 @@ describe('assessGoal · the verdicts', () => {
     expect(a.weeksAvailable).toBe(0);
     expect(a.reportAgainstSec).toBeNull();
     expect(a.statement).toContain('target date has passed');
+  });
+});
+
+// ── 3b · F080 · RULE 16 / ownership.ts GOAL_FEASIBILITY ─────────────────────
+//
+// IPR-20260914-007: `assessGoal` and the canonical race outlook
+// (`lib/race/race-outlook.ts#composeRaceOutlook`) genuinely computed DIFFERENT
+// feasibility verdicts for an ORDINARY required-gain case — not cold start,
+// not open-ended, not date-passed — because `assessGoal` read a stale, stored
+// VDOT snapshot and (absent an `executionQuality`) assumed perfect execution,
+// while the outlook reads the live capacity resolver and discounts by
+// measured execution. Fixed by having `assessGoal` CONSUME the outlook's
+// verdict (`GoalAssessmentInput.outlook`) rather than recompute its own — see
+// that field's doc comment for the full citation and the `race-projection.ts`
+// precedent it follows.
+describe('F080 · assessGoal consumes the canonical race outlook\'s verdict', () => {
+  // Reused verbatim from the REACHABLE scenario above: VDOT 46, 16 weeks out
+  // (13 build weeks). The doctrine slow edge buys 2.17 points; the goal needs
+  // 1.5 — comfortably inside it, so the STANDALONE (no-outlook) read is
+  // 'realistic'.
+  const base = {
+    distanceMi: MI_M,
+    goalSec: secFor(47.5, MI_M),
+    goalDateISO: isoIn(16),
+    todayISO: TODAY,
+    currentVdot: 46, // the STALE stored snapshot assessGoal used to be handed
+  };
+
+  it('RULE 18 FALSIFICATION · with no outlook, the pre-fix disagreement still reproduces', () => {
+    // This is the bug, kept deliberately live as the fallback: a caller that
+    // has not migrated (or an outlook that itself could not resolve) gets the
+    // standalone doctrine-gain-band read, off the stale VDOT with an implicit
+    // perfect-execution assumption — exactly what the reviewer found
+    // disagreeing with the canonical outlook below. Confirms the fixture is a
+    // genuine reproduction, not one engineered to pass.
+    const a = assessGoal(base);
+    expect(a.feasibility).toBe('realistic');
+  });
+
+  it('CONSUMED · the same fixture, with the canonical outlook attached, agrees with it', () => {
+    // The canonical outlook for the SAME runner on the SAME day: the live
+    // capacity resolver reads today's fitness two points under the stale
+    // snapshot (VDOT 44 vs 46), and the execution-discounted build lands the
+    // goal just past the likely range's fast edge (VDOT 46) — the outlook's
+    // own `goalFeasibility.status` is 'aggressive'. A partial `RaceOutlook`:
+    // `assessGoal` reads exactly `currentProjection.expectedSec`,
+    // `goalFeasibility` and `expectedRaceDay`, so only those are populated
+    // (Rule 17 — no fixture weight nothing under test reads).
+    const outlook = {
+      currentProjection: { expectedSec: secFor(44, MI_M) },
+      goalFeasibility: {
+        status: 'aggressive',
+        gapSec: secFor(44, MI_M) - base.goalSec,
+        gapToRangeEdgeSec: secFor(46, MI_M) - base.goalSec,
+        reasons: ['F080 test fixture'],
+      },
+      expectedRaceDay: {
+        expectedSec: secFor(44, MI_M),
+        likelyRangeSec: [secFor(46, MI_M), secFor(42, MI_M)] as const,
+        confidence: 0.6,
+        projectedVdot: null,
+        basis: 'trajectory',
+        reasons: [],
+      },
+    } as unknown as RaceOutlook;
+
+    const a = assessGoal({ ...base, outlook });
+
+    // THE FIX: assessGoal no longer disagrees with the outlook it was
+    // handed — same runner, same day, same word.
+    expect(a.feasibility).toBe('aggressive');
+    // And it agrees for the RIGHT reason: it read the outlook's own numbers,
+    // not a coincidence of the doctrine gain band landing there too.
+    expect(a.safeTargetSec).toBe(Math.round(outlook.expectedRaceDay.expectedSec!));
+    expect(a.stretchTargetSec).toBe(Math.round(outlook.expectedRaceDay.likelyRangeSec![0]));
+    expect(a.currentEquivalentSec).toBe(Math.round(outlook.currentProjection.expectedSec!));
+    // The honest second number still appears, off the OUTLOOK's own safe
+    // edge, not the doctrine band's.
+    expect(a.reportingAgainstSafeTarget).toBe(true);
+    expect(a.reportAgainstSec).toBe(a.safeTargetSec);
+  });
+
+  it('an unusable outlook (status unavailable) degrades to the standalone read rather than guessing', () => {
+    // Rule 11: a refused outlook is a DIFFERENT fact from one that resolved
+    // 'comfortable', so it must not be consumed as if it said something.
+    const unavailable = {
+      currentProjection: { expectedSec: null },
+      goalFeasibility: { status: 'unavailable', gapSec: null, gapToRangeEdgeSec: null, reasons: [] },
+      expectedRaceDay: {
+        expectedSec: null, likelyRangeSec: null, confidence: null,
+        projectedVdot: null, basis: 'unavailable', reasons: [],
+      },
+    } as unknown as RaceOutlook;
+    const a = assessGoal({ ...base, outlook: unavailable });
+    expect(a.feasibility).toBe('realistic');
+  });
+
+  it('feasibilityFromOutlookStatus shares vocabulary with GoalFeasibility where the two overlap', () => {
+    expect(feasibilityFromOutlookStatus('comfortable')).toBe('comfortable');
+    expect(feasibilityFromOutlookStatus('realistic')).toBe('realistic');
+    expect(feasibilityFromOutlookStatus('aggressive')).toBe('aggressive');
+    expect(feasibilityFromOutlookStatus('unlikely_currently')).toBe('out-of-reach');
   });
 });
 
