@@ -439,8 +439,17 @@ describe('RUNNERSTATE-1 · Rule 16 · a conflict is recorded, never omitted', ()
   });
 
   it('ORACLE · an unowned belief that is not recorded as a finding is named', () => {
+    // Built from a real row's shape rather than depending on any specific
+    // belief currently having `canonical: null` (TRAINING_CONSISTENCY did,
+    // until the F077 consolidation pass named
+    // `lib/training/training-consistency.ts#resolveTrainingConsistency` as
+    // its canonical reader — see that entry's own header comment). The
+    // oracle constructs the exact shape the finding describes and nothing
+    // else, so it keeps meaning the same thing however the real registry
+    // moves (same reasoning as the `brokenRow` helper above).
     const broken: BeliefOwnership = {
       ...BELIEF_OWNERSHIP.TRAINING_CONSISTENCY,
+      canonical: null,
       conflict: null,
       competing: [],
       surveyed: 'x',
