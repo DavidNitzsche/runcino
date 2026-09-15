@@ -92,9 +92,9 @@
  * is what actually enforces the boundary.
  */
 import {
+  REPRESENTATIVE_FLOOR,
   RUNNER_REPORTED_AUTHORITY_CAP,
   authorityTier,
-  selectionAuthority,
   type AuthorityTier,
 } from '@/lib/race/effort-authority';
 import { lthrFromRace } from '@/lib/training/lthr';
@@ -226,6 +226,38 @@ export function daysBetween(fromISO: string, toISO: string): number | null {
 }
 
 /**
+ * F139 follow-up (2026-09-15 consult-log 039, `RR-20260914-050`) · WHY
+ * `selectLthrAnchor` refused, when it refuses.
+ *
+ * Before F139, a `null` return had one honest reading: no race met the
+ * data-shape/cadence gates. After F139, `null` can ALSO mean a race met
+ * every data-shape gate and is simply sitting unconfirmed — a completely
+ * different situation for a caller (or a runner) to act on. Collapsing
+ * both into the same `null` is exactly the "don't know" vs "confirmed
+ * absent" conflation Rule 11 exists to name, so this type exists to keep
+ * them apart without changing `selectLthrAnchor`'s own gating logic at
+ * all — see `selectLthrAnchorDetailed` below, which is the only place
+ * this reason is computed.
+ */
+export type LthrAnchorRefusalReason =
+  | 'no-qualifying-candidate'
+  | 'awaiting-confirmation';
+
+export interface LthrAnchorSelection {
+  /** Identical to `selectLthrAnchor`'s own return value. */
+  anchor: LthrAnchor | null;
+  /** Null exactly when `anchor` is non-null. */
+  refusalReason: LthrAnchorRefusalReason | null;
+  /**
+   * The best-graded candidate that met every data-shape/cadence gate but
+   * failed the authority-tier gate — set only when `refusalReason` is
+   * `'awaiting-confirmation'`. Carries the race a runner would need to
+   * confirm to unblock re-anchoring, for a caller that wants to name it.
+   */
+  unconfirmedCandidate: { slug: string; name: string; dateISO: string; lthr: number | null } | null;
+}
+
+/**
  * The one race that anchors LTHR today, or null.
  *
  * Gates, in the order a candidate meets them:
@@ -239,12 +271,29 @@ export function daysBetween(fromISO: string, toISO: string): number | null {
  * Ranking is date-descending, then authority-descending: the most recent
  * qualifying race wins (decision 3), and two races on the same day break toward
  * the better-graded one.
+ *
+ * A thin wrapper over `selectLthrAnchorDetailed` for the many existing
+ * callers that only ever wanted the anchor itself — unchanged signature,
+ * unchanged behavior.
  */
 export function selectLthrAnchor(
   candidates: readonly LthrRaceCandidate[],
   todayISO: string,
 ): LthrAnchor | null {
+  return selectLthrAnchorDetailed(candidates, todayISO).anchor;
+}
+
+/**
+ * Same selection as `selectLthrAnchor`, plus WHY a `null` anchor is null.
+ * See `LthrAnchorRefusalReason`'s own doc comment for what that
+ * distinguishes and why it matters.
+ */
+export function selectLthrAnchorDetailed(
+  candidates: readonly LthrRaceCandidate[],
+  todayISO: string,
+): LthrAnchorSelection {
   const pool: LthrAnchor[] = [];
+  let bestUnconfirmed: { slug: string; name: string; dateISO: string; lthr: number | null } | null = null;
   for (const c of candidates ?? []) {
     if (!c?.dateISO) continue;
     const ageDays = daysBetween(c.dateISO, todayISO);
@@ -255,26 +304,74 @@ export function selectLthrAnchor(
     if (distanceMi < LTHR_QUALIFYING_MIN_MI || distanceMi > LTHR_QUALIFYING_MAX_MI) continue;
     const avgHr = Number(c.avgHrBpm);
     if (!Number.isFinite(avgHr)) continue;
-    // Effort grading. `selectionAuthority` already reads an ungraded label
-    // (`hilly-excluded`, `training_run`) down to doctrine's lowest row rather
-    // than up to its highest, so the hilly marathon and a jogged tune-up both
-    // fall out here without this module naming either of them.
-    const declared = selectionAuthority(c.priority);
+    // F139 · same fix as `bestRecentVdot` (lib/training/vdot.ts) and for the
+    // same reason: declared priority (`c.priority`) may never weight, gate,
+    // or grade a race's evidentiary value (RACE_TIERING_AND_SEASON_
+    // PHILOSOPHY.md), so it is no longer read here at all — a hilly marathon
+    // and a jogged tune-up no longer fall out of THIS gate via priority
+    // grading; they still fall out via the distance-band/qualifying gates
+    // above, which are legitimate data-shape checks, not evidence weighting.
+    //
+    // The only per-candidate MEASURED effort-class signal available here is
+    // the runner's own retroactive report (`runnerAuthorityTier`), read the
+    // same three-way as `bestRecentVdot`:
+    //
+    //   · 'compromised' / 'unrepresentative' → the existing downward caps,
+    //     unchanged mechanism, real disclosed self-report.
+    //   · 'representative' → a genuine CONFIRMATION (not a promotion off a
+    //     priority-derived base, since there is no longer one to leave
+    //     "untouched" — the only thing this answer was ever documented to
+    //     do), graded at exactly `REPRESENTATIVE_FLOOR`, the minimum bar to
+    //     clear this gate. The runner answering "yes, it counted" is not the
+    //     "make me faster" button the route explicitly refuses to be: the
+    //     derived LTHR is still `lthrFromRace`'s honest read of the race's
+    //     own heart rate, only whether the race may anchor at all changes.
+    //   · no report at all → no measured signal exists yet, graded at the
+    //     same conservative floor an explicit 'unrepresentative' report
+    //     earns — which fails the gate below exactly as an explicit report
+    //     would (Rule 11: "don't know" is never silently promoted to
+    //     "measured clean").
+    //
+    // DISCLOSED CONSEQUENCE: `runnerAuthorityTier` is a rare, opt-in,
+    // retroactive flag, so in practice most candidates will not clear this
+    // gate unless the runner has proactively confirmed them. That is the
+    // correct reading of the doctrine today, not a bug — this function has
+    // no automatic per-race representativeness assessment wired in (unlike
+    // `lib/training/durability-anchor.ts`). See F139's report.
     const reported = c.runnerAuthorityTier ?? null;
-    const authority = (reported && reported !== 'representative')
-      ? Math.min(declared, RUNNER_REPORTED_AUTHORITY_CAP[reported])
-      : declared;
+    const authority =
+      (reported === 'compromised' || reported === 'unrepresentative') ? RUNNER_REPORTED_AUTHORITY_CAP[reported]
+      : reported === 'representative' ? REPRESENTATIVE_FLOOR
+      : RUNNER_REPORTED_AUTHORITY_CAP.unrepresentative;
     const tier = authorityTier(authority);
-    if (tier !== 'representative') continue;
+    if (tier !== 'representative') {
+      // Met every data-shape/cadence gate above — a real, otherwise-usable
+      // race — and refused ONLY for lack of a confirmed measured signal.
+      // Kept as the most recent such candidate so a caller that wants to
+      // say WHY selection came up empty can name the actual race, not just
+      // the fact that one exists. Does not affect `pool`/ranking/authority
+      // at all — a pure side channel for `selectLthrAnchorDetailed`.
+      if (!bestUnconfirmed || c.dateISO > bestUnconfirmed.dateISO) {
+        bestUnconfirmed = {
+          slug: c.slug, name: c.name, dateISO: c.dateISO,
+          lthr: lthrFromRace(distanceMi, avgHr),
+        };
+      }
+      continue;
+    }
     // The distance/HR plausibility gate is `lthrFromRace`'s, not a second copy.
     const lthr = lthrFromRace(distanceMi, avgHr);
     if (lthr == null) continue;
     pool.push({ slug: c.slug, name: c.name, dateISO: c.dateISO, ageDays, lthr, authority, tier });
   }
-  if (pool.length === 0) return null;
+  if (pool.length === 0) {
+    return bestUnconfirmed
+      ? { anchor: null, refusalReason: 'awaiting-confirmation', unconfirmedCandidate: bestUnconfirmed }
+      : { anchor: null, refusalReason: 'no-qualifying-candidate', unconfirmedCandidate: null };
+  }
   pool.sort((a, b) =>
     a.dateISO === b.dateISO ? b.authority - a.authority : (a.dateISO < b.dateISO ? 1 : -1));
-  return pool[0];
+  return { anchor: pool[0], refusalReason: null, unconfirmedCandidate: null };
 }
 
 // ── The decision ───────────────────────────────────────────────────────────

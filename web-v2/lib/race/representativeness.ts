@@ -635,6 +635,22 @@ export function splitCvPct(splits: RaceSplit[] | null | undefined): number | nul
  * race is "Maximum, full taper, peak day". An athlete who raced on loaded or
  * overreached legs did not get the taper the row requires, so the class steps
  * down — once, here, rather than as a separate penalty stacked on priority.
+ *
+ * F139 · the baseline no longer reads `state?.priority` at all. Declared
+ * priority may never weight, accept, or reject a race's evidentiary value
+ * (`RACE_TIERING_AND_SEASON_PHILOSOPHY.md`, verbatim: "Priority alone must
+ * never accept, reject, or weight the result" — a default that applies
+ * whenever a measured signal is absent is still priority doing the
+ * weighting, which is the exact case this function used to fall into for
+ * every race with no fatigue/taper signal, i.e. the common case, not the
+ * rare one). The baseline is now always fully representative ('A' —
+ * "nothing measured says otherwise"); only a REAL measured downgrade signal
+ * (OVERREACH, a severe niggle, a loaded form band, or a measured taper
+ * shortfall) steps it down. This also retires the old ungraded-priority
+ * inconsistency this function used to carry (defaulting an ungraded
+ * declaration to 'A' here, opposite `selectionAuthority`'s ungraded→C
+ * default in `effort-authority.ts`) — there is no declared-priority default
+ * left to disagree with `selectionAuthority`'s.
  */
 export function effectiveEffortClass(
   state: RaceStateInput | null | undefined,
@@ -643,8 +659,7 @@ export function effectiveEffortClass(
   cls: RacePriority;
   downgradedBy: 'taper_state' | 'fatigue' | null;
 } {
-  const declared = String(state?.priority ?? 'A').trim().toUpperCase();
-  const base: RacePriority = declared === 'B' || declared === 'C' ? (declared as RacePriority) : 'A';
+  const base: RacePriority = 'A';
 
   const step = (c: RacePriority): RacePriority => (c === 'A' ? 'B' : 'C');
 
@@ -756,8 +771,19 @@ export function assessRepresentativeness(
   // how well rested they were. Charging the effort class upward would mean the
   // engine believed a good result LESS the harder the circumstances were, which
   // inverts the evidence.
+  //
+  // F139 · the DOWNWARD limb now gets the exact treatment the upward limb
+  // already had right: multiplier 1 (no charge) unless a REAL measured
+  // signal fired. `effectiveEffortClass` no longer starts `cls` at the
+  // declared priority — it starts fully representative and only steps down
+  // on OVERREACH / a severe niggle / a loaded form band / a measured taper
+  // shortfall (`downgradedBy != null`). So `classMultiplier` drops below 1
+  // only when one of those actually fired, never as a silent default for
+  // "no fatigue signal happened to fire this time" — which used to be true
+  // for most races (declared priority alone set the multiplier) and is
+  // exactly the priority-as-evidence-weight violation this fixes.
   const { cls, downgradedBy } = effectiveEffortClass(input.state, distanceMi);
-  const classMultiplier = direction === 'upward' ? 1 : recoveryEffortScale(cls);
+  const classMultiplier = direction === 'upward' || downgradedBy == null ? 1 : recoveryEffortScale(cls);
   let authority = unexplained * classMultiplier;
 
   if (classMultiplier < 1 && !skip.has('not_maximal')) {

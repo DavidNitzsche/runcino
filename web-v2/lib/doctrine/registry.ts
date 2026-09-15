@@ -9976,62 +9976,89 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     },
   },
 
-  /* ── SELECTION-TIME EFFORT CLASS ─────────────────────────────────────────
+  /* ── F139 · PRIORITY NEVER WEIGHTS EVIDENCE ──────────────────────────────
    *
-   * The claim that let the A/B filter in `vdot-inputs.ts` be opened. That
-   * filter read as data hygiene and was load-bearing safety, because
-   * `assessRaceRepresentativeness` was never consulted on the selection path:
-   * selection is max-wins, so it kept the aided read and discarded the hilly
-   * one. Authority now scales a candidate's WEIGHT instead of gating its
-   * membership, and this claim is what stops the grading being quietly deleted
-   * on the way — "every race has meaning" read as "every race weighs the same"
-   * is the failure mode most worth preventing.
+   * Formerly `EVIDENCE.race-authority-is-the-effort-class`, which claimed the
+   * opposite of what `RACE_TIERING_AND_SEASON_PHILOSOPHY.md` (locked
+   * 2026-09-14) actually says, and had predated that doctrine by nine days
+   * with nobody revisiting it — an unreconciled oversight, not a considered
+   * exception (2026-09-15 consult ruling, `for coaching consult/consult-log/
+   * 2026-09-15-035-f139-priority-evidence-weighting.md`). The doc's own
+   * words, quoted verbatim below as this claim's anchor: "Priority alone must
+   * never accept, reject, or weight the result." Weight is named explicitly,
+   * alongside accept and reject — not "must not be the only factor," must not
+   * be a factor at all. A default that applies whenever better signal is
+   * absent is still priority doing the weighting in exactly that case, which
+   * is the case the sentence rules out, not one it leaves open.
+   *
+   * `selectionAuthority`/`authorityTier` (`effort-authority.ts`) are NOT
+   * deleted and their signatures are unchanged — they still correctly answer
+   * "how much does doctrine's recovery-cost table price this priority",
+   * which is a genuine PLANNING-COST question the doctrine explicitly permits
+   * priority to answer (a harder-tapered A race plausibly costs more to
+   * recover from). What changed is that NONE of the four call sites that were
+   * spending that planning-cost number as an EVIDENCE weight may do so any
+   * longer. This claim's job is to keep it that way: it fails loudly if
+   * `selectionAuthority` is called from any of the four fixed files again, if
+   * `representativeness.ts`'s downward limb goes back to defaulting its
+   * effort class to the declared priority, or if its `classMultiplier` stops
+   * requiring a REAL measured downgrade signal before penalising a result.
+   *
+   * The internal-consistency checks the old claim ran on `selectionAuthority`
+   * itself (A/B/C strictly ordered, tiers land on the doctrine floors,
+   * case-insensitive) are kept: that function is reserved for planning-cost
+   * use exactly as `recoveryEffortScale` is, and if it ever regains a
+   * legitimate planning-cost caller, its own numbers still need to be right.
    */
   {
-    id: 'EVIDENCE.race-authority-is-the-effort-class',
+    id: 'EVIDENCE.priority-never-weights-evidence',
     binds: [
       'lib/race/effort-authority.ts#selectionAuthority',
       'lib/race/effort-authority.ts#authorityTier',
-      'lib/training/vdot.ts#bestRecentVdot.authorityDemoted',
+      'lib/training/vdot.ts#bestRecentVdot',
+      'lib/training/durability-anchor.ts#loadRaceObservationsForDurability',
+      'lib/training/lthr-reanchor.ts#selectLthrAnchor',
+      'lib/evidence/classify-evidence.ts#classifyRace',
+      'lib/race/representativeness.ts#effectiveEffortClass',
     ],
-    doc: 'Research/00b-recovery-protocols.md',
-    anchor: '### Recovery by Effort (A vs. B vs. C Race)',
+    doc: 'docs/RACE_TIERING_AND_SEASON_PHILOSOPHY.md',
+    anchor: 'Priority alone must never accept, reject, or weight the result.',
     claim:
-      'How much a race result is allowed to weigh at SELECTION is graded by the same table that ' +
-      'grades its recovery: an A race is "Maximum, full taper, peak day"; a C race is "Strong ' +
-      'effort, no taper … treat like a hard workout". The three scales are read out of the doc ' +
-      'rather than restated here, they stay strictly ordered, and the grading is actually SPENT ' +
-      'in the candidate sort. A grading that is computed and never ranked on is the shape the ' +
-      'whole representativeness module already had: 900 lines of diagnosis that the path setting ' +
-      'every prescribed pace never called.',
+      'An A race can produce weak or non-representative evidence; a C race can produce strong ' +
+      'evidence. Priority — the declared A/B/C scheduling label — must never accept, reject, or ' +
+      'weight a race result as fitness evidence, including as a default prior applied whenever a ' +
+      'measured signal (effort/execution quality, data quality, pacing, illness/fatigue/taper ' +
+      'state) is thin or absent. The correct posture when real evidentiary signal is unmeasured is ' +
+      'Rule 11\'s: say "insufficient signal", never silently substitute the priority letter as a ' +
+      'stand-in number. `selectionAuthority` stays reserved for the PLANNING-COST question doctrine ' +
+      'does license priority to answer (recovery-duration pricing, mirrored by `recoveryEffortScale` ' +
+      'in `lib/plan/goal-tiers.ts`) — it must not be called from `bestRecentVdot`, ' +
+      '`loadRaceObservationsForDurability`, `selectLthrAnchor`, or `classifyRace`, and ' +
+      '`effectiveEffortClass`\'s downward limb must not default its baseline to the declared ' +
+      'priority the way its (already-correct) upward limb never did.',
     check({ cite }) {
-      const t = cite.table();
-      const scale = (row: string) => parsePctBand(t.cell(row, 'Recovery scale'));
-      if (selectionAuthority('A') !== 1.0) {
-        throw new Error('an A race is the full table · selection authority must be 1.0');
+      const text = cite.text();
+      if (!text.includes('Priority alone must never accept, reject, or weight the result.')) {
+        throw new Error('the controlling sentence is no longer verbatim in the race-tiering doc');
       }
-      within(selectionAuthority('B'), scale('B race'), "selectionAuthority('B')");
-      within(
-        selectionAuthority('C'),
-        scale('C race / hard workout substitute'),
-        "selectionAuthority('C')",
-      );
-      // Strictly ordered · collapsing the distinction is the mistake this
-      // claim exists to prevent.
+
+      // ── selectionAuthority's OWN numbers, kept correct for whatever
+      // legitimate planning-cost caller uses it (unchanged behaviour). ──────
+      if (selectionAuthority('A') !== 1.0) {
+        throw new Error('an A race is the full table · selectionAuthority must be 1.0');
+      }
       if (!(selectionAuthority('A') > selectionAuthority('B')
             && selectionAuthority('B') > selectionAuthority('C'))) {
         throw new Error(
-          'selection authority no longer distinguishes A, B and C races · Research/00b grades ' +
-            'them differently and the engine must too',
+          'selectionAuthority no longer distinguishes A, B and C races · Research/00b grades them ' +
+            'differently, which still matters for whatever planning-cost caller reads this table',
         );
       }
-      // Case-insensitive, because `races.meta->>'priority'` is free text.
       for (const p of GRADED_RACE_PRIORITIES) {
         if (selectionAuthority(p.toLowerCase()) !== selectionAuthority(p)) {
           throw new Error(`selectionAuthority is case-sensitive on '${p}' · the column is free text`);
         }
       }
-      // The tiers must land on the doctrine floors.
       if (authorityTier(selectionAuthority('A')) !== 'representative'
           || authorityTier(selectionAuthority('B')) !== 'representative'
           || authorityTier(selectionAuthority('C')) !== 'compromised') {
@@ -10040,54 +10067,116 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
             'below it · that placement is what the two doctrine floors mean',
         );
       }
-      // WIRED · the grade must reach the ranking, and must not reach the value.
-      const src = sourceOf('web-v2/lib/training/vdot.ts');
-      if (!/authority: selectionAuthority\(r\.priority\)|const (declared)?[Aa]uthority = selectionAuthority\(r\.priority\);/.test(src)) {
-        throw new Error('bestRecentVdot no longer grades its race candidates');
+
+      // ── THE ACTUAL GATE · none of the four evidence-weighting call sites
+      // may spend `selectionAuthority` on this question ever again. ────────
+      const evidenceFiles = [
+        'web-v2/lib/training/vdot.ts',
+        'web-v2/lib/training/durability-anchor.ts',
+        'web-v2/lib/training/lthr-reanchor.ts',
+        'web-v2/lib/evidence/classify-evidence.ts',
+      ];
+      // Comment lines stripped first — this claim's own source narrates the
+      // fix in prose that quotes the old call shape, and a check that cannot
+      // tell a description from an execution is the shape of a false alarm
+      // nobody trusts twice (same posture as the SQL-filter check below).
+      const stripComments = (s: string) =>
+        s.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+      for (const path of evidenceFiles) {
+        const src = stripComments(sourceOf(path));
+        if (/\bselectionAuthority\s*\(/.test(src)) {
+          throw new Error(
+            `${path} calls selectionAuthority(...) again · priority may never weight this file's ` +
+              'evidence-authority question — that is precisely the F139 violation this claim exists ' +
+              'to keep fixed. If this file has grown a genuine PLANNING-COST need, give it its own ' +
+              "call to recoveryEffortScale, not this claim's exemption",
+          );
+        }
       }
-      // 2026-08-21 · race-data re-audit · a RUNNER-REPORTED tier
-      // (`actual_result.authority_tier`, written by POST /api/v5/race-authority)
-      // may now cap that grading. Doctrine's table still sets the base, so the
-      // override has to be DOWNWARD ONLY: the runner knows things the engine
-      // cannot (heat, illness, paced a friend) and so may say a result proves
-      // LESS than its priority implies, but "this parkrun was actually an A
-      // race" is a claim about effort that doctrine's own table already
-      // answers. A Math.max here — or a bare assignment — would turn the
-      // question into the "make me faster" button its own route header
-      // forbids, and would let a runner promote a C race above the
-      // representative floor by tapping a button.
-      if (/const declaredAuthority = selectionAuthority\(r\.priority\);/.test(src)
-          && !/Math\.min\(declaredAuthority,/.test(src)) {
-        throw new Error(
-          'the runner-reported authority tier is no longer clamped downward against the ' +
-            "doctrine grading · a runner's answer may lower what a race proves, never raise it",
-        );
+      // vdot.ts and lthr-reanchor.ts must still grade off the runner's own
+      // measured report, and default to the SAME conservative floor an
+      // explicit 'unrepresentative' report earns when no report exists —
+      // never a bespoke number, never priority.
+      for (const path of ['web-v2/lib/training/vdot.ts', 'web-v2/lib/training/lthr-reanchor.ts']) {
+        const src = sourceOf(path);
+        if (!/RUNNER_REPORTED_AUTHORITY_CAP\.unrepresentative/.test(src)) {
+          throw new Error(
+            `${path} no longer grades an unmeasured race at the conservative RUNNER_REPORTED_` +
+              'AUTHORITY_CAP.unrepresentative floor · it must not silently default to full trust',
+          );
+        }
       }
-      if (!/\(\(authorityDemoted\(b\) \? 0 : 1\) - \(authorityDemoted\(a\) \? 0 : 1\)\)/.test(src)) {
+      // The candidate sort must still spend the authority tier once computed
+      // (unchanged mechanism — only what feeds `authority` changed).
+      const vdotSrc = sourceOf('web-v2/lib/training/vdot.ts');
+      if (!/\(\(authorityDemoted\(b\) \? 0 : 1\) - \(authorityDemoted\(a\) \? 0 : 1\)\)/.test(vdotSrc)) {
         throw new Error(
           'the authority tier is no longer applied in the candidate sort · the grade is computed ' +
             'and never spent, which is exactly how representativeness looked before this work',
         );
       }
-      if (/vdot(_raw)?: [^,\n]*authority/.test(src)) {
+      if (/vdot(_raw)?: [^,\n]*authority/.test(vdotSrc)) {
         throw new Error(
           "a candidate's VDOT is being scaled by its authority · that fabricates a finish time " +
             'nobody ran. Rule 8 scales the ADJUSTMENT, not the performance',
         );
       }
-      // And the SQL filter it replaced must stay gone · if it comes back, the
-      // grading above is decoration again. Comment lines are stripped first:
-      // the fix's own note names the clause it deleted, and a check that cannot
-      // tell a description from an execution is the shape of a false alarm
-      // nobody trusts twice.
+      // And the SQL filter this whole grading path replaced must stay gone.
       const loader = sourceOf('web-v2/lib/training/vdot-inputs.ts')
         .split('\n')
         .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l))
         .join('\n');
       if (/priority'\s+IN\s+\('A',\s*'B'\)/.test(loader)) {
         throw new Error(
-          "the A/B priority filter is back in vdot-inputs.ts · it and the authority grading are " +
-            'two answers to one question, and only one of them lets a C race count at all',
+          'the A/B priority filter is back in vdot-inputs.ts · every race must stay a candidate, ' +
+            'graded on measured signal, not gated on declared priority',
+        );
+      }
+
+      // ── classify-evidence.ts · controlledEffort must not re-derive
+      // authority from declared priority. ──────────────────────────────────
+      const classifySrc = sourceOf('web-v2/lib/evidence/classify-evidence.ts');
+      if (/\bauthorityTier\s*\(/.test(classifySrc)) {
+        throw new Error(
+          'classify-evidence.ts calls authorityTier(...) again with no measured signal to feed it ' +
+            '· this classifier has no runner report or representativeness read wired in, so any ' +
+            'tier it computes is priority pretending to be evidence',
+        );
+      }
+
+      // ── representativeness.ts · the downward limb's baseline and gate. ───
+      const repSrc = sourceOf('web-v2/lib/race/representativeness.ts');
+      const fnMatch = repSrc.match(
+        /export function effectiveEffortClass[\s\S]*?(?=\nexport function assessRepresentativeness)/,
+      );
+      if (!fnMatch) {
+        throw new Error('effectiveEffortClass could not be located in representativeness.ts');
+      }
+      const fnBody = fnMatch[0];
+      if (/state\??\.priority/.test(fnBody)) {
+        throw new Error(
+          "effectiveEffortClass reads the declared priority again inside its own body · the " +
+            'downward limb must not default its baseline to priority the way its upward sibling ' +
+            'never did',
+        );
+      }
+      if (!/const base: RacePriority = 'A';/.test(fnBody)) {
+        throw new Error(
+          "effectiveEffortClass's baseline is no longer a fixed, fully-representative 'A' · a " +
+            'declared-priority baseline is exactly what this claim forbids',
+        );
+      }
+      if (/direction === 'upward' \? 1 : recoveryEffortScale\(cls\)/.test(repSrc)) {
+        throw new Error(
+          "the downward limb's classMultiplier defaults to recoveryEffortScale(cls) whenever " +
+            'nothing measured fired · that is priority (via the declared-then-stepped class) ' +
+            'silently weighting evidence again',
+        );
+      }
+      if (!/downgradedBy == null \? 1 : recoveryEffortScale\(cls\)/.test(repSrc)) {
+        throw new Error(
+          "the downward limb no longer requires a REAL measured downgrade signal " +
+            '(`downgradedBy != null`) before charging an effort-class penalty',
         );
       }
     },
@@ -10101,6 +10190,18 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
    * OURS to decide, so it is labelled a convention rather than dressed as a
    * finding — the failure `CONVENTION.cold-start-mileage-anchor` was written
    * for. What is not ours to decide is the direction of the error.
+   *
+   * F139 (2026-09-15) · this claim is UNCHANGED in behaviour and scope — it
+   * has always been about `selectionAuthority`'s own internal convention
+   * against `recoveryEffortScale`, not about whether either function is
+   * spent on evidence. What changed is the surrounding context: `selection
+   * Authority` no longer has ANY caller that spends it on evidence at all
+   * (see `EVIDENCE.priority-never-weights-evidence`) — it is reserved for
+   * planning-cost use exactly as `recoveryEffortScale` is, should a genuine
+   * planning-cost caller need it. The word "AUTHORITY" in this claim's own
+   * prose below predates that distinction and reads ambiguously with
+   * hindsight; it means "the planning-cost-reserved `selectionAuthority`
+   * number", never "evidentiary authority".
    */
   {
     id: 'CONVENTION.ungraded-race-priority',
@@ -10112,15 +10213,17 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
     anchor: '### Recovery by Effort (A vs. B vs. C Race)',
     claim:
       'A priority the effort table has no row for is graded at the LOWEST graded row, not the ' +
-      'highest. This is a convention: doctrine names A, B and C and says nothing about ' +
+      'highest, by `selectionAuthority` — a function now reserved for PLANNING-COST use only (see ' +
+      '`EVIDENCE.priority-never-weights-evidence`; it must never again be spent on an evidence-' +
+      'weighting question). This is a convention: doctrine names A, B and C and says nothing about ' +
       '`hilly_excluded` or `training_run`. What research supplies is the direction. Grading an ' +
       'ungraded row as an A race asserts what the A row says — "Maximum, full taper, peak day" — ' +
       'about a row whose own label says the course did the talking or that it was not a race at ' +
       'all. `recoveryEffortScale` deliberately defaults the other way because for recovery ' +
-      'DURATION over-resting is the safe error; for AUTHORITY the safe error is the opposite, and ' +
-      'reusing that default is how a course-excluded marathon would have come to set every ' +
-      'prescribed pace. The two mappings must therefore agree on every graded priority and ' +
-      'disagree on ungraded ones.',
+      'DURATION over-resting is the safe error; for whatever `selectionAuthority` is eventually ' +
+      'spent on again, the safe error runs the other way, and reusing that default is how a ' +
+      'course-excluded marathon would have come to set every prescribed pace. The two mappings ' +
+      'must therefore agree on every graded priority and disagree on ungraded ones.',
     check({ cite }) {
       const t = cite.table();
       // The doc still has exactly the three rows this convention fills the gaps around.
@@ -10972,7 +11075,10 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
       'rather than no refund. The two limbs price different factors because most are not ' +
       'sign-symmetric, and the effort class is charged downward only: an athlete who ran a ' +
       'personal best off a training week demonstrated it, and believing a good result LESS the ' +
-      'harder the circumstances were would invert the evidence.',
+      'harder the circumstances were would invert the evidence. F139 (2026-09-15): the downward ' +
+      'charge itself is gated on a REAL measured signal (OVERREACH/LOADED/niggle/measured taper ' +
+      'shortfall) — a declared priority with nothing else measured is not, on its own, grounds ' +
+      'to discount a result; see `EVIDENCE.priority-never-weights-evidence`.',
     check({ cite }) {
       // Doctrine still says a descent is a partial refund, not a full one.
       if (!/downhill/i.test(cite.text())) {
@@ -11008,13 +11114,32 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
         throw new Error('a net-downhill course cost no authority · the aid pricing is inert');
       }
 
-      // Effort class · charged downward, never upward.
-      const slowC = assessRepresentativeness({
+      // Effort class · charged downward, never upward, and — F139
+      // (2026-09-15) — only on a REAL measured signal, never on declared
+      // priority alone. `RACE_TIERING_AND_SEASON_PHILOSOPHY.md`: "Priority
+      // alone must never accept, reject, or weight the result." A declared C
+      // race with nothing else measured must therefore NOT be discounted;
+      // only a genuine downgrade signal (OVERREACH here) may charge it.
+      const slowDeclaredCOnly = assessRepresentativeness({
         distanceMi: 26.22, finishS: 13000, anchorVdot: 48, raceVdot: 44,
         direction: 'downward', state: { priority: 'C' },
       });
-      if (slowC.authority >= 1) {
-        throw new Error('a C race is no longer discounted on the downward limb · Research/00b grades it a hard workout');
+      if (slowDeclaredCOnly.authority < 1) {
+        throw new Error(
+          'a declared C race with no measured downgrade signal is being discounted on the ' +
+            'downward limb · F139: priority alone must never weight evidence — only a real ' +
+            'measured signal (OVERREACH/LOADED/niggle/measured taper shortfall) may',
+        );
+      }
+      const slowOverreached = assessRepresentativeness({
+        distanceMi: 26.22, finishS: 13000, anchorVdot: 48, raceVdot: 44,
+        direction: 'downward', state: { priority: 'C', formBand: 'OVERREACH' },
+      });
+      if (slowOverreached.authority >= 1) {
+        throw new Error(
+          'a race off overreached legs is no longer discounted on the downward limb · ' +
+            'Research/00b grades it a hard workout',
+        );
       }
       const fastC = assessRepresentativeness({ ...base, direction: 'upward', state: { priority: 'C' } });
       if (fastC.authority !== 1) {

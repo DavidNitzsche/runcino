@@ -54,7 +54,7 @@
  *       the eight pinned belief sources changed, and every one of them moves
  *       what a belief RESOLVES to for the same activities — branch (a) of the
  *       decision below. Shadow evidence restarts here.
- *   3 · `2026-09-14.f033-taper-window-correction` — CURRENT. F033
+ *   3 · `2026-09-14.f033-taper-window-correction` — F033
  *       (`web-v2/lib/training/pace-corpus.ts`, `insideCitedRaceWindow`)
  *       replaced the mechanically week-rounded pre-race taper window
  *       (`TAPER_WEEKS_BY_DISTANCE`, rounded to whole weeks) with the
@@ -73,6 +73,27 @@
  *       full-population regression check (narrowing flips only, no new
  *       widening). Shadow evidence restarts here; records written before
  *       this bump stay in the log as history, uncounted.
+ *   4 · `2026-09-15.priority-never-weights-evidence` — CURRENT. F139 (`for
+ *       coaching consult/consult-log/2026-09-15-035-f139-priority-evidence-
+ *       weighting.md`): `RACE_TIERING_AND_SEASON_PHILOSOPHY.md` forbids
+ *       declared race priority from weighting a result's evidentiary value,
+ *       including as a default prior when better signal is absent.
+ *       `lib/training/durability-anchor.ts#loadRaceObservationsForDurability`
+ *       used to seed a race observation's base weight from
+ *       `selectionAuthority(priority)` (1.0 / 0.65 / 0.35 by declared A/B/C)
+ *       before multiplying in the measured representativeness read. It now
+ *       seeds it at 1 (capped downward only by a REAL runner-reported
+ *       downgrade), and — when the representativeness assessor cannot read
+ *       the race row at all and no runner report exists either — excludes the
+ *       observation from the fit entirely rather than defaulting it to the
+ *       old priority-derived number. Both changes move what the durability
+ *       exponent (and, through it, the marathon anchor) resolve to for the
+ *       SAME real race history: an unflagged C-priority race now weighs as
+ *       much as an unflagged A-priority one (branch (a), same shape as epoch
+ *       2's own durability change), and a race the assessor cannot price is
+ *       now weighted differently again (zero, not a priority-derived
+ *       fallback) than either epoch 2 or the pre-4 code. Shadow evidence
+ *       restarts here.
  *
  * THE FIRST BUMP WAS NOT HYPOTHETICAL, and it is the strongest evidence this
  * mechanism is needed: Phase 1 changed all five of those files and left
@@ -82,7 +103,7 @@
  * gate went red on exactly the five changed files and forced this entry to be
  * written.
  */
-export const SHADOW_EVIDENCE_EPOCH = '2026-09-14.f033-taper-window-correction';
+export const SHADOW_EVIDENCE_EPOCH = '2026-09-15.priority-never-weights-evidence';
 
 /** The epoch format: `YYYY-MM-DD.<slug>`. Pinned by test so a future value
  *  cannot drift into a bare counter or an undated label. */
@@ -147,8 +168,22 @@ export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   },
   {
     file: 'lib/training/durability-anchor.ts',
-    digest: '3ee67060d8ec22d8',
-    why: 'Re-pinned at epoch 2 · Phase 1 weights race observations by representativeness and names a single-long-race exponent, which moves the endurance exponent and with it the marathon anchor.',
+    digest: 'eaa8fc67ec470f0e',
+    why: 'Re-pinned at epoch 4 (priority-never-weights-evidence), branch (a), 2026-09-15 · F139: '
+      + '`loadRaceObservationsForDurability`\'s base weight no longer comes from '
+      + '`selectionAuthority(priority)` (1.0/0.65/0.35 by declared A/B/C) — priority may never weight '
+      + 'evidence (`RACE_TIERING_AND_SEASON_PHILOSOPHY.md`). It now starts at 1, capped downward only by '
+      + 'a real runner-reported downgrade, and `applyRepresentativeness` zeroes (excludes) an observation '
+      + 'outright when the representativeness assessor cannot read the race row AND no runner report '
+      + 'exists — previously that case kept the priority-derived weight. Both changes move what '
+      + '`fitRaceExponent` resolves for the SAME real race history: an unflagged C-priority race now '
+      + 'weighs the same as an unflagged A-priority one, and an unassessable, unreported race now '
+      + 'contributes nothing instead of its old priority-scaled weight. This is the same shape of change '
+      + 'epoch 2\'s own entry for this file described — the endurance exponent and the marathon anchor '
+      + 'can move for real users with no new evidence, only a corrected weighting rule. '
+      + 'Original epoch-2 reason kept below: Re-pinned at epoch 2 · Phase 1 weights race observations by '
+      + 'representativeness and names a single-long-race exponent, which moves the endurance exponent '
+      + 'and with it the marathon anchor.',
   },
   {
     file: 'lib/training/runner-state.ts',

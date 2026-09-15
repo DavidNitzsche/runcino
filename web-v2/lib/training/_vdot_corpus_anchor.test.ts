@@ -143,15 +143,29 @@ describe('the corpus must REFUSE · the downward half', () => {
     expect(r.best!.vdot).toBeLessThan(vdotFromTpace(380)!);
   });
 
-  it('below the corroboration minimum the corpus REFUSES, and the race bounds again', () => {
+  it('F139 (2026-09-15) · below the corroboration minimum the corpus REFUSES, and — with no runner report on SLOW_RACE — the read is now uncapped', () => {
     // A runner in their first fortnight. Two good sessions are not yet a
-    // corpus, and the honest answer is the race-anchored ceiling that has
-    // always applied — not an unbounded read off two lucky days.
+    // corpus. Before F139 the honest fallback was the race-anchored
+    // ceiling, because a bare declared-A race cleared REPRESENTATIVE_FLOOR
+    // on priority alone. It no longer can (`RACE_TIERING_AND_SEASON_
+    // PHILOSOPHY.md`: priority may never weight evidence), and `SLOW_RACE`
+    // carries no runner report, so it is excluded from `bestRaceRaw` the
+    // same as every other unreported race. This is the disclosed ceiling-
+    // dormancy consequence named in F139's report, landing on this file's
+    // own cold-start scenario — exactly the case it names as most affected.
     const r = read(SLOW_RACE, sessions(CORROBORATION_MIN_OBSERVATIONS - 1, 425));
     expect(r.corpus.ok).toBe(false);
     if (r.corpus.ok) return;
     expect(r.corpus.reason).toBe('insufficient_corroboration');
-    expect(r.best!.vdot).toBeCloseTo(44.1 + TRAINING_ESTIMATE_SOFT_CAP_VDOT, 5);
+    const uncapped = read([], sessions(CORROBORATION_MIN_OBSERVATIONS - 1, 425)).best!.vdot;
+    expect(r.best!.vdot).toBeCloseTo(uncapped, 5);
+  });
+
+  it('RULE 18 FALSIFIER · before F139 this exact fixture bounded the read to race + 1.0', () => {
+    const r = read(SLOW_RACE, sessions(CORROBORATION_MIN_OBSERVATIONS - 1, 425));
+    // The OLD assertion no longer holds — proving this is a real, deliberate
+    // change, not an accident of this fixture.
+    expect(r.best!.vdot).not.toBeCloseTo(44.1 + TRAINING_ESTIMATE_SOFT_CAP_VDOT, 5);
   });
 
   it('"no runs" and "not enough runs" are different facts (Rule 11)', () => {

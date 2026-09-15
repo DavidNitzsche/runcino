@@ -26,6 +26,28 @@
  * and which is what makes the second veto unnecessary rather than merely
  * unfashionable. The tests below assert that bound directly.
  *
+ * ── F139 UPDATE (2026-09-15) ───────────────────────────────────────────────
+ *
+ * `bestRaceRaw` (the race half of that bound) requires a race to clear
+ * `REPRESENTATIVE_FLOOR`. Before F139 a bare declared A/B priority cleared it
+ * on its own; now that priority may never weight evidence
+ * (`RACE_TIERING_AND_SEASON_PHILOSOPHY.md`), NOTHING clears it without a
+ * measured signal this function does not yet have wired in (see the F139
+ * report). Three mechanisms share this one root cause and are all
+ * consequently DORMANT for a bare, unreported race today — disclosed here
+ * rather than silently absorbed:
+ *
+ *   1. The candidate-sort authority demotion (`authorityDemoted`).
+ *   2. The AUDIT #8 race-based ceiling fallback (`bestRaceRaw`) — this file's
+ *      own subject, below.
+ *   3. The same-day identity guard (`representativeRaceDates`).
+ *
+ * The TRAINING-CORPUS half of the ceiling (`corpusRead.ok`) is untouched and
+ * still bounds training reads once enough qualifying runs corroborate each
+ * other — the gap is specifically "a race, on its own, with no runner
+ * report, no longer sets a ceiling," not "training reads are now always
+ * uncapped."
+ *
  * ── WHAT THIS SUITE CANNOT FAIL ON (Rule 22) ──────────────────────────────
  *
  * It is a pure-function suite over hand-built candidates. It cannot see
@@ -90,14 +112,26 @@ describe('selection takes the highest derived VDOT, not the most recent', () => 
     expect(best?.source).toBe('run');
   });
 
-  it('the lead it takes is EXACTLY the doctrinal quantum — it cannot run away', () => {
-    // The bound that makes the date veto unnecessary. However fast the tempo,
-    // the anchor may not exceed the race by more than the soft-estimate
-    // quantum. This is the assertion the old rule's job actually belonged to.
+  it('F139 · a bare, unreported race no longer bounds an insanely fast tempo at all', () => {
+    // Before F139 this asserted the AUDIT #8 cap held even against an
+    // absurd tempo. It no longer can: `race()` (declared A, no runner
+    // report) cannot clear REPRESENTATIVE_FLOOR any more, so it is excluded
+    // from `bestRaceRaw` and the training read goes uncapped. See the file
+    // header's F139 note — this is the disclosed ceiling-dormancy
+    // consequence, demonstrated directly.
     const insanelyFast = tempo('2026-06-23', { finish_seconds: 900 }); // 3:45/mi
     const { best, considered } = bestRecentVdot([race()], TODAY, undefined, [insanelyFast]);
     const raceCand = considered.find((c) => c.source === 'race')!;
-    expect(best!.vdot).toBeCloseTo(raceCand.vdot + TRAINING_ESTIMATE_SOFT_CAP_VDOT, 5);
+    expect(best!.vdot).toBeGreaterThan(raceCand.vdot + TRAINING_ESTIMATE_SOFT_CAP_VDOT);
+  });
+
+  it('RULE 18 FALSIFIER · before F139 the same fixture capped the tempo to race + 1.0', () => {
+    const insanelyFast = tempo('2026-06-23', { finish_seconds: 900 });
+    const { best, considered } = bestRecentVdot([race()], TODAY, undefined, [insanelyFast]);
+    const raceCand = considered.find((c) => c.source === 'race')!;
+    // The OLD assertion (`toBeCloseTo(raceCand.vdot + CAP, 5)`) no longer
+    // holds — proving this is a real, deliberate behaviour change.
+    expect(best!.vdot).not.toBeCloseTo(raceCand.vdot + TRAINING_ESTIMATE_SOFT_CAP_VDOT, 5);
   });
 
   it('a tempo run AFTER the race leads by the same permitted +1', () => {
@@ -155,12 +189,27 @@ describe('the race still wins wherever doctrine says it should', () => {
     expect(best?.source).toBe('race');
   });
 
-  it('a run on the SAME DAY as the race cannot displace it', () => {
-    // Identity, not doctrine: a same-day row is the race re-ingested from
-    // Strava, or its warm-up. Letting it through lets the race lead ITSELF
-    // by +1 and inflates every runner's anchor on the day they race.
+  it('F139 · a run on the SAME DAY as an UNREPORTED race no longer triggers the identity guard', () => {
+    // Before F139 this was the identity protection: a same-day row is the
+    // race re-ingested from Strava, or its warm-up, and must not lead the
+    // race by +1. The guard keys on `representativeRaceDates`, which — like
+    // the other two mechanisms named in this file's F139 header note —
+    // requires clearing REPRESENTATIVE_FLOOR, and a bare declared-A race
+    // with no runner report no longer can. In production `loadVdotInputs`
+    // already excludes race-day runs at the loader (C1-1e, ±1 day), so this
+    // is belt-and-braces dormancy, not an open hole — but it is real and
+    // disclosed here rather than silently absorbed.
     const { best } = bestRecentVdot([race()], TODAY, undefined, [tempo('2026-08-16')]);
-    expect(best?.source).toBe('race');
+    expect(best?.source).toBe('run');
+  });
+
+  it('RULE 18 FALSIFIER · before F139 the race won this exact fixture', () => {
+    const { considered } = bestRecentVdot([race()], TODAY, undefined, [tempo('2026-08-16')]);
+    const raceCand = considered.find((c) => c.source === 'race')! as { authority: number };
+    // Under the old rule `raceCand.authority` (`selectionAuthority('A')`)
+    // would have been 1.0, clearing REPRESENTATIVE_FLOOR and arming the
+    // guard. It is now the F139 conservative default, well below it.
+    expect(raceCand.authority).toBeLessThan(0.65);
   });
 
   it('the same-day guard keys on a REPRESENTATIVE race, not any race', () => {
@@ -177,36 +226,64 @@ describe('a sub-representative race does not set the training ceiling', () => {
   // It is proof of a floor, not of a ceiling. `Research/01` §"Triggers to
   // retest" licenses "Update VDOT from race" only for an "all-out, well-paced"
   // result, and that is the question the ceiling asks.
+  //
+  // F139 (2026-09-15): every one of the fixtures below — a C race, a race
+  // reported compromised, AND a bare declared-A race with no report at all —
+  // now grades sub-representative, because priority can no longer promote
+  // one of them above the others. So "a C race lets training read past
+  // race + 1" is no longer a distinguishing fact: EVERY unreported race lets
+  // that happen now, C or A. The section is rewritten to assert that new,
+  // flatter invariant directly, plus a falsifier proving it is a real change.
   const fast = tempo('2026-08-10', { finish_seconds: 1500 }); // 6:15/mi, reads far above
+  const uncapped = () =>
+    bestRecentVdot([], TODAY, undefined, [fast]).considered.find((c) => c.source === 'run')!.vdot_raw;
 
-  it('a C race lets training read past race + 1', () => {
-    const { best } = bestRecentVdot(
-      [race({ priority: 'C' })], TODAY, undefined, [fast]);
-    const capped = bestRecentVdot([race()], TODAY, undefined, [fast]);
-    expect(best!.vdot).toBeGreaterThan(capped.best!.vdot);
+  it('F139 · a C race, a compromised-reported race, and a bare unreported A race ALL let training read uncapped', () => {
+    const cases: Array<[string, Race]> = [
+      ['C priority', race({ priority: 'C' })],
+      ['compromised report', race({ runner_authority_tier: 'compromised' })],
+      ['bare declared A, no report', race()],
+    ];
+    const u = uncapped();
+    for (const [label, r] of cases) {
+      const { best } = bestRecentVdot([r], TODAY, undefined, [fast]);
+      expect(best!.vdot, `${label} should read uncapped`).toBeCloseTo(u, 5);
+    }
   });
 
-  it("so does a race the RUNNER reported as compromised", () => {
-    // The lever `POST /api/v5/race-authority` writes. It was honoured in the
-    // ranking and ignored by the cap, so a runner who disowned a result still
-    // had every training read bounded to it + 1.
-    const { best } = bestRecentVdot(
-      [race({ runner_authority_tier: 'compromised' })], TODAY, undefined, [fast]);
-    const capped = bestRecentVdot([race()], TODAY, undefined, [fast]);
-    expect(best!.vdot).toBeGreaterThan(capped.best!.vdot);
+  it('RULE 18 FALSIFIER · before F139 the bare declared-A race capped the same tempo to race + 1.0', () => {
+    const { best, considered } = bestRecentVdot([race()], TODAY, undefined, [fast]);
+    const raceCand = considered.find((c) => c.source === 'race')!;
+    // The OLD assertion for this exact fixture ("and a representative race
+    // DOES still set the ceiling") no longer holds.
+    expect(best!.vdot).not.toBeCloseTo(raceCand.vdot + TRAINING_ESTIMATE_SOFT_CAP_VDOT, 5);
   });
 
-  it('but it still anchors the headline when it is all the runner has', () => {
-    // Ranked, not removed. A floor you have beats a guess you don't.
+  it('but a sub-representative race still anchors the HEADLINE when it is all the runner has', () => {
+    // Ranked, not removed. A floor you have beats a guess you don't — this
+    // half of the doctrine is unaffected by F139, and unaffected by the
+    // ceiling going dormant, because it never depended on the ceiling.
     const { best } = bestRecentVdot([race({ priority: 'C' })], TODAY, undefined, []);
     expect(best?.source).toBe('race');
   });
 
-  it('and a representative race DOES still set the ceiling', () => {
-    // The falsifier for the rule above: if this passed too, the exclusion
-    // would be unconditional and the cap would mean nothing.
-    const { best, considered } = bestRecentVdot([race()], TODAY, undefined, [fast]);
-    const raceCand = considered.find((c) => c.source === 'race')!;
-    expect(best!.vdot).toBeCloseTo(raceCand.vdot + TRAINING_ESTIMATE_SOFT_CAP_VDOT, 5);
+  it('the TRAINING-CORPUS ceiling is untouched · once the corpus corroborates itself, reads are bounded again', () => {
+    // F139 only removed the RACE half of the ceiling's fallback chain. The
+    // primary, corpus-based bound (`corpusRead.ok`) reads no priority at
+    // all and is unaffected — demonstrated here so the disclosure above
+    // reads as "the race-only fallback is dormant", not "training reads
+    // are now always uncapped".
+    const corroborating = [
+      tempo('2026-06-01', { finish_seconds: 2100 }),
+      tempo('2026-06-15', { finish_seconds: 2100 }),
+      tempo('2026-06-29', { finish_seconds: 2100 }),
+      tempo('2026-07-13', { finish_seconds: 2100 }),
+    ];
+    const { corpus } = bestRecentVdot([], TODAY, undefined, corroborating);
+    expect(corpus.ok).toBe(true);
+    const { best } = bestRecentVdot([], TODAY, undefined, [...corroborating, fast]);
+    if (corpus.ok) {
+      expect(best!.vdot).toBeLessThanOrEqual(corpus.vdot + TRAINING_ESTIMATE_SOFT_CAP_VDOT + 1e-9);
+    }
   });
 });

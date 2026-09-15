@@ -155,7 +155,6 @@ import { distanceMiFromLabel } from '@/lib/race/distance';
 import { isProvisionalResult } from '@/lib/coach/races-state';
 import {
   isGradedRacePriority,
-  selectionAuthority,
   RUNNER_REPORTED_AUTHORITY_CAP,
   type AuthorityTier,
 } from '@/lib/race/effort-authority';
@@ -338,13 +337,27 @@ export interface DurabilityRaceObservation {
   distanceMi: number;
   finishSec: number;
   priority: string | null;
-  /** `selectionAuthority(priority)`, capped downward by any runner-reported
-   *  authority tier — see `raceObservationsFromRows` below — and, since
-   *  2026-09-02 (Phase 1 of the brain completion), MULTIPLIED by the race's
-   *  representativeness authority (`assessRaceRepresentativeness`), the same
-   *  effort-class pipeline the fitness ceiling reads. A hot, hilly, untapered
-   *  or badly paced race is not a full-weight point on a distance-time curve. */
+  /**
+   * F139 · no longer seeded from `selectionAuthority(priority)` — priority
+   * may never weight evidence (`RACE_TIERING_AND_SEASON_PHILOSOPHY.md`). The
+   * base value is 1 (full weight) unless the runner's own retroactive report
+   * caps it downward (`runnerAuthorityCap`, a real measured signal, kept
+   * exactly as before) — see `loadRaceObservationsForDurability`. That base
+   * is then MULTIPLIED by the race's measured representativeness authority
+   * (`assessRaceRepresentativeness`) in `applyRepresentativeness`, the same
+   * effort-class pipeline the fitness ceiling reads. A hot, hilly, untapered
+   * or badly paced race is not a full-weight point on a distance-time curve —
+   * and a race with NEITHER a runner report NOR a successful representativeness
+   * read carries no measured signal at all, so `applyRepresentativeness`
+   * drives it to 0, excluding it from the fit via `fitRaceExponent`'s
+   * existing `usable` filter (`o.weight > 0`) rather than a new mechanism.
+   */
   weight: number;
+  /** True when the runner's own retroactive report (`runnerAuthorityCap`)
+   *  supplied a real measured downward cap for this race — F139: this is
+   *  what lets `applyRepresentativeness` tell "measured, capped" apart from
+   *  "no report, no assessment, no signal at all" when the assessor fails. */
+  hasRunnerReport?: boolean;
   /**
    * 2026-09-02 · what representativeness did to this observation. `finishSec`
    * above is the CORRECTED time (the seconds doctrine explains — course,
@@ -457,10 +470,12 @@ export type RaceExponentRead =
  *
  * `value` blends `rawFittedExponent` toward `POPULATION_ENDURANCE_PRIOR`
  * using `evidenceScore` — count, distance spread, average race-authority
- * QUALITY (`selectionAuthority`/`o.weight`, already computed upstream —
- * three questionable C-race fits therefore pull LESS weight than two clean
- * A-race ones, on top of already being down-weighted inside the regression
- * itself), and cross-race CONSISTENCY (the fit's own residual — races that
+ * QUALITY (F139: `o.weight`, already computed upstream from MEASURED signal
+ * only — a runner's own downward report and/or the representativeness
+ * assessor's `read.authority`, never declared priority — three low-authority
+ * race fits therefore pull LESS weight than two clean, measured-strong ones,
+ * on top of already being down-weighted inside the regression itself), and
+ * cross-race CONSISTENCY (the fit's own residual — races that
  * disagree with a single clean power law more than doctrine's own reported
  * error band look like different conditions/pacing rather than different
  * fitness, and that lowers evidence quality rather than being silently
@@ -515,9 +530,9 @@ export function fitRaceExponent(
   const spreadScore = clamp01(spreadLn / RACE_EXPONENT_SPREAD_TARGET_LN);
 
   // Average race-authority QUALITY, unweighted across the included races —
-  // `o.weight` is already `selectionAuthority(priority)` (A 1.0 / B 0.65 /
-  // C 0.35), capped by any runner-reported downgrade, so it is already on a
-  // [0,1] authority scale and needs no rescaling.
+  // `o.weight` (F139: measured signal only — a runner-reported downward cap
+  // and/or the representativeness assessor's `read.authority`, never
+  // priority) is already on a [0,1] authority scale and needs no rescaling.
   const qualityScore = clamp01(usable.reduce((s, o) => s + o.weight, 0) / n);
 
   // Weighted RMS log-residual — only meaningful with a real degree of
@@ -596,8 +611,9 @@ export function fitRaceExponent(
 /**
  * The runner's own downgrade of a race's authority
  * (`races.actual_result.authority_tier` with `authority_source:'runner'`),
- * capping `selectionAuthority(priority)` downward only — never upward.
- * Same read `lib/training/vdot-inputs.ts`'s private `runnerAuthorityTier`
+ * capping the (F139: no longer priority-derived) base weight downward only —
+ * never upward. Same read `lib/training/vdot-inputs.ts`'s private
+ * `runnerAuthorityTier`
  * performs (not imported from there: that helper is unexported, and this
  * module does not touch `vdot-inputs.ts`, which is in flight elsewhere
  * tonight — see the file header's scope note). Duplicated logic, single
@@ -677,11 +693,17 @@ export async function loadRaceObservationsForDurability(
     const date = (m.date as string) ?? '';
     if (!date) continue;
 
-    let weight = selectionAuthority(priority);
+    // F139 · priority no longer seeds this weight. The runner's own downward
+    // report is real measured signal and still caps the race (unchanged
+    // mechanism); absent it, the race carries no measured signal YET — the
+    // representativeness assessor below is what actually measures it next.
     const cap = runnerAuthorityCap(ar);
-    if (cap != null) weight = Math.min(weight, cap);
+    const weight = cap != null ? cap : 1;
 
-    out.push({ slug: r.slug, date, distanceMi, finishSec, priority, weight, representativenessReason: 'NOT_ASSESSED' });
+    out.push({
+      slug: r.slug, date, distanceMi, finishSec, priority, weight,
+      hasRunnerReport: cap != null, representativenessReason: 'NOT_ASSESSED',
+    });
   }
   return applyRepresentativeness(userUuid, out);
 }
@@ -724,7 +746,21 @@ async function applyRepresentativeness(
       read = null;
     }
     if (!read) {
-      out.push({ ...o, representativeness: null, representativenessReason: 'ASSESSOR_UNAVAILABLE' });
+      // F139 · the assessor is the one thing that could have measured this
+      // race; it failed. Absent a runner report too, there is now NO
+      // measured signal for this race at all — weight goes to 0 so it is
+      // excluded from the fit via `fitRaceExponent`'s existing `o.weight > 0`
+      // filter (Rule 11: unmeasured is not the same fact as "measured zero",
+      // but this file has no third state to carry through a weighted
+      // regression, and exclusion — not a silent full-weight default — is
+      // the safe-by-construction reading). A runner report is real measured
+      // signal on its own and survives the assessor's failure unchanged.
+      out.push({
+        ...o,
+        weight: o.hasRunnerReport ? o.weight : 0,
+        representativeness: null,
+        representativenessReason: 'ASSESSOR_UNAVAILABLE',
+      });
       continue;
     }
     const explained = read.direction === 'downward' ? Math.max(0, read.explainedPct) : 0;

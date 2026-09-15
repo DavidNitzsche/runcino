@@ -118,9 +118,12 @@ describe('fitRaceExponent · the fit recovers a known synthetic exponent', () =>
 });
 
 describe('fitRaceExponent · shrinkage moves toward 1.06 in proportion to evidence (BALANCE: raise 3 / hold-back 4)', () => {
-  it('RAISE 1 — 2 low-authority (C-race) results, narrow spread, far apart in time: heavy shrink toward the prior', () => {
-    // Half and 10K only (narrow spread), C-priority (low evidence quality),
-    // 200 days apart (poor freshness/coherence).
+  it('RAISE 1 — 2 low-MEASURED-weight results, narrow spread, far apart in time: heavy shrink toward the prior', () => {
+    // Half and 10K only (narrow spread), low measured weight (F139: this
+    // fixture's `weight: 0.35` represents a genuinely low measured signal —
+    // e.g. a runner-reported downgrade or a poor representativeness read —
+    // never a declared C priority on its own; see `loadRaceObservationsFor
+    // Durability`), 200 days apart (poor freshness/coherence).
     const races = racesAtExponent(1.20, [6.2, 13.1], { spacingDays: 200, priority: 'C', weight: 0.35 });
     const r = fitRaceExponent(races, { today: TODAY });
     expect(r.ok).toBe(true);
@@ -135,18 +138,49 @@ describe('fitRaceExponent · shrinkage moves toward 1.06 in proportion to eviden
     expect(distToPop).toBeLessThan(distToRaw);
   });
 
-  it('QUALITY — the same 2-race shape, but A-priority instead of C, evidences MORE (higher evidenceScore)', () => {
-    const cRaces = racesAtExponent(1.20, [6.2, 13.1], { spacingDays: 10, priority: 'C', weight: 0.35 });
-    const aRaces = racesAtExponent(1.20, [6.2, 13.1], { spacingDays: 10, priority: 'A', weight: 1.0 });
-    const rC = fitRaceExponent(cRaces, { today: TODAY });
-    const rA = fitRaceExponent(aRaces, { today: TODAY });
-    expect(rC.ok && rA.ok).toBe(true);
-    if (!rC.ok || !rA.ok) return;
-    expect(rA.evidenceScore).toBeGreaterThan(rC.evidenceScore);
+  it('QUALITY — fitRaceExponent scores a genuinely higher measured weight as MORE evidence (higher evidenceScore)', () => {
+    // F139 REWRITE (2026-09-15): this test used to be titled "...A-priority
+    // instead of C, evidences MORE" and read as a claim that DECLARED
+    // PRIORITY is what should drive `o.weight` apart. That claim is the
+    // violation `RACE_TIERING_AND_SEASON_PHILOSOPHY.md` forbids — priority
+    // may never weight evidence. `fitRaceExponent` itself is untouched by
+    // F139 and rightly does not care WHERE `o.weight` came from; a race
+    // with a genuinely higher MEASURED weight (whatever produced it —
+    // `loadRaceObservationsForDurability` now derives it from the runner's
+    // own report and/or `assessRaceRepresentativeness`, never priority)
+    // should still score as stronger evidence than one with a lower one.
+    // The `weight` values below are chosen to represent that measured
+    // difference directly — they are no longer meant to represent "what
+    // priority alone would produce today" (in the real pipeline, a bare
+    // declared-C and declared-A race with no other signal now produce the
+    // SAME weight; see `loadRaceObservationsForDurability` and its own
+    // F139 comments).
+    const lowWeight = racesAtExponent(1.20, [6.2, 13.1], { spacingDays: 10, weight: 0.35 });
+    const highWeight = racesAtExponent(1.20, [6.2, 13.1], { spacingDays: 10, weight: 1.0 });
+    const rLow = fitRaceExponent(lowWeight, { today: TODAY });
+    const rHigh = fitRaceExponent(highWeight, { today: TODAY });
+    expect(rLow.ok && rHigh.ok).toBe(true);
+    if (!rLow.ok || !rHigh.ok) return;
+    expect(rHigh.evidenceScore).toBeGreaterThan(rLow.evidenceScore);
     // And that quality difference alone must not depend on the clock —
     // both fixtures share the same dates, so freshness is identical; the
     // gap is entirely the quality component.
-    expect(rA.confidence).toBeGreaterThan(rC.confidence);
+    expect(rHigh.confidence).toBeGreaterThan(rLow.confidence);
+  });
+
+  it('F139 · priority alone no longer moves the score — same declared priority, different measured weight, still differs', () => {
+    // The falsifying half of the rewrite above: TWO races that share the
+    // SAME declared priority ('A' on both) but differ only in their
+    // MEASURED weight still score apart exactly the same way. Priority is
+    // not what is driving the difference — it cannot be, since it is held
+    // constant here.
+    const lowMeasured = racesAtExponent(1.20, [6.2, 13.1], { spacingDays: 10, priority: 'A', weight: 0.35 });
+    const highMeasured = racesAtExponent(1.20, [6.2, 13.1], { spacingDays: 10, priority: 'A', weight: 1.0 });
+    const rLow = fitRaceExponent(lowMeasured, { today: TODAY });
+    const rHigh = fitRaceExponent(highMeasured, { today: TODAY });
+    expect(rLow.ok && rHigh.ok).toBe(true);
+    if (!rLow.ok || !rHigh.ok) return;
+    expect(rHigh.evidenceScore).toBeGreaterThan(rLow.evidenceScore);
   });
 
   it('CONSISTENCY — races that fit a clean power law exactly score full consistency; scattered races score lower', () => {
