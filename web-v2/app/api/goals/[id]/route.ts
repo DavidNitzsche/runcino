@@ -90,8 +90,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
       [goalId, userId, ...values],
     ),
   );
-  if (rows === null) return outage('api/goals/[id]', new Error('personal_goals update failed'));
-
+  if (rows === null) return outage('api/goals/[id]', new Error('personal_goals update failed'), req);
   if (rows.length === 0) {
     return NextResponse.json({ ok: false, error: 'goal not found' }, { status: 404 });
   }
@@ -116,8 +115,7 @@ export async function DELETE(req: NextRequest, { params }: Params) {
       [goalId, userId],
     ),
   );
-  if (gone === null) return outage('api/goals/[id]', new Error('personal_goals delete failed'));
-
+  if (gone === null) return outage('api/goals/[id]', new Error('personal_goals delete failed'), req);
   if (gone.length === 0) {
     return NextResponse.json({ ok: false, error: 'goal not found' }, { status: 404 });
   }

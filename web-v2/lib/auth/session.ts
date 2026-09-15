@@ -155,7 +155,7 @@ export async function requireUserId(
   // that expired, and answering 401 for it made the phone throw away a
   // valid token. 104 route files call this helper, so the distinction lands
   // everywhere at once.
-  if (r.kind === 'unreadable') return outage('auth/session', r.error);
+  if (r.kind === 'unreadable') return outage('auth/session', r.error, req);
   return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 }
 
@@ -182,7 +182,7 @@ export async function requireAdmin(
   } catch (e: unknown) {
     // Same shape as the session read above: an unreadable `users` row is not
     // a runner who lacks the admin flag. 403 is a decision; this is not one.
-    return outage('auth/admin', e);
+    return outage('auth/admin', e, req);
   }
   return NextResponse.json({ error: 'Forbidden · admin only' }, { status: 403 });
 }

@@ -53,7 +53,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     return await setRaceAuthority(req);
   } catch (err) {
-    return outage('v5/race-authority', err);
+    return outage('v5/race-authority', err, req);
   }
 }
 

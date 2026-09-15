@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
     // real outage. A read we could not do is an outage, and says so. The
     // driver error itself is already logged by `rowsOrNull` inside the
     // resolver; this carries the fact, not a second copy of the stack.
-    return outage('today/skip', new Error('day_actions skip read failed'));
+    return outage('today/skip', new Error('day_actions skip read failed'), req);
   }
   return NextResponse.json({ skipped: read.skipped, date });
 }

@@ -354,7 +354,7 @@ export async function POST(req: NextRequest) {
     });
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch {/* the connection is going back either way */}
-    return outage('api/plan/undo', e);
+    return outage('api/plan/undo', e, req);
   } finally {
     client.release();
   }

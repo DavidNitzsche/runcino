@@ -102,6 +102,6 @@ async function handleGET(req: NextRequest) {
     return NextResponse.json(block);
   } catch (e: unknown) {
     // Was `e.message` in the body: a Postgres string on a runner's screen.
-    return outage('v5/block', e);
+    return outage('v5/block', e, req);
   }
 }

@@ -123,7 +123,7 @@ export async function GET(req: NextRequest) {
   // A streak we could not count is not a streak of zero. The phone renders a
   // 5xx as the retryable outage state, which is the truth here.
   if (current === null || longestPrior === null) {
-    return outage('api/streak', new Error('streak read failed'));
+    return outage('api/streak', new Error('streak read failed'), req);
   }
 
   const isMilestoneToday = (MILESTONES as readonly number[]).includes(current);

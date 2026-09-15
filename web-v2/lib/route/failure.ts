@@ -37,6 +37,9 @@
  * was. This file is exclusively for "we could not read it".
  */
 import { NextResponse } from 'next/server';
+import { correlationIdFromHeaders, newCorrelationId } from '@/lib/observability/constants';
+import { classifyFailure } from '@/lib/observability/classify';
+import { recordRequestFailure } from '@/lib/observability/record';
 
 /** Coach voice, and true of every cause: a dropped connection, a statement
  *  timeout, an exhausted pool. It says what happened, it does not guess why,
@@ -49,13 +52,63 @@ const OUTAGE_MESSAGE = 'We could not read your training just now. Nothing is los
  * a 500 reads as "this is broken", a 503 reads as "ask again", and the
  * second is both truer and what the phone should act on.
  *
+ * OUTAGE-OBSERVABILITY-1 (2026-09-15) — this function RETURNS a
+ * `NextResponse` rather than throwing (the correct shape for the runner,
+ * see this file's own header above), which means Next's `onRequestError`
+ * hook — the thing that feeds `request_failures` — never fires for any
+ * `outage()` call. Confirmed live, F162: David's own repro produced 19 real
+ * `[route] outage:` log lines on `v5/today` in one burst and ZERO rows in
+ * `request_failures` — this was the exact blind spot that made every prior
+ * investigation tonight work from disconnected snapshots instead of durable
+ * evidence. `req` is now required so every caller records a real,
+ * queryable row alongside the console log. Fire-and-forget, never
+ * `await`ed: an outage is frequently a pool-pressure situation already, and
+ * awaiting a second `pool.query()` here would make an already-slow
+ * response slower — exactly the mechanism this investigation traced.
+ * `recordRequestFailure()` never throws (see its own header), so this
+ * cannot break the response either way.
+ *
  * @param where  route tag for the server log, e.g. `'v5/today'`.
  * @param err    the real error. Logged, never sent.
+ * @param req    the incoming request — carries the correlation id and
+ *               method for the durable record. Required, not optional, so
+ *               a future `outage()` call site cannot silently reintroduce
+ *               this blind spot by omitting it. Typed the same way
+ *               `lib/auth/session.ts`'s helpers accept a request (`Request`
+ *               or the narrower `{ headers, url? }` shape some internal
+ *               callers construct) — `outage()` is called from both real
+ *               route handlers and that shared auth layer, and `.method`
+ *               is not guaranteed on the narrower shape, so it is read
+ *               defensively rather than assumed.
  */
-export function outage(where: string, err: unknown): NextResponse {
+export function outage(
+  where: string,
+  err: unknown,
+  req: Request | { headers: Headers; url?: string },
+): NextResponse {
   const detail = err instanceof Error ? `${err.name}: ${err.message}` : String(err);
   // The stack is the useful half when the message is a bare driver string.
   console.error(`[${where}] outage:`, detail, err instanceof Error ? err.stack : '');
+
+  const correlationId = correlationIdFromHeaders(req.headers) ?? newCorrelationId();
+  const classified = classifyFailure(err);
+  // `.catch()` guard, not just `void`: `recordRequestFailure`'s own header
+  // says it never throws/rejects, but this call site must not depend on
+  // that promise holding forever — an unhandled rejection here would be
+  // exactly the "observability took the request down" failure Rule 18
+  // exists to prevent, even though today it can't actually happen.
+  void recordRequestFailure({
+    correlationId,
+    routePath: where,
+    httpMethod: 'method' in req && typeof req.method === 'string' ? req.method : 'UNKNOWN',
+    failureClass: classified.failureClass,
+    httpStatus: 503,
+    error: err,
+    upstreamService: classified.upstreamService,
+    source: 'lib/route/failure.outage',
+    metadata: { detail: classified.detail },
+  }).catch(() => {});
+
   return NextResponse.json(
     { error: 'outage', message: OUTAGE_MESSAGE },
     { status: 503, headers: { 'Cache-Control': 'no-store' } },

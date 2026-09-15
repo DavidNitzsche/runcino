@@ -72,8 +72,7 @@ export async function POST(req: NextRequest) {
       [auth],
     ),
   );
-  if (ob === null) return outage('auth/set-password', new Error('onboarding_complete read failed'));
-
+  if (ob === null) return outage('auth/set-password', new Error('onboarding_complete read failed'), req);
   return NextResponse.json({
     ok: true,
     redirect: ob?.onboarding_complete ? '/today' : '/onboarding',

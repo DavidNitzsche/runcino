@@ -655,6 +655,6 @@ async function handleGET(req: NextRequest) {
     });
   } catch (err: unknown) {
     // Was `err?.message` in the body.
-    return outage('v5/races', err);
+    return outage('v5/races', err, req);
   }
 }

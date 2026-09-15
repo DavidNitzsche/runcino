@@ -67,7 +67,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     return await submitReturnCheckin(req);
   } catch (err) {
-    return outage('v5/return/checkin', err);
+    return outage('v5/return/checkin', err, req);
   }
 }
 

@@ -46,7 +46,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     return await readReturn(req);
   } catch (err) {
-    return outage('v5/return', err);
+    return outage('v5/return', err, req);
   }
 }
 

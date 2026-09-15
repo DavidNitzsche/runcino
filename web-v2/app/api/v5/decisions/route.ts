@@ -37,9 +37,9 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     const today = await runnerToday(userId);
     const read = await loadV5Decisions(userId, today);
-    if (!read.ok) return outage('v5/decisions', read.error);
+    if (!read.ok) return outage('v5/decisions', read.error, req);
     return NextResponse.json({ ok: true, decisions: read.decisions });
   } catch (err) {
-    return outage('v5/decisions', err);
+    return outage('v5/decisions', err, req);
   }
 }

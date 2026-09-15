@@ -383,6 +383,6 @@ export async function POST(req: NextRequest) {
   } catch (err: unknown) {
     // Was `err?.message` in the body. The 4xx refusals above still carry
     // their own `reason` — that split is the whole point of rule three.
-    return outage('v5/goal-answer', err);
+    return outage('v5/goal-answer', err, req);
   }
 }

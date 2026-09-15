@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
       [proposalId, userId],
     )).rows[0];
   } catch (e) {
-    return outage('api/plan/proposal', e);
+    return outage('api/plan/proposal', e, req);
   }
 
   if (!proposal) {
@@ -203,7 +203,7 @@ export async function POST(req: NextRequest) {
         [userId, raceSlug, framing],
       )).rowCount ?? 0;
     } catch (e) {
-      return outage('api/plan/proposal · race_goal_framing', e);
+      return outage('api/plan/proposal · race_goal_framing', e, req);
     }
     if (raceRows === 0) {
       // The race row is gone · nothing to frame. Resolve the card rather
@@ -269,7 +269,7 @@ export async function POST(req: NextRequest) {
       const { applyRaceRole } = await import('@/lib/race/race-role-apply');
       applied = await applyRaceRole({ userId, raceSlug, role, category });
     } catch (e) {
-      return outage('api/plan/proposal · race_role', e);
+      return outage('api/plan/proposal · race_role', e, req);
     }
     if (!applied.ok) {
       await pool.query(
@@ -313,7 +313,7 @@ export async function POST(req: NextRequest) {
       [proposal.plan_id, userId],
     )).rows[0];
   } catch (e) {
-    return outage('api/plan/proposal', e);
+    return outage('api/plan/proposal', e, req);
   }
 
   // 2026-08-28 · a no-race plan is no longer an automatic dead-end. The

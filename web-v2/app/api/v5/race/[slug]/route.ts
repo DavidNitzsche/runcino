@@ -506,6 +506,6 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
     });
   } catch (err: unknown) {
     // Was `err?.message` in the body.
-    return outage('v5/race/[slug]', err);
+    return outage('v5/race/[slug]', err, req);
   }
 }

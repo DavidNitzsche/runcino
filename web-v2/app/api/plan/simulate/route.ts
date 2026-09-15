@@ -99,6 +99,6 @@ export async function POST(req: NextRequest) {
     // REFUSAL out of, so this put a Postgres string where the engine's own
     // sentence goes. The 500 kept it from decoding as `.absent`, which is
     // luck, not design.
-    return outage('plan/simulate', err);
+    return outage('plan/simulate', err, req);
   }
 }

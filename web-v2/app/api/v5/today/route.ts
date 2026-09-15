@@ -284,7 +284,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
     try {
       return await composeToday(req);
     } catch (err) {
-      return outage('v5/today', err);
+      return outage('v5/today', err, req);
     }
   });
 }

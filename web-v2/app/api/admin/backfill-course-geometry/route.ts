@@ -60,7 +60,7 @@ async function run(req: NextRequest, commit: boolean, body: Record<string, unkno
 
   // A failed candidate read must not render as "nothing needed backfilling".
   if (result.plans === null) {
-    return outage('admin/backfill-course-geometry', new Error('candidate read failed'));
+    return outage('admin/backfill-course-geometry', new Error('candidate read failed'), req);
   }
 
   return NextResponse.json({

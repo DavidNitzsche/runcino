@@ -73,7 +73,7 @@ export async function GET(req: NextRequest) {
   // route is the reason that distinction has to survive the trip.
   const goals = await loadPersonalGoals(userId);
   // A failed read is not an empty goal list.
-  if (goals === null) return outage('api/goals', new Error('personal_goals read failed'));
+  if (goals === null) return outage('api/goals', new Error('personal_goals read failed'), req);
   return NextResponse.json({ ok: true, goals });
 }
 

@@ -56,7 +56,7 @@ export async function GET(req: NextRequest): Promise<NextResponse> {
   try {
     return await readPaces(req);
   } catch (err) {
-    return outage('v5/paces', err);
+    return outage('v5/paces', err, req);
   }
 }
 
@@ -289,7 +289,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
     return await settlePaces(req);
   } catch (err) {
-    return outage('v5/paces', err);
+    return outage('v5/paces', err, req);
   }
 }
 
