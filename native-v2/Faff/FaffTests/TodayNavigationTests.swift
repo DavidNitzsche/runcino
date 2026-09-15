@@ -135,4 +135,32 @@ final class TodayNavigationTests: XCTestCase {
         XCTAssertEqual(model.dateISO, "2026-08-19")
         XCTAssertNotEqual(model.dateISO, "2026-08-18", "the payload's own date must never be read as its neighbour's")
     }
+
+    // MARK: - shouldSkipNavigation(from:to:force:) — RETRYNOOP-1
+
+    /// The regression itself: a Retry tap always retries the date already
+    /// being viewed (`from == to`), and without `force` this used to make
+    /// `goTo`'s very first line a silent no-op — before the snapshot check,
+    /// before `navigationTask`, before anything that would actually
+    /// re-fetch. `retryPending` passing `force: true` is the fix.
+    func testRuleEighteenFalsifier_withoutForce_sameDateIsSkipped() {
+        XCTAssertTrue(TodayHostV5.shouldSkipNavigation(from: "2026-09-14", to: "2026-09-14", force: false),
+                       "RULE 18: the pre-fix shape (force always false) must skip a same-date retry — this is the exact bug retryPending's force:true exists to bypass")
+    }
+
+    func testForcedSameDateNavigationIsNeverSkipped() {
+        XCTAssertFalse(TodayHostV5.shouldSkipNavigation(from: "2026-09-14", to: "2026-09-14", force: true),
+                        "a forced retry on the currently-viewed date must proceed, not no-op")
+    }
+
+    /// Every OTHER caller of `goTo` never passes `force` — confirms the
+    /// original "re-tap of the day already showing is a no-op" behaviour is
+    /// completely unchanged for normal navigation.
+    func testUnforcedNavigationToADifferentDateIsNeverSkipped() {
+        XCTAssertFalse(TodayHostV5.shouldSkipNavigation(from: "2026-09-14", to: "2026-09-15", force: false))
+    }
+
+    func testForcedNavigationToADifferentDateIsAlsoNeverSkipped() {
+        XCTAssertFalse(TodayHostV5.shouldSkipNavigation(from: "2026-09-14", to: "2026-09-15", force: true))
+    }
 }
