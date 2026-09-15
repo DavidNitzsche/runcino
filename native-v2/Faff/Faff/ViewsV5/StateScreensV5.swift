@@ -508,7 +508,8 @@ struct WeekOffV5: View {
             return "\(fromISO) – \(toISO)"
         }
 
-        let cal = Calendar(identifier: .gregorian)
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
         // ── US ORDER, WHICH MOVES THE ABBREVIATION TO THE OTHER END ───────
         //
         // David, 2026-08-25: "it should be Month, Day, Year formatted."
@@ -521,8 +522,10 @@ struct WeekOffV5: View {
         // neither convention and reads as a typo.
         let day = DateFormatter(); day.dateFormat = "d"
         day.locale = Locale(identifier: "en_US_POSIX")
+        day.timeZone = TimeZone(identifier: "UTC")
         let monthDay = DateFormatter(); monthDay.dateFormat = "MMMM d"
         monthDay.locale = Locale(identifier: "en_US_POSIX")
+        monthDay.timeZone = TimeZone(identifier: "UTC")
 
         let sameMonth = cal.component(.month, from: from) == cal.component(.month, from: to)
             && cal.component(.year, from: from) == cal.component(.year, from: to)

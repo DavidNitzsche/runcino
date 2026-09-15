@@ -295,6 +295,7 @@
 		FC0ECB647C054902767A8C7E /* BlockV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95083B2C82E448D42B6FAF88 /* BlockV5.swift */; };
 		FC7CC4B4CFF3A0981F28C2FC /* PacesMovedV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2AB92DBD2E38DE9C55813DC /* PacesMovedV5.swift */; };
 		FC97BED1FB9251795A9EFB0D /* V5RaceDecisionEyebrowTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8D38F90211DFEBFE2319A26 /* V5RaceDecisionEyebrowTests.swift */; };
+		3825D4C406311090E9F568FC /* WeekOffV5FormatRangeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 106A5EB6688435652694BAF8 /* WeekOffV5FormatRangeTests.swift */; };
 		FCE849E5CE19B79865639C37 /* WatchRelayQueueTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */; };
 		FD192DE884BE0A0DA2037E99 /* TodayReadinessPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7A4E3C4D2B9F936674A294E /* TodayReadinessPanel.swift */; };
 		FDFB5B7B4C41C8B3C7BBF7C8 /* Haptics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1D4E8F519A9E24A36E4D0BC7 /* Haptics.swift */; };
@@ -657,6 +658,7 @@
 		F837D3062179A0805C934482 /* OFL-Archivo.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-Archivo.txt"; sourceTree = "<group>"; };
 		F8825DD5FD2222468737B3C2 /* OnboardingV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingV5.swift; sourceTree = "<group>"; };
 		F8D38F90211DFEBFE2319A26 /* V5RaceDecisionEyebrowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5RaceDecisionEyebrowTests.swift; sourceTree = "<group>"; };
+		106A5EB6688435652694BAF8 /* WeekOffV5FormatRangeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeekOffV5FormatRangeTests.swift; sourceTree = "<group>"; };
 		F91DFD1C7C031A3F6120FA29 /* WorkoutEngineTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutEngineTests.swift; sourceTree = "<group>"; };
 		F9E67560BFE144A0B9CA885E /* SpokenCues.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpokenCues.swift; sourceTree = "<group>"; };
 		F9F1D1BCD775FDA96459FBA9 /* WorkoutRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutRootView.swift; sourceTree = "<group>"; };
@@ -756,6 +758,7 @@
 				0239713EF9436436A9AF42BF /* WatchRelayQueueTests.swift */,
 				861C565055555BF5D5275FE2 /* WatchWorkoutPhaseRestampTests.swift */,
 				2CED47C2665D8AD913FB6A8A /* WriteHonestyTests.swift */,
+				106A5EB6688435652694BAF8 /* WeekOffV5FormatRangeTests.swift */,
 				E93691724AE1AC883CED76C1 /* ClientSweep */,
 			);
 			path = FaffTests;
@@ -1481,6 +1484,7 @@
 				17A2B4F13337A989E66D9203 /* WireMutator.swift in Sources */,
 				80FA82D609F4EE468280926E /* WireProbe.swift in Sources */,
 				40100A8E3AE6A4BDB727BACD /* WriteHonestyTests.swift in Sources */,
+				3825D4C406311090E9F568FC /* WeekOffV5FormatRangeTests.swift in Sources */,
 				D890CBD5BB89DD7C8418A0D5 /* _SplitsDecompositionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
