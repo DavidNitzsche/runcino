@@ -215,9 +215,13 @@ separably-scoped follow-up, not a corner that was cut.
   (`_rolling_seven_ceiling.test.ts`) were reproduced identically on a freshly
   checked-out, completely unmodified `origin/main` worktree with no F077 changes
   present at all, confirming they are pre-existing failures on `main` today,
-  unrelated to this work. Second full-suite run, after the `MODULE_ORPHANS` fix:
-  clean except for that same pre-existing/environmental set (2 DB-gated + 2
-  pre-existing-on-main), confirming no other regression from this change.
+  unrelated to this work. **Second full-suite run, after the `MODULE_ORPHANS`
+  fix: 4 failed, 12,409 passed, 1 expected fail, 260 skipped** — exactly the
+  pre-existing/environmental set (2 DB-gated + the 2 `_rolling_seven_ceiling.test.ts`
+  failures reproduced on unmodified `origin/main`), and `_audit_placement.test.ts`
+  did not fail this time, confirming that one was the run-to-run flake it looked
+  like. This is the final, confirmed state: zero regressions attributable to this
+  change.
 
 ## Files touched
 
