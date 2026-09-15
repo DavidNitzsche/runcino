@@ -14,7 +14,9 @@ with no active owner is a programme failure and gets assigned in the same check.
 
 ---
 
-## Board (last verified against real `list_sessions` state: 2026-09-15 ~07:45 UTC)
+## Board (last verified against real `list_sessions` state: 2026-09-15 ~08:15 UTC)
+
+**Cycle 8**: F110 and F124 both independently re-confirmed by design review beyond the implementer's own verification — F110 by a fresh on-device render (isolated worktree, `pacebail` archetype), F124 by independently running the code agent's own test suite and observing the refusal log fire. F125's hold now clears both; F111 remains held (blocked by F088's harness limitation, needs console debug logging). Register + F125 updated, pushed (`bf8a435ec`), code agent notified F124 is clear to merge. Design review also refreshed the night summary to reflect both resolutions before it goes into tomorrow's recap.
 
 **Cycle 7**: TestFlight build 294 confirmed live (F056/F057-partial/F072/F073 SHIPPED, register updated). F124 fully resolved (3-way convergence: refuse, mirror blockedByPhone), dispatched to code agent. This cycle: external reviewer → fresh merge-sim across 4 newly-implemented unmerged branches; coach consultant → scoped-first-step read on F096's missing arbitration layer; independent reviewer → contradiction/gap check across F100-F124; design review → status check-in (render still likely blocked).
 
