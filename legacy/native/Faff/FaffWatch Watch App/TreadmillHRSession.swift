@@ -147,6 +147,43 @@ final class TreadmillHRSession: NSObject, ObservableObject {
     /// `TreadmillHRStreamer.swift` (iPhone) needs from this session's writes.
     func start(sessionId: String) async {
         if isActive, self.sessionId == sessionId { return }
+
+        // F124 (2026-09-14) · symmetric guard, the missing mirror of
+        // `WatchRootModel`'s own DUPLICATE-1 (which refuses a WATCH start
+        // when the PHONE already owns a session). Refuse the OTHER
+        // direction here: never take over the watch screen while the
+        // watch's OWN outdoor run already owns it.
+        //
+        // Root cause (confirmed by reading the code, not re-derived):
+        // this method never checked the watch's own run state at all, and
+        // `WorkoutRootView.content` checked `treadmillHR.isActive`
+        // unconditionally BEFORE `model.engine` — so a phone-side
+        // TreadmillView start (mistake, muscle memory, shared-pairing
+        // accident) always won the view-routing decision. The outdoor run
+        // kept recording, invisibly, while the runner lost Pause / Lap /
+        // Skip / End & Save entirely from the wrist, with no way back
+        // short of the phone-side session ending on its own.
+        // `WorkoutRootView.swift` carries the routing-side half of this
+        // fix as a second, independent layer.
+        //
+        // Checked FIRST — before `HKHealthStore.isHealthDataAvailable()`,
+        // before requesting authorization, before `HKWorkoutSession(...)`
+        // is ever constructed — so a refusal costs nothing to unwind: no
+        // second session object is created, `isActive` never flips true,
+        // and the question of whether watchOS tolerates two concurrent
+        // `HKWorkoutSession`s (flagged elsewhere as unconfirmed and
+        // needing real-device verification) simply never arises on this
+        // path, because a second session is never brought into existence.
+        // The phone's caller (`PhoneSync`, both the live-message and
+        // durable-userInfo entry points) already replies `"status":
+        // "failed"` whenever `isActive` stays false after `start()`
+        // returns, so this refusal surfaces through the existing,
+        // already-shipped failure path with no new plumbing.
+        guard !WatchRootModel.ownsActiveRunState else {
+            print("[TreadmillHRSession] refused: watch already owns an active run (F124)")
+            return
+        }
+
         // Close the OLD session by value, not by property. `end()` is async,
         // so the Task ran after this synchronous body finished and operated on
         // the session this method had just created — invalidating the new
