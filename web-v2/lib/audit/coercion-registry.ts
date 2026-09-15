@@ -72,6 +72,18 @@ export interface CoercionExemption {
  */
 export const COERCION_ARGUED: readonly CoercionExemption[] = [
   {
+    id: 'lib/training/vdot.ts::parsePaceMinSec::sec',
+    reason: 'F074 · `sec > 0 ? sec : null` in a pace-string parser, not a measurement reader — there is '
+      + 'no such thing as a legitimate zero here. Unlike `history_avg_weekly_mi` (where 0 is a real, '
+      + 'meaningful self-report ZEROSAY-1 goes out of its way to preserve), a parsed pace of 0 s/mi '
+      + 'means covering a mile in zero time, which is physically impossible and can only be a stray '
+      + '"0:00" typo or a malformed string that happened to match the M:SS regex. There is no consumer '
+      + 'this file could hand a distinguishable "answered zero" state to, because the runner never '
+      + 'typed a pace of zero — the input that produces this branch is indistinguishable from garbage, '
+      + 'so collapsing it into the same null an unparseable string returns is the honest outcome, not '
+      + 'an erasure of a real answer.',
+  },
+  {
     id: 'lib/plan/reanchor-plan.ts::reanchorMaintenance::catch',
     reason: 'FAILS CLOSED, which is this gate\'s own option 2 rather than an argument for erasure. '
       + 'It is `loadEffectiveMaxHr(...).catch(() => null)`, and the single consumer is `hrCapEasy`, '
@@ -894,4 +906,7 @@ export const LOAD_BEARING_KNOWN: readonly string[] = [
   'lib/training/pace-corpus.ts::loadPhasesByDate::catch',
   'lib/training/spec-card.ts::cardFromSpec::sec',
   'lib/training/vdot-gain-rate.ts::secondsPerVdotDelta::gain',
+  // F074 · same shape as spec-card.ts's `cardFromSpec::sec` above — see the
+  // COERCION_ARGUED entry.
+  'lib/training/vdot.ts::parsePaceMinSec::sec',
 ];

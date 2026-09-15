@@ -611,6 +611,27 @@ export function parseRaceTime(s: string | null | undefined): number | null {
   return first * 60 + second;
 }
 
+/**
+ * F074 · parse an "M:SS" or "MM:SS" PACE string (seconds per mile), e.g. the
+ * onboarding "known hard-effort pace" field ("7:45").
+ *
+ * Deliberately NOT `parseRaceTime`. That function's own H:MM-vs-MM:SS
+ * heuristic ("first part <= 9 -> H:MM") is correct for a race FINISH TIME —
+ * "7:45" there means 7 hours 45 minutes is at least conceivable for an
+ * ultra — but a PACE is never longer than a handful of minutes per mile, so
+ * the same heuristic would misread a 7:45/mi pace as 7h45m. A pace string is
+ * always minutes:seconds, no third form, and the plausible band is narrow
+ * enough (sub-3:00 to 30:00/mi covers essentially every human pace) that a
+ * loose sanity bound belongs here rather than a distance-shaped heuristic.
+ */
+export function parsePaceMinSec(s: string | null | undefined): number | null {
+  if (!s) return null;
+  const m = String(s).trim().match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return null;
+  const sec = (+m[1]) * 60 + (+m[2]);
+  return sec > 0 ? sec : null;
+}
+
 export interface RaceVdotCandidate {
   source: 'race';
   slug: string;

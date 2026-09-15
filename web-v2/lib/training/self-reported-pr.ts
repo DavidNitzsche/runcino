@@ -58,7 +58,7 @@
  *     (absent) endurance evidence through the population exponent.
  */
 
-import { vdotFromRace, tPaceFromVdot } from './vdot';
+import { vdotFromRace, tPaceFromVdot, vdotFromTpace, DANIELS_VDOT_MIN, DANIELS_VDOT_MAX } from './vdot';
 import {
   distanceMiOfBucket,
   whenRacedDaysAgo,
@@ -255,4 +255,78 @@ export function prPriorWeight(freshness: number, evidenceCoverage: number): numb
   const f = Number.isFinite(freshness) ? Math.min(1, Math.max(0, freshness)) : 0;
   const c = Number.isFinite(evidenceCoverage) ? Math.min(1, Math.max(0, evidenceCoverage)) : 0;
   return USER_PR_MAX_WEIGHT * f * (1 - c);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3 · F074 fix #2 · THE SELF-REPORTED EFFORT-PACE RUNG
+ *
+ * `profile.effort_pace_sec_per_mi` (migration 172) · onboarding's `.effort`
+ * mode, "a pace you can hold for 20 minutes, honestly". This is the SAME
+ * shape of question as a typed PR above — a keyboard entry, not a witnessed
+ * observation — with one difference that makes it easier, not harder, to
+ * price: it is already a PACE, not a distance+time pair to convert. And it
+ * is already the RIGHT pace: `Research/01-pace-zones-vdot.md` §"Field-test
+ * selection for the Coach" — "30-minute time trial — surfaces threshold pace
+ * directly (last 20 min average pace ≈ LT pace)" — is the doctrine citation
+ * that makes a 20-minute hard effort a direct self-report of THRESHOLD pace,
+ * not a race performance needing a distance-specific VDOT conversion.
+ *
+ * So this reader skips the distance/time/VDOT round trip entirely and treats
+ * the reported number as a T-pace candidate, validated against the SAME
+ * plausibility band a typed PR already uses (`PR_MIN/MAX_PLAUSIBLE_PACE_S_
+ * PER_MI` — Rule 16, one band, not two) and shrunk toward the mileage prior
+ * by the SAME `prPriorWeight` this file already exports — no new weight
+ * constant, because the two are the same shape of claim ("a runner's own
+ * unverified statement about their pace") and Rule 16 says a second
+ * constant for the same quantity is a second answer.
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/** Why a self-reported effort pace was not usable. */
+export type EffortPaceRejection = 'IMPLAUSIBLE_PACE' | 'OFF_VDOT_TABLE';
+
+/** One self-reported effort pace, and what it implies. Rule 11 shape: an
+ *  answer, "nothing on file", or "on file and rejected, here is why" — never
+ *  collapsed to a single null. */
+export type SelfReportedEffortPaceRead =
+  | { ok: true; tPaceSecPerMi: number; vdot: number; freshness: number }
+  | { ok: false; reason: 'NO_EFFORT_PACE_ON_FILE' }
+  | { ok: false; reason: EffortPaceRejection };
+
+/**
+ * Validate a self-reported effort pace and price its freshness.
+ *
+ * PURE — no database, no clock (the caller resolves `daysSinceReported`),
+ * so every branch is falsifiable without a fixture (Rule 18).
+ *
+ * `daysSinceReported` anchors on `profile.onboarding_completed_at` — the
+ * moment the runner told the app this pace — rather than on a race date,
+ * because there is no race here to date: this is a STATEMENT ABOUT WHO THE
+ * RUNNER IS RIGHT NOW, the same shape `USER_PR_HALF_LIFE_DAYS`'s own header
+ * argues a typed PR is (though a PR ages from when it happened; this ages
+ * from when it was SAID). Reusing the identical 365-day half-life rather
+ * than inventing a second one is deliberate — both describe how long an
+ * unwitnessed self-report keeps saying something true before it needs
+ * refreshing, and Rule 16 says that is one quantity.
+ */
+export function readSelfReportedEffortPace(
+  paceSecPerMi: number | null,
+  daysSinceReported: number | null,
+): SelfReportedEffortPaceRead {
+  if (paceSecPerMi == null) return { ok: false, reason: 'NO_EFFORT_PACE_ON_FILE' };
+  if (!Number.isFinite(paceSecPerMi)
+    || paceSecPerMi < PR_MIN_PLAUSIBLE_PACE_S_PER_MI
+    || paceSecPerMi > PR_MAX_PLAUSIBLE_PACE_S_PER_MI) {
+    return { ok: false, reason: 'IMPLAUSIBLE_PACE' };
+  }
+  const vdot = vdotFromTpace(paceSecPerMi);
+  if (vdot == null || vdot < DANIELS_VDOT_MIN || vdot > DANIELS_VDOT_MAX) {
+    // Off the [30,85] Daniels table. Not clamped, same reasoning as a typed
+    // PR's OFF_VDOT_TABLE rejection: a clamp would invent a fitness the
+    // runner never claimed.
+    return { ok: false, reason: 'OFF_VDOT_TABLE' };
+  }
+  const days = daysSinceReported != null && Number.isFinite(daysSinceReported)
+    ? Math.max(0, daysSinceReported) : 0;
+  const freshness = Math.pow(2, -days / USER_PR_HALF_LIFE_DAYS);
+  return { ok: true, tPaceSecPerMi: paceSecPerMi, vdot, freshness };
 }
