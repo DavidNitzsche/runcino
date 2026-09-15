@@ -40,6 +40,7 @@ import {
   type RaceHistoryDistance,
   type RaceHistoryWhen,
 } from './state';
+import { parsePaceMinSec } from '@/lib/training/vdot';
 
 export const VALID_DISTANCES = new Set(['5k', '10k', 'half', 'marathon', 'none', 'coached']);
 export const VALID_TT_DISTANCES = new Set<TTDistance>(['1mi', '5k', '10k']);
@@ -85,6 +86,31 @@ export function validateRaceHistory(raw: unknown): RaceHistoryEntry[] {
   return out;
 }
 
+/**
+ * F074 fix #1 · a single "recent race" entry (onboarding `.recent` mode),
+ * validated with the EXACT SAME rule `validateRaceHistory` applies to every
+ * `raceHistory[]` entry (distance/timeSec/whenRaced/otherDistanceMi) — Rule
+ * 16, one validator, not a second one that could drift from it. Returned
+ * separately from `raceHistory` because this one entry does NOT go into
+ * `profile.race_history` (the low-confidence `user_prior` ladder every other
+ * self-reported PR feeds) — the coach-consult ruling (2026-09-14-017) is
+ * explicit that a recent race is doctrine's own rung-1 evidence and belongs
+ * in `races.actual_result` through the existing race-evidence pathway, not a
+ * bespoke onboarding concept. See `POST /api/onboarding/complete`'s own
+ * `writeOnboardingRecentRace`.
+ */
+export function validateRecentRace(raw: unknown): RaceHistoryEntry | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  return validateRaceHistory([raw])[0] ?? null;
+}
+
+/** F074 fix #3 · onboarding "time off" weeks. Sane band: 0 (answered but
+ *  says "no time off" — distinct from never answering, Rule 11) to 208 (4
+ *  years — beyond that this is "I used to run", not a resumable layoff; see
+ *  migration 172's own header). */
+export const LAYOFF_WEEKS_MIN = 0;
+export const LAYOFF_WEEKS_MAX = 208;
+
 export function isValidDate(v: unknown): v is string {
   return typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 }
@@ -113,6 +139,20 @@ export interface OnboardingCompleteInputs {
   /** null when the runner gave no evidence at all · see CAP-2-NULL. */
   experienceLevel: string | null;
   raceHistory: RaceHistoryEntry[];
+  /** F074 fix #1 · onboarding `.recent` mode, validated · see
+   *  `validateRecentRace`. Written to `races.actual_result`, never to
+   *  `profile.race_history`. */
+  recentRace: RaceHistoryEntry | null;
+  /** F074 fix #2 · onboarding `.effort` mode, seconds/mi · see
+   *  `readSelfReportedEffortPace` (capacity-resolver's consumer). Loosely
+   *  bounded here (parseable M:SS); the real plausibility gate is
+   *  self-reported-pr.ts's PR_MIN/MAX_PLAUSIBLE_PACE_S_PER_MI, applied at
+   *  read time so a value that was plausible when typed but looks wrong
+   *  after a later re-derivation of the band is never silently stuck. */
+  effortPaceSecPerMi: number | null;
+  /** F074 fix #3 · onboarding `.timeoff` mode, weeks. Null = never answered
+   *  (Rule 11 — distinct from 0, "answered no time off"). */
+  layoffWeeks: number | null;
   histAvgMi: number | null;
   histLongMi: number | null;
   birthday: string | null;
@@ -237,6 +277,34 @@ export function deriveOnboardingComplete(
   // 2026-06-03 · race history capture (TASK B4).
   const raceHistory = validateRaceHistory(body.raceHistory);
 
+  // F074 fix #1 · recent race (onboarding `.recent` mode) · own field,
+  // own validator call, never merged into raceHistory (see
+  // `validateRecentRace`'s header for why the two stay separate).
+  const recentRace = validateRecentRace(body.recentRace);
+
+  // F074 fix #2 · effort pace (onboarding `.effort` mode). Accepts either a
+  // native "M:SS" pace string (what OnboardingV5's FaffInput collects today)
+  // or a pre-parsed seconds value, so a future client that already computed
+  // seconds doesn't have to round-trip through a string. Loose sanity bound
+  // matches migration 172's DB CHECK; the real plausibility gate lives in
+  // self-reported-pr.ts and runs at READ time (Rule 11 — this route stores
+  // what was typed, it does not decide whether to believe it).
+  const effortPaceSecPerMi = (() => {
+    const fromString = typeof body.effortPace === 'string' ? parsePaceMinSec(body.effortPace) : null;
+    const fromNumber = Number.isFinite(Number(body.effortPaceSecPerMi)) ? Number(body.effortPaceSecPerMi) : null;
+    const sec = fromString ?? fromNumber;
+    return sec != null && sec >= 120 && sec <= 1800 ? Math.round(sec) : null;
+  })();
+
+  // F074 fix #3 · time off (onboarding `.timeoff` mode) · weeks. The
+  // PRE-BREAK weekly mileage from the same screen reuses the existing
+  // `weeklyMi`/`histAvg` fields above — this is the one field neither of
+  // those can carry (see migration 172's header).
+  const layoffWeeks = Number.isFinite(Number(body.layoffWeeks))
+      && Number(body.layoffWeeks) >= LAYOFF_WEEKS_MIN
+      && Number(body.layoffWeeks) <= LAYOFF_WEEKS_MAX
+    ? Math.round(Number(body.layoffWeeks)) : null;
+
   // Convert chip ranges → integer midpoints for the DB (history_* columns).
   const histAvgMi = histAvg ? HIST_AVG_MIDPOINTS[histAvg] : null;
   const histLongMi = histLong ? HIST_LONG_MIDPOINTS[histLong] : null;
@@ -279,6 +347,7 @@ export function deriveOnboardingComplete(
     distance, isCoached, isRace, date, time, name, timezone, connectionsSkipped,
     ttDistance, ttTime, ttTimeSeconds, weeklyMi, weeklyFreq,
     histAvg, histLong, histYears, experienceLevel, raceHistory,
+    recentRace, effortPaceSecPerMi, layoffWeeks,
     histAvgMi, histLongMi, birthday, sex, heightCm, ageNum,
     longRunDay, restDay, startDate,
   };

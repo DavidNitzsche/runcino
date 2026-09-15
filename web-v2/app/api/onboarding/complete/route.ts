@@ -82,6 +82,11 @@ import { seedMaintenancePlanFromOnboarding } from '@/lib/plan/seed-from-onboardi
 import { generatePlan } from '@/lib/plan/generate';
 import { bustBriefingCacheForEvent } from '@/lib/coach/cache';
 import { distanceMiFromLabel } from '@/lib/race/distance'; // 2026-07-06 · P1-17 · shared label→mi parser
+// F074 fix #1 · recent race → races.actual_result. The pure computation
+// lives in lib/race/onboarding-recent-race.ts (falsifiable with no
+// database); this route only supplies the DB call and the Rule-6 SQL.
+import { type RaceHistoryEntry } from '@/lib/training/race-history';
+import { buildRecentRaceWrite } from '@/lib/race/onboarding-recent-race';
 
 // The validators and the derivation moved to lib/onboarding/complete-inputs.ts
 // (2026-08-24, byte-identical) so the front door can be walked with no
@@ -116,6 +121,7 @@ export async function POST(req: NextRequest) {
     distance, isCoached, isRace, date, time, name, timezone, connectionsSkipped,
     ttDistance, ttTime, ttTimeSeconds, weeklyMi, weeklyFreq,
     histAvg, histLong, histYears, experienceLevel, raceHistory,
+    recentRace, effortPaceSecPerMi, layoffWeeks,
     histAvgMi, histLongMi, birthday, sex, heightCm, ageNum,
     longRunDay, restDay, startDate,
   } = derived;
@@ -235,7 +241,15 @@ export async function POST(req: NextRequest) {
           -- onboarding runner who fixes "advanced" → "beginner" was stuck at
           -- advanced and handed the interval machine (workflow MAJOR). Keep the
           -- existing value only when the new payload omits it ($21 IS NULL).
-          experience_level        = COALESCE($21, experience_level)
+          experience_level        = COALESCE($21, experience_level),
+          -- F074 fix #2/#3 · same correctable-answer treatment as
+          -- weeklyMi/histAvg above (re-onboarding restates the current
+          -- answer), not the write-once treatment birthday/sex/height get —
+          -- these describe the runner's CURRENT self-report, not a fixed
+          -- physiological fact. Omitting either on re-onboarding clears it,
+          -- same as weeklyMi/histAvg do today.
+          effort_pace_sec_per_mi  = $22,
+          history_layoff_weeks    = $23
         WHERE user_uuid = $14
         RETURNING user_uuid`,
       [
@@ -254,6 +268,8 @@ export async function POST(req: NextRequest) {
         // keys are never clobbered.
         JSON.stringify(settingsPatch),
         experienceLevel,
+        effortPaceSecPerMi,
+        layoffWeeks,
       ]
     );
 
@@ -275,14 +291,16 @@ export async function POST(req: NextRequest) {
             birthday, sex, height_cm, age,
             race_history,
             user_settings,
-            experience_level
+            experience_level,
+            effort_pace_sec_per_mi, history_layoff_weeks
           ) VALUES (
             $1::text, $1::uuid, $2, $3, $4, $5, $6, NOW(), NOW(), $7,
             $8, $9, $10, $11, $12, $13, $14,
             $15::date, $16, $17, $18,
             $19::jsonb,
             $20::jsonb,
-            $21
+            $21,
+            $22, $23
           )`,
         [
           userId, goalDistanceForProfile, date, time, name, timezone, connectionsSkipped,
@@ -292,6 +310,8 @@ export async function POST(req: NextRequest) {
           JSON.stringify(raceHistory.map((e) => ({ ...e, source: 'self_reported' }))),
           JSON.stringify(settingsPatch),
           experienceLevel,
+          effortPaceSecPerMi,
+          layoffWeeks,
         ]
       );
     }
@@ -305,6 +325,17 @@ export async function POST(req: NextRequest) {
     }, { status: 500 });
   } finally {
     client.release();
+  }
+
+  // ── F074 fix #1 · recent race → races.actual_result ────────────────
+  // Best-effort, same posture as the goal-race / seedPlan writes below: a
+  // failure here must never block onboarding. Outside the txn above on
+  // purpose — it writes to `races`, not `profile`, and every other
+  // `races` write this route makes (the goal race, further down) is
+  // already outside that txn for the same reason.
+  let recentRaceResult: { ok: boolean; slug?: string; error?: string } | null = null;
+  if (recentRace) {
+    recentRaceResult = await writeOnboardingRecentRace(userId, recentRace);
   }
 
   // ── Seed the runner's first plan ───────────────────────────────
@@ -476,7 +507,58 @@ export async function POST(req: NextRequest) {
     success: true,
     redirect: '/onboarding?step=done',
     ...(seedPlan ? { plan: seedPlan } : {}),
+    ...(recentRaceResult ? { recentRace: recentRaceResult } : {}),
   });
+}
+
+/**
+ * F074 fix #1 · onboarding "recent race" → `races.actual_result`, through
+ * the SAME Rule-6 field-level jsonb merge `/api/race/result` uses (never a
+ * full-replace upsert — CLAUDE.md Rule 6). Deliberately does NOT call that
+ * route's `runPostResultChain`: this race has no plan and is not the
+ * runner's goal race, so there is nothing to re-project, no coach_intent to
+ * stamp, and no plan to archive — the chain exists for a race the runner
+ * just finished mid-plan, and firing it here would archive a plan that does
+ * not exist yet and author a "next race" plan off a fictitious event.
+ *
+ * The computation (slug, meta, actual_result) is `buildRecentRaceWrite`
+ * (`lib/race/onboarding-recent-race.ts`), pulled out pure for the same
+ * reason `complete-inputs.ts` was: falsifiable with no database
+ * (`_onboarding_recent_race.test.ts`). This function is the one impure
+ * line — the SQL and its Rule-6 CASE guard.
+ */
+async function writeOnboardingRecentRace(
+  userId: string,
+  entry: RaceHistoryEntry,
+): Promise<{ ok: boolean; slug?: string; error?: string }> {
+  const built = buildRecentRaceWrite(userId, entry);
+  if (!built.ok) return { ok: false, error: built.error };
+  const { slug, meta, actualResult } = built.write;
+  try {
+    await pool.query(
+      `INSERT INTO races (slug, user_uuid, meta, plan, gpx_text, actual_result)
+       VALUES ($1, $2, $3::jsonb, '{}'::jsonb, '', $4::jsonb)
+       ON CONFLICT (slug, user_uuid) DO UPDATE
+         SET meta = races.meta || jsonb_strip_nulls(EXCLUDED.meta),
+             -- Rule 6: field-level merge, never full-replace. AND: if a real
+             -- confirmed result has since landed on this slug (e.g. a future
+             -- surface let the runner lock in a chip time against it), a
+             -- re-onboarding replay of the same self-report must not
+             -- downgrade it back to provisional — the CASE guard is the
+             -- verification this fix's own report asks for.
+             actual_result = CASE
+               WHEN races.actual_result IS NULL
+                 OR races.actual_result ->> 'source' = 'onboarding_self_report'
+               THEN COALESCE(races.actual_result, '{}'::jsonb) || EXCLUDED.actual_result
+               ELSE races.actual_result
+             END
+       WHERE races.user_uuid = EXCLUDED.user_uuid`,
+      [slug, userId, JSON.stringify(meta), JSON.stringify(actualResult)],
+    );
+    return { ok: true, slug };
+  } catch (err: unknown) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /** Slug for the races row. Mirrors POST /api/race's slugify exactly so
