@@ -25,6 +25,56 @@ final class WatchRootModel: ObservableObject {
     @Published var engine: WorkoutEngine?
     /// One tracker for the app's lifetime; the engine binds to it per run.
     let tracker = WorkoutTracker()
+
+    // MARK: - F124 (2026-09-14) · symmetric guard, opposite direction of DUPLICATE-1
+    //
+    // DUPLICATE-1 (below/PhoneSync) refuses a WATCH start when the PHONE
+    // already owns a running session. This is the missing mirror on the
+    // other axis: a phone-driven TreadmillHRSession must not silently take
+    // over the watch screen while the watch's OWN outdoor run already owns
+    // it. Root cause of F124 — confirmed by reading the code, not
+    // re-derived here — was two-fold:
+    //   1. `WorkoutRootView.content` checked `treadmillHR.isActive`
+    //      unconditionally, BEFORE `model.engine`, so an indoor HR bridge
+    //      session (started by the phone's TreadmillView — by mistake,
+    //      muscle memory, or a shared-pairing accident) always won the
+    //      view-routing decision regardless of an active outdoor run.
+    //   2. `TreadmillHRSession.start()` had NO guard at all against a
+    //      watch-owned run already in progress — unlike this direction,
+    //      which DUPLICATE-1 already closed.
+    // The runner lost Pause/Lap/Skip/End&Save entirely from the wrist,
+    // with the outdoor run still recording, silently, underneath.
+    //
+    // `current` is a weak self-reference so `TreadmillHRSession` — a
+    // process-lifetime singleton unrelated to this view-owned model — can
+    // synchronously ask "does the watch itself already own a run?" without
+    // wiring a new pipe between them. Exactly one `WorkoutRootView` /
+    // `WatchRootModel` exists for the app's lifetime, so this is a de
+    // facto singleton lookup, not a new global.
+    //
+    // `ownsActiveRunState` deliberately reads the SAME three properties
+    // `content` already treats as "the watch owns this screen" —
+    // `engine`, `recoveredRun`, `recoverySummary` — rather than a separate
+    // flag set/cleared at N call sites (bind/reset/attemptRecovery/
+    // endAndSaveRecovered/discardRecovered/dismissRecoverySummary). A
+    // second flag can drift out of sync with the router it's meant to
+    // describe; reading the router's own source of truth cannot.
+    private static weak var current: WatchRootModel?
+
+    /// True while the watch's own run-related state — an active engine
+    /// (countdown / running / idle-transient-after-discard / finished-
+    /// awaiting-Done), a crash-recovery decision awaiting RESUME / END &
+    /// SAVE / discard, or a just-finished recovery summary — would be
+    /// silently swapped away by a treadmill HR bridge session taking the
+    /// screen. Read by `TreadmillHRSession.start()`; see F124.
+    static var ownsActiveRunState: Bool {
+        guard let m = current else { return false }
+        return m.engine != nil || m.recoveredRun != nil || m.recoverySummary != nil
+    }
+
+    init() {
+        Self.current = self
+    }
     /// Forwards the engine's phase-state changes so the router below re-runs
     /// when the engine moves countdown → running → finished. Without this the
     /// root only observes `model`, so a state flip after the engine is
@@ -478,13 +528,20 @@ struct WorkoutRootView: View {
 
     @ViewBuilder
     private var content: some View {
-        if treadmillHR.isActive {
-            // iPhone TreadmillView started us · take over the watch
-            // screen with the live HR display. Takes precedence over
-            // the idle TabView so a wrist-glance during the treadmill
-            // session shows the heart rate immediately.
-            TreadmillHRView()
-        } else if let summary = model.recoverySummary {
+        // F124 (2026-09-14) · `treadmillHR.isActive` used to be checked
+        // FIRST, unconditionally, ahead of every one of the watch's own
+        // run states below. `TreadmillHRSession.start()` now refuses to
+        // flip `isActive` true while `WatchRootModel.ownsActiveRunState`
+        // holds (see that guard for the full root-cause trace), so this
+        // branch should never fire while a run is live — but the ordering
+        // itself was half the bug, and a route this safety-relevant gets
+        // a second, independent layer: the watch's own recovery summary /
+        // recovery decision / active engine are checked FIRST, so even a
+        // future caller of `TreadmillHRSession` that forgets the guard
+        // cannot strip Pause/Lap/Skip/End&Save from a run already on
+        // screen. Only once none of those hold does a treadmill HR bridge
+        // session get to take the screen.
+        if let summary = model.recoverySummary {
             // END & SAVE receipt — the recovered run's numbers, then home.
             WatchRecoveryReceiptV5(
                 summary: summary,
@@ -574,6 +631,16 @@ struct WorkoutRootView: View {
                         model.tracker.dropGPS()
                     }
             }
+        } else if treadmillHR.isActive {
+            // F124 · iPhone TreadmillView started us · take over the watch
+            // screen with the live HR display. Only reached here, AFTER
+            // recoverySummary / recoveredRun / engine all came back nil —
+            // see this method's top-of-function comment for why the order
+            // changed. A wrist-glance during a genuine treadmill session
+            // (no outdoor run in progress) still shows the heart rate
+            // immediately; the change is that a live outdoor run can no
+            // longer be shouldered aside by it.
+            TreadmillHRView()
         } else if model.blockedByPhone {
             // DUPLICATE-1 (round 5) · a Start/Just Run tap was refused
             // because the phone already owns a session. Reuses the same
