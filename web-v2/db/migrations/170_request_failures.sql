@@ -1,15 +1,16 @@
 -- 170_request_failures.sql
 --
 -- ══════════════════════════════════════════════════════════════════════════
--- NOT APPLIED TO PRODUCTION. APPLIED AND EXERCISED ON A LOCAL SCRATCH DB
--- (`faff_observability_scratch`, loopback, created for the purpose) — see
--- `web-v2/lib/observability/_observability_falsification.test.ts` for the
--- falsification run against it. This migration AWAITS DAVID'S EXPLICIT
--- PER-STATEMENT DDL GO before it is run against Railway, per CLAUDE.md's
--- "Operational vs decision vs external" section (DDL/data writes require a
--- separate explicit go, distinct from code-change approval) and per the
--- precedent 166_plan_decision_ledger.sql already set for this exact posture.
--- It does not touch, reorder, or renumber migration 166 or its packet.
+-- APPLIED TO PRODUCTION 2026-09-15, David's explicit per-statement DDL go
+-- relayed via David's Desk during F159/F161 (backend architecture review) —
+-- table/indexes verified present via a fresh read-only query immediately
+-- after, per this project's own discipline against trusting an apply
+-- command's own exit code alone. Previously: applied and exercised only on a
+-- local scratch DB (`faff_observability_scratch`, loopback) — see
+-- `web-v2/lib/observability/_observability_falsification.test.ts` for that
+-- falsification run. Per the precedent 166_plan_decision_ledger.sql already
+-- set for this exact posture. Does not touch, reorder, or renumber migration
+-- 166 or its packet.
 -- ══════════════════════════════════════════════════════════════════════════
 --
 -- THE DURABLE 5XX / TIMEOUT LOG. Backs the bounded, non-destructive
