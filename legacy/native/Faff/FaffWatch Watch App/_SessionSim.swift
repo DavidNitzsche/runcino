@@ -183,6 +183,52 @@ enum SessionSim {
                                label: "Heart rate over 173 and still climbing · drop to easy",
                                evidence: "Heart rate over 173 and still climbing",
                                judgement: "The stimulus is already banked · forcing the rest of the reps buys fatigue, not fitness.")])
+        case "pacebail":
+            /* F110 · the PACE BAIL, on the exact shape that used to starve it.
+             *
+             * `shouldOfferBailNow`'s pace path fires at `milesAdrift >= 2`,
+             * and `milesAdrift` only ever moves inside `noteMileBand()`
+             * (`WorkoutEngine.tick()`). Before this fix that call was gated
+             * on `allowSplitFlash`, which is false for the whole of a
+             * multi-rep interval/threshold/tempo work phase BY DESIGN — so a
+             * mile crossed mid-rep never reached the counter, and a session
+             * built exactly like this one (2 x 3 mi tempo, tight 8 s/mi
+             * band) could drift for the entire session without the bail
+             * this rule authored ever having a chance to fire. `racebail`
+             * and `thresholdbail` above both drive an HR-metric rule, which
+             * reads `ruleBreachSec` (a different accumulator, fixed earlier
+             * tonight under F066) — neither exercises this accumulator, or
+             * this starvation, at all. This archetype is the only one that
+             * does.
+             *
+             * `mi: 3.0` on each work phase — not 1.0, like `thresholdbail` —
+             * so a mile boundary is actually crossed MID-REP rather than
+             * landing on a rep's own edge, which is the specific shape the
+             * finding named ("a mile crossed mid-rep during a 2-3mi work
+             * phase").
+             *
+             * Run it: `-sim pacebail -warp 30`. The default mock drift
+             * (18 s/mi sinusoid) against this session's 8 s/mi tempo
+             * tolerance already wanders out of band most of the time; pass
+             * `-pacedrift 40` for a large, sustained drift that keeps every
+             * sample off target, so the bail fires deterministically rather
+             * than depending on where the sine wave lands. No `-hr` needed —
+             * this rule's `metric` is `pace`, not `hr`.
+             */
+            var qp = [phase(0, .warmup, "Warm-up", sec: 300, haptic: .start)]
+            for _ in 0..<2 {
+                qp.append(phase(qp.count, .work, "Tempo · 3 mi", sec: 1200, target: 391, tol: 8, mi: 3.0))
+                qp.append(phase(qp.count, .recovery, "Recovery", sec: 180, haptic: .transitionRecovery))
+            }
+            qp.append(phase(qp.count, .cooldown, "Cool-down", sec: 300, haptic: .transitionCooldown))
+            return workout("sim-pacebail", "2 x 3 mi tempo", qp, distanceMi: 7.5,
+                           rules: [WatchRule(
+                               kind: "bail", metric: "pace",
+                               scope: "work", action: "drop_to_easy",
+                               label: "Two miles adrift · drop to easy",
+                               evidence: "Two miles adrift",
+                               judgement: "The pace has not landed for two miles running · drop to easy and bank what the session already gave you.")])
+
         case "recovery-end":
             // THE 2026-09-02 DEAD END, reproduced.
             //

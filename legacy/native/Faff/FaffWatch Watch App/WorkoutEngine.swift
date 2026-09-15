@@ -1460,7 +1460,39 @@ final class WorkoutEngine: ObservableObject {
         // "am I in a short effort I should not interrupt", and a race never is.
         let allowSplitFlash = isRace || currentPhase?.type != .work
             || isEasyBandSingleWork || isLongBuildPhase
-        if allowSplitFlash, mileIndex > lastMileIndex {
+        // F110 (2026-09-14) · `allowSplitFlash` IS A DISPLAY GATE, FULL STOP.
+        //
+        // It used to also gate `noteMileBand()`, which is the ONLY call site
+        // that ever moves `milesAdrift` — the accumulator `shouldOfferBailNow`
+        // reads for the pace bail (`milesAdrift >= 2`, a few hundred lines
+        // down). So on a multi-rep interval/threshold/tempo session —
+        // `allowSplitFlash` is false there BY DESIGN, precisely so a mile
+        // boundary mid-rep doesn't take the screen — every mile crossed
+        // during the 2-3 mi work phases that make up the session never
+        // updated the drift counter at all. The bail this rule exists to
+        // protect a quality session with was starved of the exact data it
+        // needs, during the exact sessions it most needs to fire on. Outside
+        // a work phase the crossings DID reach it, so a lucky in-band mile
+        // right after a work block could reset whatever partial drift had
+        // banked before the block even started — the counter working against
+        // the rare crossings that were supposed to count, not because the
+        // reset logic itself is wrong (it isn't: see `noteMileBand`'s own
+        // doc), but because starvation elsewhere made its input unreliable.
+        //
+        // Same class of bug, same shape of fix as F066 (the race-abort / HR
+        // bail wiring, this same file, hours earlier tonight): a safety
+        // accumulator gated on a DISPLAY decision instead of updating
+        // unconditionally and only gating what's drawn. Rule 21 territory —
+        // a bail that is wired, tested and inert on the exact runs that need
+        // it is this codebase's signature failure.
+        //
+        // The fix: `noteMileBand()` moves out to the bookkeeping every mile
+        // crossing already ran unconditionally (`mileSplits` /
+        // `lastMileIndex`, previously duplicated verbatim in both branches
+        // below — now written once). `allowSplitFlash` still gates — and
+        // ONLY gates — the split board + haptic, which is the one thing it
+        // was ever supposed to decide.
+        if mileIndex > lastMileIndex {
             // If GPS jumps multiple integers in one tick (rare, e.g. a sim
             // teleport), we only flash the most-recent mile rather than
             // queuing several — the runner can't process N flashes anyway.
@@ -1468,32 +1500,36 @@ final class WorkoutEngine: ObservableObject {
             mileSplits.append((unitIndex: mileIndex, sec: lapSec))
             lastMileElapsedSec = totalElapsedSec
             lastMileIndex = mileIndex
+            // UNCONDITIONAL — see F110 note above. Every real mile crossing
+            // reaches the drift accumulator now, work rep or not; only the
+            // board below is still gated.
             noteMileBand(inBand: paceZone == .onTarget)
-            // A GEL RAISED IN THIS SAME TICK KEEPS THE SCREEN.
-            //
-            // Race gels sit at literal mile markers, so crossing mile 4 raises
-            // both. The gel wins because it asks for an ACTION and this only
-            // reports one — and the split then fires NO HAPTIC, because a tap
-            // for a board the runner will not see is worse than silence: they
-            // look down expecting their mile and find a gel prompt. That
-            // happened at six of a marathon's twenty-six miles.
-            //
-            // The bookkeeping above still ran, so the summary keeps every mile.
-            //
-            // 3.0 seconds, not 6.0. The handoff gives a moment 2-3 and this was
-            // the only cue that took double — noticeable now that a race splits
-            // every mile, where six seconds of every eight minutes had no pace
-            // on screen.
-            Haptics.play(moment: .split)
-            flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 3.0)
-        } else if mileIndex > lastMileIndex {
-            mileSplits.append((unitIndex: mileIndex,
-                               sec: max(1, totalElapsedSec - lastMileElapsedSec)))
-            // Suppressed the flash, but still advance the mile bookkeeping
-            // so the NEXT split (when we leave the work phase) reads the
-            // correct mile number and the correct banked split duration.
-            lastMileElapsedSec = totalElapsedSec
-            lastMileIndex = mileIndex
+            if allowSplitFlash {
+                // A GEL RAISED IN THIS SAME TICK KEEPS THE SCREEN.
+                //
+                // Race gels sit at literal mile markers, so crossing mile 4
+                // raises both. The gel wins because it asks for an ACTION and
+                // this only reports one — and the split then fires NO HAPTIC,
+                // because a tap for a board the runner will not see is worse
+                // than silence: they look down expecting their mile and find
+                // a gel prompt. That happened at six of a marathon's
+                // twenty-six miles.
+                //
+                // The bookkeeping above always runs now, so the summary keeps
+                // every mile whether or not the board was shown for it.
+                //
+                // 3.0 seconds, not 6.0. The handoff gives a moment 2-3 and
+                // this was the only cue that took double — noticeable now
+                // that a race splits every mile, where six seconds of every
+                // eight minutes had no pace on screen.
+                Haptics.play(moment: .split)
+                flash(.split(mileNo: mileIndex, paceSec: lapSec), for: 3.0)
+            }
+            // else: suppressed the flash — e.g. mid-rep on a multi-rep work
+            // phase — but the bookkeeping above (mileSplits, lastMileIndex,
+            // AND now milesAdrift) still ran, so the summary keeps every mile
+            // and the safety accumulator sees every mile, exactly like a mile
+            // crossed anywhere else in the session.
         }
 
 
@@ -2332,6 +2368,18 @@ final class WorkoutEngine: ObservableObject {
     /// Consecutive whole miles the runner has finished outside the band.
     /// Reset the moment a mile lands inside it — the question is about a
     /// pattern, not about one bad mile.
+    ///
+    /// F110 (2026-09-14) · this reset was never the bug. The bug was that
+    /// `noteMileBand()` (below) — the only place this moves — used to be
+    /// gated on `allowSplitFlash` in `tick()`, which is false for the
+    /// entire length of a multi-rep interval/threshold/tempo work phase.
+    /// So a mile crossed mid-rep never reached this counter in either
+    /// direction: it couldn't increment on a bad mile, and it couldn't
+    /// reset on a good one either. Once the caller stopped gating the
+    /// accumulator (only the display still gates), every real crossing —
+    /// in a work phase or out of one — reaches this exactly once, and the
+    /// reset-on-in-band behaviour documented above is now applied fairly
+    /// instead of only to the crossings that happened to be exempt.
     @Published private(set) var milesAdrift: Int = 0
 
     /// Sustained seconds the rule's own metric has been breached, for an HR
@@ -2412,6 +2460,17 @@ final class WorkoutEngine: ObservableObject {
     }
 
     /// Called at each mile boundary with whether that mile finished in band.
+    ///
+    /// F110 · the ONLY place `milesAdrift` moves, and until this fix its one
+    /// call site (in `tick()`) was gated on `allowSplitFlash` — a DISPLAY
+    /// decision (show the split board or not) that is false for the entire
+    /// length of a multi-rep work phase, by design. That starved this exact
+    /// safety accumulator of every mile crossed mid-rep during interval,
+    /// threshold and tempo sessions — the sessions with the tightest bands
+    /// and the most to lose from an unnoticed drift, and precisely the
+    /// sessions `shouldOfferBailNow`'s pace path exists to protect. The call
+    /// site now runs unconditionally; this function's own logic (reset on
+    /// in-band, increment on drift) was never the defect.
     func noteMileBand(inBand: Bool) {
         milesAdrift = inBand ? 0 : milesAdrift + 1
     }

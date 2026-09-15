@@ -429,6 +429,109 @@ struct WorkoutEngineTests {
                 "mile-split SHOULD fire in unstructured phases (warmup / cooldown / just-run)")
     }
 
+    // MARK: - F110 · PACE-BAIL STARVATION (bug: "bail can't fire mid-rep")
+    //
+    // `noteMileBand()` is the only place `milesAdrift` moves, and
+    // `shouldOfferBailNow`'s pace path is `milesAdrift >= 2`. Its call site
+    // in `tick()` used to be gated on `allowSplitFlash` — the SAME flag
+    // `mileSplitDoesNotFireDuringWorkPhase` above confirms is false for a
+    // tight-tolerance work phase. So a mile crossed mid-rep (exactly what
+    // that test drives) never reached the drift accumulator at all: it
+    // could not increment on a bad mile, and could not reset on a good one
+    // either. This is the falsifying test for that fix — see F110 report.
+
+    /// Same 3-phase, tight-tolerance shape as `makeWorkout()` (the work
+    /// phase that already proves `allowSplitFlash` is false there), plus a
+    /// pace bail rule so `shouldOfferBailNow` is assertable.
+    private func makeWorkPhaseBailWorkout() -> WatchWorkout {
+        let phases = [
+            WatchPhase(index: 0, type: .warmup, label: "Warmup",
+                       durationSec: 300, targetPaceSPerMi: nil,
+                       tolerancePaceSPerMi: nil, haptic: .start),
+            WatchPhase(index: 1, type: .work, label: "Tempo",
+                       durationSec: 1800, targetPaceSPerMi: 391,
+                       tolerancePaceSPerMi: 8, haptic: .transitionWork),
+            WatchPhase(index: 2, type: .cooldown, label: "Cooldown",
+                       durationSec: 300, targetPaceSPerMi: nil,
+                       tolerancePaceSPerMi: nil, haptic: .transitionCooldown),
+        ]
+        return WatchWorkout(
+            workoutId: "test-pacebail",
+            name: "Test pace bail", summary: "test",
+            totalEstimatedMinutes: 40,
+            phases: phases,
+            completionEndpoint: "/api/watch/workouts/complete",
+            expiresAt: "2026-05-21T08:00:00Z",
+            rules: [WatchRule(kind: "bail", metric: "pace",
+                               action: "drop_to_easy",
+                               label: "Two miles adrift",
+                               evidence: "Two miles adrift",
+                               judgement: "test")]
+        )
+    }
+
+    @Test func mileCrossedMidRepStillUpdatesMilesAdrift() {
+        let tracker = WorkoutTracker()
+        let engine = WorkoutEngine(workout: makeWorkPhaseBailWorkout())
+        engine.tracker = tracker
+        engine.start()
+
+        // Past warmup — now in the tight-tolerance work phase where
+        // `allowSplitFlash` is false (mirrors `mileSplitDoesNotFireDuringWorkPhase`).
+        simulate(engine, seconds: 301)
+        #expect(engine.currentPhase?.type == .work)
+        #expect(engine.milesAdrift == 0)
+
+        // Mile 1, crossed mid-rep, badly off target (450 vs 391 target,
+        // 8 s/mi tolerance — delta 59, solidly offTarget not just drifting).
+        tracker.setFixture(pace: 450, hr: 150, cadence: 178, distanceMi: 1.01)
+        simulate(engine, seconds: 1)
+        // The display gate still works — no split board mid-rep.
+        if case .split = engine.transition {
+            Issue.record("split board should stay suppressed mid-rep — allowSplitFlash must still gate the DISPLAY")
+        }
+        #expect(engine.milesAdrift == 1,
+                "F110: a mile crossed mid-rep must update milesAdrift even though the split board stays hidden")
+
+        // Mile 2, still off target — second consecutive adrift mile, crossed
+        // inside the same work phase.
+        tracker.setFixture(pace: 450, hr: 150, cadence: 178, distanceMi: 2.01)
+        simulate(engine, seconds: 1)
+        #expect(engine.milesAdrift == 2,
+                "F110: sustained drift through a work rep must reach the same counter a non-work crossing always did")
+        #expect(engine.shouldOfferBailNow,
+                "F110: two miles adrift accrued DURING a work rep must be able to trigger the pace bail — this exact scenario was impossible before the fix")
+
+        engine.reset()
+    }
+
+    @Test func mileCrossedMidRepOnTargetStillResetsMilesAdrift() {
+        // The other half of the same bug: an ON-target mile crossed mid-rep
+        // must also reach the accumulator (and reset it), not just an
+        // off-target one. Before the fix NEITHER direction reached
+        // `noteMileBand()` inside a work phase.
+        let tracker = WorkoutTracker()
+        let engine = WorkoutEngine(workout: makeWorkPhaseBailWorkout())
+        engine.tracker = tracker
+        engine.start()
+        simulate(engine, seconds: 301)
+        #expect(engine.currentPhase?.type == .work)
+
+        tracker.setFixture(pace: 450, hr: 150, cadence: 178, distanceMi: 1.01)
+        simulate(engine, seconds: 1)
+        #expect(engine.milesAdrift == 1)
+
+        // Mile 2 lands ON target (pace == target) — must reset to 0, exactly
+        // like a mile crossed anywhere else in the session always has.
+        tracker.setFixture(pace: 391, hr: 150, cadence: 178, distanceMi: 2.01)
+        simulate(engine, seconds: 1)
+        #expect(engine.milesAdrift == 0,
+                "F110: an in-band mile crossed mid-rep must reset the counter, same as outside a work phase")
+        #expect(!engine.shouldOfferBailNow)
+
+        engine.reset()
+    }
+
     // MARK: - PAUSE freezes progress
 
     @Test func pauseFreezesPhaseElapsed() {
