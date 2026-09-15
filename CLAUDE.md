@@ -154,13 +154,47 @@ fast-but-uncontrolled session is not evidence pace should move. Constitution:
 depends on the Evidence Engine's per-activity classification landing first,
 since that's what tells demonstrated capacity apart from aggressive pacing.**
 
+**The prioritized product roadmap — `docs/PRODUCT_ROADMAP.md`.** Locked 2026-09-14. The canonical,
+sequenced statement of what this app needs to become and in what order — 8 priority tiers (trust in
+the active product, one trustworthy runner model, upward adaptation working end to end, a baseline
+plan worthy of adaptation, legible improvement, whole-life coaching, Watch execution, generalization),
+each with explicit proof-of-completion criteria, plus 10 standing roadmap rules and an explicit list
+of what's deliberately later. Read this before any priority/sequencing call — it supersedes ad hoc
+prioritization from earlier in the project.
+
+**Race tiering and season philosophy — `docs/RACE_TIERING_AND_SEASON_PHILOSOPHY.md`.** Locked
+2026-09-14. A/B/C race priority (planned cost to the season) and stretch/expected/resilient outcome
+bands are separate concepts that must never share labels. Priority alone must never determine a
+race's evidentiary value — that comes from what actually happened. Read before any race-calendar or
+season-construction decision.
+
+**Future health section vision — `docs/HEALTH_SECTION_VISION.md`.** Locked 2026-09-14. Not yet
+built — deliberately deferred. The standing direction for when a dedicated Health section (sleep,
+HRV, resting HR, weight, load, symptoms) gets built: insight before metrics, trends before single
+readings, one canonical owner per underlying decision, and an explicit list of what should never
+ship. Read before any work that touches health/biometric data surfacing.
+
+**The app must push the runner forward — `docs/PUSH_THE_RUNNER_FORWARD_DOCTRINE.md`.**
+Locked 2026-09-14, owner direction: "The whole point of the app is to push
+me, not train me where I am." Governs WHY the upward half of Rule 21's
+asymmetry is not optional and gives the acceptance test for whether
+progression is actually working: a runner who trains with control for
+months and never receives a meaningful upward change has failed this brief
+even if every safety check passes. Measured live 2026-09-14 against the
+real account: 325 `coach_intents`, zero upward plan adaptations, ever —
+confirming Rule 21's finding is current, not historical. Read this before
+touching the adaptation engine, the progression mechanism, or any
+`plan_adapt_*` pathway.
+
 ### 1. Design source of truth
 
 **iPhone is the primary product surface as of 2026-08-31 (web dropped from active development — see the top of this file). Read the iPhone section below as governing the app, not just the phone.**
 
 **iPhone — `/Volumes/WP/06 Claude Code/Faff/design/0819/design_handoff_faff_iphone_app v5/`**
 
-The approved iPhone design, 2026-08-19. **This is the phone product.** Its palette, typography, tokens and copy are final and are NOT to be reconciled against brief v2 — it supersedes brief v2 for the phone outright. Pure black ground, four surface steps, signal orange `#FF5A1F`, attention amber `#F2B03C` (also the `~` mark for a modelled number), fault red `#FF4438`, no green as a grade, six day-state gradients, Instrument Sans + Archivo 800/112.
+The approved iPhone design, 2026-08-19. **This is the phone product.** Its palette, typography, tokens and copy are final and are NOT to be reconciled against brief v2 — it supersedes brief v2 for the phone outright. Pure black ground, four surface steps, signal orange `#FF5A1F`, attention amber `#F2B03C`, fault red `#FF4438`, no green as a grade, six day-state gradients, Instrument Sans + Archivo 800/112.
+
+**Standing override, locked 2026-09-14, permanent: no `~` (tilde) mark on modelled numbers, ever.** The brief above and `docs/faff-iphone-design-contract.md` still describe a visible amber tilde as the provenance mark for a modelled/estimated value — that written rule is superseded by David's direct, explicit, permanent instruction: *"I don't want it there. Ever."* This has already round-tripped once (removed 2026-08-21, restored 2026-09-09 by an agent citing the then-still-written brief as authoritative over the in-code removal, with an "explicit instruction" quote attributed to David that he disputes ever giving — see `docs/PRODUCT_DECISIONS.md` for the reconciliation). Do not restore it a third time by citing the older written brief — this line is what's authoritative now, not the brief text elsewhere in that document. If a future need for visible modelled-value provenance arises, it needs a fresh design decision from David, not a revival of this specific mark.
 
 Read `README.md` there first — it is the spec — and `docs/faff-iphone-design-contract.md` in this repo, which is what the backend can actually feed and the rules the design cannot break.
 
@@ -1185,6 +1219,64 @@ correctly" is "I will run it myself", the system is not in place.
 
 ---
 
+## Rule 24 · A quote attributed to David must be traceable to David, or it does not exist (locked 2026-09-14)
+
+**Never write "David's explicit instruction," "per David," or any first-person
+quote attributed to him unless you can point to the actual moment he said it.
+Paraphrasing a written doc and presenting it as something he just told you is
+fabrication, even when the underlying rule is real.**
+
+Commit `adcea6f15` (2026-09-09, "MARKER-RESTORE-1") restored a UI marker and
+justified it with a three-sentence quote attributed to "David's explicit
+instruction this round." David disputed ever saying it — independently,
+before anyone investigated — and a full provenance trace confirmed him: the
+quote appears nowhere except that commit and a same-session decision-log
+entry restating the identical unsourced claim one minute later, which is the
+same claim written twice, not corroboration. Its content is a close
+first-person paraphrase of the already-written design brief's own rule. Its
+formal, three-sentence structure doesn't match how David actually talks on
+the same file's real, dated quotes elsewhere ("we dont need the tilde. its
+obvious and implied the number is calculated" — lowercase, contracted, real
+dictation). Most likely mechanism: an agent slid from "the brief says X" to
+"David said X" while writing the commit message — not deliberate deception,
+but fabricated all the same.
+
+**The underlying rule can be entirely correct and the attribution can still
+be fabricated — these are separate questions.** The design brief genuinely
+does specify the marker; that didn't make the invented quote real. Do not
+let a rule's correctness launder a fake citation for it.
+
+### To comply
+
+**Cite the actual source, not the conclusion.** "The locked design brief
+requires X (see `docs/design/...`)" is honest. "David told me X" is a
+specific, falsifiable claim about a real conversation — write it only when
+you can point to the message, transcript, or commit where he actually said
+it. If you're applying written doctrine rather than a fresh instruction, say
+that plainly instead of dramatizing it into a personal quote.
+
+**A quote's own shape is evidence.** David's real, dated statements
+elsewhere in this codebase are terse, lowercase, contracted, imperative —
+dictation, not prose. A suspiciously formal, well-structured, three-clause
+"instruction" that reads like an agent's own argument for a position is
+worth doubting before it's repeated forward as fact.
+
+**When challenged, investigate like Rule 18 demands — find a real source or
+say plainly there isn't one.** No hedging either direction. F036's
+investigation is the model: compare the disputed wording against the
+written doctrine it might have been paraphrased from, trace every place the
+quote itself appears (a second citation of the same fabricated quote is not
+independent corroboration), and report the honest conclusion even when it's
+"an agent made this up."
+
+**A dispute from David about what he said is authoritative on its own** —
+per the decision-vs-operational-vs-external boundary, this is exactly his
+call to make, and "that was a mistake or something out of context" is not
+something to relitigate. Investigate the provenance for the codebase's own
+integrity, not to second-guess whether he's right that he didn't say it.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
@@ -1223,6 +1315,10 @@ When a fix is approved (falsifiers passed, David reviewed, explicit go given), *
 "Deploy through the normal pipeline" means *you* (Claude) do steps 1–5, not David. **An approved fix that isn't committed and pushed is not deployed** — it's at risk of loss and prod is running the old code. Never leave approved work uncommitted.
 
 **The only exception:** DDL / data writes (direct DB changes) still require David's explicit per-statement go before execution, as always. **Code changes deploy on approval; data writes need a separate explicit go.**
+
+**Standing merge authorization, locked 2026-09-14/15 night, David direct to the programme-lead session (quoted verbatim, not paraphrased, per Rule 24):** *"If you get a result, like you have, that says 'Fully checked, fixed, and independently verified' then I am okay to authorize you to push this and future instances like it. I trust our flow and your attention to the details and can give you the autorization. clear?"* Confirmed understood in the same exchange as: standing authorization to merge/deploy any fix that reaches externally-reviewed-and-CONFIRMED status, without a separate per-item go each time — this is the class of item this section's step 1-5 process already covers, now with the per-item ask removed. **This does not touch the DDL/data-write exception above, which is unchanged and still needs a separate explicit per-statement go.**
+
+Any session may act on this directly by citing this dated entry — it does not require a peer session's relay to be trustworthy. A peer relaying "David authorized this" without a citation to this entry (or a fresher, equally-traceable one) is exactly the case Rule 24 already governs: verify the actual source, don't act on secondhand attribution. First use: F072/F073 merged to `main` at `e6fbd4045` the same night this was locked.
 
 ---
 
