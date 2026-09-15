@@ -145,14 +145,24 @@ done < <(sources "$V5_VIEWS" "$V5_KIT")
 # RETIRED 2026-09-15 (F132): the mark itself is gone, not just relocated.
 # CLAUDE.md's standing override is unconditional — a modelled value carries
 # its basis on the wire and in VoiceOver ("estimated ..."), never as a
-# visible glyph. `ValuesV5.swift` is exempt only because it is the file that
-# NAMES the retired token in its own history/doc comments, not because it
-# draws anything — `FaffValueText`'s `.modelled` case renders identically to
-# `.measured`. `ThemeV5.swift` is exempt for the same reason (it documents
-# the retirement) plus it is outside `sources()`'s scope regardless.
+# visible glyph.
+#
+# F144 (2026-09-15) · NO FILE-LEVEL EXEMPTION, not even for `ValuesV5.swift`.
+# This guard used to skip that file (and `ThemeV5.swift`) entirely, on the
+# reasoning that it only NAMES the retired token in its own doc comments.
+# That reasoning was correct for what existed at the time, but the
+# exemption was written at the file level, not the comment level — so it
+# also blinded the guard to a real, live-code tilde reintroduced into
+# THIS EXACT FILE, which is precisely what MARKER-RESTORE-1 (2026-09-09)
+# already did once, in this same file, and is the whole reason F132 had to
+# exist. A gate that cannot see its own highest-risk file for a full
+# whole-file exemption is worse than no gate for that file. Confirmed
+# every remaining tilde reference in both files today is already a
+# leading-`//` comment line the ordinary exclusion below already catches
+# (no `// ok:` annotations needed) — so removing the file-level exemption
+# costs nothing and closes a real hole.
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  case "$f" in */ValuesV5.swift|*/ThemeV5.swift) continue;; esac
   hits=$(grep -nE '"[^"]*~[^"]*"' "$f" | grep -vE '^\s*[0-9]+:\s*//|// *ok:' || true)
   if [ -n "$hits" ]; then
     while IFS= read -r h; do

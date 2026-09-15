@@ -7,8 +7,11 @@
 //
 //  The design contract calls this "the only real sin". A projected finish, a
 //  pace derived from training rather than from a race, a projection taken
-//  after time off — all modelled. The mark is a small amber tilde immediately
-//  before the value, and it is a SYSTEM rule, not one screen's fix.
+//  after time off — all modelled, and it is a SYSTEM rule, not one screen's
+//  fix. F132 (2026-09-15): the visible amber tilde this file used to draw
+//  for that is RETIRED — CLAUDE.md's standing override, permanent. The
+//  distinction is still tracked (`FaffBasis`, below) and still spoken by
+//  VoiceOver; only the visible glyph is gone.
 //
 //  A rule that lives in eighteen screens' worth of `if isProjected { "~" }`
 //  is a rule that will be broken by the nineteenth screen. So it lives here
@@ -16,7 +19,7 @@
 //  where the number came from:
 //
 //      FaffValue.measured("1:41:53")      →   1:41:53
-//      FaffValue.modelled("3:16:45")      →  ~3:16:45      (tilde in amber)
+//      FaffValue.modelled("3:16:45")      →   3:16:45      (spoken: "estimated")
 //      FaffValue.unreadable               →   —            (in fault red)
 //
 //  There is deliberately no `FaffValue(text:)`. Every construction names a
@@ -50,7 +53,8 @@ enum FaffBasis: String, Equatable, Hashable, Codable {
     /// a heart rate off the wrist.
     case measured
     /// Derived from a model — a projection, a training-derived pace, an
-    /// equivalence off the Daniels table. Carries the amber tilde.
+    /// equivalence off the Daniels table. Marked as "estimated" to
+    /// VoiceOver; no visible glyph, retired per F132.
     case modelled
     /// We could not read this. Fault red, and never a real value beside it.
     case unreadable
@@ -76,7 +80,8 @@ struct FaffValue: Equatable, Hashable {
     /// Read from something that happened.
     static func measured(_ text: String) -> FaffValue { .init(text: text, basis: .measured) }
 
-    /// Derived from a model. Renders with the amber tilde.
+    /// Derived from a model. Renders identically to `.measured`; VoiceOver
+    /// says "estimated" before the figure (F132, no visible glyph).
     static func modelled(_ text: String) -> FaffValue { .init(text: text, basis: .modelled) }
 
     /// We could not read it.
