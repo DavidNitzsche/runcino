@@ -393,10 +393,13 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // query is unrelated (a different table, `races`) and already never
   // rejects (its own `.catch` below); `loadPlanWeek`'s inputs are
   // `userId`/`runnerTodayISO`/`today`, resolved before any of these four
-  // start. `Promise.all`, not `allSettled` — `loadGlanceState`/
-  // `loadFitnessRow`/`loadPlanWeek` have no `.catch` today (a failed read
-  // must still reach `composeToday`'s wrapper and become the outage
-  // response, same as before this was four sequential `await`s).
+  // start. `Promise.all`, not `allSettled` — `loadGlanceState`/`loadPlanWeek`
+  // have no `.catch` today (a failed read must still reach `composeToday`'s
+  // wrapper and become the outage response, same as before this was four
+  // sequential `await`s). `loadFitnessRow` is the one exception: it has its
+  // own PRE-EXISTING internal try/catch (swallows to `null` on failure,
+  // unrelated to and unaffected by this change) — it never rejects either
+  // way, so `Promise.all` propagates the other three correctly regardless.
   // AUDIT-1 · `lastRaceRow`'s `.catch(() => ({ rows: [] }))` is a KNOWN,
   // tracked swallow site (`lib/audit/swallowed-failure-registry.ts`'s
   // `EMPTIED_KNOWN` ratchet — `app/api/v5/today/route.ts::composeToday`).
