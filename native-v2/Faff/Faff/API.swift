@@ -833,10 +833,17 @@ enum API {
 
     // MARK: - P32 shoe assignment
 
+    /// F061 (2026-09-15) · a bad status used to `return nil` here, silently
+    /// collapsed to "the runner owns zero shoes" by every caller's `try?`.
+    /// Throws now, matching `createShoe`'s own sibling pattern a few lines
+    /// below — `ShoesHostV5.load()` needs the real status to tell a failed
+    /// read apart from a genuine empty rotation (Rule 11); every existing
+    /// `try?`-based caller is unaffected, since `try?` already collapsed a
+    /// thrown error and a `nil` return to the identical `nil` result.
     static func fetchShoes() async throws -> ShoesResponse? {
         let url = baseURL.appendingPathComponent("api/shoe")
         let (data, http): (Data, HTTPURLResponse) = try await API.authedGET(url)
-        guard (200..<300).contains(http.statusCode) else { return nil }
+        guard (200..<300).contains(http.statusCode) else { throw APIError.badStatus(http.statusCode) }
         return try? JSONDecoder().decode(ShoesResponse.self, from: data)
     }
 
