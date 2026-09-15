@@ -51,6 +51,45 @@ final class PlanSnapshotNavigationTests: XCTestCase {
         XCTAssertFalse(TodayHostV5.shouldRenderFromSnapshot(iso: "2026-09-04", isHome: false, snapshot: nil))
     }
 
+    // MARK: - BA-01 required test #2 (ASAP-IMPLEMENTATION-SEQUENCE.md):
+    // "A navigation test walks at least 30 dates inside a snapshot and
+    // proves zero network calls." `shouldRenderFromSnapshot` IS that zero-
+    // network decision (`goTo`'s own early-return, see BA01-1's comment
+    // there) — a single hand-picked date passing (already covered above)
+    // doesn't prove the WHOLE covered range holds; this walks a real
+    // 95-day block, matching the exact width from David's own repro
+    // ("95 days cached").
+
+    func testThirtyPlusDatesAcrossACoveredBlockAllSkipTheNetwork() {
+        let calendar = Calendar(identifier: .gregorian)
+        let start = calendar.date(from: DateComponents(year: 2026, month: 9, day: 3))!
+        // 95 days, matching the exact block width from David's real trace
+        // ("95 days cached") rather than an arbitrary round number.
+        let isoDates: [String] = (0..<95).map { offset in
+            let d = calendar.date(byAdding: .day, value: offset, to: start)!
+            let f = DateFormatter()
+            f.dateFormat = "yyyy-MM-dd"
+            f.timeZone = TimeZone(identifier: "UTC")
+            return f.string(from: d)
+        }
+        XCTAssertGreaterThanOrEqual(isoDates.count, 30, "sanity: this walk must actually cover at least 30 dates")
+
+        let snap = snapshot(days: isoDates.map { day($0) })
+
+        var failures: [String] = []
+        for iso in isoDates {
+            // isHome is always false here — this walk is specifically about
+            // NON-today navigation, the case `goTo`'s snapshot branch exists
+            // for. Today itself correctly keeps the live path regardless
+            // (testHomeNavigationNeverUsesTheSnapshot above).
+            if !TodayHostV5.shouldRenderFromSnapshot(iso: iso, isHome: false, snapshot: snap) {
+                failures.append(iso)
+            }
+        }
+        XCTAssertTrue(failures.isEmpty,
+                       "every date inside a covered block must skip the network — these did not: \(failures)")
+    }
+
     // MARK: - Falsified once (Rule 18): the guard is load-bearing, not a tautology
 
     func testFalsifier_ifHomeWereIgnoredATodayNavigationWouldWronglySkipTheNetwork() {
