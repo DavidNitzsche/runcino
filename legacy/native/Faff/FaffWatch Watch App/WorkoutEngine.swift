@@ -1109,9 +1109,32 @@ final class WorkoutEngine: ObservableObject {
 
         // Overtime: plan is done, but keep the clock + live metrics running.
         // No phase logic — the user runs free until they End.
+        //
+        // F066 (2026-09-14) · THIS USED TO RETURN before `noteRuleMetric` ran,
+        // which silently retired the HR-sustain bail the instant the plan's
+        // own phases finished — exactly the runner it exists for, since
+        // overtime means they are still out there, often still pushing.
+        // `noteRuleMetric` is pure accounting (moves `ruleBreachSec`, nothing
+        // else) so calling it here costs nothing and changes no threshold; it
+        // only lets a rule already in flight keep accumulating instead of
+        // freezing.
+        //
+        // This is what let a `scope: "work"` bail look permanently broken: a
+        // `mi`-anchored work rep completes on distance, not the phase's own
+        // duration, so a short interval set can reach `planComplete` well
+        // inside the 120-second real-time HR-sustain window (`Research/03`
+        // §2) that the bail is deliberately built to require regardless of
+        // how fast the phases themselves move. Once frozen, `ruleBreachSec`
+        // could never reach `hrRuleSustainSec` and the board could never
+        // fire, however long or however high HR climbed afterward. A
+        // `scope: "mile-N"` race rule rarely hit this because its own
+        // distance gate keeps the race's own phases running well past 120
+        // real seconds before the plan itself completes — same shared
+        // machinery, hidden by scale rather than working correctly.
         if planComplete {
             publishElapsed(elapsedSincePhaseStart())
             snapshotIfDue()
+            noteRuleMetric(hrBpm: tracker?.heartRate ?? 0, tickSec: Self.tickHz)
             return
         }
 
