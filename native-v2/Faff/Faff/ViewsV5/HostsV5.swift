@@ -941,11 +941,17 @@ struct TodayHostV5: View {
             // firing at the exact same moment. `PlanSnapshotStore` already
             // gives `goTo` a zero-network path for any date inside the
             // current block (see `goTo`'s own snapshot-first branch) — the
-            // whole-block sync started above is what keeps that snapshot
-            // current, and that is the ONE thing this launch path needs to
+            // whole-block sync below is what keeps that snapshot current,
+            // and that is the ONE thing this launch path still needs to
             // fire eagerly. `blockSurface`/`dayCache`/`weekCache` now warm
             // lazily, from their own hosts' foreground/navigation paths,
             // not redundantly here on every single launch.
+            //
+            // Not awaited: the launch gate above is keyed to `surface.load()`
+            // landing, not to the (much larger) whole-block sync. The first
+            // frame paints from whatever `loadFromDiskSynchronously()` just
+            // restored; this fills in a fresher snapshot behind it.
+            Task { await syncPlanSnapshot() }
         }
         // Learn the real today the instant any payload actually carries it —
         // see `todayISO(_:)`. A plain side effect, not a render-time read: a
