@@ -118,14 +118,6 @@ struct AddRaceV5: View {
     @State private var priorityLabel: String = AddRaceV5.priorityOptions[0]
     @State private var goal: String = ""
 
-    // ── the course ────────────────────────────────────────────────────────
-    @State private var stravaURL: String = ""
-    @State private var courseCandidates: [GpxCandidateV5] = []
-    @State private var courseSearching: Bool = false
-    @State private var courseSearchReason: String?
-    @State private var courseSearchRan: Bool = false
-    @State private var selectedCandidateID: String?
-
     // ── save flow ─────────────────────────────────────────────────────────
     @State private var saving: Bool = false
     @State private var saveFailed: Bool = false
@@ -167,10 +159,6 @@ struct AddRaceV5: View {
         f.timeZone = .current
         return f.string(from: date)
     }
-    private var selectedCandidate: GpxCandidateV5? {
-        courseCandidates.first { $0.id == selectedCandidateID }
-    }
-
     var body: some View {
         // Same shape as 21a: a fixed header, a scrolling middle, and the
         // primary action pinned at the bottom. The middle is what grows when
@@ -248,72 +236,6 @@ struct AddRaceV5: View {
         }
     }
 
-    // MARK: Course
-
-    private var courseFields: some View {
-        VStack(alignment: .leading, spacing: V5.S.s10) {
-            V5SectionLabel(text: "Course").padding(.horizontal, V5.S.s4)
-
-            VStack(alignment: .leading, spacing: V5.S.s12) {
-                FaffInput(label: "Strava route URL", text: $stravaURL,
-                          placeholder: "strava.com/routes/…",
-                          helper: "Pulls the real polyline and elevation in directly.",
-                          keyboard: .URL)
-
-                if stravaURL.trimmingCharacters(in: .whitespaces).isEmpty {
-                    FaffButton(courseSearching ? "Searching Strava\u{2026}" : "Find it on Strava by name",
-                               variant: .secondary, size: .md,
-                               enabled: !trimmedName.isEmpty && !courseSearching,
-                               action: { Task { await searchCourse() } })
-
-                    // A disabled control with no reason beside it is a dead
-                    // end. Say what is missing.
-                    if trimmedName.isEmpty {
-                        Text("Name the race first \u{b7} the search goes by name.")
-                            .font(.faffText(TypeScaleV5.label13))
-                            .foregroundStyle(V5.textQuiet)
-                    }
-
-                    courseSearchResult
-                } else {
-                    // A URL was pasted — it wins at save time (matches the
-                    // legacy sheet's own rule), so a name search here would
-                    // offer a choice that is never actually used.
-                    Text("A pasted URL takes the course directly; clear it to search by name instead.")
-                        .font(.faffText(TypeScaleV5.label13))
-                        .foregroundStyle(V5.textQuiet)
-                        .padding(.horizontal, V5.S.s4)
-                }
-            }
-            .padding(V5.S.tilePad)
-            .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
-        }
-    }
-
-    @ViewBuilder
-    private var courseSearchResult: some View {
-        if courseSearchRan {
-            if courseCandidates.isEmpty {
-                Text(courseSearchReason ?? "No match found on Strava for that name.")
-                    .font(.faffText(TypeScaleV5.label13))
-                    .foregroundStyle(V5.textQuiet)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(courseCandidates) { c in
-                        ListRow(label: c.name,
-                                sub: [FaffFmt.milesUnit(c.distanceMi),
-                                      c.elevationGainFt.flatMap { FaffFmt.feet($0) }.map { "\($0) gain" }]
-                                    .compactMap { $0 }.joined(separator: " \u{b7} "),
-                                value: selectedCandidateID == c.id ? .measured("Selected") : nil,
-                                onTap: { selectedCandidateID = c.id })
-                    }
-                }
-                .background(V5.materialTileRaised, in: RoundedRectangle(cornerRadius: V5.R.r16, style: .continuous))
-            }
-        }
-    }
-
     // MARK: Actions
 
     // MARK: Confirmation
@@ -386,18 +308,6 @@ struct AddRaceV5: View {
         onContinueToCourse(slug, trimmedName, Self.distanceMiHint[distance])
     }
 
-    private func searchCourse() async {
-        courseSearching = true
-        courseSearchRan = false
-        courseCandidates = []
-        courseSearchReason = nil
-        selectedCandidateID = nil
-        let result = await API.searchGpxCandidates(query: trimmedName, distanceMi: Self.distanceMiHint[distance])
-        courseCandidates = result?.candidates ?? []
-        courseSearchReason = result?.reason
-        courseSearching = false
-        courseSearchRan = true
-    }
 }
 
 // MARK: - Date field
