@@ -2415,6 +2415,7 @@ extension API {
                 await RequestDiagnosticsLog.shared.recordDecodeFailure(
                     endpoint: url.path, dateParam: url.faffDiagnosticDateParam,
                     correlationId: http.value(forHTTPHeaderField: "x-faff-correlation-id") ?? "unknown",
+                    httpMethod: "GET",
                     error: error)
                 throw error
             }

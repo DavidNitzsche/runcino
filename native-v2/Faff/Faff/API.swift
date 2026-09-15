@@ -365,7 +365,7 @@ enum API {
         // response, 401, and the final return). See RequestDiagnostics.swift.
         let diagEndpoint = req.url?.path ?? "?"
         let diagDateParam = req.url?.faffDiagnosticDateParam
-        let diagGen = await RequestDiagnosticsLog.shared.begin(endpoint: diagEndpoint, dateParam: diagDateParam, correlationId: correlationId)
+        let diagGen = await RequestDiagnosticsLog.shared.begin(endpoint: diagEndpoint, dateParam: diagDateParam, correlationId: correlationId, httpMethod: req.httpMethod ?? "GET")
         let data: Data
         let resp: URLResponse
         do {
@@ -1753,6 +1753,7 @@ enum API {
                 endpoint: comps.url?.path ?? "/api/plan/week",
                 dateParam: date,
                 correlationId: http.value(forHTTPHeaderField: "x-faff-correlation-id") ?? "unknown",
+                httpMethod: "GET",
                 error: error)
             throw error
         }
