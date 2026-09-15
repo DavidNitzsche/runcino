@@ -272,6 +272,81 @@ describe('UNDOTRACK-1 · loadV5Decisions consults the ledger, batched, per Rule 
   });
 });
 
+/**
+ * F060 (2026-09-14) · design review's finding, at this file's own layer.
+ *
+ * The Coach Decisions history showed the same HOLD card twice — one STILL
+ * OPEN, one SETTLED, word for word — and traced it to production rows 10
+ * and 15: genuinely distinct `plan_workout_proposals` rows (raised against
+ * two different workouts, three weeks apart), NOT a duplicate write. The
+ * duplication is downstream, in `headline`/`why`'s fixed per-kind templates
+ * (`actionHeadline`'s `HOLD` case; the evidence facet that writes the
+ * reason) — this file is not where that lives and this test does not touch
+ * it.
+ *
+ * What this test pins is the fact the native fix depends on: `dateISO` is
+ * NEVER templated. It is `r.workoutDateISO`, read straight off each row,
+ * unconditionally, for every per-workout decision regardless of kind — so
+ * even when two rows share an identical templated headline and reason (the
+ * worst case `workoutRow`'s fixed `actionKind`/`reason` already produce),
+ * the wire still tells them apart. The fix that actually draws that
+ * difference is `DecisionRowV5.contextLine` (native, `DecisionHistoryV5
+ * .swift`) — untestable from here, and not this file's job to test.
+ */
+describe('F060 (2026-09-14) · the field that survives the template collision', () => {
+  beforeEach(() => {
+    loadProposalHistoryMock.mockReset();
+    loadAllPlanProposalsMock.mockReset();
+    findUndoneProposalIdsMock.mockReset();
+    loadAllPlanProposalsMock.mockResolvedValue([]);
+    findUndoneProposalIdsMock.mockResolvedValue({ state: 'read', ids: new Set() });
+  });
+
+  it('two rows of one templated kind, raised against different workouts, share a headline and reason but never a dateISO', async () => {
+    // `workoutRow`'s fixed `actionKind: 'unrecognized_kind_for_this_fixture'`
+    // makes `directionOf` return null, which is exactly the fixed-template
+    // failure shape: `loadV5Decisions` falls back to ONE constant headline,
+    // 'A change to one session', for every row of this kind — the same
+    // "two events, one sentence" defect HOLD has, reproduced here without
+    // needing HOLD's own generator or evidence facet.
+    loadProposalHistoryMock.mockResolvedValue({
+      ok: true,
+      rows: [
+        // Stands in for production row 10: raised 9/7, settled (expired)
+        // against the workout dated 9/20.
+        workoutRow({
+          id: 10, workoutDateISO: '2026-09-20', storedStatus: 'expired',
+          resolvedAtISO: '2026-09-07T00:00:00.000Z',
+        }),
+        // Stands in for production row 15: raised 9/14, still open, against
+        // the workout that replaced it after the rebuild.
+        workoutRow({ id: 15, workoutDateISO: '2026-10-11', storedStatus: 'pending' }),
+      ],
+    });
+
+    const read = await loadV5Decisions(USER, TODAY);
+    expect(read.ok).toBe(true);
+    if (!read.ok) return;
+    expect(read.decisions).toHaveLength(2);
+
+    const settled = read.decisions.find((d) => d.id === 'w10');
+    const stillOpen = read.decisions.find((d) => d.id === 'w15');
+    expect(settled).toBeDefined();
+    expect(stillOpen).toBeDefined();
+    if (settled == null || stillOpen == null) return;
+
+    // The collision this finding is about: same sentence, same reason.
+    expect(settled.headline).toBe(stillOpen.headline);
+    expect(settled.why).toBe(stillOpen.why);
+    expect(settled.outcome).not.toBe(stillOpen.outcome);
+
+    // The field that was never templated, and that the native fix draws.
+    expect(settled.dateISO).toBe('2026-09-20');
+    expect(stillOpen.dateISO).toBe('2026-10-11');
+    expect(settled.dateISO).not.toBe(stillOpen.dateISO);
+  });
+});
+
 describe('V5PROPOSALSURFACE-1 · every outcome is reachable', () => {
   it('no member of the vocabulary is decoration', () => {
     // Rule 15: a value no case can produce is untested by construction, and a

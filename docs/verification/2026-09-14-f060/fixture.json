@@ -1,0 +1,25 @@
+{
+  "proposals": [],
+  "proposalsRead": "ok",
+  "decisions": [
+    {
+      "id": "w15",
+      "dateISO": "2026-10-11",
+      "decidedISO": "2026-09-14",
+      "direction": "hold",
+      "outcome": "pending",
+      "headline": "Holding the plan as it is",
+      "why": "The upcoming long run already carries a race-pace segment; the structure axis has already moved."
+    },
+    {
+      "id": "w10",
+      "dateISO": "2026-09-20",
+      "decidedISO": "2026-09-07",
+      "direction": "hold",
+      "outcome": "expired",
+      "headline": "Holding the plan as it is",
+      "why": "The upcoming long run already carries a race-pace segment; the structure axis has already moved."
+    }
+  ],
+  "decisionsRead": "ok"
+}
