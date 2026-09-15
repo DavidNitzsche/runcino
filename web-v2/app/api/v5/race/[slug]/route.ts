@@ -28,7 +28,7 @@ import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
 import { raceOutlookPayload } from '@/lib/race/race-outlook-payload';
 import { raceLayers, raceLayersPayload } from '@/lib/race/race-page-layers';
 import { raceCourseContext, raceCourseContextPayload, pacingPlanDriftSec, pacingDriftToleranceSec } from '@/lib/race/race-course-context';
-import { buildRacePacing, type CourseGeometryInput } from '@/lib/race/pacing';
+import { buildRacePacing, type CourseGeometryInput, type PacingPhase } from '@/lib/race/pacing';
 import { resolveCourseElevation, type ResolveCourseElevationInput, type StoredGeometry } from '@/lib/race/course-elevation';
 import { loadActivePlan } from '@/lib/plan/lookup';
 import { runnerToday } from '@/lib/runtime/runner-tz';
@@ -44,6 +44,66 @@ export const dynamic = 'force-dynamic';
 interface V5NumberOut { text: string | null; modelled: boolean; }
 interface V5RowOut { id: string; label: string; sub: string | null; value: V5NumberOut | null; action: string | null; }
 const num = (text: string | null, modelled: boolean): V5NumberOut => ({ text, modelled });
+
+/**
+ * F082 · a course-elevation phase can be shorter than the mile grid the
+ * pace plan's "Miles X-Y" label rounds onto. Rounding each phase's own
+ * start_mi/end_mi independently can round BOTH ends to the same mile
+ * marker for a real, positive-length phase — Dodgers 10K's "Descent"
+ * segment (1.77-2.486 mi) rounds to "Miles 2-2". Render-confirmed on the
+ * owner's real account, 2026-09-14.
+ *
+ * Fold any phase whose own rounded boundaries would collapse into a real
+ * neighbor before labeling, rather than independently rounding every
+ * phase and drawing whatever falls out. The merged bracket keeps a
+ * time-weighted blend of both phases' paces (so the goal-time total this
+ * plan sums to is unchanged) and the label/cue of whichever original
+ * phase covers more real ground, since that is the terrain feature the
+ * merged bracket is actually describing.
+ */
+function collapsesOnMileGrid(p: { start_mi: number; end_mi: number }): boolean {
+  return Math.round(p.start_mi) === Math.round(p.end_mi);
+}
+
+function combinePacingPhases(a: PacingPhase, b: PacingPhase): PacingPhase {
+  const aLenMi = a.end_mi - a.start_mi;
+  const bLenMi = b.end_mi - b.start_mi;
+  const totalLenMi = aLenMi + bLenMi;
+  const blendedPace = totalLenMi > 0
+    ? (a.pace_s_per_mi * aLenMi + b.pace_s_per_mi * bLenMi) / totalLenMi
+    : b.pace_s_per_mi;
+  const dominant = aLenMi >= bLenMi ? a : b;
+  const roundedPace = Math.round(blendedPace);
+  return {
+    ...dominant,
+    start_mi: a.start_mi,
+    end_mi: b.end_mi,
+    pace_s_per_mi: roundedPace,
+    display: `${Math.floor(roundedPace / 60)}:${String(roundedPace % 60).padStart(2, '0')}/mi`,
+  };
+}
+
+/** `pacing.phases`, folded so no phase renders a zero-width mile label. */
+function displayPhases(phases: PacingPhase[] | null): PacingPhase[] {
+  if (!phases || phases.length === 0) return [];
+  const working = phases.map((p) => ({ ...p }));
+  const out: PacingPhase[] = [];
+  for (let i = 0; i < working.length; i++) {
+    const p = working[i];
+    if (collapsesOnMileGrid(p)) {
+      if (i + 1 < working.length) {
+        working[i + 1] = combinePacingPhases(p, working[i + 1]);
+        continue; // folded forward into the next phase; re-checked next loop
+      }
+      if (out.length > 0) {
+        out[out.length - 1] = combinePacingPhases(out[out.length - 1], p);
+        continue;
+      }
+    }
+    out.push(p);
+  }
+  return out;
+}
 
 
 /**
@@ -198,8 +258,11 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ slug
         const pacing = buildRacePacing({
           goalSec: pacePlanTargetSec, distanceMi, geometry: geometryForPacing,
         });
+        // Drift is checked against the REAL phases `buildRacePacing` built,
+        // never the merged-for-display copy below — merging is a labeling
+        // concern only and must not change what Q26's drift check sees.
         pacingDriftSec = pacingPlanDriftSec(pacing.phases, pacePlanTargetSec);
-        pacePlan = (pacing.phases ?? []).map((p, i) => ({
+        pacePlan = displayPhases(pacing.phases).map((p, i) => ({
           id: `phase-${i}`,
           label: `Miles ${Math.round(p.start_mi)}-${Math.round(p.end_mi)}`,
           // RULE 16 · `buildRacePacing` labels its last phase "Goal pace",
