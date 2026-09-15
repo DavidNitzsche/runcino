@@ -1602,6 +1602,27 @@ final class WorkoutEngine: ObservableObject {
 
     // MARK: State transitions
 
+    /// F065 (register, 2026-09-14) · does `label` already say which rep this
+    /// is, in its OWN words? `expand-spec.ts` bakes an "N of M" count
+    /// straight into the label text for every generator that has one to
+    /// give — `strideLabelFor` ("Stride 3 of 6"), `expandReps`'s time-based
+    /// sets ("Rep 2 of 4 · 3:00", "Hill 2 of 4 · 1:30"), `expandSteps`'s
+    /// GRAMMAR-SEQ-1 ladders ("1:30 @ Zone2 · 2 of 6"). A distance-based
+    /// interval rep ("Interval · 800m") carries none of that — its count
+    /// lives nowhere but the rep-of-total line the work-phase-entry branch
+    /// below composes.
+    ///
+    /// This is a display check, not a routing one — unlike DOCTRINE-STRIDES-1
+    /// (`isStrideSegment`), nothing here decides which board or behaviour to
+    /// run off the label's wording, so relabelling a session cannot silently
+    /// break a state transition the way regexing `label` for routing could.
+    /// Worst case if a future label shape slips past this: the sub line goes
+    /// back to saying "Rep N of M" redundantly, exactly the bug this exists
+    /// to close — not a crash, not a wrong board.
+    private func labelAlreadyStatesRepCount(_ label: String) -> Bool {
+        label.range(of: #"\d+\s+of\s+\d+"#, options: .regularExpression) != nil
+    }
+
     private func advance(completedCurrent: Bool) {
         // If an RPE prompt was still showing from a prior work rep when
         // we advance into a new phase, treat it as dismissed. Any later
@@ -1746,16 +1767,49 @@ final class WorkoutEngine: ObservableObject {
                 // three points away said "Stride 1 of 6".
                 let totalWorks = repCountForDisplay
                 let n = repIndexForDisplay
-                // The pace is said ONCE. The router draws the prescribed band
-                // under this board whenever the phase has a tolerance
-                // ("6:45-7:00 /mi"), so repeating the point target in the
-                // detail line would say the same thing twice on a board whose
-                // whole job is to be read in a second and a half. The target
-                // appears here only when there is no band to carry it.
                 let rep = "Rep \(n) of \(totalWorks)"
                 let hasBand = (p.tolerancePaceSPerMi ?? 0) > 0 && (p.targetPaceSPerMi ?? 0) > 0
-                let sub: String
-                if !hasBand, let t = p.targetPaceSPerMi, t > 0 {
+                // F065 (register, 2026-09-14) · SAME COUNT, TWO WORDINGS, ONE
+                // SCREEN. `p.label` on a stride/hill/rep/step session already
+                // states this exact rep count as its own headline — "Stride 3
+                // of 6" at 38pt (`labelAlreadyStatesRepCount` above spells out
+                // why every one of those label shapes gets caught, not just
+                // strides). `rep` recomputes the identical count in a
+                // different grammar — "Rep 3 of 6" — and used to land in
+                // `sub` underneath unconditionally, so the transition board
+                // said the same fact twice in the second and a half it has to
+                // say anything. REPCOUNT-1 (above) made the two NUMBERS
+                // agree; it never touched this — which is exactly why the
+                // restatement stopped looking like a bug once it stopped
+                // looking like a disagreement.
+                //
+                // F120's sweep recommendation named F065 one of six examples
+                // of a redundancy fix landing on only the one reported label
+                // — so this branches on the label's own text rather than a
+                // `p.isStrideSegment` check, and covers every "N of M" shape
+                // the server emits (see `labelAlreadyStatesRepCount`).
+                let labelStatesCount = labelAlreadyStatesRepCount(p.label)
+                let sub: String?
+                if labelStatesCount {
+                    // The headline already named the rep — `sub` has nothing
+                    // left to add except the pace, and only when there is no
+                    // band underneath to carry it instead (same rule as the
+                    // branch below). When even that is absent there is no
+                    // second fact to print, so the line goes empty rather
+                    // than restating the first fact to fill it.
+                    if !hasBand, let t = p.targetPaceSPerMi, t > 0 {
+                        sub = PaceFormat.mmssWithUnit(t, unitsPref: workout.unitsDistance)
+                    } else {
+                        sub = nil
+                    }
+                } else if !hasBand, let t = p.targetPaceSPerMi, t > 0 {
+                    // The pace is said ONCE. The router draws the prescribed
+                    // band under this board whenever the phase has a
+                    // tolerance ("6:45-7:00 /mi"), so repeating the point
+                    // target in the detail line would say the same thing
+                    // twice on a board whose whole job is to be read in a
+                    // second and a half. The target appears here only when
+                    // there is no band to carry it.
                     sub = rep + " · " + PaceFormat.mmssWithUnit(t, unitsPref: workout.unitsDistance)
                 } else {
                     sub = rep

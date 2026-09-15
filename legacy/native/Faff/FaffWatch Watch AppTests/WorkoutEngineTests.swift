@@ -445,4 +445,108 @@ struct WorkoutEngineTests {
                 "pause must freeze elapsed — ticks while paused must not advance it")
         engine.reset()
     }
+
+    // MARK: - F065: work-phase-entry `sub` must not restate a count `label`
+    // already carries (register 2026-09-14, F120 sweep recommendation).
+    //
+    // A workout below carries exactly one work phase between a warmup and a
+    // cooldown — `repCountForDisplay` then falls back to counting `.work`
+    // phases (REPCOUNT-1's documented single-rep fallback), landing on 1 of
+    // 1 regardless of the phase's own label text. That is deliberate: these
+    // tests are about whether `sub` RESTATES whatever `label` already says,
+    // not about exercising the multi-rep resolver (covered elsewhere).
+
+    private func makeWorkPhaseEntryWorkout(
+        workLabel: String, targetPaceSPerMi: Int?, tolerancePaceSPerMi: Int?
+    ) -> WatchWorkout {
+        let phases = [
+            WatchPhase(index: 0, type: .warmup, label: "Warmup",
+                       durationSec: 600, targetPaceSPerMi: nil,
+                       tolerancePaceSPerMi: nil, haptic: .start),
+            WatchPhase(index: 1, type: .work, label: workLabel,
+                       durationSec: 420, targetPaceSPerMi: targetPaceSPerMi,
+                       tolerancePaceSPerMi: tolerancePaceSPerMi, haptic: .transitionWork),
+            WatchPhase(index: 2, type: .cooldown, label: "Cooldown",
+                       durationSec: 600, targetPaceSPerMi: nil,
+                       tolerancePaceSPerMi: nil, haptic: .transitionCooldown),
+        ]
+        return WatchWorkout(
+            workoutId: "test-f065",
+            name: "Test", summary: "test",
+            totalEstimatedMinutes: 27,
+            phases: phases,
+            completionEndpoint: "/api/watch/workouts/complete",
+            expiresAt: "2026-05-21T08:00:00Z"
+        )
+    }
+
+    /// Drive the engine to the work-phase-entry `advance()` branch and hand
+    /// back whatever `.phase` transition it fired.
+    private func enterWorkPhase(_ workout: WatchWorkout) -> (title: String, sub: String?)? {
+        let engine = WorkoutEngine(workout: workout)
+        engine.start()
+        simulate(engine, seconds: 601)   // past the 600s warmup
+        defer { engine.reset() }
+        guard case .phase(let title, let sub) = engine.transition else { return nil }
+        return (title, sub)
+    }
+
+    /// THE EXACT BUG. "Stride 3 of 6" as the headline, "Rep 3 of 6"
+    /// underneath — the reported pairing, reproduced with a 1-of-1 stride so
+    /// the resolver's fallback still lands on the same digits the label
+    /// carries.
+    @Test func strideLabelWithNoPaceGetsNoRedundantSub() throws {
+        let workout = makeWorkPhaseEntryWorkout(
+            workLabel: "Stride 1 of 1", targetPaceSPerMi: nil, tolerancePaceSPerMi: nil)
+        let moment = try #require(enterWorkPhase(workout), "expected a .phase transition")
+        #expect(moment.title == "Stride 1 of 1")
+        #expect(moment.sub == nil,
+                "label already says '1 of 1' — sub must not restate it as 'Rep 1 of 1'")
+    }
+
+    /// Redundant label + no band (hasBand == false) + a real target pace:
+    /// `sub` should carry ONLY the pace, not "Rep 1 of 1 · 6:31" — the count
+    /// half of that string is still the restatement.
+    @Test func redundantLabelWithPaceShowsPaceAloneInSub() throws {
+        let workout = makeWorkPhaseEntryWorkout(
+            workLabel: "Stride 1 of 1", targetPaceSPerMi: 391, tolerancePaceSPerMi: nil)
+        let moment = try #require(enterWorkPhase(workout), "expected a .phase transition")
+        let expectedPace = PaceFormat.mmssWithUnit(391, unitsPref: nil)
+        #expect(moment.sub == expectedPace,
+                "sub should be the pace alone, not the pace glued to a restated count")
+    }
+
+    /// Redundant label + a band (hasBand == true): the router draws the
+    /// band itself from `bandParts`, so `sub` has nothing left to say once
+    /// the restated count is removed — it goes nil, not blank-but-present.
+    @Test func redundantLabelWithBandShowsNilSub() throws {
+        let workout = makeWorkPhaseEntryWorkout(
+            workLabel: "Stride 1 of 1", targetPaceSPerMi: 391, tolerancePaceSPerMi: 10)
+        let moment = try #require(enterWorkPhase(workout), "expected a .phase transition")
+        #expect(moment.sub == nil, "band already carries the pace — sub must not add 'Rep 1 of 1'")
+    }
+
+    /// THE NON-REGRESSION CASE. A label with no baked-in count (the shape
+    /// `expandReps` emits for a distance-based interval, e.g. "Interval ·
+    /// 0.50 mi") must keep getting the "Rep N of M · pace" fallback — this
+    /// fix must not blank `sub` when it was never redundant.
+    @Test func nonRedundantLabelStillGetsRepFallbackWithPace() throws {
+        let workout = makeWorkPhaseEntryWorkout(
+            workLabel: "Interval · 0.50 mi", targetPaceSPerMi: 391, tolerancePaceSPerMi: nil)
+        let moment = try #require(enterWorkPhase(workout), "expected a .phase transition")
+        let expectedPace = PaceFormat.mmssWithUnit(391, unitsPref: nil)
+        #expect(moment.sub == "Rep 1 of 1 · \(expectedPace)",
+                "a label with no count of its own should still get the rep-count fallback")
+    }
+
+    /// Same non-redundant label, but with a band this time — `sub` should
+    /// stay exactly "Rep N of M" (the band itself carries the pace), same
+    /// as it did before this fix.
+    @Test func nonRedundantLabelWithBandStillGetsRepText() throws {
+        let workout = makeWorkPhaseEntryWorkout(
+            workLabel: "Interval · 0.50 mi", targetPaceSPerMi: 391, tolerancePaceSPerMi: 10)
+        let moment = try #require(enterWorkPhase(workout), "expected a .phase transition")
+        #expect(moment.sub == "Rep 1 of 1",
+                "a non-redundant label with a band should still show the plain rep count")
+    }
 }
