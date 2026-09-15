@@ -32,14 +32,35 @@
 # semantically-equivalent new fan-out helper written from scratch with a
 # different name. It catches the literal regression (the exact call sites
 # coming back), not every possible future variant of the same mistake.
+#
+# ── GUARD 3, ADDED 2026-09-15 (BA-01-9) ──────────────────────────────────────
+# David's ruling on build 303's physical-device acceptance test failure named
+# "the server deadline envelope below the phone's 12-second timeout" as a
+# missing BA-01 requirement (ASAP-IMPLEMENTATION-SEQUENCE.md item 9). Found:
+# `web-v2/app/api/v5/races/route.ts` awaited `resolveRaceOutlookBySlug`
+# directly with only a `.catch(() => null)` — no time bound — while
+# `web-v2/lib/plan/plan-snapshot.ts` wraps the SAME, single-flighted,
+# occasionally-slow resolution in `withDeadline(..., RACE_PROJECTION_DEADLINE_MS)`.
+# An unbounded caller can hold a response open until the PHONE's own timeout
+# gives up, which is exactly the shape confirmed live: /api/v5/races timing
+# out at 12060ms with zero server-side request_failures row (the server never
+# decided anything — it was still waiting). This guard is server-side
+# (TypeScript), not native, but lives in the same script per the explicit
+# instruction to wire it into the release gate — one storm-regression gate,
+# not two to keep in step.
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 HOSTS_FILE="$ROOT/native-v2/Faff/Faff/ViewsV5/HostsV5.swift"
+RACES_ROUTE_FILE="$ROOT/web-v2/app/api/v5/races/route.ts"
 
 if [ ! -f "$HOSTS_FILE" ]; then
   echo "check-no-storm-regression: FAIL · $HOSTS_FILE not found — cannot be a clean bill of health, treat as a refusal" >&2
+  exit 1
+fi
+if [ ! -f "$RACES_ROUTE_FILE" ]; then
+  echo "check-no-storm-regression: FAIL · $RACES_ROUTE_FILE not found — cannot be a clean bill of health, treat as a refusal" >&2
   exit 1
 fi
 
@@ -87,8 +108,26 @@ if [ "$TOTAL_MENTIONS" -gt "$DEFINITION_MENTIONS" ]; then
   FAIL=1
 fi
 
+# ── Guard 3: /api/v5/races's call to `resolveRaceOutlookBySlug` must be
+# wrapped in `withDeadline`, never awaited bare. A bare `await
+# resolveRaceOutlookBySlug(...)` line (regardless of a trailing `.catch()`,
+# which bounds ERRORS, not TIME) is the exact regression — it has no time
+# bound at all, so a slow resolution blocks the whole response until the
+# phone's own client timeout gives up.
+RACES_CALL_LINE=$(grep -n "resolveRaceOutlookBySlug(" "$RACES_ROUTE_FILE" | head -1)
+if [ -z "$RACES_CALL_LINE" ]; then
+  echo "check-no-storm-regression: FAIL · could not find any resolveRaceOutlookBySlug( call in $RACES_ROUTE_FILE — the anchor this guard depends on has moved; update the guard rather than assume clean" >&2
+  FAIL=1
+elif echo "$RACES_CALL_LINE" | grep -qE "await resolveRaceOutlookBySlug\("; then
+  echo "check-no-storm-regression: FAIL · $RACES_ROUTE_FILE awaits resolveRaceOutlookBySlug(...) directly, with no withDeadline(...) wrapper — this is the BA-01-9 regression: a slow resolution here has no time bound and can hold the whole /api/v5/races response open until the phone's own 12-13s client timeout gives up" >&2
+  FAIL=1
+elif ! echo "$RACES_CALL_LINE" | grep -qE "withDeadline\(resolveRaceOutlookBySlug\("; then
+  echo "check-no-storm-regression: FAIL · $RACES_ROUTE_FILE's call to resolveRaceOutlookBySlug(...) is not wrapped in withDeadline(...) as expected — the call site's shape has changed in a way this guard does not recognise; update the guard rather than assume clean" >&2
+  FAIL=1
+fi
+
 if [ "$FAIL" -eq 0 ]; then
-  echo "check-no-storm-regression: OK · no launch-task or goTo/Retry prefetch-storm regression found"
+  echo "check-no-storm-regression: OK · no launch-task, goTo/Retry prefetch-storm, or unbounded races-outlook regression found"
   exit 0
 else
   exit 1

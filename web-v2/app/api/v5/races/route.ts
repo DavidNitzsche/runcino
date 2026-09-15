@@ -49,6 +49,7 @@ import { assessGoal } from '@/lib/training/goal-assessment';
 import { computeGoalProjection } from '@/lib/training/goal-projection';
 import { raceProjectionFromOutlook } from '@/lib/training/race-projection';
 import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
+import { withDeadline, RACE_PROJECTION_DEADLINE_MS } from '@/lib/plan/plan-snapshot';
 import { taperWeeksForDistance } from '@/lib/training/fitness-trajectory';
 import { normalWeeklyMileage } from '@/lib/training/normal-window';
 import { selectionAuthority, authorityTier, type AuthorityTier } from '@/lib/race/effort-authority';
@@ -419,8 +420,34 @@ async function handleGET(req: NextRequest) {
       // reaching its own verdict off a stale VDOT snapshot while "Projected"
       // reads the live outlook a few lines later. See `GoalAssessmentInput.
       // outlook`'s doc comment.
-      const nextAOutlook = (distanceMi != null && distanceMi > 0)
-        ? await resolveRaceOutlookBySlug(userId, nextA.slug, todayISO).catch(() => null)
+      // BA-01-9 (2026-09-15) · this call used to await resolveRaceOutlookBySlug
+      // directly with only a .catch(() => null) — no time bound at all. Every
+      // OTHER caller of this same, single-flighted, occasionally-slow
+      // resolution (plan-snapshot.ts's block-wide race read) wraps it in
+      // withDeadline(..., RACE_PROJECTION_DEADLINE_MS), specifically so a slow
+      // resolution degrades gracefully instead of blocking the whole response.
+      // This route had no such bound, so a slow resolution here held the
+      // entire /api/v5/races response open until the PHONE's own 12-13s
+      // client timeout gave up — confirmed live: David's real-device trace on
+      // build 303 showed /api/v5/races timing out at exactly that ceiling,
+      // and request_failures recorded zero server-side rows for that
+      // correlation id, meaning the server itself never decided anything —
+      // it was still waiting. Reusing the SAME deadline and helper
+      // plan-snapshot.ts already uses (Rule 16: one resolver, one bound) makes
+      // this route fail the SAME way theirs does: gracefully, well under the
+      // phone's own ceiling, with a distinct log line rather than a silent
+      // hang.
+      const nextAOutlookAttempt = (distanceMi != null && distanceMi > 0)
+        ? await withDeadline(resolveRaceOutlookBySlug(userId, nextA.slug, todayISO), RACE_PROJECTION_DEADLINE_MS)
+        : null;
+      if (nextAOutlookAttempt != null && nextAOutlookAttempt.status !== 'ok') {
+        console.error(
+          `[v5/races] race outlook resolution ${nextAOutlookAttempt.status} for slug=${nextA.slug} date=${todayISO}`,
+          nextAOutlookAttempt.status === 'error' ? nextAOutlookAttempt.error : undefined,
+        );
+      }
+      const nextAOutlook = nextAOutlookAttempt != null && nextAOutlookAttempt.status === 'ok'
+        ? nextAOutlookAttempt.value
         : null;
 
       const assessment = (distanceMi != null && distanceMi > 0 && goalSec != null && goalDateISO)
