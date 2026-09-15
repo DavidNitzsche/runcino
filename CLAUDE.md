@@ -1314,6 +1314,45 @@ engine's side.
 
 ---
 
+## Rule 26 · Loaded, cached, fluid, instant, live — the standing bar for the app's data layer (locked 2026-09-15)
+
+**David, direct, via David's Desk, after a completed run showed a false "isn't
+available offline" error while he was fully connected: "Everything in the app
+should be loaded, cashed [cached], feel fluid, instant, and live. All this
+offline shit is so frustrating."**
+
+This landed alongside a specific bug (F147 — a stuck `isOffline` flag that only
+clears when the viewed day changes, so reopening an already-viewed completed
+run can show a false offline error even after reconnecting), but the
+frustration is not scoped to that one bug. The same night also surfaced F056
+(a completed run not appearing until relaunch) and F029 (a stale week-strip
+color cache) — three separate instances of the same underlying shape: **the app
+doesn't reliably know what it already has locally, so it shows stale or wrong
+state, or a false connectivity error, instead of showing the cached data it
+already has instantly while quietly refreshing underneath.**
+
+**The standing bar, general beyond any one bug:** every screen that has ever
+successfully loaded its data should render that data instantly from cache on
+return, with a background refresh that updates it silently if something
+changed — never a spinner, a false "unavailable" error, or stale data for data
+the app has already seen once and could show immediately. "Technically correct
+eventually" is not the bar. "Loaded, cached, fluid, instant, live" is.
+
+**Where this applies going forward:** any code that gates a render on a fresh
+network response when a cached value already exists is a candidate violation.
+Any "offline"/"unavailable" state should ask specifically whether the data
+needed is already held locally before showing that error — a genuine
+connectivity failure and a stale local flag that never got cleared are
+different facts (the same discipline as Rule 11's "don't know, measured zero,
+and the read failed are three separate facts," applied to freshness state
+instead of measurement state). When grading **Today & Block** or **Reliability
+& data integrity** on the Gradecard, weigh this standing expectation
+explicitly, not just whether the specific reported bug is fixed — a screen that
+is correct but slow, spinner-first, or falsely offline-gated has not met this
+bar even when nothing is technically wrong with the data itself.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
