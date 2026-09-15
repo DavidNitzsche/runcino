@@ -124,6 +124,29 @@ enum WFmt {
         return String(v)
     }
 
+    /// "Mile 9" / "Km 15" — the whole marker the runner is standing at right
+    /// now, in THEIR OWN unit, from a live miles reading.
+    ///
+    /// F112 (2026-09-14) · pulled out of `WatchRunSurfaceV5.raceMileLabel`
+    /// (whose own comment already tells this exact story once: "This was
+    /// `Int(tracker.distanceMi) + 1` under a 'Km ' prefix ... A metric runner
+    /// nine miles into a marathon was told 'Km 10' when they had covered
+    /// 14.5") so `controlsHeader` — the OTHER board that draws a mile/km
+    /// marker — cannot regress the identical way a second time by hand-rolling
+    /// its own copy. It had: "Mile N" from raw `tracker.distanceMi`, zero km
+    /// conversion, on every warm-up/recovery/cooldown/Just-Run header for a
+    /// kilometre runner. One implementation, one place it can go wrong.
+    ///
+    /// The `1.609344` literal matches `raceMileLabel`'s own original working,
+    /// not `1 / milesPerKm` — kept byte-identical rather than "simplified" to
+    /// avoid a floating-point rounding difference between the two headers on
+    /// some fraction-of-a-mile edge case.
+    static func mileMarker(_ mi: Double, units: String?) -> String {
+        let km = isKm(units)
+        let covered = km ? mi * 1.609344 : mi
+        return (km ? "Km " : "Mile ") + String(Int(covered) + 1)
+    }
+
     // `elevation(_ feet: Double?)` was deleted 2026-08-24.
     //
     // It took FEET while `elevation(_:units:)` immediately above takes METRES,
@@ -300,6 +323,91 @@ final class WatchRouterV5: ObservableObject {
     static func gradingPhase(_ phase: WatchPhase?, planComplete: Bool) -> WatchPhase? {
         planComplete ? nil : phase
     }
+
+    // MARK: - Split recording (F111, 2026-09-14)
+
+    /// The previous mile's split, so the next one can be compared to it.
+    ///
+    /// Lives on the ROUTER, not on `WatchRunSurfaceV5`'s own `@State`, and is
+    /// updated only through `recordSplit(...)` below — never read or written
+    /// from inside a display/routing branch. That split is what makes this
+    /// testable at all: a `WatchRunSurfaceV5.@State` var is private to a
+    /// SwiftUI View struct and unreachable from a test target, the same
+    /// reason `grade()`/`gradingPhase()` above are pure statics on this class
+    /// rather than View logic.
+    private(set) var lastSplitSec: Int? = nil
+
+    /// Record a real split and return its comparison text — UNCONDITIONALLY,
+    /// regardless of `pendingQuestion` or anything else currently on screen.
+    ///
+    /// F111 (2026-09-14) · this used to happen only from inside
+    /// `WatchRunSurfaceV5.momentBoard`'s `.split` case, which
+    /// `interrupt(engine:tracker:)` above only resolves to when nothing
+    /// higher in the precedence order is showing — and a pending
+    /// bail/ceiling-override/low-battery/GPS question "outranks everything"
+    /// (see `WInterrupt`'s own doc comment) and can sit up for minutes. So a
+    /// mile that passed while a question was on screen left `lastSplitSec`
+    /// frozen, and the NEXT split — drawn AND spoken, since the cue is
+    /// spoken unconditionally off `engine.transition` changing regardless of
+    /// what the interrupt stack is showing — compared itself against a
+    /// stale baseline with nothing on screen to say so.
+    ///
+    /// Third instance of the exact same shape found in one night: F066 (the
+    /// bail-check accounting sat behind the `planComplete` display branch in
+    /// `WorkoutEngine.tick()`) and F110 (`milesAdrift` sat behind
+    /// `allowSplitFlash`, also in `tick()`) are the other two. The call site
+    /// this now feeds — `WatchRunSurfaceV5`'s `onChange(of: engine.transition)`
+    /// — already fires unconditionally (it also drives `speak()`), which is
+    /// the same "react to the engine's own event, not to routing" shape
+    /// `offerBailIfDue()` already uses elsewhere in that same View.
+    ///
+    /// The comparison is computed against the OLD baseline FIRST, then the
+    /// baseline advances — so calling this exactly once per real split, in
+    /// declaration order, keeps every future comparison correct regardless
+    /// of whether THIS split ever gets drawn.
+    func recordSplit(paceSec: Int, isRace: Bool, goalSec: Int?, totalDistanceMi: Double?) -> String? {
+        let comparison = Self.splitComparison(paceSec: paceSec, previousSec: lastSplitSec,
+                                               isRace: isRace, goalSec: goalSec,
+                                               totalDistanceMi: totalDistanceMi)
+        lastSplitSec = paceSec
+        return comparison
+    }
+
+    /// "4 sec quicker" against the previous split, "N sec under/over goal" on
+    /// a race, "on goal pace" within 3 sec of it, or nil for the first split
+    /// and for a difference too small to be a fact rather than noise.
+    ///
+    /// Pure and static, like `grade()`/`gradingPhase()` above, so the exact
+    /// arithmetic is unit-testable with no engine, tracker or View involved.
+    static func splitComparison(paceSec: Int, previousSec: Int?,
+                                 isRace: Bool, goalSec: Int?, totalDistanceMi: Double?) -> String? {
+        // ON A RACE, THE COMPARISON IS THE GOAL — NOT THE LAST MILE.
+        //
+        // "4 sec quicker" against the previous mile is the right line on a
+        // training run, where the previous mile is the only reference there
+        // is. In a race the runner has a number they came to hit, and the
+        // question at every marker is the same one: was that mile on pace.
+        // Comparing to the mile before instead answers a question nobody
+        // asked, and a runner drifting steadily reads "on pace" every mile
+        // while falling further behind — the drift is invisible precisely
+        // because each mile resembles the one before it.
+        //
+        // The cumulative standing is on the race face; this is the per-mile
+        // half of the same question, which is what a runner actually paces
+        // off between markers.
+        if isRace, let goal = goalSec, goal > 0,
+           let total = totalDistanceMi, total > 0 {
+            let goalPace = Int((Double(goal) / total).rounded())
+            let delta = paceSec - goalPace
+            if abs(delta) < 3 { return "on goal pace" }
+            return "\(abs(delta)) sec " + (delta < 0 ? "under goal" : "over goal")
+        }
+
+        guard let prev = previousSec else { return nil }
+        let delta = paceSec - prev
+        guard abs(delta) >= 3 else { return nil }
+        return "\(abs(delta)) sec " + (delta < 0 ? "quicker" : "slower")
+    }
 }
 
 // MARK: - The running surface
@@ -316,8 +424,12 @@ struct WatchRunSurfaceV5: View {
     /// The ceiling question is asked at most once per run.
     @State private var ceilingAsked = false
     @State private var ceilingBreachTask: Task<Void, Never>? = nil
-    /// The previous mile's split, so the next one can be compared to it.
-    @State private var lastSplitSec: Int? = nil
+    /// The comparison text for the split cue currently in flight, captured
+    /// against the OLD baseline at the instant the cue fires — see the
+    /// `onChange(of: engine.transition)` handler below, and F111. The
+    /// baseline itself (`lastSplitSec`) now lives on `router`, not here —
+    /// see `WatchRouterV5.recordSplit(...)`.
+    @State private var lastSplitComparisonText: String? = nil
 
     // ── The decision seam ───────────────────────────────────────────────
     //
@@ -490,6 +602,39 @@ struct WatchRunSurfaceV5: View {
         // repeats itself on every re-render is worse than no voice.
         .onChange(of: engine.transition) { _, cue in
             guard let cue else { return }
+            // F111 (2026-09-14) · RECORD THE SPLIT UNCONDITIONALLY, ON THE
+            // ENGINE'S OWN CUE — NEVER ON WHETHER THE BOARD FOR IT DRAWS.
+            //
+            // This used to update a `lastSplitSec` `@State` here only from
+            // inside `momentBoard`'s `.split` case, which runs ONLY when
+            // `router.interrupt(...)` resolves to this moment. But a pending
+            // bail/ceiling-override/low-battery/GPS question "outranks
+            // everything" (see `WInterrupt`'s own doc comment) and can sit up
+            // for minutes — so a mile that passed while a question was on
+            // screen left the baseline frozen, and the NEXT split (drawn AND
+            // spoken — `speak()` below runs unconditionally, question or no
+            // question) compared itself against a stale number with nothing
+            // on screen to say so.
+            //
+            // Third instance of the exact same shape in one night: F066 (the
+            // bail-check accounting sat behind the `planComplete` display
+            // branch) and F110 (`milesAdrift` sat behind `allowSplitFlash`)
+            // are the other two. `offerBailIfDue()` further down in this same
+            // file already gets this right — it reacts to
+            // `engine.milesAdrift` / `engine.ruleBreachSec` directly via
+            // `onChange`, decoupled from whatever the interrupt stack is
+            // currently showing. This follows that same pattern, and moves
+            // the baseline itself onto `router` (see
+            // `WatchRouterV5.recordSplit(...)`) so the fix is unit-testable —
+            // `@State` on this View struct is not.
+            if case .split(_, let paceSec) = cue {
+                lastSplitComparisonText = router.recordSplit(
+                    paceSec: paceSec,
+                    isRace: engine.workout.isRace,
+                    goalSec: engine.workout.goalSec,
+                    totalDistanceMi: engine.workout.distanceMi
+                )
+            }
             speak(WatchRouterV5.moment(from: cue))
         }
         .onDisappear {
@@ -1098,9 +1243,13 @@ struct WatchRunSurfaceV5: View {
         // board over and still standing after that one was fixed. A metric
         // runner nine miles into a marathon was told "Km 10" when they had
         // covered 14.5, on the header of the board they read most.
-        let km = WFmt.isKm(units)
-        let covered = km ? tracker.distanceMi * 1.609344 : tracker.distanceMi
-        return (km ? "Km " : "Mile ") + String(Int(covered) + 1)
+        //
+        // F112 (2026-09-14) · now `WFmt.mileMarker`, not inlined here — see
+        // that function's own doc for why: the identical defect reappeared,
+        // still unconverted, on `controlsHeader` below, because the working
+        // lived only in this one property and nowhere `controlsHeader` could
+        // reuse it without retyping it.
+        WFmt.mileMarker(tracker.distanceMi, units: units)
     }
 
     /// "sub 3:30". Absent when the race carries no goal, so the register
@@ -1280,7 +1429,12 @@ struct WatchRunSurfaceV5: View {
         case .split(let mile, let paceSec):
             v.splitLabel = (WFmt.isKm(units) ? "Km " : "Mile ") + String(mile)
             v.splitTime = WFmt.short(paceSec)
-            v.splitComparison = splitComparison(paceSec)
+            // F111 · the CACHED text set by `router.recordSplit(...)` in the
+            // `onChange(of: engine.transition)` handler, not recomputed here.
+            // The router's baseline has already advanced to THIS split's own
+            // pace by the time anything downstream of that handler runs, so
+            // recomputing here would diff a number against itself.
+            v.splitComparison = lastSplitComparisonText
         case .headsUp:
             v.pace = livePace.value
             v.band = bandLabel
@@ -1318,8 +1472,14 @@ struct WatchRunSurfaceV5: View {
             WMomentPhaseChange(word: title, detail: sub ?? "",
                                band: bandParts?.value,
                                bandUnit: bandParts?.unit ?? livePace.unit)
-        case .split(let mile, let paceSec):
-            let _ = recordSplit(paceSec)
+        case .split:
+            // F111 · `momentValues` reads `v.splitComparison` straight off
+            // `lastSplitComparisonText` — the text `router.recordSplit(...)`
+            // already computed, against the correct OLD baseline, in the
+            // `onChange(of: engine.transition)` handler above. Recomputing it
+            // here instead would run against `router.lastSplitSec` AFTER it
+            // has advanced to this very split's own pace, diffing a number
+            // against itself.
             let v = momentValues(kind)
             WMomentSplit(
                 label: v.splitLabel ?? "",
@@ -1368,45 +1528,21 @@ struct WatchRunSurfaceV5: View {
         }
     }
 
-    /// Remember this split so the next one has something to compare against.
-    /// `lastSplitSec` was declared and never assigned, so the comparison
-    /// register never once appeared.
-    private func recordSplit(_ paceSec: Int) -> Int {
-        DispatchQueue.main.async { lastSplitSec = paceSec }
-        return paceSec
-    }
-
-    /// "4 sec quicker" against the previous split, or nil for the first one
-    /// and for a difference too small to be a fact rather than noise.
-    private func splitComparison(_ paceSec: Int) -> String? {
-        // ON A RACE, THE COMPARISON IS THE GOAL — NOT THE LAST MILE.
-        //
-        // "4 sec quicker" against the previous mile is the right line on a
-        // training run, where the previous mile is the only reference there
-        // is. In a race the runner has a number they came to hit, and the
-        // question at every marker is the same one: was that mile on pace.
-        // Comparing to the mile before instead answers a question nobody
-        // asked, and a runner drifting steadily reads "on pace" every mile
-        // while falling further behind — the drift is invisible precisely
-        // because each mile resembles the one before it.
-        //
-        // The cumulative standing is on the race face; this is the per-mile
-        // half of the same question, which is what a runner actually paces
-        // off between markers.
-        if engine.workout.isRace,
-           let goal = engine.workout.goalSec, goal > 0,
-           let total = engine.workout.distanceMi, total > 0 {
-            let goalPace = Int((Double(goal) / total).rounded())
-            let delta = paceSec - goalPace
-            if abs(delta) < 3 { return "on goal pace" }
-            return "\(abs(delta)) sec " + (delta < 0 ? "under goal" : "over goal")
-        }
-
-        guard let prev = lastSplitSec else { return nil }
-        let delta = paceSec - prev
-        guard abs(delta) >= 3 else { return nil }
-        return "\(abs(delta)) sec " + (delta < 0 ? "quicker" : "slower")
-    }
+    // `recordSplit(_:)` and the instance `splitComparison(_:)` were deleted
+    // 2026-09-14 (F111).
+    //
+    // `recordSplit(_:)` updated a `lastSplitSec` `@State` from inside
+    // `momentBoard`'s `.split` case — reachable only when
+    // `router.interrupt(...)` resolved to this moment, which a pending
+    // bail/ceiling-override/low-battery/GPS question could suppress for
+    // minutes. Both the baseline and the comparison arithmetic now live on
+    // `WatchRouterV5` itself (`recordSplit(paceSec:isRace:goalSec:totalDistanceMi:)`
+    // / the static `splitComparison(...)`), called unconditionally from the
+    // `onChange(of: engine.transition)` handler above, on the engine's own
+    // cue firing — with the display-suppression gate left to decide only
+    // what gets DRAWN, never what gets RECORDED. Same lesson as F066 and
+    // F110, and moving the state off this View's own `@State` is what makes
+    // it unit-testable at all (see `WatchRouterV5Tests`).
 
     /// Put the bail or abort board up, if the rule's own evidence says so.
     ///
@@ -1526,8 +1662,23 @@ struct WatchRunSurfaceV5: View {
             }
             return "\(phase.label) \(WatchV5.separator) \(left)"
         }
-        let mile = Int(tracker.distanceMi) + 1
-        return "Mile \(mile) \(WatchV5.separator) \(WFmt.clock(engine.totalElapsedSec))"
+        // F112 (2026-09-14) · THE RUNNER'S OWN UNIT, THROUGH THE SAME HELPER
+        // `raceMileLabel` USES.
+        //
+        // This used to be `Int(tracker.distanceMi) + 1` under a hardcoded
+        // "Mile " prefix — no km conversion at all, and a REGRESSION of the
+        // exact defect `raceMileLabel`'s own comment above describes as
+        // already fixed once elsewhere ("one board over and still standing
+        // after that one was fixed" — this was that still-standing board).
+        // A metric runner nine miles into a marathon saw "Mile 9" here while
+        // every other board on the watch, including the race header right
+        // above, correctly read kilometres. Routed through `WFmt.mileMarker`
+        // — the same helper `raceMileLabel` now calls — rather than a second
+        // hand-rolled copy of the conversion, so the two headers cannot
+        // independently regress or disagree about which marker the runner is
+        // standing on.
+        let marker = WFmt.mileMarker(tracker.distanceMi, units: units)
+        return "\(marker) \(WatchV5.separator) \(WFmt.clock(engine.totalElapsedSec))"
     }
 
     @ViewBuilder
