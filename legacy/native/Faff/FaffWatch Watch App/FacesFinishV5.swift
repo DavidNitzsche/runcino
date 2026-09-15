@@ -262,6 +262,52 @@ private struct WSummaryGroup: View {
     }
 }
 
+/// F119 — "did my run actually save," as a plain presentation-layer value.
+/// `PhoneSync.SyncState` is the real, transport-aware version of this (it
+/// also carries a `.idle` case and a failure reason string), but this file's
+/// own header says these boards "know nothing about... PhoneSync" — so this
+/// is the router's translation target, not `PhoneSync.SyncState` reused
+/// directly. Three states because that is what design review's spec
+/// (grounded in `FinishRaceCompleteBoard`'s existing "Provisional" caption,
+/// above) settled on: nothing / dim "Saving" / amber "still working on it".
+enum FinishSyncStatus: Equatable {
+    /// The ordinary, successful case — sent and accepted. Draws nothing.
+    case sent
+    /// Upload in flight (either transport). Draws "Saving", dim.
+    case sending
+    /// The primary transport failed; the backup direct-POST is retrying.
+    /// Draws "Still saving · trying another way", in `WatchV5.attention`
+    /// (amber) — never `WatchV5.fault` (red). This project's colour
+    /// doctrine reserves red for something worse than "still working on
+    /// it," and a retrying backup path is not that.
+    case failed
+
+    /// The line this state draws, or nil for `.sent` — pulled out of
+    /// `FinishSummaryBoard.body` as a plain computed property (rather than
+    /// left inline in the view) so a test can assert the exact copy for
+    /// each state without needing a SwiftUI view-inspection dependency this
+    /// target does not have.
+    var statusLine: String? {
+        switch self {
+        case .sent: return nil
+        case .sending: return "Saving"
+        case .failed: return "Still saving \(WatchV5.separator) trying another way"
+        }
+    }
+
+    /// The colour `statusLine` is drawn in. `.sent` returns a value even
+    /// though nothing is drawn for it, purely so the property is total; the
+    /// view never reads it for that case (`statusLine == nil` gates the
+    /// whole line). The one invariant worth a standalone test: `.failed` is
+    /// NEVER `WatchV5.fault` — see the case comment above.
+    var statusColor: Color {
+        switch self {
+        case .sent, .sending: return WatchV5.valueDim
+        case .failed: return WatchV5.attention
+        }
+    }
+}
+
 /// Summary. **The only scrolling board in the app, so the only one allowed more
 /// than four numbers** — rule 4 caps a running face, and this is not one.
 ///
@@ -303,14 +349,40 @@ struct FinishSummaryBoard: View {
     /// The way off this board, DRAWN. Both call sites also keep a
     /// tap-anywhere gesture, and for a while that gesture was the only exit
     /// there was — David, 2026-09-02, looking at his own finished run: "there
-    /// is not done or save or anything button." The run was already saved by
-    /// the time this board renders (both callers POST first and build the
-    /// receipt from the response), so the board's job is to SAY so and let
-    /// him leave. An invisible affordance does neither.
+    /// is not done or save or anything button."
+    ///
+    /// CORRECTED 2026-09-14 (finding F119). This doc used to claim the run
+    /// "was already saved by the time this board renders (both callers POST
+    /// first and build the receipt from the response)". That is not what
+    /// either call site does: `WorkoutRootView.bind` fires
+    /// `PhoneSync.shared.sendCompletion` the instant the engine reaches
+    /// `.finished` — well before the runner has even tapped through Complete
+    /// / Effort to reach Summary — but `sendCompletion` itself is
+    /// fire-and-forget (queues transferUserInfo/transferFile and a
+    /// background POST, per finding 035) and returns immediately; nothing
+    /// here waits for, or builds anything from, a server response. The
+    /// numbers on this board come from the LOCAL `engine.completion` /
+    /// `RecoverySummary`, not a receipt. So a run can legitimately still be
+    /// `.sending`, or have already flipped to `.failed` (primary transport
+    /// down, backup POST retrying), for the entire time a runner is looking
+    /// at THIS board — which is also the one board in the finish flow that
+    /// does not auto-advance and can sit on screen indefinitely. That makes
+    /// it the right (and observable) surface for `syncStatus` below, not the
+    /// wrong one. The board's job is still to say "you can leave" — now
+    /// truthfully, on however sync actually stands, rather than by
+    /// assumption.
     ///
     /// It sits at the very bottom of the scroll, below `totals`, so it cannot
     /// push Mile 1 under the fold — see the first-screenful rule above.
     var onDone: (() -> Void)? = nil
+    /// F119 · design review's 3-state spec for "did my run actually save,"
+    /// grounded in this board's own `FinishRaceCompleteBoard` sibling's
+    /// existing "Provisional" caption (dim label, `WatchV5.number` face) —
+    /// reused rather than inventing a new pattern. `PhoneSync.syncState`
+    /// itself is never imported here: this file's header says these boards
+    /// "know nothing about... PhoneSync," so the router (`WatchRouterV5
+    /// .swift`) does the translation and hands down this plain value.
+    var syncStatus: FinishSyncStatus = .sent
 
     var body: some View {
         WBoard(scrolls: true) {
@@ -331,6 +403,24 @@ struct FinishSummaryBoard: View {
                         WSummaryGroup(rows: totals,
                                       fill: WatchV5.surface1,
                                       valueSize: 14)
+                    }
+                    // F119 — the sync-status line. `.sent` draws nothing (the
+                    // ordinary, successful case) because `statusLine` is nil
+                    // for it — an empty row would still cost the vertical
+                    // space the first-screenful fold rule above is
+                    // protecting. Sits below `totals`, same reasoning as
+                    // `onDone` below it — additive content at the very
+                    // bottom of the scroll cannot push Mile 1 under the
+                    // fold. Text/colour live on `FinishSyncStatus` itself
+                    // (above), not inline here, so they're covered by a
+                    // plain unit test rather than only by eyeballing a
+                    // preview (size 13 / same font as the sibling
+                    // "Provisional" caption on `FinishRaceCompleteBoard`).
+                    if let statusLine = syncStatus.statusLine {
+                        Text(statusLine)
+                            .font(WatchV5.number(13))           // 26px
+                            .foregroundStyle(syncStatus.statusColor)
+                            .padding(.top, 3)
                     }
                     if let onDone {
                         // Quiet, not filled. Nothing here is destructive and
@@ -705,6 +795,43 @@ struct PreSessionRecoveredRunBoard: View {
         totals: [
             FinishSummaryRow("Climb", "312 ft"),
         ]
+    )
+}
+
+// F119 — the two non-default sync states, so a review can SEE them (Rule 13:
+// never a display fix judged from code alone) rather than trust the color
+// names in the doc comments.
+#Preview("Summary · sending") {
+    FinishSummaryBoard(
+        distance: "6.02",
+        duration: "48:12",
+        averages: [
+            FinishSummaryRow("Pace", "8:01 /mi"),
+            FinishSummaryRow("Heart", "148 avg"),
+            FinishSummaryRow("Cadence", "159 spm"),
+        ],
+        splits: [
+            FinishSummaryRow("Mile 1", "8:12"),
+        ],
+        onDone: { },
+        syncStatus: .sending
+    )
+}
+
+#Preview("Summary · failed") {
+    FinishSummaryBoard(
+        distance: "6.02",
+        duration: "48:12",
+        averages: [
+            FinishSummaryRow("Pace", "8:01 /mi"),
+            FinishSummaryRow("Heart", "148 avg"),
+            FinishSummaryRow("Cadence", "159 spm"),
+        ],
+        splits: [
+            FinishSummaryRow("Mile 1", "8:12"),
+        ],
+        onDone: { },
+        syncStatus: .failed
     )
 }
 

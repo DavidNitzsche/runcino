@@ -1817,6 +1817,28 @@ struct WatchLobbySurfaceV5: View {
 
 // MARK: - Finish surface
 
+/// F119 — translate `PhoneSync`'s transport-aware sync state into the
+/// finish boards' plain presentation value. Lives here, in the router,
+/// rather than in FacesFinishV5.swift, whose header says those boards
+/// "know nothing about... PhoneSync" — the same layering `WatchLobbyAdapter`
+/// already keeps for the lobby boards' own wire-to-presentation step.
+///
+/// `.idle` maps to `.sent` (nothing shown): by the time either call site
+/// (`WatchFinishSurfaceV5`, `WatchRecoveryReceiptV5`) renders,
+/// `sendCompletion` has already been called (see `WorkoutRootView.bind`'s
+/// `.finished` handler and `endAndSaveRecovered`/`attemptRecovery`'s
+/// zero-stats branch), so `.idle` should not be observable here in
+/// practice — but if it ever were, "nothing shown" is the harmless
+/// fallback, not a spurious "Saving" for a run that never even started
+/// uploading.
+private func finishSyncStatus(for state: PhoneSync.SyncState) -> FinishSyncStatus {
+    switch state {
+    case .idle, .sent: return .sent
+    case .sending: return .sending
+    case .failed: return .failed
+    }
+}
+
 /// Complete → scroll → Summary. The only scrolling board in the app is the
 /// summary, which is why it is the only one allowed more than four numbers.
 struct WatchFinishSurfaceV5: View {
@@ -1826,6 +1848,13 @@ struct WatchFinishSurfaceV5: View {
 
     @State private var showingEffort = false
     @State private var showingSummary = false
+    /// F119 — observed so Summary's status line redraws live as sync
+    /// resolves (`.sending` → `.sent`/`.failed`) WHILE the runner is looking
+    /// at the board, not just at first render. `sendCompletion` already
+    /// fired before this view even exists (see `WorkoutRootView.bind`'s
+    /// `.finished` handler), so `phoneSync.syncState` at first render is
+    /// already meaningful, not a placeholder waiting to start.
+    @ObservedObject private var phoneSync: PhoneSync = .shared
 
     private var units: String? { engine.workout.unitsDistance }
     private var dist: (value: String, unit: String) {
@@ -1849,7 +1878,8 @@ struct WatchFinishSurfaceV5: View {
                 averages: averages,
                 splits: splits,
                 totals: totals,
-                onDone: onDone
+                onDone: onDone,
+                syncStatus: finishSyncStatus(for: phoneSync.syncState)
             )
             // Tap anywhere to leave. Summary had NO exit before this change —
             // `onDone` was a stored parameter this view never called — so
@@ -1965,6 +1995,14 @@ struct WatchRecoveryReceiptV5: View {
     let summary: WatchRootModel.RecoverySummary
     let onDone: () -> Void
 
+    /// F119 — same reasoning as `WatchFinishSurfaceV5`'s own copy of this:
+    /// both `attemptRecovery`'s zero-stats branch and `endAndSaveRecovered`
+    /// call `PhoneSync.shared.sendCompletion` before building the
+    /// `RecoverySummary` this view renders from, so sync can still be
+    /// resolving (or have already failed) for the whole time this receipt
+    /// is on screen.
+    @ObservedObject private var phoneSync: PhoneSync = .shared
+
     /// The recovered run's own units — a run that survived a crash is still
     /// that runner's run, and its receipt should not switch them to miles.
     private var units: String? { summary.workout.unitsDistance }
@@ -1977,7 +2015,8 @@ struct WatchRecoveryReceiptV5: View {
             averages: averages,
             splits: [],
             totals: [],
-            onDone: onDone
+            onDone: onDone,
+            syncStatus: finishSyncStatus(for: phoneSync.syncState)
         )
         .onTapGesture(perform: onDone)
     }

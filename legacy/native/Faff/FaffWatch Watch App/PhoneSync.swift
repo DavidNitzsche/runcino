@@ -81,6 +81,17 @@ final class PhoneSync: NSObject, ObservableObject {
     // check that always says "fresh" is worse than none — use
     // `WatchWorkout.isExpired`, which routes through parseExpiry.
 
+    /// F119 test seam ONLY. `syncState`'s setter is deliberately `private`
+    /// in production — every real transition happens through
+    /// `sendCompletion` / `handlePrimaryTransferResult` /
+    /// `handleDirectPostResult`. But setting up "primary already failed"
+    /// as a precondition for the one-way-guard-fix test means starting from
+    /// `.sending`, and the only production path into `.sending` is
+    /// `sendCompletion`, which fires live `WCSession` calls a test host
+    /// cannot safely make before activation. This exists solely so a test
+    /// can set that precondition directly instead.
+    func setSyncStateForTest(_ state: SyncState) { syncState = state }
+
     private override init() { super.init() }
 
     // MARK: - DUPLICATE-1 (2026-09-03, round 5) · read the phone's active session
@@ -241,12 +252,48 @@ final class PhoneSync: NSObject, ObservableObject {
         set { UserDefaults.standard.set(newValue, forKey: pendingKey) }
     }
 
-    private func enqueueDirect(_ data: Data) {
+    /// F119 — this cap used to evict silently: no error, no log, the oldest
+    /// unsent completion just gone with zero trace. That is exactly the
+    /// failure class this file's own header cites as the reason `syncState`
+    /// exists at all ("a recorded run once vanished") — an eviction here IS
+    /// a vanished run (the queue holds completions the backend has NOT yet
+    /// accepted), not routine housekeeping, so it gets the same `print`
+    /// treatment this file already gives a decode failure / a phone-request
+    /// error (see `apply`'s `workout decode failed` and
+    /// `requestTodayWorkout`'s error branch above) — `[PhoneSync] ...`, one
+    /// line per event. Routed through `evictionLogger` rather than a bare
+    /// `print` so a test can observe the call fired without scraping stdout.
+    /// F119 — internal, not `private`: a test drives this directly to
+    /// exercise the eviction path without going through `sendCompletion`,
+    /// which fires live `WCSession` calls unsafe to run against a session
+    /// that a test host never activates.
+    func enqueueDirect(_ data: Data) {
         var q = pendingDirect
         q.append(data)
-        if q.count > 50 { q.removeFirst(q.count - 50) } // bound growth
+        if q.count > 50 {
+            let overflow = q.count - 50
+            for evicted in q.prefix(overflow) {
+                let id = (try? JSONDecoder().decode(EvictedWorkoutId.self, from: evicted))?.workoutId ?? "unknown"
+                Self.evictionLogger("retry queue full (50) — dropping unsent completion \(id)")
+            }
+            q.removeFirst(overflow)
+        }
         pendingDirect = q
     }
+
+    /// Minimal, decode-only mirror of `WatchCompletion`'s one relevant field.
+    /// `WatchCompletion` itself is `Encodable` only — this file only ever
+    /// writes it, never reads it back — so extracting just the id for a log
+    /// line needs its own tiny decodable shape rather than adding `Decodable`
+    /// conformance to the real model for one log message.
+    private struct EvictedWorkoutId: Decodable { let workoutId: String }
+
+    /// Test seam for the eviction log above. Production leaves this at its
+    /// default, which prints exactly like every other notable event in this
+    /// file (`[PhoneSync] ...`). A test replaces it to assert the call
+    /// fired, since asserting on stdout directly would be far more brittle
+    /// than asserting on a closure invocation.
+    static var evictionLogger: (String) -> Void = { print("[PhoneSync] \($0)") }
 
     /// Schedule a background upload for every queued completion the backend
     /// hasn't accepted yet. No-op without a token. Returns immediately — the
@@ -872,19 +919,28 @@ extension PhoneSync: WCSessionDelegate {
 
     /// transferUserInfo completion — first time we've ever known whether the
     /// phone received it (audit RK-2). On failure the direct-POST path is the
-    /// fallback; we just update syncState so the SummaryView can reflect it.
+    /// fallback; we just update syncState so F119's finish-board status line
+    /// can reflect it.
     nonisolated func session(_ session: WCSession,
                              didFinish userInfoTransfer: WCSessionUserInfoTransfer,
                              error: Error?) {
         let failed = error != nil
         Task { @MainActor in
-            if failed {
-                if self.syncState == .sending {
-                    self.syncState = .failed("Transfer failed · uploading directly")
-                }
-            } else {
-                if self.syncState == .sending { self.syncState = .sent }
+            self.handlePrimaryTransferResult(failed: failed)
+        }
+    }
+
+    /// Pulled out of the delegate callback above (F119) so the pure
+    /// state-transition logic is callable directly from a test — a real
+    /// `WCSessionUserInfoTransfer` can only be produced by the system, so a
+    /// test cannot construct one to drive the delegate method itself.
+    func handlePrimaryTransferResult(failed: Bool) {
+        if failed {
+            if self.syncState == .sending {
+                self.syncState = .failed("Transfer failed · uploading directly")
             }
+        } else {
+            if self.syncState == .sending { self.syncState = .sent }
         }
     }
 
@@ -1018,23 +1074,51 @@ extension PhoneSync: URLSessionDataDelegate {
         let status = (task.response as? HTTPURLResponse)?.statusCode ?? 0
         let failed = (error != nil)
         Task { @MainActor in
-            if let id { self.inFlight.remove(id) }
-            if !failed, (200...299).contains(status) {
-                if let id { self.removePending(workoutId: id) }   // accepted → drop from durable queue
-                Self.cleanTempBody(id: id)
-                if self.syncState == .sending { self.syncState = .sent }
-            } else if status == 401 || status == 403 {
-                self.authToken = nil                               // stale token → stop; iPhone re-shares one
-                Self.cleanTempBody(id: id)
-            } else if (400...499).contains(status) {
-                // Permanent client error (400 bad-request, 404 not-found, 409 already-accepted,
-                // etc.) — the backend will never accept this payload regardless of retries.
-                // Drop from the durable queue so it doesn't accumulate forever (dead-letter).
-                if let id { self.removePending(workoutId: id) }
-                Self.cleanTempBody(id: id)
-            }
-            // Network errors / 5xx: leave queued + temp file in place; next
-            // activate()/sendCompletion() flush retries it.
+            self.handleDirectPostResult(id: id, status: status, failed: failed)
         }
+    }
+
+    /// Pulled out of the delegate callback above (F119) so the state
+    /// transition can be driven directly from a test — a real, completed
+    /// `URLSessionTask` carrying a live `HTTPURLResponse` cannot be
+    /// constructed without actually performing a network request.
+    func handleDirectPostResult(id: String?, status: Int, failed: Bool) {
+        if let id { self.inFlight.remove(id) }
+        if !failed, (200...299).contains(status) {
+            if let id { self.removePending(workoutId: id) }   // accepted → drop from durable queue
+            Self.cleanTempBody(id: id)
+            // F119 — the ONE-WAY GUARD FIX. This used to read
+            // `if self.syncState == .sending { self.syncState = .sent }`,
+            // which only ever moved .sending → .sent. But this is the
+            // BACKUP path, and it can (by design — see "Direct-to-backend
+            // writeback" above) succeed AFTER the primary transferUserInfo
+            // has already failed and set syncState to `.failed(...)`. When
+            // that happens the old guard's condition was false, `syncState`
+            // stayed `.failed` forever even though the run had, in fact,
+            // safely reached the backend by the other route — a permanently
+            // wrong status for anything that reads it (the finish-board
+            // status line this finding wires up). Either non-terminal state
+            // this run could have been in — still sending, or the primary
+            // already having failed — is corrected to `.sent` by a
+            // successful backup POST, because a successful backup POST is
+            // unconditionally good news for this workoutId.
+            switch self.syncState {
+            case .sending, .failed:
+                self.syncState = .sent
+            case .idle, .sent:
+                break
+            }
+        } else if status == 401 || status == 403 {
+            self.authToken = nil                               // stale token → stop; iPhone re-shares one
+            Self.cleanTempBody(id: id)
+        } else if (400...499).contains(status) {
+            // Permanent client error (400 bad-request, 404 not-found, 409 already-accepted,
+            // etc.) — the backend will never accept this payload regardless of retries.
+            // Drop from the durable queue so it doesn't accumulate forever (dead-letter).
+            if let id { self.removePending(workoutId: id) }
+            Self.cleanTempBody(id: id)
+        }
+        // Network errors / 5xx: leave queued + temp file in place; next
+        // activate()/sendCompletion() flush retries it.
     }
 }
