@@ -471,6 +471,57 @@ final class V5ContrastTests: XCTestCase {
             "a screen reader must not simply read the dash out")
     }
 
+    /// F063 · CAUSE A, RULE 18 FALSIFICATION (2026-09-14).
+    ///
+    /// `OnboardingRevealPanel` (screen 9a's day-one reveal, in
+    /// `OnboardingV5.swift`) draws its dose line through the same
+    /// `FaffValueText` every other hero panel uses, but reached it through
+    /// the `.text(_:color:)` sugar — which leaves `mark`/`fault` at
+    /// `FaffValueText`'s generic, OFF-panel defaults (`V5.attention` /
+    /// `V5.fault`) instead of the panel's own ink, unlike
+    /// `HeroDayPanelContentV5`, `BlockV5.swift` and `RacesV5.swift`, which all
+    /// pin `fault` to their `PanelInk`/`V5.OnPanel`. A brand-new runner whose
+    /// very first day lands on rest is exactly the case that resolves `dose`
+    /// to `.unreadable` (`HostsV5.swift`'s `today.panel.dose
+    /// .unreadableIfAbsent`), so the bug reaches the runner on literally the
+    /// first screen the app ever shows them.
+    ///
+    /// `V5.fault`'s red is the token `PanelInk.fault`'s own doc comment
+    /// already measured and rejected for this exact gradient-panel context —
+    /// it fails contrast on every ramp, not only the light two. Day one's
+    /// `dayState` is always base/easy/rest/long/phase — `composePlan` writes
+    /// the first day before any race exists, so `.race` cannot occur, and a
+    /// first day is never prescribed as a hard `.quality` session — so this
+    /// checks the dark-ramp set, the one `V5.OnPanel` (this file's hard-coded
+    /// ink, unchanged by the F063 fix) actually inks.
+    ///
+    /// BEFORE the fix (simulated here via the bare `V5.fault` token the old
+    /// call site used): fails on every ramp day one can show. AFTER (via
+    /// `V5.OnPanel.fault`, what `OnboardingRevealPanel` now passes): clears
+    /// on all of them. Revert `OnboardingRevealPanel`'s `FaffValueText` call
+    /// to the old `.text(_:color:)` sugar to see the first assertion's
+    /// counterpart start failing for real.
+    func testOnboardingRevealDoseDashClearsOnDayOneRamp() {
+        let dayOneRamps: [V5.DayState] = [.rest, .easy, .long, .phase]
+        for state in dayOneRamps {
+            for depth in stride(from: 0.30, through: 0.55, by: 0.05) {
+                let preFix = contrast(V5.fault, on: ramp(state, at: depth))
+                XCTAssertLessThan(preFix, largeText,
+                    "\(state) at depth \(String(format: "%.2f", depth)): the OLD call site's "
+                    + "V5.fault measures \(String(format: "%.2f", preFix)):1 — if this ever "
+                    + "clears, cause A was not actually reproducing and this falsification "
+                    + "needs revisiting")
+
+                let postFix = contrast(V5.OnPanel.fault, on: ramp(state, at: depth))
+                XCTAssertGreaterThanOrEqual(postFix, largeText,
+                    "\(state) at depth \(String(format: "%.2f", depth)): V5.OnPanel.fault (what "
+                    + "OnboardingRevealPanel now passes) measures "
+                    + "\(String(format: "%.2f", postFix)):1 — the day-one dash must be legible "
+                    + "on every ramp a first day can actually show")
+            }
+        }
+    }
+
     /// A header disc's glyph is drawn in `primary` on `control`. It is a
     /// control, so its glyph is read as text. Light ramps only — see the note
     /// on `testPlateAndControlLiftAwayFromTheirInk`.

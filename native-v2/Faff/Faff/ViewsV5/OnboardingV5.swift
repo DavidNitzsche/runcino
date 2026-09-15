@@ -637,7 +637,29 @@ private struct OnboardingRevealPanel: View {
             Text(day.sessionType)
                 .faffDisplayV5(44)
                 .foregroundStyle(V5.OnPanel.primary)
-            day.dose.text(.faffText(22, weight: .semibold), color: V5.OnPanel.primary)
+            // F063 · CAUSE A (2026-09-14). This used to be
+            // `day.dose.text(.faffText(22, weight: .semibold), color: V5.OnPanel.primary)`
+            // — the `.text(_:color:)` sugar, which leaves `mark`/`fault` at
+            // `FaffValueText`'s generic, OFF-panel defaults (`V5.attention` /
+            // `V5.fault`). A day-one rest day is exactly the case where
+            // `dose` resolves to `.unreadable` (see `HostsV5.swift`'s
+            // `today.panel.dose.unreadableIfAbsent`, the same slot-not-row
+            // conversion `BlockV5.swift`/`RacesV5.swift` already apply), and
+            // `V5.fault`'s bright red is the token measured and rejected for
+            // exactly this gradient-panel context — see
+            // `TokensV5.swift`'s `PanelInk.fault` doc: it fails contrast on
+            // all six day-state ramps and reads as a stray, off-brand mark
+            // rather than an honest "—". Every other hero panel drawing this
+            // same field (`HeroDayPanelContentV5`, `BlockV5.swift`,
+            // `RacesV5.swift`) calls `FaffValueText` directly with
+            // `mark`/`fault` pinned to the panel's own ink so the dash reads
+            // as PART of the panel. This screen has no per-ramp `PanelInk`
+            // (it hardcodes `V5.OnPanel` above, like the rest of this view),
+            // so it pins to `V5.OnPanel.mark`/`.fault` — the same tokens
+            // already used for `.primary`/`.secondary` two lines up.
+            FaffValueText(day.dose, font: .faffText(22, weight: .semibold),
+                          color: V5.OnPanel.primary, mark: V5.OnPanel.mark,
+                          fault: V5.OnPanel.fault)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(V5.S.s20)
