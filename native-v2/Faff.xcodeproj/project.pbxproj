@@ -53,7 +53,6 @@
 		29B789653D987A0A4AF3B3B5 /* LifecycleSweepTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4253B212F7099ADDDE9C216A /* LifecycleSweepTests.swift */; };
 		2A5B31B43354B2F1699E2B56 /* PaceDriftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3676EBC48CB66235C0EE731 /* PaceDriftTests.swift */; };
 		2A991BF46A64BE16C8E3B6B0 /* RequestCoalescingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1A242C88EB2882D83A0A0E7 /* RequestCoalescingTests.swift */; };
-		1B49AFBC1DDB3A729FB36729 /* LaunchOrchestrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FC59563805435ADEE2793C40 /* LaunchOrchestrationTests.swift */; };
 		2C4B66907408D3B941C50726 /* WorkoutEngineTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F91DFD1C7C031A3F6120FA29 /* WorkoutEngineTests.swift */; };
 		2CECC6E66207BE2B489E1660 /* SweepLedger.swift in Sources */ = {isa = PBXBuildFile; fileRef = 66D5343ED9131EF5857DDCA4 /* SweepLedger.swift */; };
 		2CF96FA9F2763CF433717CD6 /* SpokenCues.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9E67560BFE144A0B9CA885E /* SpokenCues.swift */; };
@@ -254,6 +253,7 @@
 		DDEC03C890DF05DF53ECDF7F /* TrainView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 175401B3AE5EFD5368347E58 /* TrainView.swift */; };
 		DE224649DDD289495E37715D /* FacesLobbyV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = 71C4F2E6374884D975BBC496 /* FacesLobbyV5.swift */; };
 		DECF5720E3070DDD9BD23D18 /* MorningBriefBlock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 918DFA9C4478972044408D2A /* MorningBriefBlock.swift */; };
+		DEDAD73077F0D666D057D05D /* LaunchOrchestrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 49DBF0EED6F36A53A06EDF29 /* LaunchOrchestrationTests.swift */; };
 		DF214510EDD5AB5B065F0B39 /* PostRunLearnedV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = BF0432108F7DEEA43D15C990 /* PostRunLearnedV5.swift */; };
 		DFCC502C7F6095DD3D77C470 /* SettingsFailureUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1E0484FC0CD9F615E14D90C2 /* SettingsFailureUITests.swift */; };
 		E0BE2A0BC43ECFFFEFE7A395 /* RunActionMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8579E34E6C74E08AD40FCB48 /* RunActionMenu.swift */; };
@@ -463,6 +463,7 @@
 		46EC493626E589550944B025 /* RepeatStepV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepeatStepV5.swift; sourceTree = "<group>"; };
 		47B01231CF6EA2F9487242FC /* WorkoutEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WorkoutEngine.swift; sourceTree = "<group>"; };
 		480DB4BC3388D23D601E5EB3 /* RouteMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RouteMapView.swift; sourceTree = "<group>"; };
+		49DBF0EED6F36A53A06EDF29 /* LaunchOrchestrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchOrchestrationTests.swift; sourceTree = "<group>"; };
 		4B06CB04BB75562F9A1BC187 /* V5RaceWireTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5RaceWireTests.swift; sourceTree = "<group>"; };
 		4C45130AC1A3933F6095DED9 /* WriteHonestyUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WriteHonestyUITests.swift; sourceTree = "<group>"; };
 		4D5F68CF60A53A86E84CD6B2 /* RecoveryWindowStrip.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecoveryWindowStrip.swift; sourceTree = "<group>"; };
@@ -604,7 +605,6 @@
 		BFA85E15978E6315D144D85E /* MIGRATION_PLAN.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = MIGRATION_PLAN.md; sourceTree = "<group>"; };
 		C031D0E48CA07DF55507E632 /* ProposalHarnessV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProposalHarnessV5.swift; sourceTree = "<group>"; };
 		C1A242C88EB2882D83A0A0E7 /* RequestCoalescingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestCoalescingTests.swift; sourceTree = "<group>"; };
-		FC59563805435ADEE2793C40 /* LaunchOrchestrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchOrchestrationTests.swift; sourceTree = "<group>"; };
 		C1E500ED606917B273FF2A51 /* WatchMirrorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchMirrorView.swift; sourceTree = "<group>"; };
 		C29FB6AFE3C447E23C510022 /* AddRaceV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddRaceV5.swift; sourceTree = "<group>"; };
 		C3518819A569ED4E7C4F1E8F /* LiveRunWatchCompanionV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunWatchCompanionV5.swift; sourceTree = "<group>"; };
@@ -676,7 +676,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_529457BE-79E4-4869-A575-5E480F40FE29" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_7A7F1D13-A57E-4475-8040-29E9F4FE1786" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -728,6 +728,7 @@
 				902F9B952BC025BB545BF8E8 /* HRAlerterArmingTests.swift */,
 				58ADF42EDED4C71FB0AD2CDD /* Info.plist */,
 				75374B7D3662AFA195419AC4 /* LateFailureBannerTests.swift */,
+				49DBF0EED6F36A53A06EDF29 /* LaunchOrchestrationTests.swift */,
 				F4A21960D269B71A0390C059 /* LiveRunTreadmillCuesOverlapTests.swift */,
 				FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */,
 				FA3B687F7BD1375763E551FE /* NetworkFence.swift */,
@@ -738,7 +739,6 @@
 				3A85664CAD8235007F2987E2 /* RecorderConcurrencyTests.swift */,
 				A4E743ABB66D0CB5E7D6FED2 /* RepCompletionSummaryTests.swift */,
 				C1A242C88EB2882D83A0A0E7 /* RequestCoalescingTests.swift */,
-				FC59563805435ADEE2793C40 /* LaunchOrchestrationTests.swift */,
 				DAD38C7298C01A8DA4A62EB5 /* RequestDiagnosticsTests.swift */,
 				7A5588DFAB05E7FC333B1F14 /* RPECaptureTests.swift */,
 				5ECB1DD6BF684DF37A90CBBB /* RunLobbyV5Tests.swift */,
@@ -1143,10 +1143,10 @@
 			path = FaffUITests;
 			sourceTree = "<group>";
 		};
-		"TEMP_FEC623BE-79A6-44FE-B58E-9683DEF7DB7F" /* native-v2 */ = {
+		"TEMP_3BEC14C6-DB77-4E6F-9C18-8DECA63CF535" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_529457BE-79E4-4869-A575-5E480F40FE29" /* Secrets.xcconfig */,
+				"TEMP_7A7F1D13-A57E-4475-8040-29E9F4FE1786" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1453,6 +1453,7 @@
 				F1CA1817A927220804808DA0 /* FormatVectors.generated.swift in Sources */,
 				EFA8FC960084833E322AAAD8 /* HRAlerterArmingTests.swift in Sources */,
 				A34C324ADA4DFC4BDE4274A7 /* LateFailureBannerTests.swift in Sources */,
+				DEDAD73077F0D666D057D05D /* LaunchOrchestrationTests.swift in Sources */,
 				29B789653D987A0A4AF3B3B5 /* LifecycleSweepTests.swift in Sources */,
 				9B6654039322E953D39A6FB3 /* LiveRunTreadmillCuesOverlapTests.swift in Sources */,
 				FACEBAA69F1C4822991FE9B5 /* LiveRunTreadmillNominalTests.swift in Sources */,
@@ -1466,7 +1467,6 @@
 				AE498C495063F6C98677718F /* RegisterSweepTests.swift in Sources */,
 				31E799F64B8C6E58A2BFB0AF /* RepCompletionSummaryTests.swift in Sources */,
 				2A991BF46A64BE16C8E3B6B0 /* RequestCoalescingTests.swift in Sources */,
-				1B49AFBC1DDB3A729FB36729 /* LaunchOrchestrationTests.swift in Sources */,
 				7772B8FFA13C514033773092 /* RequestDiagnosticsTests.swift in Sources */,
 				9B4E43AF15E093C4300838E2 /* RunLobbyV5Tests.swift in Sources */,
 				F474EE6E137971ABDB247394 /* SettingsFailureStateTests.swift in Sources */,
@@ -1729,7 +1729,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_529457BE-79E4-4869-A575-5E480F40FE29" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_7A7F1D13-A57E-4475-8040-29E9F4FE1786" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1958,7 +1958,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_529457BE-79E4-4869-A575-5E480F40FE29" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_7A7F1D13-A57E-4475-8040-29E9F4FE1786" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
