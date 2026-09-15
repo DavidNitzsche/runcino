@@ -666,6 +666,56 @@ export function retitleLeadMi(
   return prescription.replace(re, `${restated}$2`);
 }
 
+/**
+ * NOTETRUTH-1 (2026-09-14) · restate a long run's PROSE opening-easy mileage
+ * when the day's final distance moved out from under it.
+ *
+ * Mirrors `retitleLeadMi` above, one layer up. `generate.ts`'s `layoutWeek`
+ * authors a long day's modified-block / progression / downhill-simulation /
+ * plain-finish `notes` with one literal number baked in — the opening easy
+ * mileage, computed as `longMi - (segment miles + any recovery gap)` — at
+ * LAYOUT time, before `finalizeComposedPlan`'s ramp ceiling, spike rule,
+ * easy-recap and long-run smoother have finished moving the day's total
+ * distance. `setLongFinish` keeps its own note rewrites in sync with the
+ * RACE-PACE segments it changes (its own header: "the label and the notes are
+ * rewritten together"), but a pass that trims `day.distanceMi` alone —
+ * `smoothLongWoW`, `enforceSpikeRule`, `recapEasyBelowLong` — never touches
+ * `day.notes`, so the prose's easy-mile figure can go stale while the
+ * segment table (built fresh off `sub_label` and the FINAL `distance_mi`)
+ * reports the correct one.
+ *
+ * F086 (design review, 2026-09-14): the live 2026-09-20 long run read "Easy
+ * 12mi, then 3mi at marathon effort ... 1mi easy, then 2mi at marathon
+ * effort" in the coach prose (12+3+1+2 = 18mi) while `sub_label` and
+ * `distance_mi` (17.5) both said the opening easy segment was 11.5mi
+ * (11.5+3+1+2 = 17.5) — a Rule 16 violation. Read-only production sweep the
+ * same day found it on 3 of 3 live long-run rows whose notes state an opening
+ * easy figure, every one off by exactly the half-mile grid one of the
+ * distance-only trims above moves a day by.
+ *
+ * Only the LEADING "Easy/Steady Nmi," clause is rewritten — the pace words,
+ * the workout-identity sentence and the coaching color that follow are
+ * untouched. A no-op unless the label carries a real finish/segment shape
+ * (`extractLongSegments` non-empty) whose current segment-and-gap total,
+ * subtracted from `finalDistanceMi`, disagrees with the number already there.
+ */
+export function retitleLongOpeningEasyMi(
+  notes: string | null | undefined,
+  subLabel: string | null | undefined,
+  finalDistanceMi: number,
+): string | null | undefined {
+  if (notes == null || !(finalDistanceMi > 0)) return notes;
+  const re = /^((?:Modified block\.\s+|Progression long\.\s+|Downhill simulation\.\s+)?)(Easy|Steady) (\d+(?:\.\d+)?)mi,/;
+  const m = re.exec(notes);
+  if (!m) return notes;
+  const segments = extractLongSegments(subLabel);
+  if (segments.length === 0) return notes;
+  const segmentMi = segments.reduce((s, seg) => s + seg.mi + (seg.recoveryMi ?? 0), 0);
+  const restated = Math.max(0, roundTo(finalDistanceMi - segmentMi, 1));
+  if (Math.abs(restated - Number(m[3])) < 0.05) return notes;
+  return notes.replace(re, `$1$2 ${restated}mi,`);
+}
+
 // ── Warm-up / cool-down remainder split ────────────────────────────────────
 
 /**

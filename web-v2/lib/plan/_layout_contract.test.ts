@@ -180,6 +180,26 @@
  *     On the reference block that is 4 → 5 and 4 → 5. `composed` 8781, `days`
  *     699860, `raceWeeks` 3969 — unchanged again: the same days, two of them
  *     carrying a mile more at marathon effort.
+ *
+ *   · 2026-09-14 · NOTETRUTH-1 (F086). A modified-block / progression /
+ *     downhill-simulation / plain-finish long run's `notes` bakes its opening
+ *     easy mileage in at `layoutWeek` time, off the day's `distanceMi` AT THAT
+ *     MOMENT — before the ramp ceiling, spike rule, easy-recap and long-run
+ *     smoother later in `finalizeComposedPlan` finish moving it. A new
+ *     reconcile pass, `retitleLongOpeningEasyMi` (mirroring `retitleLeadMi`'s
+ *     LABELTRUTH-2 fix one section above, run in the same LAST position),
+ *     restates the note's leading "Easy/Steady Nmi," figure against the day's
+ *     FINAL `distanceMi` and the segments its own `subLabel` carries. Caught on
+ *     the runner's own live plan: 2026-09-20's long run read "Easy 12mi, ..."
+ *     over a day whose label and distance both said 11.5mi (Rule 16) — a
+ *     read-only production sweep the same day found the identical half-mile
+ *     drift on 3 of 3 live long runs whose notes state an opening figure.
+ *
+ *     `composed` (8781), `days` (699860) and `raceWeeks` (3969) are ALL
+ *     unchanged — this pass touches only `notes`, never distance, placement,
+ *     label or spec. Falsified in `_seglong_authoring.test.ts`'s NOTETRUTH-1
+ *     suite, which reproduces the three live rows directly and fails without
+ *     the reconcile pass wired in.
  */
 import { describe, it, expect } from 'vitest';
 import { createHash } from 'node:crypto';

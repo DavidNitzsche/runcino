@@ -28,7 +28,7 @@ import { randomBytes } from 'crypto';
 import { loadSettings } from '@/lib/coach/settings';
 import { pickWorkout, type WorkoutFamily } from './workout-library-static';
 import { recoveryDayAfterLongMi } from './plan-templates';
-import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
+import { buildWorkoutSpec, conservativeVdotFromMileage, resolveMarathonPace, totalDistanceMiFromSpec, capSpecToDistance, retitleReps, retitleLeadMi, retitleLongOpeningEasyMi, STRIDE_DAYS_PER_WEEK, STRIDE_DURATION_S, strideRepsForPhase } from './spec-builder';
 import { subLabelFromSpec } from '@/lib/training/expand-spec';
 // THRESHOLD-OWNER-1 (2026-09-05) · `tPaceFromVdot` and `resolveCurrentTPace`
 // REMOVED from this import. AUTHORING-CANONICAL-1 deleted every call to both
@@ -15102,6 +15102,32 @@ export function finalizeComposedPlan(
       if (!label || !(day.distanceMi > 0)) continue;
       const retitled = retitleLeadMi(label, day.distanceMi);
       if (retitled && retitled !== label) day.subLabel = retitled;
+    }
+  }
+
+  /*
+   * NOTETRUTH-1 (2026-09-14) · the long run's PROSE half of the same drift.
+   *
+   * `retitleLeadMi` above reconciles a beginner base day's leading LABEL
+   * mileage; this reconciles a long run's leading NOTES mileage — "Easy
+   * Nmi, then ..." for a modified block, progression, downhill simulation or
+   * plain finish — against the day's FINAL `distanceMi`, for the identical
+   * reason and running in the identical LAST position: `layoutWeek` bakes the
+   * opening-easy figure into the note at author time, before every ramp
+   * ceiling, spike-rule trim, easy-recap and long-run smoother above has
+   * finished moving the day. F086 (design review, 2026-09-14): the runner's
+   * own live 2026-09-20 long run read "Easy 12mi, then 3mi at marathon
+   * effort ... 1mi easy, then 2mi at marathon effort" over a day whose
+   * sub_label and distance_mi (17.5) both said the opening easy segment was
+   * 11.5mi — a Rule 16 violation, and not a one-off: a read-only sweep of the
+   * runner's own live plan found the identical half-mile-off mismatch on
+   * every long run whose notes state an opening easy figure (3 of 3).
+   */
+  for (const week of composed.weeks) {
+    for (const day of week.days) {
+      if (day.type !== 'long' || !(day.distanceMi > 0)) continue;
+      const retitled = retitleLongOpeningEasyMi(day.notes, day.subLabel, day.distanceMi);
+      if (retitled != null && retitled !== day.notes) day.notes = retitled;
     }
   }
 

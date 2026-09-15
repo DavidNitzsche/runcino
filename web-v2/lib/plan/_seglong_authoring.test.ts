@@ -14,7 +14,7 @@
 import { describe, it, expect } from 'vitest';
 import { distanceCategoryOrThrow } from '@/lib/race/distance-category';
 import { composePlan, finalizeComposedPlan, inlinePrescriptions, type ComposePlanInput, type DOW } from './generate';
-import { extractLongSegments } from './spec-builder';
+import { extractLongSegments, retitleLongOpeningEasyMi } from './spec-builder';
 import { fixtureTPaceFromGoalPace } from './_fixture-goal-tpace';
 
 const START_MONDAY = '2026-01-05';
@@ -290,4 +290,95 @@ describe('SEGLONG-3 · a long run\'s notes never describe segments its label doe
       }
     });
   }
+});
+
+describe('NOTETRUTH-1 · a long run\'s notes never claim a different opening-easy mileage than the day it describes', () => {
+  // F086 (design review, 2026-09-14): the runner's own live 2026-09-20 long
+  // run read "Easy 12mi, then 3mi at marathon effort ... 1mi easy, then 2mi
+  // at marathon effort" in the coach prose — over a day whose sub_label
+  // ("LONG · 3mi @ M + 1mi @ E + 2mi @ M") and distance_mi (17.5) both said
+  // the opening easy segment was 11.5mi (11.5+3+1+2 = 17.5, matching the
+  // segment table and hero card; the prose's 12+3+1+2 = 18 matched neither).
+  // A read-only sweep of the live plan found the same half-mile-off mismatch
+  // on every long run whose notes state an opening figure (3 of 3) — one of
+  // the distance-only trims in `finalizeComposedPlan` (the WoW smoother, the
+  // spike rule, the easy-recap) moved `distanceMi` after `layoutWeek` had
+  // already baked the pre-trim opening-easy number into `notes`.
+  //
+  // This walks the same archetype grid SEGLONG-3 above does and asserts the
+  // "Easy/Steady Nmi," clause's N agrees with distanceMi minus every segment
+  // (and its recovery gap) `extractLongSegments` reads off the label.
+  const openingEasyFromNotes = (notes: string | null | undefined): number | null => {
+    const m = /^(?:Modified block\.\s+|Progression long\.\s+|Downhill simulation\.\s+)?(?:Easy|Steady) ([\d.]+)mi,/
+      .exec(String(notes ?? ''));
+    return m ? Number(m[1]) : null;
+  };
+
+  for (const baseMi of [40, 50, 60, 70]) {
+    it(`holds across an 18-week advanced marathon build off ${baseMi} mi/wk`, () => {
+      const res = composePlan(marathonInput(baseMi));
+      finalizeComposedPlan(res, 26.2, 'advanced');
+      let checked = 0;
+      for (const w of res.weeks) for (const d of w.days) {
+        if (d.type !== 'long') continue;
+        const notedEasy = openingEasyFromNotes(d.notes);
+        if (notedEasy == null) continue;
+        const segments = extractLongSegments(d.subLabel);
+        if (segments.length === 0) continue;
+        const segmentMi = segments.reduce((s, seg) => s + seg.mi + (seg.recoveryMi ?? 0), 0);
+        const expectedEasy = Math.round((d.distanceMi - segmentMi) * 10) / 10;
+        checked++;
+        expect(
+          notedEasy,
+          `week ${w.startISO}: distanceMi ${d.distanceMi} minus segments ${segmentMi} = ` +
+            `${expectedEasy}mi opening easy, notes claim ${notedEasy}mi\n  label: ${d.subLabel}\n  notes: ${d.notes}`,
+        ).toBeCloseTo(expectedEasy, 1);
+      }
+      expect(checked, 'no long run in this build carried a parseable opening-easy note').toBeGreaterThan(0);
+    });
+  }
+
+  // Direct reproduction of the live F086 rows, pulled read-only from the
+  // runner's own active plan (`plan_workouts`, 2026-09-14). These are the
+  // exact `sub_label` / `notes` / `distance_mi` triples that shipped to the
+  // phone with a wrong opening-easy figure, so this is a falsifiable
+  // regression test rather than an assertion that never fires: reverting
+  // `retitleLongOpeningEasyMi`'s call site in `finalizeComposedPlan` leaves
+  // these three archetype-sweep-style checks green (the synthetic fixture
+  // above never happens to trigger a post-authoring distance trim on a
+  // segmented long) but fails all three of these directly.
+  it('fixes the three live F086 rows found in the runner\'s own active plan', () => {
+    const cases = [
+      {
+        date: '2026-09-20',
+        subLabel: 'LONG · 3mi @ M + 1mi @ E + 2mi @ M',
+        distanceMi: 17.5,
+        notes: 'Modified block. Easy 12mi, then 3mi at marathon effort for your current fitness, 1mi easy, ' +
+          'then 2mi at marathon effort for your current fitness. The second block is the session: you are ' +
+          'practising getting back to race pace on tired legs, so keep the easy mile honest and short.',
+        expectedEasy: 11.5,
+      },
+      {
+        date: '2026-10-18',
+        subLabel: 'LONG · 5mi @ M + 1mi @ E + 3mi @ M',
+        distanceMi: 20.5,
+        notes: 'Modified block. Easy 12mi, then 5mi at marathon effort for your current fitness, 1mi easy, ' +
+          'then 3mi at marathon effort for your current fitness. The second block is the session: you are ' +
+          'practising getting back to race pace on tired legs, so keep the easy mile honest and short.',
+        expectedEasy: 11.5,
+      },
+      {
+        date: '2026-11-22',
+        subLabel: 'LONG · 5mi @ M',
+        distanceMi: 15.5,
+        notes: 'Steady 11mi, then 5mi at marathon effort for your current fitness.',
+        expectedEasy: 10.5,
+      },
+    ];
+    for (const c of cases) {
+      const fixed = retitleLongOpeningEasyMi(c.notes, c.subLabel, c.distanceMi);
+      expect(fixed, `${c.date}: expected the opening easy figure restated to ${c.expectedEasy}mi`)
+        .toMatch(new RegExp(`^(?:Modified block\\.\\s+)?(?:Easy|Steady) ${c.expectedEasy}mi,`));
+    }
+  });
 });
