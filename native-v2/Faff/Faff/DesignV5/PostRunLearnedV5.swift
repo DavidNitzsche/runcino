@@ -297,7 +297,7 @@ func raceTargetOutcomeLine(_ race: PostRunRaceV5?) -> String? {
     guard let outcome = race?.goalOutcome else { return nil }
     switch outcome {
     case "target_invalidated", "not_assessable":
-        return "The target for this race wasn't well supported by your evidence going in. Read the result on its own — it's not a miss on your execution."
+        return "The target for this race wasn't well supported by your evidence going in. Read the result on its own. It's not a miss on your execution."
     default:
         // `met` / `missed` over a VALID target need no extra sentence here —
         // `PostRunVerdictV5`'s existing headline/summary already say so.
