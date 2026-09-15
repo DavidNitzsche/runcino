@@ -2590,22 +2590,16 @@ function buildWhereYouAre(
   fitnessRow: V5Row | null,
 ): V5Row[] {
   const rows: V5Row[] = [];
-  if (glance.readiness?.score != null) {
-    rows.push({
-      id: 'readiness', label: 'Readiness',
-      sub: glance.readiness.label ?? null,
-      // RULE ONE. Readiness is a composite score — weighted HRV, RHR, sleep
-      // and load, each banded against a rolling baseline. Nothing measured
-      // it; a model produced it out of things that were. "82 / 100" printed
-      // like a heart rate is the app asserting a precision it does not have.
-      value: { text: `${glance.readiness.score} / 100`, modelled: true },
-      action: null,
-    });
-  }
-  // After readiness, before the week. Readiness is how the runner is TODAY,
-  // fitness is what they are worth, the week is what they have done. The
-  // section reads in that order. Null when the read failed or when there is
-  // no runner to read yet; a refusal is a row, not a null.
+  // F-READINESS-1 (2026-09-14) · the readiness row (composite HRV/RHR/sleep
+  // score) was removed from this section outright, per David's own
+  // instruction: "until [a real health section] is built, we drop anything
+  // that is faked in the app." A modelled composite score is exactly that —
+  // see design-review finding 001. `glance.readiness` itself is untouched
+  // and still feeds the readiness pull-back guard, the morning brief and
+  // `fact-reciter.ts`; only this display row is gone. Fitness is what the
+  // runner is worth, the week is what they have done. Null when the read
+  // failed or when there is no runner to read yet; a refusal is a row, not a
+  // null.
   if (fitnessRow) rows.push(fitnessRow);
   rows.push({
     id: 'week', label: 'This week',

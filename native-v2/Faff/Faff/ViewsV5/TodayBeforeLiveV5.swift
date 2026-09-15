@@ -6,16 +6,15 @@
 //  WHY THIS FILE EXISTS SEPARATELY FROM TodayBeforeV5 AND FROM HostsV5
 //
 //  `TodayBeforeV5`'s own header is explicit: "This file does not fetch."
-//  It takes `beforeYouGoOptions` / `onSelectBeforeYouGoOption` /
-//  `readinessPillars` as plain data or synchronous closures, and until now
-//  every call site left them at their no-op defaults — the row expanded
-//  into nothing, because nothing supplied a shoe list, a set of open days,
-//  or a readiness pillar breakdown.
+//  It takes `beforeYouGoOptions` / `onSelectBeforeYouGoOption` as plain data
+//  or synchronous closures, and until now every call site left them at
+//  their no-op defaults — the row expanded into nothing, because nothing
+//  supplied a shoe list or a set of open days.
 //
-//  Those need four network reads (`GET /api/shoe`, `GET
-//  /api/readiness/brief`, `GET /api/v5/block`, `GET /api/plan/move`) and
-//  writes to `POST /api/today/shoe`, `POST /api/today/skip`, and
-//  `GET`/`POST /api/plan/move`. `HostsV5.swift` is the composition root
+//  Those need three network reads (`GET /api/shoe`, `GET /api/v5/block`,
+//  `GET /api/plan/move`) and writes to `POST /api/today/shoe`,
+//  `POST /api/today/skip`, and `GET`/`POST /api/plan/move`.
+//  `HostsV5.swift` is the composition root
 //  that would normally own this, but per this task's constraints it is not
 //  touched here — so this view sits between `TodayHostV5` and
 //  `TodayBeforeV5`: it owns exactly the local state those reads need,
@@ -82,12 +81,10 @@ struct TodayBeforeLiveV5: View {
     var reload: () async -> Void = {}
 
     @State private var shoes: [Shoe] = []
-    @State private var pillars: [ReadinessPillar] = []
-    /// RULE THREE · which of the prefetches FAILED, as against came back
-    /// with nothing in it. Both used to collapse into an empty array, and
-    /// the screen then told the runner there was nothing to show — a claim
-    /// about their data made on the strength of a read that never landed.
-    @State private var pillarsUnread = false
+    /// RULE THREE · the prefetch FAILED, as against came back with nothing
+    /// in it. Used to collapse into an empty array, and the screen then told
+    /// the runner there was nothing to show — a claim about their data made
+    /// on the strength of a read that never landed.
     @State private var shoesUnread = false
     @State private var block: V5Block? = nil
 
@@ -136,8 +133,6 @@ struct TodayBeforeLiveV5: View {
             calendarNote: calendarNote,
             beforeYouGoOptions: options(for:),
             onSelectBeforeYouGoOption: select,
-            readinessPillars: pillars,
-            readinessPillarsUnread: pillarsUnread,
             beforeYouGoUnread: { row in row.action == "change_shoe" && shoesUnread },
             onAccountRowTap: onAccountRowTap,
             onPickDay: onPickDay,
@@ -160,34 +155,31 @@ struct TodayBeforeLiveV5: View {
     // All three are read-only GETs, fetched in parallel alongside the
     // host's own Today load. Eager rather than fetched lazily on first tap:
     // the runner has to scroll past the panel and instruction groups before
-    // reaching either list, which is normally enough time for three small
-    // reads to land, and it means neither expansion pops from empty to
+    // reaching the shoe list, which is normally enough time for these small
+    // reads to land, and it means the expansion never pops from empty to
     // populated mid-interaction.
     //
     // A failed read is NOT an empty list. This used to leave the list empty
-    // and let the expansion say "Nothing to change here yet." for both, on
-    // the reasoning that an error was too loud for a list the runner had to
-    // go looking for. The volume was the right instinct and the sentence was
+    // and let the expansion say "Nothing to change here yet.", on the
+    // reasoning that an error was too loud for a list the runner had to go
+    // looking for. The volume was the right instinct and the sentence was
     // the wrong one: it is a claim about the runner's garage, made when we
     // never opened it. The two states are separate now and both stay quiet.
 
     private func prefetch() async {
         async let shoesFetch: ShoesResponse? = try? API.fetchShoes()
-        async let pillarsFetch: ReadinessBriefSeed? = try? API.fetchReadinessBrief()
         async let blockFetch: API.V5Fetch<V5Block>? = try? API.fetchV5Block()
         // MOVEREADJUDICATE-TODAY-1 · the same canonical GET RescheduleV5.swift
         // calls at browse time. `to` is a required-but-unused placeholder here
         // too (see that file's `V5MoveRecommendationEnvelope` comment) — the
         // ranked `.options` this prefetch wants do not depend on it.
         async let rescheduleFetch: API.V5RescheduleFetch? = try? await API.fetchReschedule(dateISO: model.dateISO)
-        let (s, p, b, r) = await (shoesFetch, pillarsFetch, blockFetch, rescheduleFetch)
+        let (s, b, r) = await (shoesFetch, blockFetch, rescheduleFetch)
         // nil is "we could not read it"; a payload with an empty list is
         // "we read it and there is nothing". Only the second one is a
         // sentence about the runner.
         shoesUnread = s == nil
-        pillarsUnread = p == nil
         shoes = s?.shoes ?? []
-        pillars = p?.pillars ?? []
         if case .ok(let value)? = b { block = value }
         // Rule 11 · three facts, three states — an answer, a real "no", or a
         // read that failed — never collapsed into one.
