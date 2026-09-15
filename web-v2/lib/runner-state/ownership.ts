@@ -1043,7 +1043,28 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
     key: 'TRAINING_CONSISTENCY',
     question: 'How regularly does he actually train.',
     constitutionOwner: 'Training Load',
-    canonical: null,
+    /* F077 CONSOLIDATION (2026-09-14/15) · this belief was `canonical: null`
+     * for exactly the reason the entry below still records: the only
+     * consistency-shaped score in the codebase was a private function inside
+     * a weighted composite, unreachable by anything else. Read all three
+     * named `competing` symbols before touching this — none of them was
+     * actually this question (see `conflict.because`) — and built the
+     * missing reader rather than crowning one of the three. Full citation
+     * and the exact scope this pass did and did not cross:
+     * `programme-internal-working/00-master-programme/
+     * F077-TRAINING-CONSISTENCY-2026-09-14.md`. */
+    canonical: {
+      module: 'lib/training/training-consistency.ts',
+      symbol: 'resolveTrainingConsistency',
+      answers: 'Whether the same quality-session stimulus has kept failing '
+        + 'to land, as a trailing consecutive-miss streak scoped to quality '
+        + 'sessions specifically (never blended mileage) and to whether the '
+        + 'prescribed stimulus was actually delivered (never mere calendar '
+        + 'presence) — per `for coaching consult/consult-log/2026-09-14-019-'
+        + 'f077-non-adherence-design.md`\'s doctrine determination for '
+        + 'IPR-20260914-006. The domain statement the Training Load owner '
+        + 'had never named.',
+    },
     rule8Side: 'ABSORBED_LOAD',
     competing: [
       {
@@ -1077,30 +1098,58 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
     conflict: {
       verdict: 'OPEN',
       between: ['lib/adaptation/adaptation-model.ts#CONSISTENCY_SPREAD_NOTE'],
-      shouldOwn: 'a named reader in the Training Load owner, which does not '
-        + 'yet exist',
-      because: 'The only implementation is a private function inside a '
-        + 'weighted dimension score, and Constitution 11 warns against '
-        + 'exactly that shape: a score that exists to be combined with five '
-        + 'other scores, with no domain statement anyone else can read. The '
-        + 'reasoning inside it is good, and the point is that nothing else '
-        + 'in the app can reach it. A surface asking how consistent this '
-        + 'runner has been has nowhere to call.',
-      notRoutedBecause: 'Promoting a private scorer to a canonical reader '
-        + 'means deciding what the domain statement is, which is the '
-        + 'Training Load owner call.',
+      shouldOwn: 'lib/training/training-consistency.ts#resolveTrainingConsistency',
+      because: '2026-09-14/15 F077 consolidation pass. Reading all three '
+        + 'named competitors first found none of them was actually this '
+        + 'question, which is why a fourth, new function was the right move '
+        + 'rather than crowning one of the three. `computeWeekMileage` '
+        + 'answers "miles this week" ("No belief is kept", per its own file '
+        + 'header) and `loadRunnerCalibration` answers account maturity, not '
+        + 'consistency — its own `computes` line above already said so. '
+        + 'Neither is routed anywhere below because neither was ever this '
+        + 'question; both stay exactly as they are, unmigrated, on purpose. '
+        + '`CONSISTENCY_SPREAD_NOTE`/`readConsistency` IS a genuine '
+        + 'consistency-shaped score — the one this entry already correctly '
+        + 'diagnosed as unreachable (Constitution 11: a private function '
+        + 'inside a weighted composite) — and it stays the one thing still '
+        + 'named `between` because it is the one real overlap. It stays '
+        + 'OPEN rather than ROUTED because migrating it means changing what '
+        + 'the adaptation model\'s "consistency" dimension measures for '
+        + 'every runner live today, from blended weekly-mileage steadiness '
+        + 'to quality-session delivery — a different, still-valid question '
+        + 'about load absorption, not a wrong answer to this one. '
+        + '`_adaptation_model.test.ts` pins the current volume/spread '
+        + 'behaviour directly (e.g. "chronically over-running the plan is '
+        + 'not scored as good consistency"), which makes this a live-'
+        + 'progression-affecting change needing its own replay-verified '
+        + 'pass and coach/product sign-off, not a same-session migration '
+        + 'piggybacked on building the reader that F077 actually needed.',
+      notRoutedBecause: 'The new canonical reader is real, exported and '
+        + 'callable today — F077\'s RECOMMIT/RECALIBRATE detector already '
+        + 'reads it (`lib/coach/non-adherence-offer.ts`) — so the "nothing '
+        + 'else in the app can reach it" complaint this entry used to record '
+        + 'is fixed. What is left open is narrower and named precisely: '
+        + 'whether `adaptation-model.ts`\'s own, differently-scoped '
+        + '"consistency" dimension should be redefined to consume this '
+        + 'reader instead of its own volume/spread heuristic. That is a '
+        + 'coaching-owned call about a live composite score this session '
+        + 'did not have standing to make unilaterally, per the same '
+        + '"Training Load owner call" reasoning this entry already gave for '
+        + 'the un-promoted state.',
     },
     movesUpOn: [
       {
-        what: 'Weeks landing close to plan, with the shape steady rather '
-          + 'than the mean flattering an interrupted block.',
-        reader: 'lib/faff/week-mileage.ts#computeWeekMileage',
+        what: 'A quality session landing after a run of misses. The '
+          + 'trailing streak resets to zero the moment one lands.',
+        reader: 'lib/training/training-consistency.ts#resolveTrainingConsistency',
       },
     ],
     movesDownOn: [
       {
-        what: 'Weeks scattering around the plan even when the mean holds.',
-        reader: 'lib/faff/week-mileage.ts#computeWeekMileage',
+        what: 'Two or three quality sessions in a row failing to earn '
+          + 'progression credit, whether missed outright or delivered as a '
+          + 'different, easier stimulus than the one prescribed.',
+        reader: 'lib/training/training-consistency.ts#resolveTrainingConsistency',
       },
     ],
     neverMovesOn: [
