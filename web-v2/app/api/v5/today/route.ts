@@ -295,7 +295,35 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   const userId = auth;
 
   const url = new URL(req.url);
-  const runnerTodayISO = (await runnerToday(userId)).slice(0, 10);
+  // ── Race-mode gate ────────────────────────────────────────────────────
+  //
+  // RULE THREE. Everything below this gate is load-bearing in the strongest
+  // sense the rule has: failing it does not omit a section, it tells the
+  // runner the product is not for them. `not_on_phone_yet` reads "Not here
+  // yet · This phone build only coaches toward a goal race", with no retry
+  // and nothing to suggest anything went wrong.
+  //
+  // Both reads used to swallow their own failure into an empty result, so a
+  // Postgres blip and "has never raced through this app" were the same
+  // value, and a marathoner in week 9 of a block got the refusal. `Strict`
+  // and the missing `.catch` are what make a failed read reach the wrapper
+  // above and become the outage screen instead.
+  //
+  // PARALLEL-1 (2026-09-15, F159/F162's backend architecture Phase 0) ·
+  // `runnerToday(userId)` and `loadActivePlanStrict(userId)` each take only
+  // `userId` — neither reads the other's result, confirmed by reading every
+  // line between their two original call sites. This route's own incident
+  // tonight was exactly this shape: ~35-40 SEQUENTIAL round-trips meant one
+  // slow connection checkout anywhere in the chain could blow the client's
+  // fixed 12s budget. `Promise.all`, never `allSettled`: a rejection from
+  // either call must still propagate to `composeToday`'s caller and become
+  // the outage response, exactly as an unhandled rejection from either did
+  // before this was two sequential `await`s.
+  const [runnerTodayRaw, activePlan] = await Promise.all([
+    runnerToday(userId),
+    loadActivePlanStrict(userId),
+  ]);
+  const runnerTodayISO = runnerTodayRaw.slice(0, 10);
   const requestedDate = url.searchParams.get('date')?.slice(0, 10) || null;
   const today = requestedDate || runnerTodayISO;
   // `completionTz` used to be resolved here for this route's own
@@ -319,21 +347,6 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
   // The fix is the same shape as the rest of 22b — what belongs to today
   // stays on today.
   const isSteppedDay = today !== runnerTodayISO;
-
-  // ── Race-mode gate ────────────────────────────────────────────────────
-  //
-  // RULE THREE. Everything below this gate is load-bearing in the strongest
-  // sense the rule has: failing it does not omit a section, it tells the
-  // runner the product is not for them. `not_on_phone_yet` reads "Not here
-  // yet · This phone build only coaches toward a goal race", with no retry
-  // and nothing to suggest anything went wrong.
-  //
-  // Both reads used to swallow their own failure into an empty result, so a
-  // Postgres blip and "has never raced through this app" were the same
-  // value, and a marathoner in week 9 of a block got the refusal. `Strict`
-  // and the missing `.catch` are what make a failed read reach the wrapper
-  // above and become the outage screen instead.
-  const activePlan = await loadActivePlanStrict(userId);
   /**
    * PLANVERSION-1 (2026-09-03) · a canonical identity for "the plan's
    * prescribed content," threaded onto every V5Today response so the client
@@ -374,53 +387,78 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
     return NextResponse.json(composeV5Today(ctx));
   }
 
-  const glance = await loadGlanceState(userId);
-
-  // The coach's read of what the runner can race today. Model A of the
-  // adaptive-progression split, which has been correct, tested and unreachable
-  // since it was written — its only importer was /api/coach/read, and nothing
-  // called that. David ruled the placement: under "Where you are", beside
-  // readiness and week mileage.
-  const fitnessRow = await loadFitnessRow(userId, today);
-
-  // The last race behind the runner, and how long ago. Read once here rather
-  // than only inside the off-season branch, because "why this run" needs it
-  // on every screen — a recovery block's whole reason is the race it follows.
-  const lastRaceRow = (await pool.query<{ name: string; date: string; distance_mi: string | null }>(
-    // `distanceMi` rides along for the recap's per-finding race-recency
-    // filter: the post-race window is distance-keyed (Research/00b via
-    // `expectedDaysForAnchor`), and three weeks after a marathon is not the
-    // same claim as three weeks after a 5K.
-    `SELECT COALESCE(meta->>'name', slug) AS name, meta->>'date' AS date,
-            meta->>'distanceMi' AS distance_mi
-       FROM races
-      WHERE user_uuid::text = $1 AND meta->>'priority' IN ('A', 'B')
-        AND meta->>'date' IS NOT NULL AND (meta->>'date')::date < $2::date
-      ORDER BY (meta->>'date')::date DESC LIMIT 1`,
-    [userId, today],
-  ).catch(() => ({ rows: [] as Array<{ name: string; date: string; distance_mi: string | null }> }))).rows[0] ?? null;
+  // PARALLEL-1 (2026-09-15) · these four reads are independent — none
+  // consumes another's result. `glance` isn't read until `glanceToday`
+  // below; `fitnessRow`'s inputs are only `userId`/`today`; `lastRaceRow`'s
+  // query is unrelated (a different table, `races`) and already never
+  // rejects (its own `.catch` below); `loadPlanWeek`'s inputs are
+  // `userId`/`runnerTodayISO`/`today`, resolved before any of these four
+  // start. `Promise.all`, not `allSettled` — `loadGlanceState`/
+  // `loadFitnessRow`/`loadPlanWeek` have no `.catch` today (a failed read
+  // must still reach `composeToday`'s wrapper and become the outage
+  // response, same as before this was four sequential `await`s).
+  // AUDIT-1 · `lastRaceRow`'s `.catch(() => ({ rows: [] }))` is a KNOWN,
+  // tracked swallow site (`lib/audit/swallowed-failure-registry.ts`'s
+  // `EMPTIED_KNOWN` ratchet — `app/api/v5/today/route.ts::composeToday`).
+  // Kept in its EXACT original shape rather than restructured into a
+  // `.then()/.catch()` chain: the scanner matches on text shape, and a
+  // rewrite that only changes the shape (not the actual behavior — still
+  // silently swallows a DB failure into an empty result either way) would
+  // make the gate think this was FIXED when it was not, which is exactly
+  // the kind of gate-gaming Rule 18 exists to catch. Properly fixing this
+  // swallow (switching to `rowsOrNull`, which still logs) is real,
+  // separate scope from parallelizing independent reads — not bundled in
+  // here.
+  const [glance, fitnessRow, lastRaceResult, planWeek] = await Promise.all([
+    loadGlanceState(userId),
+    // The coach's read of what the runner can race today. Model A of the
+    // adaptive-progression split, which has been correct, tested and
+    // unreachable since it was written — its only importer was
+    // /api/coach/read, and nothing called that. David ruled the placement:
+    // under "Where you are", beside readiness and week mileage.
+    loadFitnessRow(userId, today),
+    // The last race behind the runner, and how long ago. Read once here
+    // rather than only inside the off-season branch, because "why this
+    // run" needs it on every screen — a recovery block's whole reason is
+    // the race it follows.
+    pool.query<{ name: string; date: string; distance_mi: string | null }>(
+      // `distanceMi` rides along for the recap's per-finding race-recency
+      // filter: the post-race window is distance-keyed (Research/00b via
+      // `expectedDaysForAnchor`), and three weeks after a marathon is not
+      // the same claim as three weeks after a 5K.
+      `SELECT COALESCE(meta->>'name', slug) AS name, meta->>'date' AS date,
+              meta->>'distanceMi' AS distance_mi
+         FROM races
+        WHERE user_uuid::text = $1 AND meta->>'priority' IN ('A', 'B')
+          AND meta->>'date' IS NOT NULL AND (meta->>'date')::date < $2::date
+        ORDER BY (meta->>'date')::date DESC LIMIT 1`,
+      [userId, today],
+    ).catch(() => ({ rows: [] as Array<{ name: string; date: string; distance_mi: string | null }> })),
+    // THE RUNNER'S REAL TODAY, NOT THE DATE BEING VIEWED.
+    //
+    // `loadPlanWeek(userId, today, dateParam?)` takes the two apart on
+    // purpose — `today` marks `is_today` on the day it equals, `dateParam`
+    // only picks which week to window on — but this call was passing ONE
+    // date for both. Stepping to another day sets `today` (this file's own
+    // variable) to that date, so every day in the returned week got
+    // `is_today` compared against the VIEWED date instead of the real one:
+    // viewing Sunday marked SUNDAY as today, not Tuesday.
+    //
+    // Invisible everywhere the client trusts its OWN idea of today over the
+    // wire's — which is everywhere except one place:
+    // `TodayHostV5.backToToday()` resolves "today" by reading `isToday`
+    // back OFF THIS PAYLOAD (the one screen with no other source, since it
+    // is what "today" even means once you have stepped away). With
+    // `is_today` lying, "back to today" compared the viewed date to itself,
+    // matched, and silently no-opped — the button that fired but did
+    // nothing, on David's phone, 2026-08-25.
+    loadPlanWeek(userId, runnerTodayISO, today),
+  ]);
+  const lastRaceRow = lastRaceResult.rows[0] ?? null;
   const daysSinceLastRace = lastRaceRow
     ? Math.max(0, Math.round(
         (Date.parse(today + 'T12:00:00Z') - Date.parse(lastRaceRow.date + 'T12:00:00Z')) / 86400000))
     : null;
-  // THE RUNNER'S REAL TODAY, NOT THE DATE BEING VIEWED.
-  //
-  // `loadPlanWeek(userId, today, dateParam?)` takes the two apart on purpose
-  // — `today` marks `is_today` on the day it equals, `dateParam` only picks
-  // which week to window on — but this call was passing ONE date for both.
-  // Stepping to another day sets `today` (this file's own variable) to that
-  // date, so every day in the returned week got `is_today` compared against
-  // the VIEWED date instead of the real one: viewing Sunday marked SUNDAY as
-  // today, not Tuesday.
-  //
-  // Invisible everywhere the client trusts its OWN idea of today over the
-  // wire's — which is everywhere except one place: `TodayHostV5.backToToday()`
-  // resolves "today" by reading `isToday` back OFF THIS PAYLOAD (the one
-  // screen with no other source, since it is what "today" even means once
-  // you have stepped away). With `is_today` lying, "back to today" compared
-  // the viewed date to itself, matched, and silently no-opped — the button
-  // that fired but did nothing, on David's phone, 2026-08-25.
-  const planWeek = await loadPlanWeek(userId, runnerTodayISO, today);
   // VIEWED-DAY-1 (2026-08-30) · BY DATE, NOT BY `is_today`.
   //
   // The comment above is about `is_today` meaning the runner's REAL today, and
