@@ -16,6 +16,29 @@ workflow, this needs to be resubmitted as a new external-review request.
 independently fixed, no further work needed) and the `correction-v2`
 (`619b61d72`) exclusion decision (still correctly excluded, not re-opened).
 
+**Rebase decision — checked, deliberately NOT done.** Fetched
+`origin/claude/build-runcino-app-OIRJr` (the actual `main` per this repo's
+convention) and checked: `git merge-base HEAD origin/…OIRJr` resolves to
+`49d24902`, with `22d6019f2` (the underlying Santa Monica fix this branch
+carries) confirmed **not yet an ancestor** of current `origin/…OIRJr` —
+this work has not landed on main yet, consistent with still being under
+review. The branch's own commit list back to that merge-base includes ~20
+entries that read as ordinary mainline churn (`fix(ops): check-deploy-status.sh`,
+`fix(adaptation): bump SHADOW_EVIDENCE_EPOCH`, `telemetry: refresh`, etc.),
+which is the signature of a trunk that has been rebased/re-landed under
+different commit hashes elsewhere tonight — a real rebase here would replay
+all of those, at real risk of conflict noise or duplicate-commit confusion
+entirely unrelated to sentence #3. Given this branch is **not being pushed
+or merged now** (only prepared for a fresh external-review request) and the
+instruction to rebase was explicitly conditional ("if you need to rebase
+first"), the judgment call is to leave the branch on its current base
+(`e18fae5a2`, itself already rebased onto a documented `origin/main`
+snapshot by the prior session) rather than risk disturbing the
+already-reviewed #2/#5/#7 diff against a fast-moving, likely-duplicated
+trunk. Whoever integrates this branch after the next review can rebase it
+onto whatever `main` state exists at that time, with the actual merge
+conflicts (if any) in front of them rather than guessed at here.
+
 ---
 
 ## 1 · The gap, precisely
