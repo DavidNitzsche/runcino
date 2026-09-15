@@ -157,24 +157,20 @@ enum V5 {
         let plate: Color
         /// A round header button on a panel. STATED.
         let control: Color
-        /// The modelled-number tilde, ON THIS PANEL.
+        /// The modelled-number tilde's ink, ON THIS PANEL.
         ///
-        /// RULE ONE'S MARK HAS TO BE VISIBLE TO BE A MARK.
+        /// RETIRED 2026-09-15 — CLAUDE.md's standing override (2026-09-14,
+        /// permanent: no `~` mark on modelled numbers, ever) means
+        /// `FaffValueText` no longer draws this glyph at all, on any panel.
+        /// `mark` is still threaded through every call site below (kept so a
+        /// future accessibility-only use isn't blocked on re-plumbing every
+        /// caller) but nothing currently reads it inside `FaffValueText`'s
+        /// `.modelled` case body.
         ///
-        /// Amber `#F2B03C` is the mark everywhere else in the app and measures
-        /// 9.3:1 on a tile, so it was hard-coded into `FaffValueText`. On the
-        /// two LIGHT ramps it is amber on amber: 1.45:1 on the stats plate.
-        /// The one glyph that says "this number is estimated rather than
-        /// measured" was the least legible thing on the panel, and Races draws
-        /// a projected finish time on exactly that plate.
-        ///
-        /// No colour in the locked palette reads as "attention" against a warm
-        /// orange ground — signal, attention and fault are all in that family.
-        /// So on a light ramp the mark keeps its GLYPH and gives up its hue:
-        /// a dark tilde immediately before the value, which is still the only
-        /// thing distinguishing "~3:16:45" from "3:16:45" and is now actually
-        /// readable. An invisible amber mark breaks rule one; a visible dark
-        /// one does not.
+        /// Kept for history: this token used to solve amber-on-amber
+        /// (1.45:1) on the two LIGHT day-state ramps by dropping to a dark
+        /// tilde instead of dropping the mark. That problem no longer exists
+        /// because there is no mark left to be illegible.
         let mark: Color
         /// The "we could not read this" dash, ON THIS PANEL.
         ///

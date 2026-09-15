@@ -1000,7 +1000,8 @@ struct RaceDayView: View {
             ? "Carry \(f.recommendedServings) gels"
             : "Carry \(f.recommendedServings) × \(f.productName)"
         if let gap = fuelCadenceMin(f) {
-            line += " · one every ~\(gap) min"
+            // No tilde — CLAUDE.md's standing override, 2026-09-14.
+            line += " · one every \(gap) min"
         }
         if f.targetCarbsPerHourG > 0 {
             line += " ≈ \(f.targetCarbsPerHourG) g/hr"

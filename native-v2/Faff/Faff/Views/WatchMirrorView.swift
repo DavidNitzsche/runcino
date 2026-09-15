@@ -119,7 +119,9 @@ struct WatchMirrorView: View {
                     // 2026-07-07 · units audit — display only.
                     statBlock(value: Units.formatDistance(miles: mi), key: Units.distanceLabel().uppercased())
                 }
-                statBlock(value: "~\(w.totalEstimatedMinutes)", key: "MIN EST")
+                // No tilde — CLAUDE.md's standing override, 2026-09-14. The
+                // "MIN EST" key already discloses it's an estimate.
+                statBlock(value: "\(w.totalEstimatedMinutes)", key: "MIN EST")
                 if let label = w.paceLabel {
                     statBlock(value: label, key: "TARGET")
                 }

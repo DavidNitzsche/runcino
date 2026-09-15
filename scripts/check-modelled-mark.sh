@@ -78,6 +78,16 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 V5_VIEWS="$ROOT/native-v2/Faff/Faff/ViewsV5"
 V5_KIT="$ROOT/native-v2/Faff/Faff/DesignV5"
+# Guard 2 (no hand-drawn tilde) is scoped to the WHOLE app, not just the v5
+# surface — CLAUDE.md's standing override (2026-09-14, permanent: "no ~ mark
+# on modelled numbers, ever") is unconditional, and F132 (2026-09-15) found
+# real, live tildes surviving in `Views/`/`Components/` (pre-v5 surfaces
+# still wired into the shipping app, e.g. `TodayPreRunBodyV3`,
+# `TreadmillView`, `WatchMirrorView`) precisely because guard 2 only ever
+# scanned `ViewsV5`/`DesignV5`. Guards 1 and 3 stay v5-scoped — those are
+# genuinely v5-design-system concerns (typed field provenance, token-layer
+# painting), not a blanket app-wide rule the way the tilde ban now is.
+APP_ALL="$ROOT/native-v2/Faff/Faff"
 FAIL=0
 
 say()  { printf '%s\n' "$*"; }
@@ -130,19 +140,36 @@ while IFS= read -r f; do
   fi
 done < <(sources "$V5_VIEWS" "$V5_KIT")
 
-# ── 2 · the mark is not hand-drawn ───────────────────────────────────────────
+# ── 2 · the mark is not hand-drawn, anywhere in the app ──────────────────────
 #
-# ValuesV5.swift renders it and is the one file allowed to name it.
+# RETIRED 2026-09-15 (F132): the mark itself is gone, not just relocated.
+# CLAUDE.md's standing override is unconditional — a modelled value carries
+# its basis on the wire and in VoiceOver ("estimated ..."), never as a
+# visible glyph.
+#
+# F144 (2026-09-15) · NO FILE-LEVEL EXEMPTION, not even for `ValuesV5.swift`.
+# This guard used to skip that file (and `ThemeV5.swift`) entirely, on the
+# reasoning that it only NAMES the retired token in its own doc comments.
+# That reasoning was correct for what existed at the time, but the
+# exemption was written at the file level, not the comment level — so it
+# also blinded the guard to a real, live-code tilde reintroduced into
+# THIS EXACT FILE, which is precisely what MARKER-RESTORE-1 (2026-09-09)
+# already did once, in this same file, and is the whole reason F132 had to
+# exist. A gate that cannot see its own highest-risk file for a full
+# whole-file exemption is worse than no gate for that file. Confirmed
+# every remaining tilde reference in both files today is already a
+# leading-`//` comment line the ordinary exclusion below already catches
+# (no `// ok:` annotations needed) — so removing the file-level exemption
+# costs nothing and closes a real hole.
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  case "$f" in */ValuesV5.swift) continue;; esac
   hits=$(grep -nE '"[^"]*~[^"]*"' "$f" | grep -vE '^\s*[0-9]+:\s*//|// *ok:' || true)
   if [ -n "$hits" ]; then
     while IFS= read -r h; do
-      bad "hand-drawn tilde · ${f#$ROOT/}:${h%%:*} — use FaffValue.modelled and let FaffValueText draw the mark"
+      bad "hand-drawn tilde · ${f#$ROOT/}:${h%%:*} — the mark is retired (CLAUDE.md, 2026-09-14); state the estimate in words instead, the way every other screen already does"
     done <<< "$hits"
   fi
-done < <(sources "$V5_VIEWS" "$V5_KIT")
+done < <(sources "$APP_ALL")
 
 # ── 3 · a v5 view paints from the token layer ────────────────────────────────
 #

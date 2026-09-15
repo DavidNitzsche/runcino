@@ -254,7 +254,10 @@ struct TodayPreRunBodyV3: View {
 
     private var estTimeText: String {
         guard let mins = workout?.totalEstimatedMinutes, mins > 0 else { return "—" }
-        return "~\(mins)"
+        // No tilde — CLAUDE.md's standing override, 2026-09-14: "no ~ mark on
+        // modelled numbers, ever." The "EST TIME" key beside this value
+        // already discloses it's an estimate.
+        return "\(mins)"
     }
 
     // MARK: 3 · EFFORT TARGET · gradient bar + marker
@@ -669,12 +672,15 @@ struct TodayPreRunBodyV3: View {
             return "Z2 to MP"
         case .tempo:
             if let bpm = workout?.phases.first(where: { $0.type == .work })?.hrTargetBpm {
-                return "~\(bpm) bpm · threshold"
+                // No tilde — CLAUDE.md's standing override, 2026-09-14. The
+                // "EFFORT TARGET" section heading already discloses this is
+                // a target, not a measured reading.
+                return "\(bpm) bpm · threshold"
             }
             return "Z4 · threshold"
         case .intervals:
             if let bpm = workout?.phases.first(where: { $0.type == .work })?.hrTargetBpm {
-                return "~\(bpm) bpm · VO2max"
+                return "\(bpm) bpm · VO2max"
             }
             return "Z5 · VO2max"
         case .rest:      return "—"

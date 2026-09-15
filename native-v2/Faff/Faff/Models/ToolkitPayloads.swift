@@ -462,11 +462,12 @@ struct ProjectionLastMove: Decodable {
 
 struct RaceProjectionEntry: Decodable {
     let distance: String   // "5K" / "10K" / "Half" / "Marathon"
-    let time: String       // "19:42" / "1:34:59" — may arrive "~"-prefixed on a modelled row
+    let time: String       // "19:42" / "1:34:59" — may arrive "~"-prefixed on a modelled row // ok: defensive strip, not a drawn mark
     /// 2026-08-28 · row-level provenance (additive). True when the §13.1
     /// marathon-specificity adjustment moved this row — the server also
-    /// prefixes `time` with "~" for older clients; a client that reads THIS
-    /// flag strips that prefix and draws its own amber tilde instead.
+    /// prefixes `time` with "~" for older clients. RETIRED 2026-09-15
+    /// (CLAUDE.md's standing override): a client no longer draws any mark
+    /// for this, it only strips a legacy prefix so nothing doubles up.
     let modelled: Bool?
     /// The one-sided percentage applied when `modelled` (currently +5).
     let adjustedPct: Double?
@@ -486,10 +487,12 @@ struct RaceProjectionEntry: Decodable {
 
     /// The row is an adjusted model — either the flag says so, or an older
     /// payload said it the only way it could, with the hand-drawn prefix.
-    var isModelled: Bool { modelled == true || time.hasPrefix("~") }
-    /// The time with any server-drawn "~" stripped, so the client draws the
-    /// mark itself (amber, per the design contract) exactly once.
-    var timeDisplay: String { time.hasPrefix("~") ? String(time.dropFirst()) : time }
+    /// Kept for a future accessibility label; no longer changes what's drawn.
+    var isModelled: Bool { modelled == true || time.hasPrefix("~") } // ok: defensive strip check, not a drawn mark
+    /// Strips any server-drawn "~" so a legacy payload's prefix never
+    /// reaches the screen — the mark itself is retired, this is cleanup,
+    /// not re-drawing it elsewhere.
+    var timeDisplay: String { time.hasPrefix("~") ? String(time.dropFirst()) : time } // ok: strips the mark, does not draw it
 }
 
 /// 2026-08-28 · non-nil when the §13.1 +5% one-sided marathon-specificity

@@ -25,12 +25,13 @@
  */
 import { describe, it, expect } from 'vitest';
 import { gradeStoredPhases, type WorkoutVerdict, type GradedPhase, type WorkSummary } from '@/lib/execution/verdict';
-import { auditExplanation, layerOne } from '@/lib/faff/explanation';
+import { auditExplanation, layerOne, layerTwo } from '@/lib/faff/explanation';
 import { workHrCeiling, overallHrCeiling, displayedHrAsk } from '@/lib/prescription/hr-ceiling';
 import type { GoalOutcomeInput } from '@/lib/race/goal-outcome-resolver';
 import {
   composePostRunExperience,
   numberWord,
+  readCost,
   type PostRunInput,
   type PostRunExperienceV1,
 } from './experience';
@@ -155,6 +156,8 @@ function makeInput(o: InputOverrides = {}): PostRunInput {
     evidence: o.evidence !== undefined ? o.evidence : evidenceFixture(),
     workHrCeilingBpm: workHrCeiling(REAL_0901_SPEC)?.bpm ?? null,
     overallHrCeilingBpm: overallHrCeiling(REAL_0901_SPEC)?.bpm ?? null,
+    workHrCeilingSource: workHrCeiling(REAL_0901_SPEC)?.source ?? null,
+    overallHrCeilingSource: overallHrCeiling(REAL_0901_SPEC)?.source ?? null,
     wholeRunHrBpm: 162,
     rpe: null,
     adaptations: [],
@@ -605,6 +608,187 @@ describe('Rule 11 · three facts, never one', () => {
   });
 });
 
+/* ────── F057-#8 · a race row's own HR band is a real fallback ceiling ────── */
+
+describe('F057-#8 · both HR-ceiling scopes fall back to the race_hr band upper bound', () => {
+  // Shape from the Santa Monica 10K debrief: no `hr_cap_bpm` (race rows never
+  // carry one, by design) and no work-scoped pass rule (race specs never
+  // author one either), but `race-row-refresh.ts` had already written a
+  // real, evidence-backed `race_hr.expected_range_bpm` band onto the row.
+  const RACE_SPEC_WITH_BAND = {
+    kind: 'long',
+    hr_cap_bpm: null,
+    race_hr: { expected_range_bpm: [168, 176], early_ceiling_bpm: 168, late_allowance_bpm: 181, checkpoint_abort_bpm: 179 },
+  };
+
+  it('workHrCeiling falls back to the band UPPER BOUND when no pass rule exists', () => {
+    expect(workHrCeiling(RACE_SPEC_WITH_BAND)).toEqual({
+      bpm: 176, scope: 'work', source: 'race_hr_expected_range_upper',
+    });
+  });
+
+  it('overallHrCeiling falls back to the SAME band UPPER BOUND when hr_cap_bpm is absent', () => {
+    expect(overallHrCeiling(RACE_SPEC_WITH_BAND)).toEqual({
+      bpm: 176, scope: 'overall', source: 'race_hr_expected_range_upper',
+    });
+  });
+
+  it('a genuine hr_cap_bpm always wins over the band on the overall scope', () => {
+    expect(overallHrCeiling({ ...RACE_SPEC_WITH_BAND, hr_cap_bpm: 150 }))
+      .toEqual({ bpm: 150, scope: 'overall', source: 'hr_cap_bpm' });
+  });
+
+  it('a genuine work-scoped pass rule always wins over the band', () => {
+    const spec = { ...RACE_SPEC_WITH_BAND, rules: [{ kind: 'pass', metric: 'hr', op: '<=', value: 160, scope: 'work' }] };
+    expect(workHrCeiling(spec)).toEqual({ bpm: 160, scope: 'work', source: 'pass_rule' });
+  });
+
+  it('FALSIFIER (pre-fix behaviour): no hr_cap_bpm/pass-rule and no band returns null on BOTH scopes', () => {
+    // Proves the fallback is gated on the band actually existing, not a
+    // blanket "always return something for a race" change.
+    expect(overallHrCeiling({ kind: 'long', hr_cap_bpm: null })).toBeNull();
+    expect(workHrCeiling({ kind: 'long', hr_cap_bpm: null })).toBeNull();
+  });
+
+  it('THE REAL SANTA MONICA SHAPE · readCost resolves scope "work" for a race (its graded work phases ARE the race), and the fallback reaches it there', () => {
+    // `santaMonicaVerdict()`'s `work.count === 2` (two real graded race
+    // segments) makes `readCost`'s `hasWork` true, so it resolves scope
+    // 'work' and reads `workHrCeilingBpm` — NOT `overallHrCeilingBpm`. This
+    // is the exact real-world case the consult log's diagnosis was traced
+    // against but could not confirm the resolution site for; a fix aimed only
+    // at `overallHrCeiling` would never reach this run at all.
+    const wc = workHrCeiling(RACE_SPEC_WITH_BAND)!;
+    const out = readCost(makeInput({
+      verdict: santaMonicaVerdict(),
+      workHrCeilingBpm: wc.bpm,
+      workHrCeilingSource: wc.source,
+      overallHrCeilingBpm: null,
+      overallHrCeilingSource: null,
+      wholeRunHrBpm: 169,
+    }));
+    expect(out.hrScope).toBe('work');
+    expect(out.status).toBe('EXPECTED');
+    expect(out.ceilingBpm).toBe(176);
+    expect(out.summary).toBe('Work heart rate averaged 169 against a 176 ceiling from the session, inside it the whole way.');
+  });
+
+  it('FALSIFIER: the identical reading/ceiling from a genuine pass rule reads the plain sentence, unchanged', () => {
+    // Proves the new wording is gated on the SOURCE, not just on the numbers
+    // matching — a real prescribed ceiling must never say "from the session".
+    const out = readCost(makeInput({
+      verdict: santaMonicaVerdict(),
+      workHrCeilingBpm: 176,
+      workHrCeilingSource: 'pass_rule',
+      overallHrCeilingBpm: null,
+      overallHrCeilingSource: null,
+      wholeRunHrBpm: 169,
+    }));
+    expect(out.status).toBe('EXPECTED');
+    expect(out.summary).toBe('Work heart rate averaged 169 against a 176 ceiling.');
+    expect(out.summary).not.toContain('from the session');
+  });
+
+  it('the overall-scope fallback also fires, for a race graded with no "work" phase at all', () => {
+    // A race recorded as a single non-"work"-typed phase — `hasWork` false,
+    // so `readCost` resolves 'overall' instead of 'work'. Covered so the
+    // fallback is proven on whichever scope a given race's phase typing
+    // actually produces, not only the Santa Monica shape above.
+    const steadyRacePhase = [{
+      index: 0, type: 'steady', label: 'Race', completed: true, avgHr: 169,
+      actualDurationSec: 2753, actualDistanceMi: 6.28, actualPaceSPerMi: 438,
+    }];
+    const out = compose({
+      phases: steadyRacePhase, sessionClass: 'easy', plannedType: 'race', plannedTypeDisplay: 'Race',
+      raceMatched: true,
+      workHrCeilingBpm: null, workHrCeilingSource: null,
+      overallHrCeilingBpm: overallHrCeiling(RACE_SPEC_WITH_BAND)!.bpm,
+      overallHrCeilingSource: overallHrCeiling(RACE_SPEC_WITH_BAND)!.source,
+      wholeRunHrBpm: 169,
+    });
+    expect(out.cost.hrScope).toBe('overall');
+    expect(out.cost.status).toBe('EXPECTED');
+    expect(out.cost.summary).toBe('Heart rate averaged 169 against a 176 ceiling from the session, inside it the whole way.');
+  });
+});
+
+/* ────── F057-#9 · certaintyFor reads the same anchor flag CHALLENGES does ── */
+
+describe('F057-#9 · certainty and the CHALLENGES sentence read one flag, not two', () => {
+  it('anchorMoveCandidate TRUE reads SUPPORTED even when execution confidence is not HIGH, and drops the false hedge', () => {
+    const out = composePostRunExperience(santaMonicaInput({
+      raceGoalOutcomeInput: {
+        ...SANTA_MONICA_GOAL_INPUT, targetRaceEvidenceWeight: 0.95, targetEvidenceCorroborated: true,
+        preparationSupport: { ok: true, demonstratedSec: 2600, demandSec: 2580 },
+      },
+      evidence: evidenceFixture({
+        anchorMoveCandidate: true,
+        capacities: { threshold: capacity('threshold', 'evidence') },
+      }),
+    }));
+    // MODERATE confidence on this fallback branch — see the "Mixed set" /
+    // "How the race broke down" branch's own `confidence: 'MODERATE'` — is
+    // the exact condition that exposed the bug: pre-fix, only
+    // `execution.confidence === 'HIGH'` could reach SUPPORTED.
+    expect(out.execution.confidence).not.toBe('HIGH');
+    expect(out.evidence.role).toBe('NEW_ANCHOR_CANDIDATE');
+    expect(out.briefing.certainty).toBe('SUPPORTED');
+    expect(layerTwo(out.briefing)).not.toContain(
+      'This is one session, so treat it as a lead rather than a conclusion.',
+    );
+  });
+
+  it('FALSIFIER: the identical non-HIGH-confidence run with anchorMoveCandidate FALSE still reads TENTATIVE, hedge present', () => {
+    // Proves the fix is gated on the real flag, not a blanket upgrade to
+    // SUPPORTED for this branch.
+    const out = composePostRunExperience(santaMonicaInput({
+      raceGoalOutcomeInput: {
+        ...SANTA_MONICA_GOAL_INPUT, targetRaceEvidenceWeight: 0.95, targetEvidenceCorroborated: true,
+        preparationSupport: { ok: true, demonstratedSec: 2600, demandSec: 2580 },
+      },
+      evidence: evidenceFixture({
+        anchorMoveCandidate: false,
+        capacities: { threshold: capacity('threshold', 'evidence') },
+      }),
+    }));
+    expect(out.execution.confidence).not.toBe('HIGH');
+    expect(out.evidence.role).not.toBe('NEW_ANCHOR_CANDIDATE');
+    expect(out.briefing.certainty).toBe('TENTATIVE');
+    expect(layerTwo(out.briefing)).toContain(
+      'This is one session, so treat it as a lead rather than a conclusion.',
+    );
+  });
+});
+
+/* ── F057-#1 · the uneven fallback headline is race-appropriate ──────────── */
+
+describe('F057-#1 · the uneven fallback headline names the format, not rep-set vocabulary', () => {
+  it('a race reads "How the race broke down", never "Mixed set"', () => {
+    const out = composePostRunExperience(santaMonicaInput({
+      raceGoalOutcomeInput: {
+        ...SANTA_MONICA_GOAL_INPUT, targetRaceEvidenceWeight: 0.95, targetEvidenceCorroborated: true,
+        preparationSupport: { ok: true, demonstratedSec: 2600, demandSec: 2580 },
+      },
+    }));
+    expect(out.execution.status).toBe('PARTIAL_PRODUCTIVE');
+    expect(out.execution.headline).toBe('How the race broke down');
+    expect(out.execution.headline).not.toBe('Mixed set');
+  });
+
+  it('FALSIFIER: the identical uneven shape with raceMatched FALSE keeps "Mixed set"', () => {
+    // Proves the branch is real — gated on `raceMatched`, not a blanket
+    // rename of the fallback headline.
+    const out = composePostRunExperience(santaMonicaInput({
+      raceMatched: false,
+      plannedType: 'intervals',
+      plannedTypeDisplay: 'Intervals',
+      raceGoalOutcomeInput: null,
+      raceCourseNotes: null,
+    }));
+    expect(out.execution.status).toBe('PARTIAL_PRODUCTIVE');
+    expect(out.execution.headline).toBe('Mixed set');
+  });
+});
+
 /* ─────────────────────────── the upward path ───────────────────────────── */
 
 describe('Rule 21 · the evidence layer can say a run was strong enough to push', () => {
@@ -634,8 +818,12 @@ describe('Rule 21 · the evidence layer can say a run was strong enough to push'
      * STRONGER arm, so it now says so. The invariant this test is actually
      * for — the belief did NOT move — is the assertion above and is
      * untouched. Direction-by-direction wording is
-     * `_tension_direction_and_voice.test.ts`. */
-    expect(out.evidence.runnerSummary).toContain('deeper into the session');
+     * `_tension_direction_and_voice.test.ts`.
+     *
+     * F057-#4, 2026-09-15 · WAS `toContain('deeper into the session')`,
+     * asserting the outperformance-grammar wording this fix replaces (see
+     * `experience.ts`'s own F057-#4 comment). */
+    expect(out.evidence.runnerSummary).toContain('still matched what your current threshold pace predicts');
     expect(out.evidence.runnerSummary).toContain('One session does not move it.');
   });
 

@@ -7,8 +7,11 @@
 //
 //  The design contract calls this "the only real sin". A projected finish, a
 //  pace derived from training rather than from a race, a projection taken
-//  after time off — all modelled. The mark is a small amber tilde immediately
-//  before the value, and it is a SYSTEM rule, not one screen's fix.
+//  after time off — all modelled, and it is a SYSTEM rule, not one screen's
+//  fix. F132 (2026-09-15): the visible amber tilde this file used to draw
+//  for that is RETIRED — CLAUDE.md's standing override, permanent. The
+//  distinction is still tracked (`FaffBasis`, below) and still spoken by
+//  VoiceOver; only the visible glyph is gone.
 //
 //  A rule that lives in eighteen screens' worth of `if isProjected { "~" }`
 //  is a rule that will be broken by the nineteenth screen. So it lives here
@@ -16,7 +19,7 @@
 //  where the number came from:
 //
 //      FaffValue.measured("1:41:53")      →   1:41:53
-//      FaffValue.modelled("3:16:45")      →  ~3:16:45      (tilde in amber)
+//      FaffValue.modelled("3:16:45")      →   3:16:45      (spoken: "estimated")
 //      FaffValue.unreadable               →   —            (in fault red)
 //
 //  There is deliberately no `FaffValue(text:)`. Every construction names a
@@ -50,7 +53,8 @@ enum FaffBasis: String, Equatable, Hashable, Codable {
     /// a heart rate off the wrist.
     case measured
     /// Derived from a model — a projection, a training-derived pace, an
-    /// equivalence off the Daniels table. Carries the amber tilde.
+    /// equivalence off the Daniels table. Marked as "estimated" to
+    /// VoiceOver; no visible glyph, retired per F132.
     case modelled
     /// We could not read this. Fault red, and never a real value beside it.
     case unreadable
@@ -76,7 +80,8 @@ struct FaffValue: Equatable, Hashable {
     /// Read from something that happened.
     static func measured(_ text: String) -> FaffValue { .init(text: text, basis: .measured) }
 
-    /// Derived from a model. Renders with the amber tilde.
+    /// Derived from a model. Renders identically to `.measured`; VoiceOver
+    /// says "estimated" before the figure (F132, no visible glyph).
     static func modelled(_ text: String) -> FaffValue { .init(text: text, basis: .modelled) }
 
     /// We could not read it.
@@ -134,16 +139,18 @@ struct FaffValue: Equatable, Hashable {
     /// True when this value must not be presented as evidence of fitness.
     var isModelled: Bool { basis == .modelled }
 
-    /// WHAT A SCREEN READER SAYS. MARKER-RESTORE-1 (2026-09-09) · between
-    /// 2026-08-21 and today this was the ONLY thing carrying rule one at the
-    /// point of render, while the visible tilde was retired. David has since
-    /// reinstated the visible mark (see `FaffValueText.body`'s `.modelled`
-    /// case for the full history) — this string is now the COMPLEMENT to the
-    /// glyph, not its replacement, exactly per his own framing: "VoiceOver is
-    /// complementary, not a replacement for visible provenance."
+    /// WHAT A SCREEN READER SAYS, and since 2026-08-21 the ONLY thing carrying
+    /// rule one at the point of render.
+    ///
+    /// The amber tilde was retired because nobody could interpret it. The
+    /// distinction was explicitly kept — "the wire still carries `modelled`,
+    /// and VoiceOver still says estimated before the figure" — which makes
+    /// this string the whole visible-to-assistive-tech half of the rule.
     ///
     /// It lives here rather than inline in `FaffValueText.body` so it can be
-    /// tested independently of whether the glyph is drawn.
+    /// tested. A rule whose last remaining carrier sits inside a view body is
+    /// a rule nothing can check, and this one has already lost its other
+    /// carrier once.
     var voiceOverLabel: String {
         switch basis {
         case .measured:   return text
@@ -219,45 +226,30 @@ struct FaffValueText: View {
                 .foregroundStyle(color)
 
         case .modelled:
-            // THE MARK IS DRAWN AGAIN (2026-09-09) · MARKER-RESTORE-1.
+            // THE MARK IS NO LONGER DRAWN. David, 2026-08-21: "we dont need
+            // the tilde. its obvious and implied the number is calculated".
             //
-            // Retired 2026-08-21 on David's own ruling ("we dont need the
-            // tilde. its obvious and implied the number is calculated"), kept
-            // as a one-line-back change per this file's own comment at the
-            // time. David has now explicitly reversed that, in the terms he
-            // used: "Treat the current brief as authoritative: modelled
-            // numbers must visibly carry the amber `~` marker. An older
-            // August ruling does not override the current explicit
-            // design-system requirement." The current design handoff
-            // (`design_handoff_faff_iphone_app v5/README.md`, locked
-            // 2026-08-19, restated in `docs/faff-iphone-design-contract.md`
-            // §1) states it as a system rule, not a per-screen choice: "A
-            // modelled/projected number... carries a small amber `~` (tilde)
-            // immediately before its value — the app's one mark for 'this
-            // number is estimated'... Apply it everywhere a number is
-            // estimated." `check-modelled-mark.sh`'s own header already
-            // quoted that same contract line and Guard 2 already assumed
-            // this is where the glyph lives — the gate's documentation and
-            // this file's rendering had quietly drifted apart since 08-21;
-            // this closes that gap rather than opening a new one.
+            // He is right, and the evidence is that he had to ask what it
+            // was. A mark nobody can interpret is noise in front of a number,
+            // which is the opposite of the job.
             //
-            // VoiceOver is UNCHANGED, not replaced: `value.voiceOverLabel`
-            // still says "estimated" before the figure for a reader who
-            // cannot see the glyph at all — visible and spoken provenance are
-            // both required, per David's explicit "VoiceOver is
-            // complementary, not a replacement for visible provenance."
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                Text(Theme.V5.modelledMark)
-                    .font(font)
-                    .scaleEffect(markScale, anchor: .bottomTrailing)
-                    .foregroundStyle(mark)
-                    .accessibilityHidden(true)
-                Text(value.text)
-                    .font(font)
-                    .foregroundStyle(color)
-            }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(value.voiceOverLabel)
+            // It was also redundant with the words already beside every one
+            // of these values. "Pace band" and "HR ceiling" are prescriptions
+            // by name. Races says "Projected". 8c's watch time is labelled
+            // "on the watch", and that phrase — not a glyph — is what stops
+            // it reading as a result. Rule one asked for a value the runner
+            // can interpret; the labels were already carrying it.
+            //
+            // THE DISTINCTION IS KEPT, ONLY THE GLYPH IS GONE. `FaffValue`
+            // still knows the basis, the wire still carries `modelled`, and
+            // VoiceOver still says "estimated" before the figure — a spoken
+            // word has none of the ambiguity a symbol had. So the day a
+            // screen needs to show provenance visually again, the data is
+            // there and this is a one-line change back.
+            Text(value.text)
+                .font(font)
+                .foregroundStyle(color)
+                .accessibilityLabel(value.voiceOverLabel)
 
         case .unreadable:
             // `fault`, not `V5.fault`. On a gradient panel the red is

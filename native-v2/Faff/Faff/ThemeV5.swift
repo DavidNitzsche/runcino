@@ -51,7 +51,7 @@ extension Theme {
         /// highlighted bar in any chart. NEVER means "good".
         static let signal    = Color(hex: 0xFF5A1F)
         /// Outside its target range, stale data, a decision waiting. NEVER means
-        /// "error". Also inks the modelled-number tilde (see `modelledMark`).
+        /// "error".
         static let attention = Color(hex: 0xF2B03C)
         /// We could not read this value. Never used to render a real value.
         static let fault     = Color(hex: 0xFF4438)
@@ -60,10 +60,16 @@ extension Theme {
         // number as "good". (`DayState.easy` is a day-state gradient, not a
         // verdict — it says which kind of day this is, not that it went well.)
 
-        /// The one mark for "this number is estimated": a small amber tilde
-        /// immediately before the value. Backed by the design contract's first
-        /// rule — a modelled number must never look measured.
-        static let modelledMark = "~"
+        // `modelledMark` (the amber tilde) is RETIRED — CLAUDE.md's standing
+        // override, 2026-09-14, permanent: "no ~ mark on modelled numbers,
+        // ever," quoting David directly ("I don't want it there. Ever.").
+        // This has round-tripped back into the app twice already; removing
+        // the token itself (not just its call sites) is deliberate, so
+        // there is nothing left to reach for. A modelled value still
+        // carries its basis on the wire and in VoiceOver ("estimated ...")
+        // — only the visible glyph is gone. If a future need for visible
+        // modelled-value provenance arises, it needs a fresh design
+        // decision from David, not a revival of this specific mark.
 
         // ───── Day-state gradients ─────
         // Three stops each, 135°, interpolated in oklab in the design so the

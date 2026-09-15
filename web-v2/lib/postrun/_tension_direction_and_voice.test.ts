@@ -166,11 +166,18 @@ function compose(tension: BeliefTensionRead) {
 }
 
 describe('TENSION-DIRECTION-1 · the sentence names which way the belief looks wrong', () => {
-  it('STRONGER · says he held the pace deeper into the session, and names the number', () => {
+  it('STRONGER · says the effort matched what the belief predicts, and names the number', () => {
+    /* F057-#4, 2026-09-15 · this arm fires whenever observed pace-at-cost
+     * falls WITHIN the belief's own tolerance band, not only when it beats
+     * the belief outright (`readBeliefTension`'s `BELIEF_MATCH_MARGIN_PCT`).
+     * "Held that pace... predicts" was outperformance grammar for a
+     * condition closer to "matched" — corrected to state the measured
+     * fact honestly (Rule 16). */
     const out = compose(STRONGER);
     expect(out.evidence.role).toBe('CHALLENGES');
     expect(out.evidence.runnerSummary).toBe(
-      'You held that pace deeper into the session than your current threshold pace predicts.'
+      "This deep into the session, your effort still matched what your current threshold pace predicts."
+      + " It didn't cost more than your fitness says it should."
       + ' One session does not move it. The next one like it will.',
     );
     // The belief is still not moved — the direction changed the WORDS, never

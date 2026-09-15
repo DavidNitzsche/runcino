@@ -526,6 +526,23 @@ export interface PostRunInput {
    */
   workHrCeilingBpm: number | null;
   overallHrCeilingBpm: number | null;
+  /**
+   * F057-#8, 2026-09-15 · which of `hr-ceiling.ts`'s own sources each ceiling
+   * came from. `null` when the matching `*CeilingBpm` is null.
+   * `'race_hr_expected_range_upper'` means the number is the race's own
+   * evidence-backed HR band UPPER BOUND (`race_hr.expected_range_bpm` from
+   * `race-row-refresh.ts`), reached only because the row carries no
+   * `hr_cap_bpm` / work-scoped pass rule — a race row's design, not a missing
+   * measurement. `readCost` reads whichever of these matches the scope it
+   * resolved, to say where the ceiling came from — never to change whether
+   * one is read. BOTH scopes carry the fallback (not only `overall`) because
+   * a race's graded "work" is usually the whole race distance, so a real
+   * race commonly resolves scope 'work', not 'overall' — the Santa Monica
+   * 10K debrief's own shape (`_experience.test.ts`'s `santaMonicaVerdict`)
+   * does exactly this: `work.count === 2`, `hasWork` true, scope 'work'.
+   */
+  workHrCeilingSource: 'pass_rule' | 'race_hr_expected_range_upper' | null;
+  overallHrCeilingSource: 'hr_cap_bpm' | 'race_hr_expected_range_upper' | null;
   /** The whole-run mean heart rate. Used only when there are no work phases —
    *  on a steady run the whole run IS the work. */
   wholeRunHrBpm: number | null;
@@ -1145,7 +1162,12 @@ export function readExecution(
     }
     return {
       status: 'PARTIAL_PRODUCTIVE',
-      headline: 'Mixed set',
+      /* F057-#1, 2026-09-15 · "Mixed set" is interval-workout vocabulary
+       * ("set" = reps/phases) applied unconditionally, including to a
+       * genuine road race. `input.raceMatched` is already read above (see
+       * `isMultiPurposeStructure`) — branch the headline on it rather than
+       * asserting a phase-order narrative this call site can't confirm. */
+      headline: input.raceMatched ? 'How the race broke down' : 'Mixed set',
       summary: `${unevenFallbackSentence(s, noun, bound, insideBound)}${strideClause}`,
       intendedStimulus: stimulus,
       stimulusDelivered: 'PARTIAL',
@@ -1577,9 +1599,22 @@ export function readCost(input: PostRunInput): PostRunCost {
 
   if (hr <= ceiling) {
     reasons.push('HEART_RATE_UNDER_THE_CEILING');
+    /* F057-#8, 2026-09-15 · a race row's ceiling came from the session's own
+     * `race_hr` band (see `overallHrCeiling`/`workHrCeiling`'s own doc), not
+     * an authored hard cap or pass rule — worded to match the source
+     * honestly, mirroring the EXPECTED branch's own wording exactly so the
+     * two paths read as one voice. Checked against whichever scope's source
+     * `readCost` actually resolved (see `workHrCeilingSource`'s own doc on
+     * `PostRunInput` for why a race commonly resolves 'work', not 'overall'). */
+    const fromRaceBand = scope === 'work' ? input.workHrCeilingSource === 'race_hr_expected_range_upper'
+      : scope === 'overall' ? input.overallHrCeilingSource === 'race_hr_expected_range_upper'
+      : false;
+    if (fromRaceBand) reasons.push('CEILING_FROM_RACE_HR_BAND_FALLBACK');
     return {
       status: 'EXPECTED',
-      summary: `${word} averaged ${hr} against a ${ceiling} ceiling.`,
+      summary: fromRaceBand
+        ? `${word} averaged ${hr} against a ${ceiling} ceiling from the session, inside it the whole way.`
+        : `${word} averaged ${hr} against a ${ceiling} ceiling.`,
       ...base,
       reasons,
     };
@@ -1784,9 +1819,17 @@ export function readEvidence(input: PostRunInput): PostRunEvidenceImpact {
      * sentence says so directly, in the SAME words `readPlan`'s
      * `HELD_FOR_EVIDENCE` sentence uses ("the next review will weigh it") —
      * matching framings instead of opposite ones. */
+    /* F057-#4, 2026-09-15 · The `observation_stronger_than_belief` arm fires
+     * whenever observed pace-at-cost falls within the belief's own tolerance
+     * band (`readBeliefTension` allows up to `BELIEF_MATCH_MARGIN_PCT` slower
+     * than believed, not only faster) — "held that pace... predicts" is
+     * outperformance grammar applied to a condition that is closer to
+     * "matched" than "beat". Printed beside a race missed by minutes, the
+     * old wording actively misread what happened. Rewritten to state the
+     * actual measured condition (Rule 16), gated on the same direction. */
     const beliefWord = BELIEF_WORD[DOMAIN_FOR_CAPACITY[tension.capacity] ?? 'THRESHOLD'];
     const directionClause = tension.direction === 'observation_stronger_than_belief'
-      ? `You held that pace deeper into the session than your current ${beliefWord} predicts.`
+      ? `This deep into the session, your effort still matched what your current ${beliefWord} predicts. It didn't cost more than your fitness says it should.`
       : `That came in slower than your current ${beliefWord} predicts.`;
     const runnerSummary = ev.anchorMoveCandidate
       ? `${directionClause} This one is strong enough on its own that the next review will weigh it.`
@@ -2035,9 +2078,21 @@ export function readNext(execution: PostRunExecution, cost: PostRunCost): PostRu
 
 /* ══════════════════════════════ 8 · the briefing ════════════════════════ */
 
+/* F057-#9, 2026-09-15 · same shape as U4's #5/#7 fix, one function over.
+ * This decided TENTATIVE/SUPPORTED from `execution.confidence`/`.status`
+ * alone, never reading `evidence.anchorMoveCandidate` — the EXACT flag the
+ * CHALLENGES-branch sentence on the same panel already uses to say "this one
+ * is strong enough on its own that the next review will weigh it." Two real
+ * signals (how well the run matched its PRESCRIBED targets vs. how much the
+ * Evidence Engine trusts what it just learned), printed on one panel with
+ * contradicting confidence. Reuses the `'NEW_ANCHOR_CANDIDATE'` role check —
+ * the same role `readEvidenceImpact` already returns when
+ * `ev.anchorMoveCandidate` is true — rather than re-deriving the flag a
+ * second way, which would just be a new instance of the thing being fixed. */
 function certaintyFor(execution: PostRunExecution, evidence: PostRunEvidenceImpact): Certainty {
   if (evidence.role === 'UNREAD') return 'UNKNOWN';
   if (execution.status === 'INDETERMINATE' || execution.status === 'SENSOR_LIMITED') return 'UNKNOWN';
+  if (evidence.role === 'NEW_ANCHOR_CANDIDATE') return 'SUPPORTED';
   if (execution.confidence === 'HIGH') return 'SUPPORTED';
   return 'TENTATIVE';
 }
