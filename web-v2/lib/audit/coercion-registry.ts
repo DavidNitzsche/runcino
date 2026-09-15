@@ -617,7 +617,16 @@ export const HANDED_BACK_FAILS = false;
 // left the set; none was added, because the replacement is a real branch on
 // a real field, not a coercion relocated into an engine module. Taken from
 // the scanner's own count, not from arithmetic on the diff.
-export const PERIPHERAL_BASELINE = 170;
+// BA-01-9 (2026-09-15) · 170 -> 169. `app/api/v5/races/route.ts` carried
+// `await resolveRaceOutlookBySlug(...).catch(() => null)` — a bare coercion
+// that could not tell "the resolution genuinely has nothing to say" apart
+// from "it errored" apart from "it never got a chance to finish" (Rule 11's
+// three-state distinction, collapsed into one `null`). Replaced with
+// `withDeadline(...)` and an explicit `attempt.status === 'ok'` branch, the
+// same helper and pattern `plan-snapshot.ts`'s sibling call already uses —
+// a real discriminated result (`ok` / `timeout` / `error`), not a coercion
+// relocated elsewhere. One peripheral collapse left the set; none was added.
+export const PERIPHERAL_BASELINE = 169;
 
 /**
  * Floors, so a scanner that opens nothing cannot report clean.
