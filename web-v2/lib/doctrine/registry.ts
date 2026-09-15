@@ -178,6 +178,13 @@ import {
   PROJECTION_NOISE_GRACE_VDOT,
   closableSecPerWeek,
 } from '@/lib/training/vdot-gain-rate';
+// F074 fix #3 · the detraining discount's doctrine knots.
+import {
+  LAYOFF_DISCOUNT_START_WEEKS,
+  LAYOFF_DISCOUNT_MIDPOINT_WEEKS,
+  LAYOFF_DISCOUNT_AT_START_VDOT,
+  LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT,
+} from '@/lib/training/capacity-resolver';
 import { MIN_WEEKLY_MI_FOR_DISTANCE } from '@/lib/training/goal-assessment';
 import {
   BUILD_RATE_VDOT_PER_WEEK,
@@ -11940,6 +11947,81 @@ export const DOCTRINE_REGISTRY: DoctrineClaim[] = [
           'fitness-trajectory.ts is reading the latent upgrade headroom · that number is a ' +
             'goal-feasibility bound, not fitness the projection may award',
         );
+      }
+    },
+  },
+
+  /**
+   * F074 fix #3 · the onboarding "time off" detraining discount
+   * (`lib/training/capacity-resolver.ts#detrainingDiscountVdot`). SIBLING of
+   * `ADAPTATION.single-shot-vdot-magnitudes` above, same table, same doc,
+   * same anchor — that claim reads the layoff row for a GAIN ceiling
+   * (`MAX_BLOCK_GAIN_VDOT`, how far a BUILD may move an estimate up in one
+   * block); this one reads the SAME two layoff rows for a DISCOUNT floor
+   * (how far a reported layoff should move a mileage-rung estimate down).
+   * Two different consumers of one doctrine table, which is why this is a
+   * second claim rather than a second assertion folded into the first —
+   * each binds its own engine constants and can fail independently of the
+   * other.
+   */
+  {
+    id: 'ADAPTATION.detraining-discount-knots',
+    binds: [
+      'lib/training/capacity-resolver.ts#LAYOFF_DISCOUNT_START_WEEKS',
+      'lib/training/capacity-resolver.ts#LAYOFF_DISCOUNT_MIDPOINT_WEEKS',
+      'lib/training/capacity-resolver.ts#LAYOFF_DISCOUNT_AT_START_VDOT',
+      'lib/training/capacity-resolver.ts#LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT',
+    ],
+    doc: 'Research/01-pace-zones-vdot.md',
+    anchor: '### Triggers to retest',
+    claim:
+      'Doctrine states two layoff triggers and a VDOT drop band for each: >=2 weeks off drops '
+      + '3-5 points, >=6 weeks off drops 5-8. The onboarding "time off" self-report (F074) discounts '
+      + 'a mileage-rung threshold estimate by a continuous curve through exactly these two points — '
+      + 'the trigger week-counts and the midpoint of each stated band, never a number doctrine does '
+      + 'not state, and never extrapolated past the second knot.',
+    check({ cite }) {
+      const t = cite.table();
+
+      const readBand = (label: string): { weeks: number; lo: number; hi: number } => {
+        const trigger = t.cell(label, 'Trigger');
+        const action = t.cell(label, 'Action');
+        const weeksMatch = trigger.match(/[≥>=]+\s*(\d+)\s*weeks?/i);
+        if (!weeksMatch) throw new Error(`could not read the trigger week-count from "${trigger}"`);
+        const drop = [...action.matchAll(/(\d+)/g)].map((m) => Number(m[1]));
+        if (drop.length < 2) throw new Error(`could not read the VDOT drop band from "${action}"`);
+        return { weeks: Number(weeksMatch[1]), lo: Math.min(...drop), hi: Math.max(...drop) };
+      };
+
+      const start = readBand('Returning from layoff ≥2 weeks');
+      const mid = readBand('Returning from layoff ≥6 weeks');
+
+      if (LAYOFF_DISCOUNT_START_WEEKS !== start.weeks) {
+        throw new Error(
+          `LAYOFF_DISCOUNT_START_WEEKS = ${LAYOFF_DISCOUNT_START_WEEKS}, doctrine's first layoff trigger is ${start.weeks} weeks`,
+        );
+      }
+      if (LAYOFF_DISCOUNT_MIDPOINT_WEEKS !== mid.weeks) {
+        throw new Error(
+          `LAYOFF_DISCOUNT_MIDPOINT_WEEKS = ${LAYOFF_DISCOUNT_MIDPOINT_WEEKS}, doctrine's second layoff trigger is ${mid.weeks} weeks`,
+        );
+      }
+      // The engine's knot values are the MIDPOINT of doctrine's stated band —
+      // never below the low edge, never above the high edge, at either knot.
+      if (LAYOFF_DISCOUNT_AT_START_VDOT < start.lo || LAYOFF_DISCOUNT_AT_START_VDOT > start.hi) {
+        throw new Error(
+          `LAYOFF_DISCOUNT_AT_START_VDOT = ${LAYOFF_DISCOUNT_AT_START_VDOT}, outside doctrine's ${start.lo}-${start.hi} band at ${start.weeks} weeks`,
+        );
+      }
+      if (LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT < mid.lo || LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT > mid.hi) {
+        throw new Error(
+          `LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT = ${LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT}, outside doctrine's ${mid.lo}-${mid.hi} band at ${mid.weeks} weeks`,
+        );
+      }
+      // The curve must not run backwards — a longer layoff can never be
+      // asked to discount LESS than a shorter one.
+      if (LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT < LAYOFF_DISCOUNT_AT_START_VDOT) {
+        throw new Error('the 6-week discount knot is smaller than the 2-week knot');
       }
     },
   },

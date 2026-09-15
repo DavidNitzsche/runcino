@@ -137,8 +137,27 @@ export interface BeliefSourcePin {
 export const BELIEF_SOURCE_PINS: readonly BeliefSourcePin[] = [
   {
     file: 'lib/training/capacity-resolver.ts',
-    digest: 'bfbe68f3b4a76507',
-    why: 'Re-pinned 2026-09-05 WITHOUT an epoch bump · case (b). THRESHOLD-CANONICAL-1 added `coldStartThresholdCapacity`, and the diff is 120 insertions and ZERO deletions: a new exported entry point for the runner the database cannot yet be asked about, because the seeder runs inside the onboarding transaction and their rows do not exist. Every existing line of `resolveThresholdCapacity` and `composeThresholdCapacity` is byte-identical, so no activity that resolved to a value before resolves to a different one now, and no shadow record already written is invalidated. What it REMOVES is a second owner: the onboarding seeder priced the very first plan with its own arithmetic and a hard-coded fallback, and the census measured the two answers 42 s/mi apart on 2026-09-05. That arithmetic is deleted and the cold start now enters at rung 4 of this same ladder. Re-pinned alone rather than bumping the epoch, because bumping would discard shadow evidence that this change cannot have affected. Original epoch-3 reason kept below: Re-pinned at epoch 3 (brain integration) · epoch 2 pinned this file mid-Phase-1, before the continuity cap was made a faithful WALK (per-day fallback, per-day corroboration bar). That changed what the threshold belief resolves to for the same activities again — the owner\'s June replay moved from a 26 s/mi largest daily step to 9 — so the epoch bumps rather than the pin moving quietly. The pin caught it on the integration merge, which is exactly what it is for.',
+    digest: '07dafb16bd97f088',
+    why: 'Re-pinned 2026-09-14 WITHOUT an epoch bump · case (b). F074 added two new optional inputs to '
+      + '`VdotFallbackRead`/`ColdStartThresholdInputs` (self-reported effort pace, self-reported layoff '
+      + 'weeks) and two new branches inside the mileage-rung half of `composeThresholdCapacity` '
+      + '(`effortPaceShrunkTPace`, `detrainingDiscountVdot`) that read them. Both fields are OPTIONAL '
+      + 'and both new readers (`loadOnboardingEffortPace`, `loadOnboardingLayoffWeeks`) source from '
+      + 'two brand-new `profile` columns (migration 172, NOT YET APPLIED to any database as of this '
+      + 'pin) that do not exist on a single row in production today — every existing account, and every '
+      + 'activity any shadow record was ever written against, reads `NO_EFFORT_PACE_ON_FILE` / `null` '
+      + 'from both, which is the exact same "not on file" default `composeThresholdCapacity` already '
+      + 'used before this change existed. So for every activity this belief has ever resolved for, '
+      + 'the new branches are unreachable and the resolved threshold pace, source mode and reasons are '
+      + 'byte-identical — the new capability changes what a FUTURE onboarding-populated account will '
+      + 'resolve to, not what any existing shadow record compares against. Re-pinned alone rather than '
+      + 'bumping the epoch, same shape as THRESHOLD-CANONICAL-1 below: a new entry point/branch pair '
+      + 'that the current corpus cannot yet reach. If the migration lands and a real account populates '
+      + 'either field, the FIRST activity that resolves through the new branch is a genuine belief '
+      + 'change and earns its own epoch bump at that time, argued on what it actually moved — not '
+      + 'assumed here in advance of any real data existing to move it. '
+      + 'Prior re-pin kept below as history: '
+      + 'Re-pinned 2026-09-05 WITHOUT an epoch bump · case (b). THRESHOLD-CANONICAL-1 added `coldStartThresholdCapacity`, and the diff is 120 insertions and ZERO deletions: a new exported entry point for the runner the database cannot yet be asked about, because the seeder runs inside the onboarding transaction and their rows do not exist. Every existing line of `resolveThresholdCapacity` and `composeThresholdCapacity` is byte-identical, so no activity that resolved to a value before resolves to a different one now, and no shadow record already written is invalidated. What it REMOVES is a second owner: the onboarding seeder priced the very first plan with its own arithmetic and a hard-coded fallback, and the census measured the two answers 42 s/mi apart on 2026-09-05. That arithmetic is deleted and the cold start now enters at rung 4 of this same ladder. Re-pinned alone rather than bumping the epoch, because bumping would discard shadow evidence that this change cannot have affected. Original epoch-3 reason kept below: Re-pinned at epoch 3 (brain integration) · epoch 2 pinned this file mid-Phase-1, before the continuity cap was made a faithful WALK (per-day fallback, per-day corroboration bar). That changed what the threshold belief resolves to for the same activities again — the owner\'s June replay moved from a 26 s/mi largest daily step to 9 — so the epoch bumps rather than the pin moving quietly. The pin caught it on the integration merge, which is exactly what it is for.',
   },
   {
     file: 'lib/training/prescription-resolver.ts',

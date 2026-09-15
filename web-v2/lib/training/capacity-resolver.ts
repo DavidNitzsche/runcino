@@ -238,16 +238,23 @@ import {
   resolveCurrentTPace,
   tPaceFromVdot,
   vdotFromTpace,
+  DANIELS_VDOT_MIN,
   type BelowTableAnchor,
   type TPaceResolutionTier,
 } from '@/lib/training/vdot';
 import { loadVdotInputs } from '@/lib/training/vdot-inputs';
 import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
 import { normalWeeklyMileageDetail, type NormalReading } from '@/lib/training/normal-window';
+// F074 fix #2 · the effort-pace rung. `readSelfReportedEffortPace` and
+// `readSelfReportedPr` share the same file and the same shrinkage weight
+// (`prPriorWeight`) — see readSelfReportedEffortPace's own header for why a
+// second weight constant would be a Rule 16 violation.
 import {
   readSelfReportedPr,
   prPriorWeight,
   type SelfReportedPrRead,
+  readSelfReportedEffortPace,
+  type SelfReportedEffortPaceRead,
 } from '@/lib/training/self-reported-pr';
 import type { RaceHistoryEntry } from '@/lib/training/race-history';
 import { runnerToday } from '@/lib/runtime/runner-tz';
@@ -357,6 +364,21 @@ export type CapacityReasonCode =
   // pace, an unparseable distance/time, or a VDOT off the [30,85] table.
   // A thing to tell the runner about; "no PR on file" is not.
   | 'ONBOARDING_PR_REJECTED'
+  // F074 fix #2 · a validated self-reported effort pace
+  // (`profile.effort_pace_sec_per_mi`) contributed to this estimate, shrunk
+  // toward the mileage prior. Never evidence — same posture as
+  // ONBOARDING_PR_USER_PRIOR, distinguished so a caller can tell WHICH
+  // self-report answered.
+  | 'ONBOARDING_EFFORT_PACE_USER_PRIOR'
+  // The runner typed an effort pace and it failed validation (implausible
+  // pace or off the Daniels table) — a thing to tell the runner about, same
+  // posture as ONBOARDING_PR_REJECTED.
+  | 'ONBOARDING_EFFORT_PACE_REJECTED'
+  // F074 fix #3 · the mileage-rung estimate was reduced for a reported
+  // layoff (`profile.history_layoff_weeks`), per `detrainingDiscountVdot`.
+  // Never fires when a stronger tier answered — a layoff report only
+  // discounts the estimate it would otherwise retire.
+  | 'DETRAINING_DISCOUNT_APPLIED'
   | 'PERSONAL_RIEGEL_EXPONENT'
   | 'POPULATION_ENDURANCE_PRIOR'
   | 'LONGITUDINAL_DECOUPLING'
@@ -1045,6 +1067,36 @@ export interface VdotFallbackRead {
    * See `lib/training/self-reported-pr.ts`.
    */
   selfReportedPr: SelfReportedPrRead;
+  /**
+   * F074 fix #2 · the runner's own onboarding self-reported effort pace
+   * (`profile.effort_pace_sec_per_mi`), validated and freshness-priced. Same
+   * posture as `selfReportedPr`: enters ONLY on the mileage rung, shrunk
+   * toward the conservative mileage anchor, never `direct`/`inferred`/
+   * `race_derived`. See `lib/training/self-reported-pr.ts`'s
+   * `readSelfReportedEffortPace`.
+   *
+   * Optional (defaults to "not on file" inside `composeThresholdCapacity`)
+   * so every existing fixture across this codebase that builds a
+   * `VdotFallbackRead` literal — and there are several, in
+   * `_capacity_resolver.test.ts`, `_cold_start_fixtures.test.ts`,
+   * `_brain_acceptance.test.ts`, `authoring-anchors.ts` and the DB round-trip
+   * test — keeps compiling byte-identically rather than this one addition
+   * forcing an edit to every call site that predates it.
+   */
+  selfReportedEffortPace?: SelfReportedEffortPaceRead;
+  /**
+   * F074 fix #3 · the runner's own onboarding self-reported layoff length
+   * (`profile.history_layoff_weeks`), weeks. Null when never answered —
+   * distinct from 0 ("answered: no time off"), same Rule 11 distinction
+   * `selfReportedWeeklyMi` already keeps. Read by `detrainingDiscountVdot`
+   * and applied ONLY to the mileage-rung estimate, scaled to zero by the
+   * same `evidenceCoverage` complement that already retires the mileage
+   * prior itself — a layoff that happened before the runner logged a month
+   * of real running stops mattering exactly when the self-report it would
+   * discount stops mattering. Optional for the same backward-compatibility
+   * reason as `selfReportedEffortPace` above.
+   */
+  layoffWeeks?: number | null;
 }
 
 /**
@@ -1102,8 +1154,66 @@ async function loadSelfReportedPr(userId: string): Promise<SelfReportedPrRead> {
   return readSelfReportedPr(Array.isArray(raw) ? (raw as RaceHistoryEntry[]) : null);
 }
 
+/**
+ * F074 fix #2 · the runner's own onboarding self-reported effort pace
+ * (`profile.effort_pace_sec_per_mi`), validated and freshness-priced.
+ * `rowOrNull` for the same reason every other onboarding-prior reader in
+ * this file uses it: a failed read is LOGGED, and falls through to the same
+ * conservative rung a runner who typed nothing would get.
+ *
+ * Freshness anchors on `onboarding_completed_at` — `to_char` rather than a
+ * raw JS `Date` parse of the timestamptz, per `reference_pg_timestamp_tz_
+ * parsing`'s own rule: read a wall-clock DATE string out of Postgres, don't
+ * let node-pg's timezone conversion move it.
+ */
+async function loadOnboardingEffortPace(
+  userId: string,
+  todayISO: string,
+): Promise<SelfReportedEffortPaceRead> {
+  const row = await rowOrNull<{
+    effort_pace_sec_per_mi: number | string | null;
+    reported_on: string | null;
+  }>(
+    'capacity-resolver/onboarding-effort-pace',
+    pool.query(
+      `SELECT effort_pace_sec_per_mi,
+              to_char(onboarding_completed_at, 'YYYY-MM-DD') AS reported_on
+         FROM profile WHERE user_uuid = $1 LIMIT 1`,
+      [userId],
+    ),
+  );
+  if (row == null || row.effort_pace_sec_per_mi == null) {
+    return { ok: false, reason: 'NO_EFFORT_PACE_ON_FILE' };
+  }
+  const paceSecPerMi = Number(row.effort_pace_sec_per_mi);
+  const daysAgo = row.reported_on ? daysBetween(row.reported_on, todayISO) : null;
+  return readSelfReportedEffortPace(Number.isFinite(paceSecPerMi) ? paceSecPerMi : null, daysAgo);
+}
+
+/**
+ * F074 fix #3 · the runner's own onboarding self-reported layoff length
+ * (`profile.history_layoff_weeks`), weeks. Null is "never answered" (Rule
+ * 11 — a real answer of 0 survives distinctly, same shape as
+ * `loadOnboardingWeeklyMiPrior`'s zero-vs-absent argument).
+ */
+async function loadOnboardingLayoffWeeks(userId: string): Promise<number | null> {
+  const row = await rowOrNull<{ history_layoff_weeks: number | string | null }>(
+    'capacity-resolver/onboarding-layoff-weeks',
+    pool.query(
+      `SELECT history_layoff_weeks FROM profile WHERE user_uuid = $1 LIMIT 1`,
+      [userId],
+    ),
+  );
+  if (row == null || row.history_layoff_weeks == null) return null;
+  const n = Number(row.history_layoff_weeks);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
 async function loadVdotFallback(userId: string, todayISO: string): Promise<VdotFallbackRead> {
-  const [inputs, normalDetail, selfReportedWeeklyMi, selfReportedPr] = await Promise.all([
+  const [
+    inputs, normalDetail, selfReportedWeeklyMi, selfReportedPr,
+    selfReportedEffortPace, layoffWeeks,
+  ] = await Promise.all([
     // The floor is passed EXPLICITLY on both halves so `goalRunFloorMiForUser`
     // never fires and the loader and the ranker cannot disagree about which
     // floor gated the pool — the mismatch `vdot-inputs.ts`'s own comment warns
@@ -1114,6 +1224,8 @@ async function loadVdotFallback(userId: string, todayISO: string): Promise<VdotF
     normalWeeklyMileageDetail(userId, todayISO),
     loadOnboardingWeeklyMiPrior(userId),
     loadSelfReportedPr(userId),
+    loadOnboardingEffortPace(userId, todayISO),
+    loadOnboardingLayoffWeeks(userId),
   ]);
   const { best, belowTableAnchor } = bestRecentVdot(
     inputs.raceCandidates,
@@ -1140,6 +1252,8 @@ async function loadVdotFallback(userId: string, todayISO: string): Promise<VdotF
     normalRunDays: normalDetail.ok ? normalDetail.value.runDays : 0,
     selfReportedWeeklyMi,
     selfReportedPr,
+    selfReportedEffortPace,
+    layoffWeeks,
   };
 }
 
@@ -1312,17 +1426,100 @@ export function priorWeeklyMi(
  * and no demonstrated below-table pace exist. A typed PR never outranks, and
  * never even reaches, an observation of the runner running.
  */
+/**
+ * Shrink a self-reported T-pace toward the conservative mileage anchor,
+ * given how much weight the report has earned. Pulled out of `prShrunkTPace`
+ * so `effortPaceShrunkTPace` (F074 fix #2) can share the exact blend
+ * arithmetic rather than a second copy of it (Rule 16) — the two self-report
+ * types differ in how they compute `weight` and `tPaceSecPerMi`, never in
+ * how those two numbers become a pace.
+ */
+function shrinkTowardMileagePrior(
+  tPaceSecPerMi: number,
+  weight: number,
+  mileagePriorTPaceSec: number,
+): { tPaceSec: number; weight: number } | null {
+  if (!(weight > 0)) return null;
+  const blended = weight * tPaceSecPerMi + (1 - weight) * mileagePriorTPaceSec;
+  if (!Number.isFinite(blended) || blended <= 0) return null;
+  return { tPaceSec: blended, weight };
+}
+
 function prShrunkTPace(
   pr: SelfReportedPrRead,
   mileagePriorTPaceSec: number,
   evidenceCoverage: number,
 ): { tPaceSec: number; weight: number } | null {
   if (!pr.ok) return null;
-  const w = prPriorWeight(pr.best.freshness, evidenceCoverage);
-  if (!(w > 0)) return null;
-  const blended = w * pr.best.tPaceSecPerMi + (1 - w) * mileagePriorTPaceSec;
-  if (!Number.isFinite(blended) || blended <= 0) return null;
-  return { tPaceSec: blended, weight: w };
+  return shrinkTowardMileagePrior(
+    pr.best.tPaceSecPerMi, prPriorWeight(pr.best.freshness, evidenceCoverage), mileagePriorTPaceSec,
+  );
+}
+
+/**
+ * F074 fix #2 · the effort-pace rung's own shrink call. Same arithmetic as
+ * `prShrunkTPace`, same weight function (`prPriorWeight` — see
+ * `self-reported-pr.ts`'s header for why one weight constant serves both
+ * self-report types), different input read.
+ */
+function effortPaceShrunkTPace(
+  read: SelfReportedEffortPaceRead,
+  mileagePriorTPaceSec: number,
+  evidenceCoverage: number,
+): { tPaceSec: number; weight: number } | null {
+  if (!read.ok) return null;
+  return shrinkTowardMileagePrior(
+    read.tPaceSecPerMi, prPriorWeight(read.freshness, evidenceCoverage), mileagePriorTPaceSec,
+  );
+}
+
+/**
+ * F074 fix #3 · THE DETRAINING DISCOUNT.
+ *
+ * How many VDOT points to subtract from a MILEAGE-RUNG estimate when the
+ * runner reports a layoff of `layoffWeeks` before the mileage `history_avg_
+ * weekly_mi` describes. Two anchor points, both read verbatim out of
+ * `Research/01-pace-zones-vdot.md` §"Field-test selection for the Coach"'s
+ * trigger table — the same table `vdot-gain-rate.ts`'s `MAX_BLOCK_GAIN_VDOT`
+ * already cites for the upward-gain half of this exact row:
+ *
+ *   "Returning from layoff >=2 weeks | Drop 3-5 VDOT estimate"
+ *   "Returning from layoff >=6 weeks | Drop 5-8 VDOT estimate"
+ *
+ * NOT a step function (Rule 9 — a hair's difference in `layoffWeeks` must
+ * never produce a categorically different discount). The two doctrine rows
+ * become two KNOTS on a continuous, monotone curve: the midpoint of each
+ * band (4 at 2 weeks, 6.5 at 6 weeks), linearly interpolated between them,
+ * linearly led into from (0 weeks, no discount) below 2 weeks (doctrine
+ * states no trigger below 2 weeks; ramping continuously into the first cited
+ * point rather than stepping onto it is the Rule-9-safe reading of "no
+ * trigger", not a claim that a 10-day gap is exactly this fraction of a
+ * 2-week one), and CAPPED at the 6-week midpoint beyond 6 weeks — doctrine
+ * gives no third point, and extrapolating past a cited band would be the
+ * fabrication `docs/PRODUCT_COACHING_DOCTRINE.md` §38 forbids.
+ *
+ * Exported so `_capacity_resolver.test.ts` can walk it directly (Rule 15/18):
+ * a monotonicity + continuity sweep, and the two doctrine knots asserted by
+ * VALUE, read out of the same constants this function uses (not hand-copied
+ * on both sides).
+ */
+export const LAYOFF_DISCOUNT_START_WEEKS = 2;
+export const LAYOFF_DISCOUNT_MIDPOINT_WEEKS = 6;
+/** Midpoint of Research/01's "Drop 3-5 VDOT" at the 2-week trigger. */
+export const LAYOFF_DISCOUNT_AT_START_VDOT = 4;
+/** Midpoint of Research/01's "Drop 5-8 VDOT" at the 6-week trigger. */
+export const LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT = 6.5;
+
+export function detrainingDiscountVdot(layoffWeeks: number): number {
+  const w = Number.isFinite(layoffWeeks) ? Math.max(0, layoffWeeks) : 0;
+  if (w <= 0) return 0;
+  if (w <= LAYOFF_DISCOUNT_START_WEEKS) {
+    return LAYOFF_DISCOUNT_AT_START_VDOT * (w / LAYOFF_DISCOUNT_START_WEEKS);
+  }
+  if (w >= LAYOFF_DISCOUNT_MIDPOINT_WEEKS) return LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT;
+  const t = (w - LAYOFF_DISCOUNT_START_WEEKS) / (LAYOFF_DISCOUNT_MIDPOINT_WEEKS - LAYOFF_DISCOUNT_START_WEEKS);
+  return LAYOFF_DISCOUNT_AT_START_VDOT
+    + (LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT - LAYOFF_DISCOUNT_AT_START_VDOT) * t;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -1451,25 +1648,72 @@ export function composeThresholdCapacity(
   // own conversion failed, which `conservativeVdotFromMileage`'s floor makes
   // unreachable — kept as an explicit conservative substitution rather than a
   // non-null assertion, because a silent `!` here would be a fabricated pace.
-  const mileagePaceSecPerMi = cascade.tPaceSec
+  const undiscountedMileagePaceSecPerMi = cascade.tPaceSec
     ?? tPaceFromVdot(conservativeVdotFromMileage(0))
     ?? 0;
 
-  /* ── THE TYPED-PR RUNG ────────────────────────────────────────────────────
+  /* ── F074 fix #3 · THE DETRAINING DISCOUNT ─────────────────────────────────
    *
-   * Consulted ONLY on the mileage rung — i.e. when no measured VDOT and no
-   * demonstrated below-table pace exist. A PR the runner typed into
-   * onboarding never outranks, and never even reaches, an observation of the
-   * runner running; `SOURCE_MODE_STRENGTH` says so and this gate enforces it.
+   * Applied ONLY on the mileage rung, and ONLY when the self-report actually
+   * contributed to it — a runner with a measured VDOT or a below-table
+   * anchor has already demonstrated CURRENT capacity, which supersedes a
+   * stale claim about pre-layoff mileage; a runner whose mileage-rung number
+   * came entirely from real running (no self-report, `prior.usedSelfReport
+   * === false`) has nothing self-reported here to discount.
    *
-   * What it does when it fires: shrinks the conservative mileage pace toward
-   * the PR-implied pace by `prPriorWeight`, which falls continuously to zero
-   * as the PR ages and as real running arrives. See
-   * `lib/training/self-reported-pr.ts` for every term.
+   * Scaled by `(1 - prior.evidenceCoverage)`, the SAME complement that
+   * already retires the self-reported mileage itself — a layoff discount on
+   * a self-report that has already retired would be a residual artifact of a
+   * rule that is supposed to fade with it (Rule 9: no lingering step once the
+   * thing it depends on has continuously gone to zero).
    */
-  const prBlend = cascade.tier === 'mileage_estimate'
+  // Defaulted locals — `selfReportedEffortPace` / `layoffWeeks` are optional
+  // on `VdotFallbackRead` precisely so every caller that predates F074 (see
+  // that field's own header) never has to supply them.
+  const layoffWeeks = fallback.layoffWeeks ?? null;
+  const effortPaceRead: SelfReportedEffortPaceRead =
+    fallback.selfReportedEffortPace ?? { ok: false, reason: 'NO_EFFORT_PACE_ON_FILE' };
+  const detraining = (cascade.tier === 'mileage_estimate' && prior.usedSelfReport && layoffWeeks != null)
+    ? detrainingDiscountVdot(layoffWeeks) * (1 - prior.evidenceCoverage)
+    : 0;
+  const mileagePaceSecPerMi = (() => {
+    if (!(detraining > 0)) return undiscountedMileagePaceSecPerMi;
+    const vdotAtMileage = vdotFromTpace(undiscountedMileagePaceSecPerMi);
+    if (vdotAtMileage == null) return undiscountedMileagePaceSecPerMi;
+    const discountedVdot = Math.max(DANIELS_VDOT_MIN, vdotAtMileage - detraining);
+    return tPaceFromVdot(discountedVdot) ?? undiscountedMileagePaceSecPerMi;
+  })();
+
+  /* ── THE TYPED-PR RUNG, AND F074 fix #2's EFFORT-PACE RUNG ─────────────────
+   *
+   * Both consulted ONLY on the mileage rung — i.e. when no measured VDOT and
+   * no demonstrated below-table pace exist. Neither ever outranks, or even
+   * reaches, an observation of the runner running; `SOURCE_MODE_STRENGTH`
+   * says so and this gate enforces it. Both shrink the (possibly
+   * layoff-discounted) mileage pace toward what they imply, by
+   * `prPriorWeight`, which falls continuously to zero as the self-report
+   * ages and as real running arrives — see `lib/training/self-reported-pr.ts`
+   * for every term.
+   *
+   * When BOTH are on file, this resolver spends whichever the app should
+   * currently trust MORE — the higher-weight candidate — rather than
+   * averaging two independent unverified claims into a number neither runner
+   * actually said (§38's fabricated-precision ban) or always preferring one
+   * kind over the other regardless of how stale or how covered by real
+   * running it already is.
+   */
+  const prCandidate = cascade.tier === 'mileage_estimate'
     ? prShrunkTPace(fallback.selfReportedPr, mileagePaceSecPerMi, prior.evidenceCoverage)
     : null;
+  const effortCandidate = cascade.tier === 'mileage_estimate'
+    ? effortPaceShrunkTPace(effortPaceRead, mileagePaceSecPerMi, prior.evidenceCoverage)
+    : null;
+  const prBlend = (() => {
+    if (prCandidate == null) return effortCandidate;
+    if (effortCandidate == null) return prCandidate;
+    return effortCandidate.weight > prCandidate.weight ? effortCandidate : prCandidate;
+  })();
+  const usedEffortPace = prBlend != null && prBlend === effortCandidate;
   const paceSecPerMi = prBlend?.tPaceSec ?? mileagePaceSecPerMi;
 
   const tierMap: Record<TPaceResolutionTier, SourceMode> = {
@@ -1495,12 +1739,18 @@ export function composeThresholdCapacity(
     // answered did not. The two imply the same number and are not the same
     // fact (Rule 11), and until now nothing downstream could tell them apart.
     if (prior.answeredZero) reasons.push('ONBOARDING_MILEAGE_ANSWERED_ZERO');
-    if (prBlend != null) reasons.push('ONBOARDING_PR_USER_PRIOR');
-    // Reported whether or not a PR was ultimately used: an entry that failed
-    // validation is a thing worth surfacing to the runner ("that half
-    // marathon time looks wrong"), and silence would be the swallow.
+    if (detraining > 0) reasons.push('DETRAINING_DISCOUNT_APPLIED');
+    if (prBlend != null && !usedEffortPace) reasons.push('ONBOARDING_PR_USER_PRIOR');
+    if (prBlend != null && usedEffortPace) reasons.push('ONBOARDING_EFFORT_PACE_USER_PRIOR');
+    // Reported whether or not a PR/effort-pace was ultimately used: an entry
+    // that failed validation is a thing worth surfacing to the runner
+    // ("that half marathon time looks wrong"), and silence would be the
+    // swallow.
     if (!fallback.selfReportedPr.ok && fallback.selfReportedPr.reason === 'ALL_PRS_REJECTED') {
       reasons.push('ONBOARDING_PR_REJECTED');
+    }
+    if (!effortPaceRead.ok && effortPaceRead.reason !== 'NO_EFFORT_PACE_ON_FILE') {
+      reasons.push('ONBOARDING_EFFORT_PACE_REJECTED');
     }
     if (prior.refused) reasons.push('HABIT_WINDOW_REFUSED');
   }
@@ -2207,6 +2457,26 @@ export interface ColdStartThresholdInputs {
    *  rung 4 exists to spend. Null when they never answered — which is not the
    *  same fact as answering zero, and `priorWeeklyMi` keeps them apart. */
   selfReportedWeeklyMi: number | null;
+  /**
+   * F074 fix #2 · the runner's own onboarding self-reported effort pace,
+   * seconds/mi (`profile.effort_pace_sec_per_mi`), and how many days ago
+   * they reported it (0 at the instant of onboarding — this function runs
+   * INSIDE the onboarding transaction, so the self-report is always fresh
+   * here; the DB-backed `resolveThresholdCapacity` path is what ages it).
+   * Both optional and default to "not on file" — a caller that predates this
+   * fix behaves byte-identically, which is what makes this addition
+   * backward-compatible per the same posture `reexamination` (section 4's
+   * other optional input) already set.
+   */
+  effortPaceSecPerMi?: number | null;
+  effortPaceDaysAgo?: number;
+  /**
+   * F074 fix #3 · the runner's own onboarding self-reported layoff weeks
+   * (`profile.history_layoff_weeks`). Optional, defaults to "never
+   * answered" — see `effortPaceSecPerMi` above for why that keeps this a
+   * non-breaking addition.
+   */
+  layoffWeeks?: number | null;
   todayISO: string;
 }
 
@@ -2301,6 +2571,17 @@ export function coldStartThresholdCapacity(
       // The seeder does not hold them, and claiming otherwise here would be a
       // fabricated rung.
       selfReportedPr: { ok: false, reason: 'NO_PR_ON_FILE', considered: 0, rejected: [] },
+      // F074 fix #2 · validated the SAME way the DB path validates it
+      // (`readSelfReportedEffortPace`) — the seeder is not a second answer
+      // to "is this pace plausible", it is the same pure validator called
+      // with the values it happens to hold inline instead of from a row.
+      selfReportedEffortPace: readSelfReportedEffortPace(
+        inputs.effortPaceSecPerMi ?? null,
+        inputs.effortPaceDaysAgo ?? 0,
+      ),
+      // F074 fix #3 · passed straight through; `detrainingDiscountVdot` reads
+      // it inside `composeThresholdCapacity`, same as the DB path.
+      layoffWeeks: inputs.layoffWeeks ?? null,
     },
     todayISO: inputs.todayISO,
   });

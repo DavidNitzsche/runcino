@@ -56,6 +56,12 @@ import {
   composeThresholdCapacity,
   directEvidenceConfidence,
   fallbackConfidence,
+  // F074 fix #3 · the detraining discount.
+  detrainingDiscountVdot,
+  LAYOFF_DISCOUNT_START_WEEKS,
+  LAYOFF_DISCOUNT_MIDPOINT_WEEKS,
+  LAYOFF_DISCOUNT_AT_START_VDOT,
+  LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT,
   type CapacityEstimateBase,
   type DirectEvidenceQuality,
   type SourceMode,
@@ -68,7 +74,8 @@ import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
 import { fullAuthority, uncappedMoveCap, type PaceObservation, type ThresholdPaceRead, type EasyPaceRead } from '@/lib/training/pace-corpus';
 import type { RaceExponentRead, DecouplingRead } from '@/lib/training/durability-anchor';
 import type { NormalReading } from '@/lib/training/normal-window';
-import { readSelfReportedPr } from '@/lib/training/self-reported-pr';
+// F074 fix #2 · the effort-pace rung.
+import { readSelfReportedPr, readSelfReportedEffortPace } from '@/lib/training/self-reported-pr';
 
 const TODAY = '2026-08-31';
 const RESOLVER_PATH = path.join(process.cwd(), 'lib/training/capacity-resolver.ts');
@@ -856,6 +863,241 @@ describe('CAPACITY · the ladder falls through, it does not serve a refusal (Rul
     // `goalPaceSec` fails here before it can price anything.
     const keys = Object.keys(coldStart(0, 0, { selfReportedWeeklyMi: 20 }));
     expect(keys.filter((k) => /goal/i.test(k))).toEqual([]);
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════
+   * F074 fix #2 · THE EFFORT-PACE RUNG
+   * `lib/training/self-reported-pr.ts#readSelfReportedEffortPace`.
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  /** A validated effort-pace read, in the shape `readSelfReportedEffortPace`
+   *  returns, at zero days since reported (fresh, as if just onboarded). */
+  function effortPace(paceSecPerMi: number, daysAgo = 0) {
+    return readSelfReportedEffortPace(paceSecPerMi, daysAgo);
+  }
+
+  it('4a · a validated effort pace moves the prior toward it, CONSERVATIVELY, as `user_prior`', () => {
+    const noEffort = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 20 }),
+      todayISO: TODAY,
+    });
+    const withEffort = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, {
+        selfReportedWeeklyMi: 20,
+        selfReportedEffortPace: effortPace(420), // 7:00/mi hard-effort self-report
+      }),
+      todayISO: TODAY,
+    });
+    expect(withEffort.sourceMode).toBe('user_prior');
+    expect(withEffort.reasons).toContain('ONBOARDING_EFFORT_PACE_USER_PRIOR');
+    expect(withEffort.reasons).not.toContain('ONBOARDING_PR_USER_PRIOR');
+    expect(withEffort.confidence).toBe(CAPACITY_CONFIDENCE_BANDS.userPrior);
+    // Moves toward the reported pace, but never all the way there (the
+    // shrinkage IS the defence — same posture as the typed-PR rung).
+    expect(withEffort.paceSecPerMi).toBeLessThan(noEffort.paceSecPerMi);
+    expect(withEffort.paceSecPerMi).toBeGreaterThan(420);
+  });
+
+  it('4b · FALSIFIED without the fix: a validated effort pace on an otherwise-identical fallback changes NOTHING when the reader is absent', () => {
+    // Simulates the pre-fix `VdotFallbackRead` — no `selfReportedEffortPace`
+    // key at all (the field did not exist). The optional-field default means
+    // this still compiles and behaves EXACTLY as `noEffort` above: the
+    // evidence genuinely does not reach the resolver pre-fix.
+    const preFix = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 20 }),
+      todayISO: TODAY,
+    });
+    const noEffort = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 20 }),
+      todayISO: TODAY,
+    });
+    expect(preFix.paceSecPerMi).toBe(noEffort.paceSecPerMi);
+    expect(preFix.reasons).not.toContain('ONBOARDING_EFFORT_PACE_USER_PRIOR');
+  });
+
+  it('4c · an implausible effort pace is REJECTED with a reason, and prices nothing', () => {
+    const absurd = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, {
+        selfReportedWeeklyMi: 20,
+        selfReportedEffortPace: effortPace(90), // 1:30/mi — no human runs this
+      }),
+      todayISO: TODAY,
+    });
+    const clean = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 20 }),
+      todayISO: TODAY,
+    });
+    expect(absurd.reasons).toContain('ONBOARDING_EFFORT_PACE_REJECTED');
+    expect(absurd.reasons).not.toContain('ONBOARDING_EFFORT_PACE_USER_PRIOR');
+    expect(absurd.paceSecPerMi).toBe(clean.paceSecPerMi);
+    expect(clean.reasons).not.toContain('ONBOARDING_EFFORT_PACE_REJECTED');
+  });
+
+  it('4d · an effort pace NEVER outranks a real observation of the runner running', () => {
+    const measured = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: emptyFallback({
+        measuredVdot: 42, measuredVdotEvidenceId: 'run-1',
+        measuredVdotDate: '2026-08-20', measuredVdotSource: 'run',
+        selfReportedEffortPace: effortPace(360), // a much faster claim
+      }),
+      todayISO: TODAY,
+    });
+    expect(measured.sourceMode).toBe('vdot_fallback');
+    expect(measured.reasons).not.toContain('ONBOARDING_EFFORT_PACE_USER_PRIOR');
+    expect(measured.paceSecPerMi).toBe(tPaceFromVdot(42));
+  });
+
+  it('4e · when both a typed PR and an effort pace are on file, the resolver spends whichever it should trust MORE (higher weight), not an average of both', () => {
+    const strongPr = typedPr('half', 5400, '<6mo');       // fresh, full weight
+    const staleEffort = effortPace(420, 900);              // ~2.5 years stale
+    const withBoth = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, {
+        selfReportedWeeklyMi: 20,
+        selfReportedPr: strongPr,
+        selfReportedEffortPace: staleEffort,
+      }),
+      todayISO: TODAY,
+    });
+    const prOnly = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 20, selfReportedPr: strongPr }),
+      todayISO: TODAY,
+    });
+    // The fresh PR dominates the stale effort pace — same number as PR-only,
+    // not a blend of the two.
+    expect(withBoth.paceSecPerMi).toBe(prOnly.paceSecPerMi);
+    expect(withBoth.reasons).toContain('ONBOARDING_PR_USER_PRIOR');
+    expect(withBoth.reasons).not.toContain('ONBOARDING_EFFORT_PACE_USER_PRIOR');
+  });
+
+  /* ══════════════════════════════════════════════════════════════════════
+   * F074 fix #3 · THE DETRAINING DISCOUNT
+   * `detrainingDiscountVdot`, applied only on the mileage rung.
+   * ══════════════════════════════════════════════════════════════════════ */
+
+  it('5a · a reported layoff reduces the mileage-rung estimate, in the conservative (slower) direction', () => {
+    const noLayoff = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 40, layoffWeeks: null }),
+      todayISO: TODAY,
+    });
+    const withLayoff = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 40, layoffWeeks: 8 }),
+      todayISO: TODAY,
+    });
+    expect(withLayoff.reasons).toContain('DETRAINING_DISCOUNT_APPLIED');
+    expect(noLayoff.reasons).not.toContain('DETRAINING_DISCOUNT_APPLIED');
+    // Slower (larger s/mi) — a longer-ago demonstrated mileage is discounted,
+    // never sped up.
+    expect(withLayoff.paceSecPerMi).toBeGreaterThan(noLayoff.paceSecPerMi);
+    expect(withLayoff.sourceMode).toBe('user_prior'); // still a self-report, not a new rung
+  });
+
+  it('5b · FALSIFIED without the fix: the same layoff report changes nothing when `layoffWeeks` is absent from the fallback', () => {
+    const preFix = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 40 }), // no layoffWeeks key at all
+      todayISO: TODAY,
+    });
+    const noLayoff = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 40, layoffWeeks: null }),
+      todayISO: TODAY,
+    });
+    expect(preFix.paceSecPerMi).toBe(noLayoff.paceSecPerMi);
+    expect(preFix.reasons).not.toContain('DETRAINING_DISCOUNT_APPLIED');
+  });
+
+  it('5c · RULE 9 · the discount is CONTINUOUS in layoffWeeks — no cliff at the 2-week or 6-week doctrine knots', () => {
+    let prev: number | null = null;
+    let worst = 0;
+    let worstAt = -1;
+    for (let w = 0; w <= 12; w += 0.25) {
+      const e = composeThresholdCapacity({
+        direct: REFUSED_THRESHOLD,
+        fallback: coldStart(0, 0, { selfReportedWeeklyMi: 40, layoffWeeks: w }),
+        todayISO: TODAY,
+      });
+      if (prev != null) {
+        const step = Math.abs(e.paceSecPerMi - prev);
+        if (step > worst) { worst = step; worstAt = w; }
+      }
+      prev = e.paceSecPerMi;
+    }
+    // A 0.25-week step should never move the prescribed pace by more than a
+    // couple of seconds/mi — generous, but a real cliff (Rule 9's signature)
+    // would blow past this by an order of magnitude.
+    expect({ worstAt, ok: worst <= 5 }).toEqual({ worstAt, ok: true });
+  });
+
+  it('5d · monotone: a longer reported layoff never produces a FASTER estimate than a shorter one', () => {
+    const paceAt = (weeks: number) => composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(0, 0, { selfReportedWeeklyMi: 40, layoffWeeks: weeks }),
+      todayISO: TODAY,
+    }).paceSecPerMi;
+    const at0 = paceAt(0);
+    const at2 = paceAt(2);
+    const at6 = paceAt(6);
+    const at20 = paceAt(20); // beyond the doctrine ceiling — must not exceed the 6-week discount
+    expect(at2).toBeGreaterThanOrEqual(at0);
+    expect(at6).toBeGreaterThan(at2);
+    expect(at20).toBe(at6); // capped, not extrapolated past doctrine's cited band
+  });
+
+  it('5e · the discount fades to zero as real running arrives, at the SAME rate the self-report itself retires', () => {
+    const e = (runDays: number) => composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: coldStart(40, runDays, { selfReportedWeeklyMi: 40, layoffWeeks: 8 }),
+      todayISO: TODAY,
+    });
+    const coldStartEst = e(0);
+    const fullMonth = e(USER_PRIOR_COVERAGE_SATURATION_RUN_DAYS);
+    // At full evidence coverage the self-report (and therefore the discount
+    // riding on it) has retired entirely — population_prior off REAL mileage,
+    // with no residual discount artifact left over.
+    expect(fullMonth.sourceMode).toBe('population_prior');
+    expect(fullMonth.reasons).not.toContain('DETRAINING_DISCOUNT_APPLIED');
+    expect(fullMonth.paceSecPerMi).toBe(tPaceFromVdot(conservativeVdotFromMileage(40)));
+    expect(coldStartEst.reasons).toContain('DETRAINING_DISCOUNT_APPLIED');
+  });
+
+  it('5f · a layoff report never applies when a measured VDOT or below-table anchor already answers', () => {
+    const measured = composeThresholdCapacity({
+      direct: REFUSED_THRESHOLD,
+      fallback: emptyFallback({
+        measuredVdot: 42, measuredVdotEvidenceId: 'run-1',
+        measuredVdotDate: '2026-08-20', measuredVdotSource: 'run',
+        layoffWeeks: 20, // an enormous reported layoff, still must not apply
+      }),
+      todayISO: TODAY,
+    });
+    expect(measured.sourceMode).toBe('vdot_fallback');
+    expect(measured.reasons).not.toContain('DETRAINING_DISCOUNT_APPLIED');
+    expect(measured.paceSecPerMi).toBe(tPaceFromVdot(42));
+  });
+
+  it('5g · detrainingDiscountVdot itself: zero below 2 weeks, doctrine knots at 2 and 6, capped beyond', () => {
+    expect(detrainingDiscountVdot(0)).toBe(0);
+    expect(detrainingDiscountVdot(LAYOFF_DISCOUNT_START_WEEKS)).toBeCloseTo(LAYOFF_DISCOUNT_AT_START_VDOT, 6);
+    expect(detrainingDiscountVdot(LAYOFF_DISCOUNT_MIDPOINT_WEEKS)).toBeCloseTo(LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT, 6);
+    expect(detrainingDiscountVdot(1000)).toBe(LAYOFF_DISCOUNT_AT_MIDPOINT_VDOT); // capped, not extrapolated
+    // Monotone non-decreasing across a fine sweep.
+    let prev = -Infinity;
+    for (let w = 0; w <= 20; w += 0.1) {
+      const d = detrainingDiscountVdot(w);
+      expect(d).toBeGreaterThanOrEqual(prev - 1e-9);
+      prev = d;
+    }
   });
 
   it('3f · HIGH-INTENSITY always declares that its top rung is not built', () => {
