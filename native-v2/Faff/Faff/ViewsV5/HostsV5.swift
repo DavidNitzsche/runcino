@@ -1480,7 +1480,16 @@ struct TodayHostV5: View {
 
     /// REQCOORD-1 · every prefetch this host fires goes through this one
     /// bounded, deduplicating coordinator — see its own doc comment.
-    @State private var fetchCoordinator = DayFetchCoordinator()
+    ///
+    /// STAGE0-BURST-1 (2026-09-15, backend-architecture-brief Stage 0 ·
+    /// "stop the current storm") · lowered from the default 6. David's real
+    /// repro fired ~12 requests together (up to 6 day-level here, plus up to
+    /// 4 week-level, confirmed against F162's own evidence and this file's
+    /// own `prefetchAround`); the pool was independently confirmed at 32/32
+    /// in use minutes before that burst. This does not remove the burst
+    /// shape — that needs Stage 1's real range/projection endpoint — it
+    /// bounds today's peak concurrent demand lower while that's built.
+    @State private var fetchCoordinator = DayFetchCoordinator(maxConcurrent: 4)
 
     /// PLANSNAPSHOT-SINGLEFLIGHT-1 (2026-09-07) · the sync in progress, if
     /// any. `syncPlanSnapshot()` has FIVE independent callers (launch,
@@ -2190,13 +2199,26 @@ struct TodayHostV5: View {
     private func prefetchAround(_ iso: String, includeWeekFetches: Bool = true) async {
         var wanted: Set<String> = []
 
+        // STAGE0-BURST-1 (2026-09-15, backend-architecture-brief Stage 0) ·
+        // radius lowered from a full 7 days each direction to 3. F162's live
+        // repro showed this branch alone wanting up to 21 individual days in
+        // one burst (visible week + 7 either side) — confirmed as part of
+        // the ~12-request storm that saturated a pool already at 32/32. The
+        // brief's own words: "stop the 21-day individual-request burst...
+        // while the projection architecture is built." A real range/batch
+        // endpoint is Stage 1+ work; this bounds today's worst case (up to
+        // 13 days: the visible week plus 3 either side) without removing
+        // the day-level prefetch's real value — a runner paging a few days
+        // in either direction still gets instant paint, which is what this
+        // mechanism exists for.
         if let strip = surface.model?.weekStrip, let first = strip.first?.dateISO,
            let last = strip.last?.dateISO,
            let firstDate = Self.iso.date(from: first), let lastDate = Self.iso.date(from: last) {
             // The visible week itself.
             wanted.formUnion(strip.map(\.dateISO))
-            // The full seven days of the immediately previous and next week.
-            for offset in 1...7 {
+            // Three days into the immediately previous and next week, not
+            // the full seven — see STAGE0-BURST-1 above.
+            for offset in 1...3 {
                 if let prev = Calendar.current.date(byAdding: .day, value: -offset, to: firstDate) {
                     wanted.insert(Self.iso.string(from: prev))
                 }
@@ -2207,8 +2229,9 @@ struct TodayHostV5: View {
         } else if let d = Self.iso.date(from: iso) {
             // No strip in hand yet (a cold prefetch before the first payload
             // has landed) — fall back to the single-day radius this
-            // replaced, which needs only `iso` and no strip bounds.
-            for off in [-1, 1, -7, 7] {
+            // replaced, which needs only `iso` and no strip bounds. Matches
+            // the ±3 bound above (was ±7) — see STAGE0-BURST-1.
+            for off in [-1, 1, -3, 3] {
                 if let n = Calendar.current.date(byAdding: .day, value: off, to: d) {
                     wanted.insert(Self.iso.string(from: n))
                 }
@@ -2241,17 +2264,25 @@ struct TodayHostV5: View {
                     await fetchAndCacheWeek(anchoredOn: Self.iso.string(from: d))
                 }
             }()
-            // PRELOAD-1 (2026-09-04) · "at rest, the app already has ... the
-            // next two weeks." One week ahead was the swipe-adjacent case;
-            // this is the second, so a runner who swipes twice in a row
-            // still lands on cached content rather than a network round trip
-            // on the second swipe.
-            async let nextNext: Void = {
-                if let d = Calendar.current.date(byAdding: .day, value: 8, to: lastDate) {
-                    await fetchAndCacheWeek(anchoredOn: Self.iso.string(from: d))
-                }
-            }()
-            _ = await (visible, prev, next, nextNext)
+            // PRELOAD-1 (2026-09-04) · was "at rest, the app already has ...
+            // the next two weeks" — a fourth eager week-summary fetch, ran
+            // concurrently with the three above on every single navigation,
+            // to save one network round trip on a runner's SECOND
+            // consecutive swipe ahead (a real but comparatively rare case).
+            //
+            // STAGE0-BURST-1 (2026-09-15, backend-architecture-brief Stage
+            // 0) · removed from this eager block. Confirmed against F162's
+            // live repro: this function's own week-fetch trio plus this
+            // 4th call is part of the ~12-request burst that saturated a
+            // pool already at 32/32 — on EVERY navigation, not just a
+            // double-swipe. A runner who does swipe twice in a row still
+            // gets the second week correctly: `goTo`'s own call into this
+            // function, triggered by that second swipe, fetches it then,
+            // through the same cache-hit-checked `fetchAndCacheWeek` this
+            // block already uses — one extra round trip on a rarer path,
+            // in exchange for one fewer concurrent request on every
+            // ordinary one.
+            _ = await (visible, prev, next)
         }
 
         guard !missing.isEmpty else { return }
