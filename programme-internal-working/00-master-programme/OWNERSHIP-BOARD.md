@@ -1,3 +1,20 @@
+# BA PROGRAMME CONTROL — David's execution mandate, 2026-09-15, checked at least hourly
+
+**Governing documents, both authored by David directly**: [`BACKEND-DATA-BRAIN-APP-ARCHITECTURE-BRIEF.md`](../../for%20backend%20architecture%20review/BACKEND-DATA-BRAIN-APP-ARCHITECTURE-BRIEF.md), [`ASAP-IMPLEMENTATION-SEQUENCE.md`](../../for%20backend%20architecture%20review/ASAP-IMPLEMENTATION-SEQUENCE.md). Full instruction and ruling in register **F165**. **No unit advances on prose alone — measured evidence only.** No owner stops after reporting; if the next step is unblocked, they begin it.
+
+| Unit | Owner | Branch / base-head SHA | Current step | Next step | Reviewer | Blocker | Last real evidence | Deploy / TestFlight | Device verification |
+|---|---|---|---|---|---|---|---|---|---|
+| **BA-01** — stop the request storm | Backend architecture review session | not yet created | Not yet started | Create isolated worktree off exact `origin/main`, record base SHA; assign reviewer | External review lead | None | None yet | Not deployed | Not verified |
+| **F164** — `v5/today` parallelization (sequenced with BA-01, not a separate unit) | Backend architecture review session | `audit/v5-today-independence-2026-09-15`, head `a70bce72a` | CONFIRMED by external review, holding per David's ruling | Merge immediately after BA-01 lands, then measure combined request/latency/pool pressure together | External review lead (already confirmed) | Waiting on BA-01 to land first | External review CONFIRMED, full build/test independently reproduced | Not merged yet (deliberately held) | Not verified |
+| **BA-02** — prepared/versioned reads | Not yet assigned | — | Not started | Starts after BA-01 device-verified | — | Sequenced after BA-01 | — | — | — |
+| **BA-03** — brain off the read path | Not yet assigned | — | Not started | Sequenced after BA-02 | — | Sequenced after BA-02 | — | — | — |
+| **BA-04** — Railway-hosted live updates | Not yet assigned | — | Not started | Sequenced after BA-03 | — | Sequenced after BA-03 | — | — | — |
+| **BA-05** — migrate surfaces, delete old freshness machinery | Not yet assigned | — | Not started | Sequenced after BA-04 | — | Sequenced after BA-04 | — | — | — |
+
+**Production resource policy (David's own words, standing until he says otherwise)**: no additional Railway replica, larger tier, paid Redis/cache, separate paid worker, Cloudflare, or any other recurring infra increase without David's explicit approval — bring him the measured threshold, proposed change, monthly cost, expected headroom, and rollback plan first. Railway only; Cloudflare explicitly out of scope for this build.
+
+---
+
 # Ownership Board — live, single source of truth for who's doing what
 
 **Read this before dispatching anything. Update it every time you dispatch, every time a session
