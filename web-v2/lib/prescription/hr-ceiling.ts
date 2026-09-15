@@ -52,7 +52,7 @@ export interface HrCeiling {
   bpm: number;
   scope: HrCeilingScope;
   /** Where it came from, for a report or a test. Never rendered. */
-  source: 'pass_rule' | 'hr_cap_bpm';
+  source: 'pass_rule' | 'hr_cap_bpm' | 'race_hr_expected_range_upper';
 }
 
 interface RuleLike {
@@ -71,13 +71,39 @@ function positive(v: unknown): number | null {
 }
 
 /**
+ * The race's own evidence-backed HR band UPPER BOUND, or null.
+ *
+ * F057-#8, 2026-09-15 · `spec.race_hr.expected_range_bpm` — the `[lo, hi]`
+ * band `lib/race/race-row-refresh.ts` writes onto every race row right after
+ * authoring and on every recompute (see `race-hr-guidance.ts`). Shared by
+ * both `workHrCeiling` and `overallHrCeiling` below: a race's graded "work"
+ * is usually the whole race distance (a warmup/cooldown outside it is the
+ * exception, not the rule), so whichever scope `readCost` resolves for a
+ * given race, this is the one real ceiling the row actually carries.
+ */
+function raceHrBandUpperBound(spec: Record<string, unknown> | null | undefined): number | null {
+  const raceHr = spec?.race_hr as Record<string, unknown> | null | undefined;
+  const band = raceHr && Array.isArray(raceHr.expected_range_bpm) ? raceHr.expected_range_bpm : null;
+  return band && band.length === 2 ? positive(band[1]) : null;
+}
+
+/**
  * The ceiling for the WORK, or null.
  *
- * Only the `pass`/`hr`/`<=`/`work` rule qualifies. `hr_cap_bpm` deliberately
- * does NOT fall through to here: it bounds the whole run, and a whole-run mean
- * ceiling says nothing about what a rep may average.
+ * The `pass`/`hr`/`<=`/`work` rule first. `hr_cap_bpm` deliberately does NOT
+ * fall through to here: it bounds the whole run, and a whole-run mean ceiling
+ * says nothing about what a rep may average.
+ *
+ * F057-#8, 2026-09-15 · falls back to the race's own HR band UPPER BOUND
+ * (`raceHrBandUpperBound` above) when no pass rule exists — a race spec never
+ * carries one (`spec-builder.ts`'s `case 'race'` never authors a work-scoped
+ * pass rule) but a real race row's graded "work" phase(s) ARE the race, so
+ * the band is the honest ceiling for exactly this scope, not a stand-in for
+ * a missing one.
  */
-export function workHrCeiling(spec: Record<string, unknown> | null | undefined): HrCeiling | null {
+export function workHrCeiling(
+  spec: Record<string, unknown> | null | undefined,
+): (HrCeiling & { source: 'pass_rule' | 'race_hr_expected_range_upper' }) | null {
   const rules = spec && Array.isArray((spec as { rules?: unknown }).rules)
     ? ((spec as { rules: RuleLike[] }).rules)
     : [];
@@ -87,18 +113,41 @@ export function workHrCeiling(spec: Record<string, unknown> | null | undefined):
     const bpm = positive(r.value);
     if (bpm != null) return { bpm, scope: 'work', source: 'pass_rule' };
   }
-  return null;
+  const upper = raceHrBandUpperBound(spec);
+  return upper != null ? { bpm: upper, scope: 'work', source: 'race_hr_expected_range_upper' } : null;
 }
 
 /**
  * The ceiling for the WHOLE RUN, or null.
  *
- * `hr_cap_bpm` only. `hr_target_bpm` is a target and `lthr_bpm` is a
+ * `hr_cap_bpm` first. `hr_target_bpm` is a target and `lthr_bpm` is a
  * reference — both fine to DISPLAY as an ask, neither a thing to be under.
+ *
+ * F057-#8, 2026-09-15 · a race row carries NO `hr_cap_bpm` BY DESIGN
+ * (`spec-builder.ts`'s `case 'race'` sets it null on purpose — "a single
+ * ceiling the wrist alarms on for 26 miles was the wrong shape"). That design
+ * choice had a side effect nobody intended: with `hr_cap_bpm` absent, this
+ * function returned null for every race, so `readCost` printed "the session
+ * set no heart-rate ceiling, so the reading is reported without a verdict"
+ * over a row that, on the same run, carries `race_hr.expected_range_bpm` — a
+ * genuine, evidence-backed `[lo, hi]` band written by
+ * `lib/race/race-row-refresh.ts` for exactly this purpose. The suppressed
+ * verdict was never a missing measurement; it was a missing fallback SOURCE
+ * for a ceiling that already exists on the row. Falls back to the band's
+ * UPPER BOUND — the same edge `lateAllowanceBpm` is built from in
+ * `race-hr-guidance.ts` — only when `hr_cap_bpm` is absent and the band is
+ * present, so a genuine hard cap always wins when both exist. Also covers a
+ * race row graded with NO "work" phase at all (scope resolves 'overall'
+ * rather than 'work') — the same band, read for whichever scope the run
+ * actually produces.
  */
-export function overallHrCeiling(spec: Record<string, unknown> | null | undefined): HrCeiling | null {
+export function overallHrCeiling(
+  spec: Record<string, unknown> | null | undefined,
+): (HrCeiling & { source: 'hr_cap_bpm' | 'race_hr_expected_range_upper' }) | null {
   const bpm = positive(spec?.hr_cap_bpm);
-  return bpm != null ? { bpm, scope: 'overall', source: 'hr_cap_bpm' } : null;
+  if (bpm != null) return { bpm, scope: 'overall', source: 'hr_cap_bpm' };
+  const upper = raceHrBandUpperBound(spec);
+  return upper != null ? { bpm: upper, scope: 'overall', source: 'race_hr_expected_range_upper' } : null;
 }
 
 /**

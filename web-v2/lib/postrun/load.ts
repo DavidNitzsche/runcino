@@ -746,9 +746,15 @@ export async function loadPostRunExperience(
    *
    * `workHrCeiling` reads the spec's own `pass` rule — "Pass: avgHr <= 164 on
    * the work" on the owner's 2026-09-01 threshold session — which no server
-   * reader had ever looked at. `overallHrCeiling` is `hr_cap_bpm` and nothing
-   * else. Neither falls through to the other: they bound different quantities
-   * and `readCost` pairs each with the mean it may honestly be read against. */
+   * reader had ever looked at. `overallHrCeiling` is `hr_cap_bpm` first. As of
+   * F057-#8 (2026-09-15) BOTH also fall back to a race row's own
+   * `race_hr.expected_range_bpm` band upper bound when their primary source is
+   * absent — a race spec carries neither a work-scoped pass rule nor
+   * `hr_cap_bpm` by design, so without the fallback every race read `null`
+   * for its ceiling regardless of which scope `readCost` resolved. Neither
+   * falls through to the OTHER's primary source: they bound different
+   * quantities and `readCost` pairs each with the mean it may honestly be
+   * read against. */
   const workCeiling = workHrCeiling(planRow?.workout_spec ?? null);
   const overallCeiling = overallHrCeiling(planRow?.workout_spec ?? null);
 
@@ -774,6 +780,8 @@ export async function loadPostRunExperience(
     evidence,
     workHrCeilingBpm: workCeiling?.bpm ?? null,
     overallHrCeilingBpm: overallCeiling?.bpm ?? null,
+    workHrCeilingSource: workCeiling?.source ?? null,
+    overallHrCeilingSource: overallCeiling?.source ?? null,
     wholeRunHrBpm: runAvgHr(data as any),
     rpe: rpe != null ? Number(rpe) : null,
     adaptations,
