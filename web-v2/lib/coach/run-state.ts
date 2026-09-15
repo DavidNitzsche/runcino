@@ -1344,8 +1344,9 @@ export async function loadRunDetail(userId: string, activityId: string): Promise
     // real gain when ambient pressure swings during a run (humidity,
     // weather front, indoor-to-outdoor transition · David's 12.1mi
     // long run came back at 4684 ft / 387 ft/mi · mountain territory
-    // on a suburban route). When the raw ratio exceeds 250 ft/mi
-    // (Research/12 cap for credible urban / trail runs) AND we have
+    // on a suburban route). When the raw ratio exceeds 250 ft/mi (an
+    // empirically-set ceiling — see elev-sanity.ts's own header, F154
+    // 2026-09-15, for why this is not a Research/ citation) AND we have
     // per-mile splits with their own elev deltas, swap the raw value
     // for sum-of-positive-deltas from splits. The splits sum is a
     // lower bound (it misses in-mile climbs that net to zero) but a

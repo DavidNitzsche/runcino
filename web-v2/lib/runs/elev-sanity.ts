@@ -16,8 +16,14 @@
  *   rows persist the corrected value AND a provenance stamp · readers
  *   know whether the gain they see is raw or recomputed.
  *
- * Doctrine threshold: 250 ft/mi. From Research/12 (course-specific
- * training) the credible urban / trail ceiling. Above that, demand
+ * Threshold: 250 ft/mi. F154 (2026-09-15) · this was previously mis-cited
+ * as "Research/12" — that file is travel/timezone, not course terrain, and
+ * no Research/ document states 250 ft/mi as a figure. Corrected: this is
+ * an EMPIRICALLY-SET engineering ceiling, not a doctrine citation — chosen
+ * to sit above Research/11's own trail characterization (`Vertical:
+ * horizontal ratio ... often >100 ft/mi`) so a genuinely hilly trail run
+ * still passes, while catching the barometric-drift shape the incident
+ * above demonstrates (387 ft/mi on a suburban route). Above 250, demand
  * splits-derived corroboration before trusting the number.
  *
  * sanitizeElevGain returns either:
