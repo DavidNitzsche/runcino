@@ -24,8 +24,28 @@ const isLocalDb = /@(localhost|127\.0\.0\.1)[:/]|^postgres(ql)?:\/\/(localhost|1
 export const pool: Pool = global.__pgPool ?? new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: isLocalDb ? undefined : { rejectUnauthorized: false },
-  max: 8,
-  // Fail a checkout instead of queueing forever when all 8 connections hang.
+  // F156 (2026-09-15) · raised from 8. This single Railway instance runs
+  // ALONE against the DB (no horizontal scaling configured in railway.json)
+  // and shares this one pool across every live user request, plus tick.yml
+  // (a 10-minute, all-day cron dispatcher that queries a staleness ledger on
+  // every single run) and strava-push-poll.yml (a real per-user poller
+  // firing every 15 minutes, 9 hours a day) — a genuinely chronic, year-round
+  // background load, not a one-night spike. 8 concurrent connections proved
+  // too few: live production logs showed repeated
+  // "timeout exceeded when trying to connect" failures on /api/v5/today and
+  // several other subsystems within the same short window.
+  // Confirmed safe to raise, not picked blind: `SHOW max_connections` on the
+  // real database returned 500, with only 9 connections in use at the time
+  // of checking — this app's own artificially small pool was the actual
+  // bottleneck, not the database's real capacity. 32 leaves over 15x
+  // headroom below that ceiling even if every connection is in simultaneous
+  // use, while directly relieving the observed exhaustion.
+  // Disclosed, not asserted as the confirmed root cause: this is a real,
+  // independently-justified infra fix regardless of outcome, but whether it
+  // actually explains what David has been experiencing needs a live re-test
+  // after this deploys, not just a plausible mechanism on paper — see F156.
+  max: 32,
+  // Fail a checkout instead of queueing forever when all connections hang.
   connectionTimeoutMillis: 10_000,
   // Server-side kill for runaway statements; well above the slowest known
   // query (plan rebuild batch inserts) and below Railway's proxy idle cut.
