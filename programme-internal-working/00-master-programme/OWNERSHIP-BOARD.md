@@ -14,7 +14,9 @@ with no active owner is a programme failure and gets assigned in the same check.
 
 ---
 
-## Board (last verified against real `list_sessions` state: 2026-09-15 ~07:15 UTC)
+## Board (last verified against real `list_sessions` state: 2026-09-15 ~07:45 UTC)
+
+**Cycle 7**: TestFlight build 294 confirmed live (F056/F057-partial/F072/F073 SHIPPED, register updated). F124 fully resolved (3-way convergence: refuse, mirror blockedByPhone), dispatched to code agent. This cycle: external reviewer → fresh merge-sim across 4 newly-implemented unmerged branches; coach consultant → scoped-first-step read on F096's missing arbitration layer; independent reviewer → contradiction/gap check across F100-F124; design review → status check-in (render still likely blocked).
 
 **Cycle 6**: TestFlight build 293 actively shipping (code agent, ~20-30min ETA from dispatch, carrying F072/F073/F056/F057-sentences/F029). External reviewer, coach consultant, independent reviewer all re-dispatched on F124's verification/product-decision split (safety verify + training-context read + UX read, three angles on one real control-loss bug). Design review and David's Desk both genuinely active, no dispatch needed.
 
