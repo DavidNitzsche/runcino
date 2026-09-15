@@ -272,11 +272,26 @@ struct PostRunVerdictV5: View {
     /// 2026-08-16 fix). A CODE drives the word, per the design contract's
     /// "never encode an outcome only by colour" rule applied to text: the
     /// sentence changing would silently break this switch, the code cannot.
+    ///
+    /// F057-SENTENCE-3 (2026-09-14) · `HELD_FOR_EVIDENCE` is no longer a
+    /// single word for two different facts. `model.changeState` stays
+    /// `HELD_FOR_EVIDENCE` whether the review window `readPlan` scans is
+    /// still open or has already closed with nothing pending — the server's
+    /// own two `runnerSummary` sentences already say which (see
+    /// `lib/postrun/experience.ts#readPlan`), but until this fix that
+    /// distinction never reached this switch, and "Under review." rendered
+    /// in both. `model.reviewWindowElapsed` is that same fact, now on the
+    /// wire: once it is true, nothing further is actually scheduled to look
+    /// at this run, so the compact row stops promising an ongoing review —
+    /// the review already had its chance — and says the honest current
+    /// state instead, matching what the "Why" disclosure's own `change`
+    /// sentence already tells the runner in full.
     private var planStatusLine: String? {
         switch model.changeState {
         case "UNCHANGED":         return "Plan unchanged."
         case "UPDATED":           return "Plan updated."
-        case "HELD_FOR_EVIDENCE": return "Under review."
+        case "HELD_FOR_EVIDENCE":
+            return model.reviewWindowElapsed ? "No further review scheduled." : "Under review."
         case "NO_PLAN", "UNKNOWN": return nil
         default:                  return nil
         }
