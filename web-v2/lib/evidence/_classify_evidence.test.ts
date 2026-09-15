@@ -347,15 +347,48 @@ describe('Rule 22 · named, permanent gap', () => {
 });
 
 describe('race and controlled effort', () => {
-  it('a graded A-priority race is a full, representative effort — not controlled', () => {
+  it('F139 (2026-09-15) · a graded A-priority race is STILL matched as a race, but no longer read as automatically representative', () => {
+    // F139 REWRITE: this test used to assert that a declared A priority
+    // ALONE made `controlledEffort` read `absent` (i.e. "trust this as full,
+    // clean fitness evidence"). That is exactly the priority-as-evidence-
+    // weight violation `RACE_TIERING_AND_SEASON_PHILOSOPHY.md` forbids —
+    // "Priority alone must never accept, reject, or weight the result."
+    // `classifyRace` has no runner self-report or representativeness
+    // assessment reaching it today (confirmed by reading `loadMatchedRace`'s
+    // query — it selects only `slug, meta`), so there is currently NO
+    // measured effort-class signal available here at all, for ANY race.
+    // Per Rule 11 that reads as insufficient signal, not full trust — see
+    // `classify-evidence.ts`'s own F139 comments and the report.
     const record = buildEvidenceClassification(baseInput({
       matchedRace: { slug: 'cim-2026', priority: 'A' },
     }));
     expect(record.race.isRace.kind).toBe('present');
-    expect(record.race.controlledEffort.kind).toBe('absent');
+    expect(record.race.controlledEffort.kind).toBe('present');
   });
 
-  it('a C-priority tune-up race reads as a controlled effort', () => {
+  it('RULE 18 FALSIFIER · before F139 this exact fixture read `controlledEffort` as absent', () => {
+    // Proves the assertion above is a real, deliberate change: under the
+    // old rule, `selectionAuthority('A') === 1.0` cleared
+    // `REPRESENTATIVE_FLOOR` and `authorityTier` returned 'representative',
+    // which mapped to `absent` (not controlled). Neither function is called
+    // by `classifyRace` any more.
+    const record = buildEvidenceClassification(baseInput({
+      matchedRace: { slug: 'cim-2026', priority: 'A' },
+    }));
+    // Documented for a reader diffing this file, not re-asserted as a
+    // negative match on `record` (which would just restate the line above):
+    // `classify-evidence.ts` no longer imports `selectionAuthority` or
+    // `authorityTier` at all — see `EVIDENCE.priority-never-weights-
+    // evidence`'s `check()` in `lib/doctrine/registry.ts`, which fails the
+    // build if either import returns.
+    expect(record.race.controlledEffort.detail).toMatch(/no measured effort-class signal/i);
+  });
+
+  it('a C-priority tune-up race reads as a controlled effort — unchanged outcome, now for the honest reason', () => {
+    // Coincidentally the SAME outcome as before F139 (a C race already
+    // failed the old 'representative' tier check), but now for a different,
+    // doctrine-correct reason: not "C grades below the floor" but "no
+    // measured signal reaches this function for ANY race, C included".
     const record = buildEvidenceClassification(baseInput({
       matchedRace: { slug: 'turkey-trot', priority: 'C' },
     }));

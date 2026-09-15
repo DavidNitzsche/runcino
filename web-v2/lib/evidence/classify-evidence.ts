@@ -117,7 +117,6 @@ import {
   type RaceForMatch,
 } from '@/lib/runs/log-enrich';
 import { distanceMiFromLabel } from '@/lib/race/distance';
-import { authorityTier, selectionAuthority } from '@/lib/race/effort-authority';
 
 /* ══════════════════════════════════════════════════════════════════════════
  * THE 19 TAGS, GROUPED, AND THE THREE-STATE READING EVERY ONE OF THEM CARRIES
@@ -176,9 +175,12 @@ export interface EvidenceClassification {
 
   readonly race: {
     readonly isRace: TagReading;
-    /** Only meaningful when `isRace` is `present`. A race graded below the
-     *  doctrine "representative" floor (`lib/race/effort-authority.ts`) — a
-     *  tune-up, a hard-workout-with-a-number, an undeclared priority. */
+    /** Only meaningful when `isRace` is `present`. F139: graded on MEASURED
+     *  effort-class signal only, never declared priority — and since no such
+     *  signal reaches this classifier today (no runner self-report, no
+     *  representativeness read wired in), this currently reads `present`
+     *  for every matched race. Not a bug: Rule 11's honest "insufficient
+     *  signal" posture, disclosed rather than defaulted to full trust. */
     readonly controlledEffort: TagReading;
   };
 
@@ -473,12 +475,26 @@ function classifyRace(input: ClassifyEvidenceInput): {
       controlledEffort: absent('Not a race.'),
     };
   }
-  const authority = selectionAuthority(input.matchedRace.priority);
-  const tier = authorityTier(authority);
   const isRace = present(`Matched race ${input.matchedRace.slug}.`);
-  const controlledEffort = tier === 'representative'
-    ? absent(`Declared priority ${input.matchedRace.priority ?? '(none)'} grades as a full, representative race effort.`)
-    : present(`Declared priority ${input.matchedRace.priority ?? '(ungraded, treated as C)'} grades as ${tier} — a controlled effort with a number on it, not a full race.`);
+  // F139 · declared priority may never weight, accept, or reject a race's
+  // evidentiary value (RACE_TIERING_AND_SEASON_PHILOSOPHY.md), so it is no
+  // longer read here at all. This classifier's only input for a matched race
+  // is `{slug, priority}` — no runner self-report (`runner_authority_tier`)
+  // or measured representativeness assessment reaches it today (confirmed by
+  // reading `loadMatchedRace`'s query, which selects only `slug, meta`, never
+  // `actual_result` or an `assessRaceRepresentativeness` call). So there is
+  // currently NO measured effort-class signal available to this function at
+  // all — not a rare edge case, the honest state of every call. Per Rule 11
+  // that absence is graded as insufficient signal, not silently promoted to
+  // "clean evidence": every matched race reads as a controlled effort until a
+  // real measured signal (a runner report, or a representativeness read
+  // threaded through from `lib/race/representativeness.ts`) is wired into
+  // this classifier. See F139's report for the follow-up this implies.
+  const controlledEffort = present(
+    `Matched race ${input.matchedRace.slug} carries no measured effort-class signal reaching ` +
+    'this classifier (no runner self-report or representativeness assessment is wired in here) ' +
+    '— treated as a controlled effort with a number on it, not confirmed clean fitness evidence.',
+  );
   return { isRace, controlledEffort };
 }
 

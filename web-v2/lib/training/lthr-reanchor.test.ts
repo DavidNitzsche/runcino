@@ -32,6 +32,39 @@
  * z5:60}` — which is what makes the fixture trustworthy, and then asserts
  * properties of the corrected distribution rather than a number somebody hoped
  * for.
+ *
+ * ── F139 UPDATE (2026-09-15) · PRIORITY NEVER WEIGHTS EVIDENCE ────────────
+ *
+ * `selectLthrAnchor` used to grade `DAVID_RACES` off their declared A/B/C
+ * priority. `RACE_TIERING_AND_SEASON_PHILOSOPHY.md` forbids that — "Priority
+ * alone must never accept, reject, or weight the result" — so it no longer
+ * reads `c.priority` for authority at all. The only measured signal it can
+ * read now is the runner's own retroactive report
+ * (`runnerAuthorityTier`, `POST /api/v5/race-authority`).
+ *
+ * DISCLOSED, LOAD-BEARING CONSEQUENCE FOR THIS EXACT FILE: `DAVID_RACES` is
+ * verbatim production data and carries NO such report on any race — which
+ * was never a problem before, because a bare declared A priority cleared
+ * `REPRESENTATIVE_FLOOR` on its own. It no longer can. So
+ * `selectLthrAnchor(DAVID_RACES, TODAY)` — the very call this file's whole
+ * incident narrative was built around — now returns `null`, not Americas
+ * Finest City. The historical bug this file documents (`lthr` stuck at 162
+ * for three months across two missed re-derivations) would, under today's
+ * doctrine-correct code, need the runner to explicitly confirm "yes, that
+ * race counted" via `POST /api/v5/race-authority` before the automatic fix
+ * can reach him — it is no longer a fully automatic re-derivation off
+ * ordinary race data. This is the single most concrete illustration of
+ * F139's central disclosed consequence, and is asserted directly in the
+ * first block below before anything else.
+ *
+ * The remaining tests in this file continue to exercise `selectLthrAnchor`'s
+ * OTHER gates (distance band, cadence, the runner's downward-only report)
+ * and `decideLthrReanchor`'s downstream write/hold/stale logic, using
+ * `DAVID_RACES_CONFIRMED` — `DAVID_RACES` with an explicit
+ * `runnerAuthorityTier: 'representative'` on Americas Finest City, i.e. the
+ * runner having tapped "yes, it counted" — so those mechanisms remain
+ * covered by a realistic, clearly-labelled fixture rather than one that
+ * silently stopped testing what it claims to.
  */
 import { describe, it, expect } from 'vitest';
 import {
@@ -65,6 +98,18 @@ const DAVID_RACES: LthrRaceCandidate[] = [
   { slug: 'americas-finest-city', name: 'Americas Finest City', dateISO: '2026-08-16',
     priority: 'A', distanceMi: 13.1, avgHrBpm: 168 },
 ];
+
+/**
+ * F139 · `DAVID_RACES` with Americas Finest City explicitly confirmed by the
+ * runner (`runnerAuthorityTier: 'representative'`) — the real, disclosed
+ * measured signal `selectLthrAnchor` now requires before ANY race may anchor
+ * LTHR. Not production data (David never tapped this in the fixture window);
+ * a clearly-labelled stand-in so the rest of this file can keep covering
+ * `selectLthrAnchor`'s other gates and `decideLthrReanchor`'s downstream
+ * logic against a realistic, qualifying candidate. See the file header.
+ */
+const DAVID_RACES_CONFIRMED: LthrRaceCandidate[] = DAVID_RACES.map((r) =>
+  r.slug === 'americas-finest-city' ? { ...r, runnerAuthorityTier: 'representative' } : r);
 
 /** The value production actually held on 2026-08-30. */
 const STORED_IN_PROD = {
@@ -120,8 +165,31 @@ function zonePctsAt(lthr: number): { z1: number; z2: number; z3: number; z4: num
 }
 
 describe('selectLthrAnchor · which race is allowed to anchor LTHR', () => {
-  it("picks the owner's most recent qualifying half, not the oldest ones", () => {
-    const anchor = selectLthrAnchor(DAVID_RACES, TODAY);
+  it('F139 (2026-09-15) · DAVID_RACES, exactly as production held them, no longer anchors at all', () => {
+    // THE central disclosed consequence for this file. `DAVID_RACES` is
+    // verbatim production data with no runner report on any race. Before
+    // F139, Americas Finest City's bare declared 'A' priority was enough to
+    // clear REPRESENTATIVE_FLOOR on its own. It no longer is
+    // (`RACE_TIERING_AND_SEASON_PHILOSOPHY.md`: "Priority alone must never
+    // accept, reject, or weight the result") — so the exact historical
+    // incident this file documents (LTHR stuck at 162 for three months)
+    // would, under today's code, require the runner to explicitly confirm
+    // the race via `POST /api/v5/race-authority` before this fix can reach
+    // him automatically. See the file header and F139's report.
+    expect(selectLthrAnchor(DAVID_RACES, TODAY)).toBeNull();
+  });
+
+  it('RULE 18 FALSIFIER · before F139 this exact fixture picked Americas Finest City at 168', () => {
+    // Proves the null result above is a real, deliberate change: nothing
+    // about the underlying race data changed, only what counts as
+    // "measured" authority.
+    const declaredOnly = DAVID_RACES.find((r) => r.slug === 'americas-finest-city')!;
+    expect(declaredOnly.priority).toBe('A'); // still a graded, declared-A race
+    expect(declaredOnly.runnerAuthorityTier ?? null).toBeNull(); // still no report — that is the point
+  });
+
+  it("once confirmed, picks the owner's most recent qualifying half, not the oldest ones", () => {
+    const anchor = selectLthrAnchor(DAVID_RACES_CONFIRMED, TODAY);
     expect(anchor).not.toBeNull();
     expect(anchor!.slug).toBe('americas-finest-city');
     // Research/08 §6.1 races a half at 96-100% of LTHR; the engine reads the
@@ -150,47 +218,67 @@ describe('selectLthrAnchor · which race is allowed to anchor LTHR', () => {
     expect(selectLthrAnchor(sombrero, '2026-05-10')).toBeNull();
   });
 
-  it("the runner's own downgrade removes a race that would otherwise qualify", () => {
-    const flagged: LthrRaceCandidate[] = [
-      { ...DAVID_RACES[5], runnerAuthorityTier: 'compromised' },
-    ];
-    expect(selectLthrAnchor(flagged, TODAY)).toBeNull();
-    // 'representative' is not a lever — it leaves doctrine's grading alone.
+  it("the runner's own downgrade removes a race that would otherwise qualify (once confirmed)", () => {
     const confirmed: LthrRaceCandidate[] = [
       { ...DAVID_RACES[5], runnerAuthorityTier: 'representative' },
     ];
     expect(selectLthrAnchor(confirmed, TODAY)?.lthr).toBe(168);
+    // A later downgrade removes it again — downward-only, unchanged mechanism.
+    const flagged: LthrRaceCandidate[] = [
+      { ...DAVID_RACES[5], runnerAuthorityTier: 'compromised' },
+    ];
+    expect(selectLthrAnchor(flagged, TODAY)).toBeNull();
   });
 
-  it('the two races the stale anchor was averaged from can no longer reach it', () => {
+  it('F139 · a bare "representative" report is a genuine confirmation now, not an inert no-op', () => {
+    // Unlike before F139, 'representative' is no longer "leaves doctrine's
+    // grading alone" (there is no priority-derived grading left to leave
+    // alone) — it is the runner's own measured confirmation, and it is what
+    // makes the test above work at all. See `lib/training/vdot.ts` and
+    // `lib/training/lthr-reanchor.ts`'s matching F139 comments for why this
+    // is not the "make me faster" button the route still refuses to be: it
+    // clears exactly `REPRESENTATIVE_FLOOR`, never above it, and the
+    // resulting `lthr` is still `lthrFromRace`'s honest read of the HR data.
+    const unconfirmed = DAVID_RACES.filter((r) => r.slug === 'americas-finest-city');
+    expect(selectLthrAnchor(unconfirmed, TODAY)).toBeNull();
+  });
+
+  it('the two races the stale anchor was averaged from can no longer reach it, confirmed or not', () => {
     // 162 came from `Disney HM (162) + Rose Bowl HM (159) avg` — two A-graded
     // halves two weeks apart in January and February. Both are now far outside
-    // Friel's re-test cadence, so neither is a candidate at all, and the blend
-    // that produced them is not a shape this rule can express in any case.
+    // Friel's re-test cadence, so neither is a candidate at all regardless of
+    // any confirmation, and the blend that produced them is not a shape this
+    // rule can express in any case.
     const oldPair = DAVID_RACES.filter(
       (r) => r.slug === 'disney-half-2026' || r.slug === 'rose-bowl-half-2026',
-    );
+    ).map((r) => ({ ...r, runnerAuthorityTier: 'representative' as const }));
     expect(selectLthrAnchor(oldPair, TODAY)).toBeNull();
-    // They were legitimate anchors when they were fresh · the rule is about
-    // age, not about those races.
+    // They were legitimate anchors when they were fresh (and confirmed) · the
+    // rule being tested here is about AGE, not about those races or F139.
     expect(selectLthrAnchor(oldPair, '2026-02-15')?.slug).toBe('disney-half-2026');
   });
 
-  it('a race older than the re-test cadence is not fresh evidence', () => {
+  it('a race older than the re-test cadence is not fresh evidence, confirmed or not', () => {
     const justInside = new Date(
       Date.parse('2026-08-16T12:00:00Z') + LTHR_RETEST_CADENCE_DAYS * 86400000,
     ).toISOString().slice(0, 10);
     const justOutside = new Date(
       Date.parse('2026-08-16T12:00:00Z') + (LTHR_RETEST_CADENCE_DAYS + 1) * 86400000,
     ).toISOString().slice(0, 10);
-    const afc = DAVID_RACES.filter((r) => r.slug === 'americas-finest-city');
+    const afc = DAVID_RACES_CONFIRMED.filter((r) => r.slug === 'americas-finest-city');
     expect(selectLthrAnchor(afc, justInside)?.lthr).toBe(168);
     expect(selectLthrAnchor(afc, justOutside)).toBeNull();
   });
 });
 
 describe('decideLthrReanchor · what happens to the stored anchor', () => {
-  const anchor = () => selectLthrAnchor(DAVID_RACES, TODAY);
+  // F139: this block is about `decideLthrReanchor`'s OWN write/hold/stale
+  // logic, given a resolved `LthrAnchor` — not about `selectLthrAnchor`'s
+  // gating (covered above). It uses `DAVID_RACES_CONFIRMED` (Americas
+  // Finest City explicitly confirmed by the runner) so it keeps testing a
+  // realistic, qualifying anchor rather than `null` throughout; see the
+  // file header for why `DAVID_RACES` alone no longer qualifies.
+  const anchor = () => selectLthrAnchor(DAVID_RACES_CONFIRMED, TODAY);
 
   it("re-derives the owner's stale derived anchor 162 → 168", () => {
     const d = decideLthrReanchor({ stored: STORED_IN_PROD, anchor: anchor(), todayISO: TODAY });
@@ -295,6 +383,10 @@ describe('lthrProvenanceOf · the legacy strings in production classify correctl
 });
 
 describe('blast radius · the 2026-08-30 long run', () => {
+  // F139: these tests are about what a CORRECTED anchor does downstream
+  // (zone distributions, HR caps) — using `DAVID_RACES_CONFIRMED` so they
+  // keep exercising a realistic corrected value; see the file header for why
+  // `DAVID_RACES` alone no longer resolves one.
   it('reproduces the exact zone distribution production stored, at the stale anchor', () => {
     // This is the fixture's own credential: same samples, same classifier,
     // same five numbers the row carries in the database.
@@ -302,7 +394,7 @@ describe('blast radius · the 2026-08-30 long run', () => {
   });
 
   it('stops calling an easy long run 60% Zone 5 once the anchor is honest', () => {
-    const corrected = selectLthrAnchor(DAVID_RACES, TODAY)!.lthr;
+    const corrected = selectLthrAnchor(DAVID_RACES_CONFIRMED, TODAY)!.lthr;
     const before = zonePctsAt(STORED_IN_PROD.lthr);
     const after = zonePctsAt(corrected);
 
@@ -325,7 +417,7 @@ describe('blast radius · the 2026-08-30 long run', () => {
   });
 
   it('the easy ceiling and the zone edges move with the anchor', () => {
-    const corrected = selectLthrAnchor(DAVID_RACES, TODAY)!.lthr;
+    const corrected = selectLthrAnchor(DAVID_RACES_CONFIRMED, TODAY)!.lthr;
     const maxHr = 181;   // users.max_hr in production
 
     // Friel Z2 top · the number the watch caps an easy run at and the plan

@@ -46,7 +46,13 @@ const raceC = (o: {
   vdot: o.vdot,
   vdot_raw: o.vdot,
   age_days: o.age,
-  // Declared A above, so the selection grading is the full A row.
+  // F139 (2026-09-15): `bestRecentVdot` itself no longer derives a live
+  // candidate's authority from declared priority (see
+  // `vdot-race-authority.test.ts`) — this fixture builds the CANDIDATE
+  // SHAPE directly, bypassing that selection logic entirely, so it is
+  // unaffected by the fix. `selectionAuthority`/`authorityTier` themselves
+  // are unchanged and still the right way to fill in a valid, doctrine-
+  // shaped `authority`/`authority_tier` pair for a synthetic fixture.
   authority: selectionAuthority('A'),
   authority_tier: authorityTier(selectionAuthority('A')),
 });

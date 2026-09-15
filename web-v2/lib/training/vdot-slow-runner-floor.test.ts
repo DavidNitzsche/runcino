@@ -30,6 +30,7 @@ import {
   tPaceFromVdot, type BelowTableAnchor,
 } from './vdot';
 import { conservativeVdotFromMileage } from '@/lib/plan/spec-builder';
+import { selectionAuthority } from '@/lib/race/effort-authority';
 
 // ─── Reference persona: 13:30/mi 5K (41:57), raw VDOT ≈ 20.4 ───────────────
 const FIVE_K_MI = 3.10686;
@@ -217,15 +218,47 @@ describe('P1-56 · bestRecentVdot — belowTableAnchor is honest and additive', 
     expect(r.belowTableAnchor!.anchor.paceSPerMi).toBeCloseTo(SLOW_PACE_S_PER_MI, 0);
   });
 
-  it('a better-graded below-table race beats a C one, even when the C race is faster', () => {
-    // The below-table mirror of the authority tier: grade first, then time.
-    // The A race here is genuinely SLOWER, and it still wins — which is the
-    // conservative direction for a pace the runner will be prescribed.
+  it('F139 (2026-09-15) · with no runner report, the FASTER below-table race now wins regardless of declared priority', () => {
+    // REWRITE, and flagged as a specific, safety-relevant consequence in
+    // F139's report (not just "dormant demotion" — this one moves a
+    // prescribed pace FASTER for exactly the below-table, often-beginner
+    // population this whole path exists to protect). Before F139, an A
+    // priority beat a faster C one on authority alone — genuinely priority
+    // doing the weighting, which `RACE_TIERING_AND_SEASON_PHILOSOPHY.md`
+    // forbids. Absent a runner report, BOTH races now grade identically
+    // (see `vdot-race-authority.test.ts`), so `beatsIncumbent`'s tie-break
+    // (this file's own pre-existing mechanism, untouched by F139) falls
+    // through to "faster pace wins" — the SAME tie-break an in-table
+    // candidate uses. The below-table path's own eligibility comment above
+    // ("dropping a below-table race is the wrong safety, in the direction
+    // that matters") argued for including every race; it did not argue for
+    // which race should win a genuine tie, and this file never tested that
+    // question independent of priority before now.
     const r = bestRecentVdot(
       [
         { ...SLOW_RACE, slug: 'jogged-5k', priority: 'C' as const,
           finish_seconds: SLOW_5K_FINISH_S - 120 },
         { ...SLOW_RACE, slug: 'raced-5k', priority: 'A' as const },
+      ],
+      TODAY, 180,
+    );
+    expect(r.belowTableAnchor!.refId).toBe('jogged-5k');
+  });
+
+  it('RULE 18 FALSIFIER · before F139 the slower, declared-A race won this exact fixture', () => {
+    // Proves the outcome above is a real, deliberate change: under the old
+    // rule `selectionAuthority('A') > selectionAuthority('C')` decided it
+    // outright, before pace ever compared.
+    expect(selectionAuthority('A')).toBeGreaterThan(selectionAuthority('C'));
+  });
+
+  it('but a RUNNER-CONFIRMED race still beats an unconfirmed faster one — the protection survives when real signal exists', () => {
+    const r = bestRecentVdot(
+      [
+        { ...SLOW_RACE, slug: 'jogged-5k', priority: 'C' as const,
+          finish_seconds: SLOW_5K_FINISH_S - 120 },
+        { ...SLOW_RACE, slug: 'raced-5k', priority: 'A' as const,
+          runner_authority_tier: 'representative' as const },
       ],
       TODAY, 180,
     );

@@ -43,7 +43,6 @@ import {
   REPRESENTATIVE_FLOOR,
   RUNNER_REPORTED_AUTHORITY_CAP,
   authorityTier,
-  selectionAuthority,
   type AuthorityTier,
 } from '@/lib/race/effort-authority';
 import {
@@ -626,10 +625,11 @@ export interface RaceVdotCandidate {
   distance_mi: number;
   finish_seconds: number;
   /**
-   * 0..1 · how much weight this result carries at selection, graded by what the
-   * race WAS (`Research/00b`'s effort table via
-   * `lib/race/effort-authority.ts#selectionAuthority`). Reported, never spent on
-   * `vdot` — see the ranking note in `bestRecentVdot`.
+   * 0..1 · how much weight this result carries at selection, graded by
+   * MEASURED signal only (F139: the runner's own retroactive report,
+   * `runner_authority_tier` — never the declared priority; see the grading
+   * note in `bestRecentVdot`). Reported, never spent on `vdot` — see the
+   * ranking note in `bestRecentVdot`.
    */
   authority: number;
   /** The band `authority` falls in, against the two doctrine floors. */
@@ -1230,11 +1230,53 @@ export function bestRecentVdot(
     // paces were back. Reading it here makes the answer durable through every
     // caller at once — the cron, the drift monitor, the generator — because
     // they all come through this one function.
-    const declaredAuthority = selectionAuthority(r.priority);
+    // F139 · priority no longer seeds authority. RACE_TIERING_AND_SEASON_
+    // PHILOSOPHY.md, verbatim: "Priority alone must never accept, reject, or
+    // weight the result" — including as a default prior for when better
+    // signal is absent, which is exactly what `declaredAuthority =
+    // selectionAuthority(r.priority)` was doing here. `selectionAuthority`
+    // stays reserved for the planning-cost question it was built for
+    // (recovery-duration pricing, `lib/plan/goal-tiers.ts`); it is no longer
+    // read as an evidence weight anywhere in this function.
+    //
+    // The only per-race MEASURED effort-class signal that reaches a VDOT
+    // candidate today is the runner's own retroactive report
+    // (`runner_authority_tier`, `POST /api/v5/race-authority`) — real,
+    // disclosed self-report, three-way:
+    //
+    //   · 'compromised' / 'unrepresentative' → the existing downward caps,
+    //     unchanged mechanism.
+    //   · 'representative' → a genuine CONFIRMATION, not a promotion off a
+    //     priority-derived base (there no longer is one to leave "untouched",
+    //     which is the ONLY thing this answer was ever documented to do) —
+    //     graded at exactly REPRESENTATIVE_FLOOR, the minimum bar for
+    //     "counts as clean evidence", never higher. This is the runner
+    //     answering the same question the route already asks them ("did
+    //     this race count?") with "yes", not a "make me faster" button: the
+    //     race's own honest pace is unchanged, only whether it may compete
+    //     as representative evidence.
+    //   · no report at all → no measured signal exists yet. Per Rule 11
+    //     ("don't know" is never silently promoted to "measured clean"),
+    //     graded at the same conservative floor an explicit
+    //     'unrepresentative' report earns: never representative, never
+    //     outranking a race that DOES carry a measured report, but still
+    //     able to serve as a last-resort floor (P1-56: "a floor you have
+    //     beats a guess you don't" — see the file-level doctrine on
+    //     `authorityDemoted`/`subRepresentative` below for why full
+    //     exclusion would reintroduce exactly the failure P1-56 fixed).
+    //
+    // DISCLOSED, NOT SILENTLY DEFAULTED: `runner_authority_tier` is a rare,
+    // opt-in, retroactive flag, so in practice most races will still read as
+    // `unrepresentative` here unless the runner has proactively confirmed
+    // them. This function has no automatic per-race representativeness
+    // assessment wired in (unlike `lib/training/durability-anchor.ts`'s
+    // `assessRaceRepresentativeness` path). See F139's report for the
+    // follow-up this implies.
     const reported = r.runner_authority_tier ?? null;
-    const authority = (reported && reported !== 'representative')
-      ? Math.min(declaredAuthority, RUNNER_REPORTED_AUTHORITY_CAP[reported])
-      : declaredAuthority;
+    const authority =
+      (reported === 'compromised' || reported === 'unrepresentative') ? RUNNER_REPORTED_AUTHORITY_CAP[reported]
+      : reported === 'representative' ? REPRESENTATIVE_FLOOR
+      : RUNNER_REPORTED_AUTHORITY_CAP.unrepresentative;
     const v = vdotFromRace(r.finish_seconds, r.distance_mi);
     if (v == null) {
       // Below (or above) the [30,85] table — not silently dropped. Below-30

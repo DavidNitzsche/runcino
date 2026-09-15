@@ -157,38 +157,77 @@ describe('a clean race that was simply slower keeps FULL authority', () => {
 
 // ── Individual factors ─────────────────────────────────────────────────────
 
-describe('a C-priority race', () => {
-  it('carries the authority doctrine grants a C effort, not an A effort', () => {
+describe('F139 (2026-09-15) · a declared C-priority race, with NOTHING measured, is no longer discounted', () => {
+  // REWRITE: this block used to be titled "a C-priority race" and asserted
+  // that the LABEL alone graded the effort class and cut authority to the
+  // doctrine C row. That is exactly the violation
+  // `RACE_TIERING_AND_SEASON_PHILOSOPHY.md` forbids — "Priority alone must
+  // never accept, reject, or weight the result." `effectiveEffortClass` no
+  // longer reads `state.priority` for its baseline at all; only a REAL
+  // measured downgrade signal (OVERREACH / a severe niggle / a loaded form
+  // band / a measured taper shortfall) may reduce authority on the downward
+  // limb now — see `assessRepresentativeness`'s own F139 comments.
+  it('a declared C race with no measured signal keeps FULL authority — priority alone no longer discounts it', () => {
     const read = assessRepresentativeness(race({ state: { priority: 'C' } }));
+    expect(read.effectiveEffortClass).toBe('A');
+    expect(read.authority).toBe(1);
+    expect(read.detractors.map((d) => d.factor)).not.toContain('not_maximal');
+    expect(read.tier).toBe('representative');
+  });
+
+  it('RULE 18 FALSIFIER · before F139 this exact fixture graded a C effort at the doctrine C row', () => {
+    // Proves the assertion above is a real, deliberate change, not an
+    // accident of this fixture: `RECOVERY_EFFORT_SCALE.C` is still the
+    // number the OLD rule would have produced.
+    const read = assessRepresentativeness(race({ state: { priority: 'C' } }));
+    expect(read.authority).not.toBeCloseTo(RECOVERY_EFFORT_SCALE.C, 5);
+  });
+
+  it('a REAL measured signal (OVERREACH) still discounts a declared C race to the doctrine floor', () => {
+    // The mechanism survives — it is just gated on a measured fact now,
+    // never on the calendar label alone.
+    const read = assessRepresentativeness(race({ state: { priority: 'C', formBand: 'OVERREACH' } }));
     expect(read.effectiveEffortClass).toBe('C');
     expect(read.authority).toBeCloseTo(RECOVERY_EFFORT_SCALE.C, 5);
-    expect(read.detractors.map((d) => d.factor)).toContain('not_maximal');
-  });
-
-  it('sits at the floor · it still nudges fitness, but barely', () => {
-    const read = assessRepresentativeness(race({ state: { priority: 'C' } }));
+    expect(read.detractors.map((d) => d.factor)).toContain('fatigue');
     expect(read.tier).toBe('compromised');
-    const scaled = authorityScaledVdot(ANCHOR_VDOT, RACE_VDOT, read.authority)!;
-    expect(scaled).toBeGreaterThan(RACE_VDOT);
-    expect(scaled).toBeLessThan(ANCHOR_VDOT);
   });
 
-  it('a C race in bad conditions drops below the floor and does not fire at all', () => {
+  it('a C race in bad conditions (a REAL measured signal, heat) still drops below the floor', () => {
     const read = assessRepresentativeness(race({
-      state: { priority: 'C' },
+      state: { priority: 'C', formBand: 'OVERREACH' },
       weather: { tempF: 82, humidityPct: 75 },
     }));
     expect(read.tier).toBe('unrepresentative');
     expect(authorityScaledVdot(ANCHOR_VDOT, RACE_VDOT, read.authority)).toBeNull();
   });
 
-  it('a B race sits between A and C', () => {
+  it('F139 · A, B and C priority alone now sit IDENTICALLY at full authority — nothing measured differentiates them', () => {
     const a = assessRepresentativeness(race({ state: { priority: 'A' } })).authority;
     const b = assessRepresentativeness(race({ state: { priority: 'B' } })).authority;
     const c = assessRepresentativeness(race({ state: { priority: 'C' } })).authority;
-    expect(a).toBeGreaterThan(b);
-    expect(b).toBeGreaterThan(c);
-    expect(b).toBeCloseTo(RECOVERY_EFFORT_SCALE.B, 5);
+    expect(a).toBe(1);
+    expect(b).toBe(1);
+    expect(c).toBe(1);
+  });
+
+  it('RULE 18 FALSIFIER · before F139 a B race sat strictly between A and C', () => {
+    // Confirms the flattening above is a real change: `RECOVERY_EFFORT_
+    // SCALE`'s three rows are still genuinely different numbers — they are
+    // simply no longer what `effectiveEffortClass`'s baseline reads.
+    expect(RECOVERY_EFFORT_SCALE.A).toBeGreaterThan(RECOVERY_EFFORT_SCALE.B);
+    expect(RECOVERY_EFFORT_SCALE.B).toBeGreaterThan(RECOVERY_EFFORT_SCALE.C);
+  });
+
+  it('but a REAL measured signal still separates a declared A from a declared B race by class', () => {
+    // The step() function still starts from a fully-representative
+    // baseline and steps down exactly once per real signal — a niggle on a
+    // declared A steps it to B, same magnitude of downgrade regardless of
+    // what was declared, because the declaration itself is no longer the
+    // input.
+    const read = assessRepresentativeness(race({ state: { priority: 'A', niggleSeverity: 6 } }));
+    expect(read.effectiveEffortClass).toBe('B');
+    expect(read.authority).toBeCloseTo(RECOVERY_EFFORT_SCALE.B, 5);
   });
 
   it('an unlabelled race is read as an A race · goal-tiers\' conservative default', () => {
@@ -441,20 +480,52 @@ describe('tier floors come off Research/00b\'s effort table', () => {
 // ── Effort class ───────────────────────────────────────────────────────────
 
 describe('effectiveEffortClass', () => {
-  it('never steps below C', () => {
-    expect(effectiveEffortClass({ priority: 'C', formBand: 'LOADED' }).cls).toBe('C');
+  it('never steps below C, and OVERREACH always lands there regardless of the declared priority', () => {
+    // OVERREACH is doctrine's deepest fatigue state and always returns 'C'
+    // outright — unaffected by F139, since this branch never read the
+    // baseline to begin with.
     expect(effectiveEffortClass({ priority: 'C', formBand: 'OVERREACH' }).cls).toBe('C');
+    expect(effectiveEffortClass({ priority: 'A', formBand: 'OVERREACH' }).cls).toBe('C');
+  });
+
+  it('F139 · LOADED now steps from a fixed \'A\' baseline, never from the declared priority', () => {
+    // REWRITE: this used to assert LOADED steps a declared C race to C
+    // (i.e. `step('C') === 'C'`, using priority as the base). The baseline
+    // is now always 'A' regardless of what was declared, so LOADED steps
+    // to 'B' — the SAME result whatever the declared priority says,
+    // because the declaration is no longer read.
+    expect(effectiveEffortClass({ priority: 'C', formBand: 'LOADED' }).cls).toBe('B');
+    expect(effectiveEffortClass({ priority: 'A', formBand: 'LOADED' }).cls).toBe('B');
+    expect(effectiveEffortClass({ priority: 'B', formBand: 'LOADED' }).cls).toBe('B');
+  });
+
+  it('RULE 18 FALSIFIER · before F139 a declared C race under LOADED stayed at C, not B', () => {
+    // `step('C') === 'C'` under the old priority-seeded baseline (the class
+    // scale bottoms out at C and a declared C can step no lower). Proves
+    // the assertion above is a real, deliberate change.
+    const oldStyleStep = (c: 'A' | 'B' | 'C') => (c === 'A' ? 'B' : 'C');
+    expect(oldStyleStep('C')).toBe('C');
+    expect(effectiveEffortClass({ priority: 'C', formBand: 'LOADED' }).cls).not.toBe(oldStyleStep('C'));
   });
 
   it('does not stack taper and fatigue as two separate penalties', () => {
     // One row of Research/00b binds effort and taper · one charge, not two.
+    // Unaffected by F139 — the baseline is 'A' either way (declared or
+    // fixed), so this was already testing a single step from 'A'.
     const both = effectiveEffortClass({ priority: 'A', formBand: 'LOADED', niggleSeverity: 6 });
     expect(both.cls).toBe('B');
   });
 
-  it('tolerates a lowercase or unrecognised priority string', () => {
-    expect(effectiveEffortClass({ priority: 'b' }).cls).toBe('B');
-    expect(effectiveEffortClass({ priority: 'nonsense' }).cls).toBe('A');
+  it('F139 · the declared priority string is now completely irrelevant to the baseline — every value below produces the SAME class absent a real signal', () => {
+    // REWRITE: this used to be titled "tolerates a lowercase or
+    // unrecognised priority string" and asserted DIFFERENT classes for
+    // different declared priorities ('b' → B, everything else → A) — i.e.
+    // it was itself a direct test of priority weighting the effort class,
+    // the exact thing F139 forbids. `effectiveEffortClass` no longer reads
+    // `state.priority` at all, so every one of these now produces 'A'.
+    for (const priority of ['A', 'b', 'C', 'nonsense', null, undefined]) {
+      expect(effectiveEffortClass({ priority } as never).cls, `priority=${priority}`).toBe('A');
+    }
     expect(effectiveEffortClass(null).cls).toBe('A');
     expect(effectiveEffortClass(undefined).cls).toBe('A');
   });

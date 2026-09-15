@@ -92,9 +92,9 @@
  * is what actually enforces the boundary.
  */
 import {
+  REPRESENTATIVE_FLOOR,
   RUNNER_REPORTED_AUTHORITY_CAP,
   authorityTier,
-  selectionAuthority,
   type AuthorityTier,
 } from '@/lib/race/effort-authority';
 import { lthrFromRace } from '@/lib/training/lthr';
@@ -255,15 +255,45 @@ export function selectLthrAnchor(
     if (distanceMi < LTHR_QUALIFYING_MIN_MI || distanceMi > LTHR_QUALIFYING_MAX_MI) continue;
     const avgHr = Number(c.avgHrBpm);
     if (!Number.isFinite(avgHr)) continue;
-    // Effort grading. `selectionAuthority` already reads an ungraded label
-    // (`hilly-excluded`, `training_run`) down to doctrine's lowest row rather
-    // than up to its highest, so the hilly marathon and a jogged tune-up both
-    // fall out here without this module naming either of them.
-    const declared = selectionAuthority(c.priority);
+    // F139 · same fix as `bestRecentVdot` (lib/training/vdot.ts) and for the
+    // same reason: declared priority (`c.priority`) may never weight, gate,
+    // or grade a race's evidentiary value (RACE_TIERING_AND_SEASON_
+    // PHILOSOPHY.md), so it is no longer read here at all — a hilly marathon
+    // and a jogged tune-up no longer fall out of THIS gate via priority
+    // grading; they still fall out via the distance-band/qualifying gates
+    // above, which are legitimate data-shape checks, not evidence weighting.
+    //
+    // The only per-candidate MEASURED effort-class signal available here is
+    // the runner's own retroactive report (`runnerAuthorityTier`), read the
+    // same three-way as `bestRecentVdot`:
+    //
+    //   · 'compromised' / 'unrepresentative' → the existing downward caps,
+    //     unchanged mechanism, real disclosed self-report.
+    //   · 'representative' → a genuine CONFIRMATION (not a promotion off a
+    //     priority-derived base, since there is no longer one to leave
+    //     "untouched" — the only thing this answer was ever documented to
+    //     do), graded at exactly `REPRESENTATIVE_FLOOR`, the minimum bar to
+    //     clear this gate. The runner answering "yes, it counted" is not the
+    //     "make me faster" button the route explicitly refuses to be: the
+    //     derived LTHR is still `lthrFromRace`'s honest read of the race's
+    //     own heart rate, only whether the race may anchor at all changes.
+    //   · no report at all → no measured signal exists yet, graded at the
+    //     same conservative floor an explicit 'unrepresentative' report
+    //     earns — which fails the gate below exactly as an explicit report
+    //     would (Rule 11: "don't know" is never silently promoted to
+    //     "measured clean").
+    //
+    // DISCLOSED CONSEQUENCE: `runnerAuthorityTier` is a rare, opt-in,
+    // retroactive flag, so in practice most candidates will not clear this
+    // gate unless the runner has proactively confirmed them. That is the
+    // correct reading of the doctrine today, not a bug — this function has
+    // no automatic per-race representativeness assessment wired in (unlike
+    // `lib/training/durability-anchor.ts`). See F139's report.
     const reported = c.runnerAuthorityTier ?? null;
-    const authority = (reported && reported !== 'representative')
-      ? Math.min(declared, RUNNER_REPORTED_AUTHORITY_CAP[reported])
-      : declared;
+    const authority =
+      (reported === 'compromised' || reported === 'unrepresentative') ? RUNNER_REPORTED_AUTHORITY_CAP[reported]
+      : reported === 'representative' ? REPRESENTATIVE_FLOOR
+      : RUNNER_REPORTED_AUTHORITY_CAP.unrepresentative;
     const tier = authorityTier(authority);
     if (tier !== 'representative') continue;
     // The distance/HR plausibility gate is `lthrFromRace`'s, not a second copy.

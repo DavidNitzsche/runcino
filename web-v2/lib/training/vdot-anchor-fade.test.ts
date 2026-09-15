@@ -178,14 +178,38 @@ const HOT_RUN = {
 const ASK_DAY = addDays(LA_DATE, 30);   // LA age 30 · in window · run age 10
 
 describe('bestRecentVdot — capped training run leads the race anchor by +1', () => {
-  it('a run clamped to the soft cap wins the headline at race + 1.0 (not a tie)', () => {
+  it('F139 (2026-09-15) · an unreported race no longer caps the run at all — it reads its raw, uncapped VDOT', () => {
+    // REWRITE: before F139, `LA_ONLY`'s bare declared-A race cleared
+    // REPRESENTATIVE_FLOOR on priority alone and set the AUDIT #8 soft cap.
+    // `RACE_TIERING_AND_SEASON_PHILOSOPHY.md` forbids that now ("Priority
+    // alone must never accept, reject, or weight the result"), and this
+    // fixture carries no runner report, so the race is excluded from
+    // `bestRaceRaw` and the run goes uncapped. This is the disclosed
+    // ceiling-dormancy consequence — see `vdot-selection-order.test.ts`'s
+    // header for the full account (three mechanisms share this root cause).
+    const { best } = bestRecentVdot(LA_ONLY, ASK_DAY, VDOT_FULL_VALUE_DAYS, [HOT_RUN]);
+    expect(best?.source).toBe('run');
+    expect(best?.vdot).toBe(vdotFromRace(2560, 6.2137));
+  });
+
+  it('RULE 18 FALSIFIER · before F139 the same fixture capped the run to race + 1.0', () => {
     const raceVdot = vdotFromRace(12700, 26.219)!;           // LA ≈ 44.1
     const ceiling = Math.round((raceVdot + 1.0) * 10) / 10;  // ≈ 45.1
     const { best } = bestRecentVdot(LA_ONLY, ASK_DAY, VDOT_FULL_VALUE_DAYS, [HOT_RUN]);
+    // The OLD assertion (`best.vdot === ceiling`) no longer holds.
+    expect(best?.vdot).not.toBe(ceiling);
+  });
+
+  it('but a RUNNER-CONFIRMED race still caps the run exactly as before', () => {
+    // The mechanism survives once real measured signal exists — a runner
+    // tapping "yes, it counted" restores the protection this file was built
+    // to lock in.
+    const raceVdot = vdotFromRace(12700, 26.219)!;
+    const ceiling = Math.round((raceVdot + 1.0) * 10) / 10;
+    const confirmed = [{ ...LA_ONLY[0], runner_authority_tier: 'representative' as const }];
+    const { best } = bestRecentVdot(confirmed, ASK_DAY, VDOT_FULL_VALUE_DAYS, [HOT_RUN]);
     expect(best?.source).toBe('run');
     expect(best?.vdot).toBe(ceiling);
-    // The cap is intact — the raw 10K read (≈48.5) never leaks through.
-    expect(vdotFromRace(2560, 6.2137)!).toBeGreaterThan(ceiling);
   });
 
   it('race wins EXACT ties against a run reading identical fitness', () => {
@@ -198,11 +222,39 @@ describe('bestRecentVdot — capped training run leads the race anchor by +1', (
     expect(best?.source).toBe('race');
   });
 
-  it('the soft-cap ceiling anchors to IN-WINDOW evidence, never a floor-only race', () => {
-    // A faded, faster half (age 70) plus a fresh, slower marathon. The ceiling
-    // for training reads must come from the fresh proof — otherwise an expired
-    // anchor keeps licensing training estimates the doctrine calls unsupported.
+  it('F139 · with no runner report on either race, the ceiling anchors to NOTHING · the run reads uncapped', () => {
+    // REWRITE: neither race here carries a runner report, so — per this
+    // file's F139 note above — neither can clear REPRESENTATIVE_FLOOR and
+    // set the AUDIT #8 soft cap any more, in-window/fresh or not. The IN-
+    // WINDOW-vs-floor-only distinction this test used to isolate is a real,
+    // separate mechanism (`demotedForCeiling`) that still functions
+    // correctly — it just has nothing left to act on once `subRepresentative`
+    // excludes both races unconditionally. See the confirmed variant below
+    // for proof the underlying mechanism is intact.
     const freshRace = { ...LA_ONLY[0], date: addDays(DISNEY_DATE, 55) };
+    const askDay = addDays(DISNEY_DATE, 70);
+    const run = { ...HOT_RUN, date: addDays(askDay, -5) };
+    const { best, considered } = bestRecentVdot([RACES[1], freshRace], askDay, VDOT_FULL_VALUE_DAYS, [run]);
+    expect(best?.source).toBe('run');
+    expect(best?.vdot).toBe(vdotFromRace(2560, 6.2137));
+    // Faded Disney is still visible, demoted for staleness (unaffected —
+    // that demotion never depended on authority).
+    expect(considered.some((c) => slugOf(c) === 'disney-half-2026')).toBe(true);
+  });
+
+  it('RULE 18 FALSIFIER · before F139 the fresh race alone set a lower ceiling than the faded one would have', () => {
+    const freshRace = { ...LA_ONLY[0], date: addDays(DISNEY_DATE, 55) };
+    const askDay = addDays(DISNEY_DATE, 70);
+    const run = { ...HOT_RUN, date: addDays(askDay, -5) };
+    const freshVdot = vdotFromRace(12700, 26.219)!;
+    const oldCeiling = Math.round((freshVdot + 1.0) * 10) / 10;
+    const { best } = bestRecentVdot([RACES[1], freshRace], askDay, VDOT_FULL_VALUE_DAYS, [run]);
+    expect(best?.vdot).not.toBe(oldCeiling);
+    expect(oldCeiling).toBeLessThan(46.5); // documents the old, now-dormant bound
+  });
+
+  it('but with the fresh race RUNNER-CONFIRMED, the ceiling anchors to it — never to the faded, floor-only one', () => {
+    const freshRace = { ...LA_ONLY[0], date: addDays(DISNEY_DATE, 55), runner_authority_tier: 'representative' as const };
     const askDay = addDays(DISNEY_DATE, 70);
     const run = { ...HOT_RUN, date: addDays(askDay, -5) };
     const freshVdot = vdotFromRace(12700, 26.219)!;
@@ -210,9 +262,7 @@ describe('bestRecentVdot — capped training run leads the race anchor by +1', (
     const { best, considered } = bestRecentVdot([RACES[1], freshRace], askDay, VDOT_FULL_VALUE_DAYS, [run]);
     expect(best?.source).toBe('run');
     expect(best?.vdot).toBe(ceiling);
-    // Faded Disney (47.9) did not set the ceiling...
     expect(ceiling).toBeLessThan(46.5);
-    // ...and is still visible, demoted.
     expect(considered.some((c) => slugOf(c) === 'disney-half-2026')).toBe(true);
   });
 });
