@@ -14,7 +14,9 @@ with no active owner is a programme failure and gets assigned in the same check.
 
 ---
 
-## Board (last verified against real `list_sessions` state: 2026-09-15 ~06:45 UTC)
+## Board (last verified against real `list_sessions` state: 2026-09-15 ~07:15 UTC)
+
+**Cycle 6**: TestFlight build 293 actively shipping (code agent, ~20-30min ETA from dispatch, carrying F072/F073/F056/F057-sentences/F029). External reviewer, coach consultant, independent reviewer all re-dispatched on F124's verification/product-decision split (safety verify + training-context read + UX read, three angles on one real control-loss bug). Design review and David's Desk both genuinely active, no dispatch needed.
 
 **Cycle 5 dispatches**: external reviewer → independently verify F119's PhoneSync claim before a fix is built on it. Independent reviewer → single strongest next-investment read across the full register (F001-F120), not just their own reports. Coach consultant → doctrine read on F102's Rule 12 question, to hand David both sides before he decides. Design review → status-line design for F119's fix, or continue source audit if render's still blocked. Code agent and David's Desk both actively running — no dispatch needed.
 
