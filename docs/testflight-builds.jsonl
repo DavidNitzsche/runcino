@@ -4,3 +4,4 @@
 {"build":295,"sha":"34a5c3e45f190ee63afdd62391a94d722262b17a","branch":"HEAD","uploaded_at":"2026-09-15T12:18:03.504Z","agent_id":"david@Davids-Mac-mini","recorded":"live","note":""}
 {"build":296,"sha":"09f6acdee4166f76c7a2da3ad301c1a6a0ed0a30","branch":"HEAD","uploaded_at":"2026-09-15T13:07:05.837Z","agent_id":"david@Davids-Mac-mini","recorded":"live","note":""}
 {"build":297,"sha":"9c4445aa10d532967bcce1073733385bb2cd2e61","branch":"HEAD","uploaded_at":"2026-09-15T15:01:08.133Z","agent_id":"david@Davids-Mac-mini","recorded":"live","note":""}
+{"build":298,"sha":"bd1bb6ab5698e78185638eb451fd4c27e1f05bb0","branch":"fix/client-correlation-id-2026-09-15","uploaded_at":"2026-09-15T17:55:53.774Z","agent_id":"david@Davids-Mac-mini","recorded":"live","note":"WARNING: working tree had 1 uncommitted change(s) at archive time — recorded SHA is the last commit, not the exact tree shipped."}
