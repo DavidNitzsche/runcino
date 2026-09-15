@@ -13,6 +13,8 @@
 
 **Production resource policy (David's own words, standing until he says otherwise)**: no additional Railway replica, larger tier, paid Redis/cache, separate paid worker, Cloudflare, or any other recurring infra increase without David's explicit approval — bring him the measured threshold, proposed change, monthly cost, expected headroom, and rollback plan first. Railway only; Cloudflare explicitly out of scope for this build.
 
+**Independent audit log, David's direct request via David's Desk, 2026-09-15**: `for backend architecture review/FIXES-AND-PROCESS-LOG.md` — a standalone, zero-context, reviewer-ready record of every fix tonight (real SHAs, Rule 18 falsification evidence per fix, independently-confirmed deploy status), for eventual review by a source outside the programme. Being built and maintained by the backend architecture review session. Not yet read/verified by the programme lead — check its content against the register before pointing David to it as complete.
+
 ---
 
 # Ownership Board — live, single source of truth for who's doing what
