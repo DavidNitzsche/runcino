@@ -2,6 +2,14 @@
 
 **Governing documents, both authored by David directly**: [`BACKEND-DATA-BRAIN-APP-ARCHITECTURE-BRIEF.md`](../../for%20backend%20architecture%20review/BACKEND-DATA-BRAIN-APP-ARCHITECTURE-BRIEF.md), [`ASAP-IMPLEMENTATION-SEQUENCE.md`](../../for%20backend%20architecture%20review/ASAP-IMPLEMENTATION-SEQUENCE.md). Full instruction and ruling in register **F165**. **No unit advances on prose alone — measured evidence only.** No owner stops after reporting; if the next step is unblocked, they begin it.
 
+**BA-01's exact completion bar, David's own words, reconciled from two sequences he gave at different points tonight (F173 direct to programme lead, F175 via David's Desk to the backend session — consistent, not contradictory; the register will not leave two versions floating). BA-01 is not "fixed" until ALL of these hold, together, on David's real device:**
+1. Real-device reproduction repeated, same as before.
+2. Date navigation inside a snapshot-covered range creates ZERO network requests — already proven at the unit level by required test #2 (F168/F174), device confirmation still outstanding.
+3. The sync-generation 3→4→5 retry climb from David's original trace is confirmed GONE, or diagnosed as its own separate thing if it isn't.
+4. Railway shows no pool saturation and no correlated `/api/v5/today` timeouts during the repro.
+5. The database retains real headroom, not just "looks better."
+**Nobody — any session, including this one — describes the incident as fixed until all five hold. A clean test suite and a positive external review are real progress, not this bar.**
+
 **RESEQUENCING IN EFFECT, 2026-09-15, David's Desk — see register F167.** David just reproduced the original complaint live, on his current real device, after tonight's fixes (F147/F152/F156/F157/F158/F162/F164/BA-01-Stage-0). Diagnosing that live repro now outranks continuing BA-01 as previously scoped. Not yet diagnosed — do not assume any prior fix failed or that BA-01's plan is wrong, per `feedback_symptom_recurrence_check_second_cause_first.md`. Correlation-ID tooling (F161) already covered: David's first capture WAS the on-device Request Diagnostics screen, 89 requests with real correlation IDs, transcribed and in the backend session's hands now — same evidentiary shape as F162, ready to trace server-side.
 
 | Unit | Owner | Branch / base-head SHA | Current step | Next step | Reviewer | Blocker | Last real evidence | Deploy / TestFlight | Device verification |
