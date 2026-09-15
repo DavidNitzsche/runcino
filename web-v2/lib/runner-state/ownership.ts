@@ -841,15 +841,56 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
     question: 'What is the biggest session of this kind he has actually '
       + 'completed.',
     constitutionOwner: 'Runner Model',
-    canonical: null,
-    rule8Side: 'HABIT',
+    canonical: {
+      module: 'lib/execution/max-demonstrated-dose.ts',
+      symbol: 'maxDemonstratedDoseByDomain',
+      answers: 'The biggest COMPLETED at-pace dose per domain (threshold, '
+        + 'interval, marathon, race) in a rolling 30-day window, taper/'
+        + 'race-week/post-race-recovery days excluded from the candidate '
+        + 'pool, off `reconstruct.ts#actualStimulus`\'s already-computed '
+        + '{domain, workMinutes} — never a second resolution of that fact.',
+    },
+    /**
+     * F097 (2026-09-14) CORRECTS this field, not just `canonical`. The prior
+     * value here was `'HABIT'`, set before the question was ever put to a
+     * coaching-doctrine review. `for coaching consult/consult-log/
+     * 2026-09-14-023-max-demonstrated-dose-design.md` argues the question
+     * directly: "'Biggest session of this type he has completed' sits on
+     * the tissue-tolerance side of [Rule 8's corollary], not the habit
+     * side... functionally the same question [as] Rule 9's own long-run
+     * spike guard." `2026-09-15-025-delegated-calibration-rulings.md`
+     * (ruling 3) makes the match explicit: this belief is "close enough to
+     * the same shape" as `recentPeakLongMi`'s own spike-anchor half, which
+     * `normal-window-registry.ts` documents as CORRECTLY EXEMPTED from
+     * Rule 8's habit filter. So `ABSORBED_LOAD` — "what the runner has
+     * RECENTLY ABSORBED" — is the doctrine-correct side, not `HABIT`.
+     *
+     * This does not contradict the candidate-pool taper exclusion below:
+     * 023's sub-question 1 gives a narrower, independent correctness reason
+     * for dropping taper days (a shortened tune-up must not silently
+     * occupy a domain's slot next to a real session), explicitly NOT a
+     * Rule-8-habit-filter argument. Rule 8 side and candidate-pool
+     * filtering are two different questions here, and conflating them was
+     * the exact risk 023 named and avoided.
+     */
+    rule8Side: 'ABSORBED_LOAD',
     competing: [
       {
         module: 'lib/plan/adjudication/adjudicate.ts',
         symbol: 'athleteEvidenceFor',
-        at: 'lib/plan/adjudication/adjudicate.ts:212',
-        computes: 'The shaped slot for exactly this question. It takes a '
-          + 'demonstrated maximum and grades a prescribed dose against it.',
+        at: 'lib/plan/adjudication/adjudicate.ts:271',
+        computes: 'The shaped CONSUMER of this question, not a competing '
+          + 'computation of it: it takes a demonstrated maximum as an '
+          + 'argument and grades a prescribed dose against it. F097 built '
+          + 'the canonical producer; no production call site yet threads '
+          + 'this belief\'s value into athleteEvidenceFor\'s '
+          + '`demonstratedMaxToday` — the only live caller '
+          + '(`lib/brain/option-lane.ts`) prices that argument off '
+          + '`detectRampSignals`\' weekly-volume peak, a different question, '
+          + 'and the corpus bridge (`adjudication-corpus.ts`) is fixture-'
+          + 'only by design (its own header: "runtime code must never '
+          + 'import it"). Wiring a production athleteEvidenceFor caller to '
+          + 'this belief is a separate, not-yet-scoped integration.',
         canDisagree: false,
       },
       {
@@ -873,49 +914,36 @@ export const BELIEF_OWNERSHIP: Readonly<Record<BeliefKey, BeliefOwnership>> = {
       + 'catalogue for any reader that aggregates a per-workout-type maximum '
       + 'from completed sessions.',
     conflict: {
-      verdict: 'OPEN',
+      verdict: 'ROUTED',
       between: ['lib/plan/adjudication/adjudicate.ts#athleteEvidenceFor'],
-      shouldOwn: 'a per-type demonstrated-dose reader that does not yet exist',
-      because: 'THE SLOT EXISTS AND IS EMPTY, and that is a Rule 21 finding '
-        + 'rather than a Rule 16 one. athleteEvidenceFor is built to grade a '
-        + 'prescribed dose against a demonstrated maximum, and exactly two '
-        + 'quantities are ever passed to it: peak weekly mileage, and a '
-        + 'completed marathon-pace maximum that the corpus records as null '
-        + 'for every archetype. lib/execution/reconstruct.ts is the only '
-        + 'place actual at-pace work minutes are measured and nothing '
-        + 'aggregates a maximum from it. So session dose is bounded entirely '
-        + 'by doctrine ceilings with no demonstrated floor, which means the '
-        + 'engine can never notice that a runner has earned a bigger '
-        + 'session.',
-      notRoutedBecause: 'Building the reader is engine work with a corpus '
-        + 'consequence, and Rule 15 says the fixture type has to be able to '
-        + 'express the input before the mechanism can be tested at all.',
-      /**
-       * VERIFIED 2026-09-06 (closure pass, no owner built). Still no owner:
-       * `lib/execution/reconstruct.ts#actualStimulus` computes exactly the
-       * per-run shape a minimal reader would aggregate over
-       * ({domain, workMi, workMinutes}, one call per completed run), but
-       * nothing walks history and takes a MAX by domain — that aggregator
-       * genuinely does not exist anywhere in the tree. NOT built here: doing
-       * it honestly needs a decision this session cannot make alone —
-       * whether it is a lifetime max, a rolling-window max (and what
-       * window), and whether Rule 8's taper/recovery exclusion applies to a
-       * MAX read the way it applies to a MEAN one (the corollary says a
-       * spike-anchor question stays literal; a habit question is filtered —
-       * "biggest session ever completed" reads as the former, but nobody
-       * has argued it). Building it wrong would be worse than the refusal:
-       * `athleteEvidenceFor`'s cold-start branch already gates correctly on
-       * `demonstratedMaxToday === null` (Rule 11 verified — the slot reads
-       * as absent, never coerced to zero), so every reader that reaches for
-       * this belief today gets the same honest refusal rather than each
-       * inventing its own guess. That is the state Rule 11 calls valid.
-       */
+      shouldOwn: 'lib/execution/max-demonstrated-dose.ts#maxDemonstratedDoseByDomain',
+      because: 'ROUTED BY F097 (2026-09-14). THE SLOT USED TO EXIST AND BE '
+        + 'EMPTY — a Rule 21 finding rather than a Rule 16 one: '
+        + 'athleteEvidenceFor is built to grade a prescribed dose against a '
+        + 'demonstrated maximum and nothing aggregated one. '
+        + 'lib/execution/reconstruct.ts#actualStimulus was already the only '
+        + 'place actual at-pace work minutes are measured; this reader is '
+        + 'the missing walk over history that MAXes it per domain, doctrine-'
+        + 'settled per the two consult-log entries this file\'s canonical '
+        + 'symbol cites at its own header (rolling 30-day window, matching '
+        + 'the Research/00a spike-guard citation `recentPeakLongMi` already '
+        + 'uses for the sibling question; taper/race-week/post-race-'
+        + 'recovery days excluded from the candidate pool). '
+        + '`lib/runner-state/store/loaders.ts#loadMaxDemonstratedDose` now '
+        + 'submits this reader\'s real, non-null output instead of an '
+        + '`absentBelief`, so the RunnerBeliefs.MAX_DEMONSTRATED_DOSE slot '
+        + 'itself is closed. Named ROUTED rather than RESOLVED because a '
+        + 'reader had to be BUILT, not merely redirected — see the '
+        + 'competing athleteEvidenceFor entry above for what remains open '
+        + '(no production caller threads this value into it yet).',
+      notRoutedBecause: '',
     },
     movesUpOn: [
       {
         what: 'Completing a bigger session of that type with the work '
-          + 'actually landed.',
-        reader: 'lib/execution/reconstruct.ts#actualStimulus',
+          + 'actually landed, inside the rolling 30-day window, on a '
+          + 'non-taper day.',
+        reader: 'lib/execution/max-demonstrated-dose.ts#maxDemonstratedDoseByDomain',
       },
     ],
     movesDownOn: [],

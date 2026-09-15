@@ -24,23 +24,28 @@
  *
  * ── WHAT IS DELIBERATELY NOT WIRED HERE, AND WHY ───────────────────────────
  *
- * Of David's twelve named beliefs, two have NO canonical owner today —
- * `ownership.ts` says so by name:
+ * `MAX_DEMONSTRATED_DOSE` USED TO BE ON THIS LIST — "THE SLOT EXISTS AND IS
+ * EMPTY", `ownership.ts`'s own words — because nothing aggregated a per-
+ * family completed maximum. F097 (2026-09-14) closed it:
+ * `lib/execution/max-demonstrated-dose.ts#maxDemonstratedDoseByDomain` is now
+ * the registered owner, a rolling 30-day per-domain MAX over
+ * `reconstruct.ts#actualStimulus`, doctrine-cited at that file's header. See
+ * §14 below.
  *
- *   MAX_DEMONSTRATED_DOSE  "THE SLOT EXISTS AND IS EMPTY" — the corpus never
- *                          aggregates a per-family completed maximum.
- *   TRAINING_PHASE         "There is no function anywhere that answers what
- *                          phase is this runner in today" — five readers,
- *                          two vocabularies, two current-week resolutions.
+ * One belief still has NO canonical owner — `ownership.ts` says so by name:
  *
- * Building either owner is engine work with its own corpus consequence
- * (Rule 15/21), not belief-store wiring, and the task brief is explicit that
- * this store must READ registered owners rather than invent a thirteenth. So
- * both loaders below submit an honest `absentBelief` naming the ownership.ts
+ *   TRAINING_PHASE  "There is no function anywhere that answers what phase
+ *                   is this runner in today" — five readers, two
+ *                   vocabularies, two current-week resolutions.
+ *
+ * Building that owner is engine work with its own corpus consequence (Rule
+ * 15/21), not belief-store wiring, and the task brief is explicit that this
+ * store must READ registered owners rather than invent a thirteenth. So its
+ * loader below submits an honest `absentBelief` naming the ownership.ts
  * finding, which is itself the correct behaviour for a belief with no owner —
  * Rule 11's "unknown" state, not a manufactured guess.
  *
- * A third gap is narrower: `LONG_RUN_TOLERANCE`'s owner,
+ * A further gap is narrower: `LONG_RUN_TOLERANCE`'s owner,
  * `lib/plan/generate.ts#evidenceLongCeilingMi`, is PURE and exported, but its
  * real inputs (`demonstratedLongMi`, `recentLongMi`) are private closures
  * inside `generate.ts` with no exported reader and no route to call them
@@ -68,6 +73,7 @@ import {
 import { marathonPaceFromDurability } from '@/lib/training/prescription-resolver';
 import { resolveSafety } from '@/lib/safety/load-safety';
 import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
+import { maxDemonstratedDoseByDomain } from '@/lib/execution/max-demonstrated-dose';
 import type { Pool, PoolClient } from 'pg';
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -361,22 +367,64 @@ async function loadInjuryAndIllness(
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
- * 14/15 · MAX_DEMONSTRATED_DOSE + TRAINING_PHASE · NO CANONICAL OWNER
+ * 14 · MAX_DEMONSTRATED_DOSE · F097 · owner maxDemonstratedDoseByDomain
  *
- * Both are `ownership.ts` OPEN findings with `canonical: null`. Submitting a
- * value here would be the thirteenth-owner defect the brief explicitly
- * forbids; the honest submission is `absentBelief`, naming the finding so a
- * reader of the stored row can see WHY rather than assuming a bug.
+ * THE SLOT USED TO EXIST AND BE EMPTY (`ownership.ts`'s own words, until this
+ * pass). `lib/execution/max-demonstrated-dose.ts` is the aggregator that
+ * finding names as missing — a rolling 30-day, per-domain MAX over
+ * `reconstruct.ts#actualStimulus`'s already-computed `{domain, workMinutes}`,
+ * taper/race-week/post-race-recovery days excluded from the candidate pool.
+ * See that file's header for the full doctrine citation
+ * (`for coaching consult/consult-log/2026-09-14-023-…` and its
+ * `2026-09-15-025-…` correction) and the exact reuse of `recentPeakLongMi`'s
+ * window-construction pattern.
+ *
+ * An EMPTY `atPaceMinutesByFamily` is a real, submitted answer, not an
+ * absence — `MaxDoseBelief`'s own doc comment: "Empty when measured and none
+ * found, which is not the same as never looked." Only a read that did not
+ * COMPLETE (a thrown error) is `failedBelief`.
+ *
+ * EXPORTED, unlike every sibling loader in this file — the one deliberate
+ * exception to this file's own "loaders stay private, only the whole build
+ * is exported" convention. F097's Rule 18 falsification needs a test that
+ * reverts this function to its pre-fix body (`return absentBelief(...)`) and
+ * confirms a test catches exactly that regression; doing that through
+ * `buildRunnerBeliefInput` alone would require mocking nine unrelated owner
+ * functions to isolate one field. `_max_demonstrated_dose_loader.test.ts` is
+ * that test.
  * ═══════════════════════════════════════════════════════════════════════ */
 
-function loadMaxDemonstratedDose(): RunnerBeliefInput['MAX_DEMONSTRATED_DOSE'] {
-  return absentBelief(
-    'no canonical owner exists (ownership.ts: "the slot exists and is empty" — '
-    + 'athleteEvidenceFor grades a prescribed dose against a demonstrated maximum '
-    + 'that nothing in the corpus aggregates)',
-    new Date().toISOString(),
-  );
+export async function loadMaxDemonstratedDose(
+  userUuid: string,
+  todayISO: string,
+): Promise<RunnerBeliefInput['MAX_DEMONSTRATED_DOSE']> {
+  const now = new Date().toISOString();
+  try {
+    const read = await maxDemonstratedDoseByDomain(userUuid, todayISO);
+    return submitted({
+      estimate: { best: { atPaceMinutesByFamily: read.atPaceMinutesByDomain }, range: null },
+      confidence: null,
+      sourceMode: null,
+      recency: null,
+      lastUpdatedISO: now,
+    });
+  } catch (err) {
+    return failedBelief(
+      `max-demonstrated-dose aggregation did not complete: `
+      + `${err instanceof Error ? err.message : String(err)}`,
+      now,
+    );
+  }
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+ * 15 · TRAINING_PHASE · NO CANONICAL OWNER
+ *
+ * `ownership.ts` OPEN finding with `canonical: null`. Submitting a value here
+ * would be the thirteenth-owner defect the brief explicitly forbids; the
+ * honest submission is `absentBelief`, naming the finding so a reader of the
+ * stored row can see WHY rather than assuming a bug.
+ * ═══════════════════════════════════════════════════════════════════════ */
 
 function loadTrainingPhase(): RunnerBeliefInput['TRAINING_PHASE'] {
   return absentBelief(
@@ -422,6 +470,7 @@ export async function buildRunnerBeliefInput(
     marathonPace,
     goalFeasibility,
     safety,
+    maxDemonstratedDose,
   ] = await Promise.all([
     loadSustainableWeeklyVolume(userUuid, todayISO),
     loadAcuteAndChronicLoad(userUuid, todayISO),
@@ -430,6 +479,7 @@ export async function buildRunnerBeliefInput(
     loadMarathonPace(userUuid, todayISO),
     loadGoalFeasibility(exec, userUuid, todayISO),
     loadInjuryAndIllness(userUuid, todayISO),
+    loadMaxDemonstratedDose(userUuid, todayISO),
   ]);
 
   const input = {
@@ -442,7 +492,7 @@ export async function buildRunnerBeliefInput(
     GOAL_FEASIBILITY: goalFeasibility,
     INJURY_STATE: safety.INJURY_STATE,
     ILLNESS_STATE: safety.ILLNESS_STATE,
-    MAX_DEMONSTRATED_DOSE: loadMaxDemonstratedDose(),
+    MAX_DEMONSTRATED_DOSE: maxDemonstratedDose,
     TRAINING_PHASE: loadTrainingPhase(),
     LONG_RUN_TOLERANCE: loadLongRunTolerance(),
   } as Record<BeliefKey, RunnerBeliefInput[BeliefKey]>;
