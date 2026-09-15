@@ -14,6 +14,19 @@ with no active owner is a programme failure and gets assigned in the same check.
 
 ---
 
+## COMPLETE PAUSE, ALL WORK EXCEPT F159 — 2026-09-15, David's direct instruction via David's Desk, superseding the stand-down below
+
+**David, direct, verbatim: "pause and log all other work until this backend issue is resolved."** This supersedes the earlier "F156 as the sole stand-down exception" framing — that thread is now itself paused, logged, and folded into F159 as evidentiary input, not an active parallel track. As of this instruction:
+
+- **Code agent**: paused. F156/F158 (the live-bug thread) fully logged and closed out in the register at their real, honest state — not overclaimed, not left dangling. F160 (the third "no post-run data" symptom) logged as its own entry, explicitly paused rather than investigated. Told directly: stop, don't just deprioritize.
+- **External review lead**: paused. F158's confirmation logged and complete. Told directly: don't start any independent trace, even on something that looks related.
+- **Coach consultant, independent product review, design & UX review**: already stood down from the earlier instruction, unchanged.
+- **Programme lead's own 30-min self-check cron**: already cancelled (Cycle 20).
+- **The ONLY active work on the entire programme right now**: the new dedicated backend architecture review session (`for backend architecture review/`, home fully set up — brief plus all three research reports), and whatever the programme lead does to help stand it up. David confirmed he cannot start a new top-level session from David's Desk's side; the programme lead confirmed honestly it cannot create one either — creating the actual session needs David himself (a new terminal/window, same as how the other dedicated sessions started tonight).
+- **Do not resume ANY work, dispatch ANY task, or treat anything as active** until David (via David's Desk) explicitly says the backend issue is resolved or otherwise lifts this. This line supersedes the stand-down section below and stays at the top of the board.
+
+---
+
 ## FULL PROGRAMME STAND-DOWN IN EFFECT — 2026-09-15, David's direct instruction via David's Desk
 
 **"I need all agents and work to STOP immediately. I need all 30 min timers to stop. Nothing
