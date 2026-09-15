@@ -196,9 +196,28 @@ separably-scoped follow-up, not a corner that was cut.
   `_f038_reign_scoping.audit.test.ts` requires `DATABASE_URL_RO`, which is not set in
   this environment — an infrastructure gate, not a regression from this change), 26
   skipped.
-- Full `web-v2` suite (694 test files) was also run in the background as the final
-  checkpoint; see the session's own follow-up note for its result if this report is
-  read before that run finished.
+- **Full `web-v2` suite (694 test files, 12,674 tests) run twice.** First run: 6
+  failed. One of the six was real and caused by this change:
+  `lib/audit/_generated_content_gate.test.ts`'s orphan-module gate correctly caught
+  that `training-consistency.ts` and `non-adherence-offer.ts` have no production
+  caller yet (Phase 2 item 5 was not built) and are not listed in `MODULE_ORPHANS`.
+  Fixed by adding both to that registry with the same dense, honest-reason style
+  every other orphaned module there uses, each stating plainly why it has no caller
+  yet and what would retire the entry (a real cron/route import). The other five
+  failures were confirmed NOT caused by this change, three ways: (a) two
+  (`_authoring_shadow_compare.audit.test.ts`,
+  `_f038_reign_scoping.audit.test.ts`) are DB-backed gates that explicitly refuse to
+  pass without `DATABASE_URL_RO`, not present in this environment; (b) one
+  (`_audit_placement.test.ts`) passed cleanly in two follow-up isolated re-runs in
+  this same worktree (9/9), confirming the single full-suite failure was run-to-run
+  flake in an exhaustive/randomized sweep under full-suite parallel load, not a
+  deterministic regression; (c) the remaining two
+  (`_rolling_seven_ceiling.test.ts`) were reproduced identically on a freshly
+  checked-out, completely unmodified `origin/main` worktree with no F077 changes
+  present at all, confirming they are pre-existing failures on `main` today,
+  unrelated to this work. Second full-suite run, after the `MODULE_ORPHANS` fix:
+  clean except for that same pre-existing/environmental set (2 DB-gated + 2
+  pre-existing-on-main), confirming no other regression from this change.
 
 ## Files touched
 
@@ -211,6 +230,9 @@ separably-scoped follow-up, not a corner that was cut.
   re-pointed at the new reader.
 - `web-v2/lib/runner-state/_runner_state.test.ts` — one oracle test fixed to not
   depend on `TRAINING_CONSISTENCY`'s now-resolved `canonical: null` state.
+- `web-v2/lib/audit/generated-content-registry.ts` — both new modules added to
+  `MODULE_ORPHANS` with an honest reason (no production caller yet, Phase 2 item 5
+  pending), per the orphan-module gate this full-suite run correctly caught.
 
 No changes to `lib/adaptation/adaptation-model.ts`, `lib/faff/week-mileage.ts`, or
 `lib/coach/runner-calibration.ts` — confirmed by `git status` before writing this
