@@ -514,6 +514,22 @@ struct TodayHostV5: View {
     /// here is, by construction, always the date already being viewed — see
     /// `goTo`'s own doc comment for why the plain (non-forced) call this
     /// used to make was a silent no-op on exactly this path.
+    ///
+    /// RETRYSTORM-1 (2026-09-15) · `skipWeekPrefetch: true` for the same
+    /// reason `force` is needed: this call can fire repeatedly, once per
+    /// timeout cycle, for exactly as long as the underlying fetch keeps
+    /// failing — a runner tapping Retry again each time they see the same
+    /// error is the expected, ordinary case, not a misuse. The original
+    /// navigation to `date` already fired a full `prefetchAround` (day
+    /// radius + three weeks of neighbouring summaries) once; a retry only
+    /// needs `date`'s own fetch to run again, not a repeat of that whole
+    /// warm every single time. `fetchAndCacheWeek`'s own in-flight guard
+    /// clears the moment an attempt *completes* (success, failure, or
+    /// timeout) rather than while the day is still genuinely stuck, so
+    /// without this a sequence of spaced-out retries can each reopen a
+    /// fresh 4-way week fetch on top of the per-day fetch actually being
+    /// retried — real background load with no benefit to the runner, who
+    /// asked for one specific day back, not a re-warm of the whole month.
     private func retryPending(_ date: String) {
         // PLANSNAPSHOT-1 · an explicit Retry is one of the named triggers
         // for a fresh whole-block sync — not awaited here so the per-date
@@ -521,7 +537,7 @@ struct TodayHostV5: View {
         // by it; if the snapshot sync lands first, `date` may resolve
         // straight from it without `goTo` needing its own fetch at all.
         Task { await syncPlanSnapshot() }
-        goTo(date, todayISO: knownTodayISO ?? date, force: true)
+        goTo(date, todayISO: knownTodayISO ?? date, force: true, skipWeekPrefetch: true)
     }
 
     /// The best available week-strip data for `date` — exact cached day,
@@ -1808,7 +1824,12 @@ struct TodayHostV5: View {
         !force && to == from
     }
 
-    private func goTo(_ iso: String, todayISO today: String, force: Bool = false) {
+    /// RETRYSTORM-1 · `skipWeekPrefetch` exists for exactly one caller,
+    /// `retryPending` — threaded through to `prefetchAround`'s own
+    /// `includeWeekFetches`, see that function's doc comment for why a
+    /// retry of one specific day has no reason to re-warm three weeks of
+    /// neighbouring data that the original navigation already fetched once.
+    private func goTo(_ iso: String, todayISO today: String, force: Bool = false, skipWeekPrefetch: Bool = false) {
         let from = viewingDate ?? today
         guard !Self.shouldSkipNavigation(from: from, to: iso, force: force) else { return }
 
@@ -1903,7 +1924,7 @@ struct TodayHostV5: View {
                 if pendingDate == iso { pendingDate = nil }
             }
         }
-        Task { await prefetchAround(iso) }
+        Task { await prefetchAround(iso, includeWeekFetches: !skipWeekPrefetch) }
     }
 
     /// Read the days either side of `iso` quietly, and keep whatever comes
@@ -2148,7 +2169,25 @@ struct TodayHostV5: View {
         }
     }
 
-    private func prefetchAround(_ iso: String) async {
+    /// RETRYSTORM-1 (2026-09-15) · `includeWeekFetches` exists for exactly
+    /// one caller, `retryPending`. Every other caller wants the full warm —
+    /// `fetchAndCacheWeek`'s own two guards (an already-covering cached
+    /// week, and `weekFetchInFlight`) already make repeat calls for the same
+    /// anchor a no-op WHILE one is in flight, but `weekFetchInFlight` clears
+    /// the moment an attempt *completes* (success, failure, or timeout) —
+    /// not while it is genuinely still running. A runner who retries a
+    /// stuck day roughly once per timeout cycle (exactly what tapping Retry
+    /// again after seeing the same error looks like) finds the guard
+    /// already cleared each time, so every such retry re-opens a genuinely
+    /// fresh 4-way week fetch — on top of the one the ORIGINAL failed
+    /// navigation already fired. A retry of one specific day never needed
+    /// to re-warm three weeks of neighbouring data; that work already ran
+    /// once. The per-day radius below is untouched — `fetchCoordinator`
+    /// already bounds and cross-call-deduplicates it, so it costs nothing
+    /// extra to keep running and stays genuinely useful (neighbouring days
+    /// warm for a swipe). Only the week-level fan-out is what a repeated
+    /// retry has no reason to redo.
+    private func prefetchAround(_ iso: String, includeWeekFetches: Bool = true) async {
         var wanted: Set<String> = []
 
         if let strip = surface.model?.weekStrip, let first = strip.first?.dateISO,
@@ -2183,7 +2222,12 @@ struct TodayHostV5: View {
         // reads, run alongside the per-day prefetch below rather than
         // gating on it, since a summary is useful even for a day whose
         // full detail prefetch hasn't landed yet.
-        if let strip = surface.model?.weekStrip, let first = strip.first?.dateISO,
+        //
+        // RETRYSTORM-1 · skipped entirely when `includeWeekFetches` is
+        // false — see this function's own doc comment for why a retry
+        // passes that.
+        if includeWeekFetches,
+           let strip = surface.model?.weekStrip, let first = strip.first?.dateISO,
            let last = strip.last?.dateISO,
            let firstDate = Self.iso.date(from: first), let lastDate = Self.iso.date(from: last) {
             async let visible: Void = fetchAndCacheWeek(anchoredOn: first)
