@@ -256,6 +256,137 @@ final class LifecycleSweepTests: XCTestCase {
         ledger.settle()
     }
 
+    // MARK: - REQUESTSTORM-3 — the one post that must never be coalesced
+
+    /// THE DEFECT THIS TEST WAS ADDED FOR. `lastForegroundLoadAt` used to be
+    /// stamped unconditionally, so `FaffApp`'s post-import post (and
+    /// `WatchSync.flushPendingCompletions`'s completion-landed post) could
+    /// land inside the 3s window and be silently folded into "the tail of
+    /// the same burst" — the one thing they must never be, since each exists
+    /// specifically because something changed AFTER the first load's fetch
+    /// had already run.
+    ///
+    /// FALSIFIED (Rule 18) against the pre-fix signature: calling this
+    /// function with only `now`/`lastLoadAt` (no `mustLoad` parameter, as it
+    /// existed before REQUESTSTORM-3) cannot express "load anyway" at all —
+    /// there is no argument to pass. Confirmed by temporarily reverting
+    /// `ForegroundWork.swift` to the two-argument signature and observing
+    /// this file fail to compile (a stronger falsification than a runtime
+    /// assertion: the old shape cannot even accept the claim this test
+    /// makes), then restoring the three-argument fix and confirming the
+    /// asserts below pass.
+    func testMustLoadBypassesCoalescingAtAnyGap() {
+        let ledger = SweepLedger("lifecycle · foreground must-load bypass", floor: 3)
+        let t0 = Date()
+
+        // Every gap that would normally coalesce (per
+        // testForegroundLoadCoalescesTheAppsTwoDeliberatePosts above) must
+        // still load when `mustLoad` is set — that is the entire point.
+        let coalescingGaps: [(String, TimeInterval)] = [
+            ("the same instant",           0),
+            ("the tail of the same burst", 1),
+            ("right at the boundary",      3),
+        ]
+
+        for (name, gap) in coalescingGaps {
+            ledger.exercised("ForegroundWork.shouldLoadOnForeground(mustLoad:)")
+            let actual = ForegroundWork.shouldLoadOnForeground(
+                now: t0.addingTimeInterval(gap), lastLoadAt: t0, mustLoad: true)
+            guard !actual else { continue }
+            ledger.found("ForegroundWork.shouldLoadOnForeground(mustLoad:)",
+                         "\(name) (\(gap)s) with mustLoad=true: load = false, expected true",
+                         onScreen: "a run the server just confirmed landed, silently dropped by the same window meant only to de-duplicate identical reads")
+        }
+
+        // The default parameter must not change any existing call site's
+        // behavior — every caller that never knew about `mustLoad` keeps
+        // asking exactly the coalescing question it always asked.
+        ledger.exercised("ForegroundWork.shouldLoadOnForeground(mustLoad:)")
+        XCTAssertFalse(ForegroundWork.shouldLoadOnForeground(now: t0.addingTimeInterval(1), lastLoadAt: t0),
+                       "omitting mustLoad must default to the ordinary coalescing behavior")
+
+        ledger.settle()
+    }
+
+    /// THE FULL RACE, REPRODUCED END TO END THROUGH THE REAL NOTIFICATION
+    /// PATH — not just the pure decision function above, but the actual
+    /// `V5Surface` observer that calls it, exactly as `FaffApp`'s two posts
+    /// and `WatchSync`'s completion post reach it in the running app.
+    ///
+    /// Simulates: a foreground fires the FIRST post; that surface's `load()`
+    /// is still in flight (a slow fetch stands in for a real network round
+    /// trip) when the SECOND, `mustLoad`-tagged post arrives well inside the
+    /// 3s coalescing window — exactly the shape of "the HealthKit import
+    /// landed fast, before the first read finished." Before REQUESTSTORM-3,
+    /// `lastForegroundLoadAt` was already stamped (at the first load's
+    /// START) by the time the second post's gap was checked, so the second
+    /// post never triggered a `load()` at all, and the surface was left
+    /// holding whatever the first, now-stale fetch had already returned.
+    ///
+    /// FALSIFIED (Rule 18): re-run with the tagged post's `userInfo` removed
+    /// (i.e. an ordinary, untagged post standing in for the pre-fix
+    /// behavior) and confirmed `callCount` stays at 1 and `model` stays on
+    /// the first fixture — reproducing the exact defect this test exists to
+    /// close — before restoring the tagged post and confirming both flip.
+    @MainActor
+    func testPostImportPostIsNotSwallowedByAnInFlightFirstLoad() async throws {
+        let before = try JSONDecoder().decode(
+            V5Today.self, from: Data(V5ContractTests.Fixtures.beforeRun.utf8))
+        let after = try JSONDecoder().decode(
+            V5Today.self, from: Data(V5ContractTests.Fixtures.injuryFlare.utf8))
+        XCTAssertNotEqual(before.state, after.state, "fixtures must be distinguishable for this test to mean anything")
+
+        actor CallCounter {
+            private(set) var count = 0
+            func increment() -> Int { count += 1; return count }
+        }
+        let counter = CallCounter()
+
+        // The first load takes 0.6s — long enough that the second post
+        // (fired ~0.1s after the first) lands while it is still in flight,
+        // short enough to keep the test fast.
+        let surface = V5Surface<V5Today>(cache: nil, fetch: {
+            let n = await counter.increment()
+            if n == 1 {
+                try? await Task.sleep(nanoseconds: 600_000_000)
+                return .ok(before)
+            }
+            return .ok(after)
+        })
+
+        // FIRST post: the app's immediate, untagged post. `lastForegroundLoadAt`
+        // starts at `.distantPast`, so this always loads.
+        NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+        try? await Task.sleep(nanoseconds: 100_000_000) // let the first load START, not finish
+
+        // SECOND post: tagged mustLoad, landing ~0.1s after the first —
+        // deep inside the 3s coalescing window, and while the 0.6s first
+        // load is still in flight.
+        NotificationCenter.default.post(
+            name: .faffForegroundRefresh, object: nil,
+            userInfo: [ForegroundWork.mustLoadKey: true]
+        )
+
+        // Give both loads room to finish (first: ~0.6s from its own start;
+        // second: started ~0.1s in, resolves immediately).
+        try? await Task.sleep(nanoseconds: 900_000_000)
+
+        let calls = await counter.count
+        XCTAssertEqual(calls, 2, """
+        THE POST-IMPORT POST MUST TRIGGER ITS OWN LOAD. It arrived while the \
+        first load was still in flight; if it is coalesced away (pre-fix \
+        behavior), only one fetch ever happens and a run that landed \
+        mid-flight never gets asked for again until the next foreground — or, \
+        on David's phone, until the app is force-quit and relaunched.
+        """)
+        XCTAssertEqual(surface.model?.state, after.state, """
+        THE SURFACE MUST REFLECT THE SECOND LOAD, NOT THE FIRST. The first \
+        load's fetch already ran before the (simulated) import landed; only \
+        the second, must-load post asked again. A surface stuck on `before` \
+        here is exactly the "run doesn't appear until force-quit" symptom.
+        """)
+    }
+
     // MARK: - A failed refresh keeps the old value on screen
 
     /// `V5Surface.load()` on failure keeps `model` and sets `stale`. That is

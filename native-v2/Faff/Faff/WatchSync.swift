@@ -217,6 +217,21 @@ final class WatchSync: NSObject, ObservableObject {
     /// Earliest next refresh — at most one per 60s regardless of caller
     /// (mirrors FaffApp's lastImportAt throttle pattern; kept here so the
     /// foreground and reachability paths share one window).
+    ///
+    /// REQUESTSTORM-3 investigation (2026-09-14) · traced whether THIS
+    /// throttle could be a second, independent way to lose a watch-recorded
+    /// completion. It is not, for the primary delivery path: `didReceiveUserInfo`
+    /// (the callback that actually fires when the watch hands over a finished
+    /// run via `transferUserInfo`), `session(_:didReceive:)` (the
+    /// >60KB-payload fallback), and `activationDidCompleteWith` all call
+    /// `flushPendingCompletions()` DIRECTLY — none of them go through
+    /// `refresh()`, so none of them wait on `lastRefreshAt`. This 60s window
+    /// only rate-limits the foreground/reachability-triggered re-checks
+    /// below, not the delivery-triggered drain. What DOES independently
+    /// reach the same symptom is `flushPendingCompletions()`'s own
+    /// `.faffForegroundRefresh` post sharing `V5Surface`'s coalescing window
+    /// with `FaffApp`'s two posts — fixed alongside it; see that post's own
+    /// comment and `ForegroundWork.mustLoadKey`.
     private var lastRefreshAt: Date = .distantPast
 
     /// `force` bypasses the 60s throttle for an explicit runner-initiated
@@ -670,7 +685,25 @@ final class WatchSync: NSObject, ObservableObject {
                 // Trigger a plan refresh so TodayView picks up the new
                 // completedRunId and pivots to the post-run view without
                 // waiting for the next foreground wakeup.
-                NotificationCenter.default.post(name: .faffForegroundRefresh, object: nil)
+                //
+                // REQUESTSTORM-3 (2026-09-14) · tagged `mustLoad`, same
+                // reason as `FaffApp`'s post-import post: this fires ONLY
+                // when a completion actually just landed on the server (the
+                // `landed` guard above), so it is unconditionally
+                // load-bearing. It shares the exact notification and the
+                // exact `V5Surface` observer/coalescing window that swallowed
+                // `FaffApp`'s post-import post, and was traced as a second,
+                // independently-reachable route to the same "run doesn't
+                // appear until force-quit" symptom: a watch-recorded run's
+                // completion can arrive (via `didReceiveUserInfo`, which
+                // drains this queue unthrottled by `refresh()`'s own 60s
+                // window) at any moment relative to an unrelated foreground
+                // load already in flight on this or any other surface. See
+                // `ForegroundWork.mustLoadKey`'s doc comment.
+                NotificationCenter.default.post(
+                    name: .faffForegroundRefresh, object: nil,
+                    userInfo: [ForegroundWork.mustLoadKey: true]
+                )
                 // PLANSNAPSHOT-1 · a completed run lands here from every
                 // origin (phone outdoor/treadmill finish, watch sync) —
                 // completion sync is a named trigger alongside plan-mutation.

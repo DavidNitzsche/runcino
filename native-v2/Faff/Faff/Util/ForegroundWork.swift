@@ -128,10 +128,57 @@ enum ForegroundWork {
     /// read.
     static let foregroundLoadCoalesceSec: TimeInterval = 3
 
+    /// REQUESTSTORM-3 (2026-09-14) · THE WINDOW WAS MEASURED FROM THE WRONG
+    /// EDGE, AND "MEASURE FROM THE OTHER EDGE" DOES NOT FIX IT EITHER.
+    ///
+    /// `V5Surface` used to stamp `lastForegroundLoadAt` the instant `load()`
+    /// STARTED, so a load already in flight when the post-import post landed
+    /// made that post look like "the tail of the same burst" and swallowed
+    /// it — the run the import had just pulled in never reached the screen,
+    /// because the FIRST load's own fetch had already run and answered
+    /// before the import finished, and nothing asked again. David saw this
+    /// as: a completed run doesn't appear on Today until the app is
+    /// force-quit and relaunched — plainly foregrounding it is not enough,
+    /// because `.distantPast` is what actually "fixes" a force-quit, by
+    /// defeating this window entirely rather than by doing anything else.
+    ///
+    /// The obvious-looking fix — stamp at load-FINISH instead of load-START —
+    /// was tried on paper first and does not close this. `FaffApp` fires the
+    /// import (`HealthKitImporter.importIfConnected`) and this surface's own
+    /// `load()` as two SEPARATE, CONCURRENT tasks off the same foreground
+    /// event, not sequentially. If the surface's own GET (duration `L`)
+    /// finishes before the import does (duration `I` — the case the import's
+    /// own comments say is typical, since it is the "expensive" side), a
+    /// finish-stamped `lastForegroundLoadAt` reads `L`, and the post-import
+    /// post lands at `I`. The gap the throttle sees is `I − L`, which is
+    /// SMALLER than the start-stamped gap of `I − 0`. Moving the stamp to the
+    /// finish edge narrows the window in exactly the concurrent-start case
+    /// this bug lives in — it does not widen it. Measured against the
+    /// project's own cited round-trip times (import 0.7-2s, a V5 GET well
+    /// under 1s), `I − L` stays inside the 3s coalesce window in the ordinary
+    /// case, so the bug would still reproduce.
+    ///
+    /// So the fix is not which edge the window is measured from. It is that
+    /// this ONE post is never supposed to be coalesced, at any gap, because
+    /// it exists specifically to catch a run the first load could not have
+    /// seen yet. `FaffApp` tags it (and `WatchSync.flushPendingCompletions`'s
+    /// own always-load-bearing post, once a completion actually lands — the
+    /// SAME shared observer, the SAME coalescing window, the SAME failure
+    /// mode, independently diagnosed and independently confirmed reachable)
+    /// with `mustLoadKey` in the notification's `userInfo`, and
+    /// `shouldLoadOnForeground` below honors it unconditionally.
+    static let mustLoadKey = "faff.foreground.mustLoad"
+
     /// Should a `.faffForegroundRefresh` observer actually call `load()` now,
     /// or has this surface already reloaded too recently to be a SECOND real
     /// foreground rather than the tail of the same one?
-    static func shouldLoadOnForeground(now: Date, lastLoadAt: Date) -> Bool {
-        now.timeIntervalSince(lastLoadAt) > foregroundLoadCoalesceSec
+    ///
+    /// `mustLoad` bypasses the throttle entirely — see `mustLoadKey`'s doc
+    /// comment above for why the window itself cannot be reshaped to catch
+    /// this case, and why bypass is the only fix that actually closes it.
+    /// Defaulted to `false` so every existing caller/test that only ever
+    /// asked the coalescing question keeps asking exactly that question.
+    static func shouldLoadOnForeground(now: Date, lastLoadAt: Date, mustLoad: Bool = false) -> Bool {
+        mustLoad || now.timeIntervalSince(lastLoadAt) > foregroundLoadCoalesceSec
     }
 }
