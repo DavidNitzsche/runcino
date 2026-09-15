@@ -306,6 +306,37 @@ final class PhoneRunTracker: NSObject, ObservableObject {
         canonical ?? pending ?? "phone_\(UUID().uuidString)"
     }
 
+    // MARK: - Per-start identity (F072 · 2026-09-14, same shape as the Watch's P1-34)
+    //
+    // `workoutId` (the stored property above) is server-issued/derived as
+    // `${userId}-${YYYY-MM-DD}` — one id per calendar day. Two phone-recorded
+    // completions on the SAME day used to collide on that id exactly the way
+    // the Watch's P1-34 finding did: a genuine second run (recorded today's
+    // tile twice, or a "Just run" after the prescribed one), and the second
+    // upsert silently overwrote the first run's distance + phase blob (see
+    // this file's own header comment, "same workoutId → same id, so
+    // re-POSTing overwrites"). `workoutId` itself stays the plan-linkage key
+    // used for checkpoint matching and the WatchSync handshake — this suffix
+    // rides on TOP of it, only in the wire payload, exactly as
+    // `WorkoutEngine.sessionSuffix(for:)` does on the Watch (native-v2/Faff/
+    // FaffWatch Watch App/WorkoutEngine.swift). The backend already tolerates
+    // the optional `#HHmm` tail (route.ts's date-extraction regex, built for
+    // the Watch's P1-34 fix) — both surfaces POST to the same
+    // /api/watch/workouts/complete endpoint, so no backend change is needed.
+    //
+    // Computed from the run's actual `startedAt`, which is stable for the
+    // life of one session (set once at first Start, reused across
+    // pause/resume) — so calling this twice for the same run always yields
+    // the IDENTICAL suffix, which is what keeps a durable-queue retry
+    // idempotent instead of minting a new id on every re-POST attempt.
+    /// `#HHmm` from the run's actual start — 4 digits, always present.
+    static func sessionSuffix(for startDate: Date) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = .current
+        let c = cal.dateComponents([.hour, .minute], from: startDate)
+        return String(format: "#%02d%02d", c.hour ?? 0, c.minute ?? 0)
+    }
+
     func start(canonicalWorkoutId: String? = nil) {
         guard state != .running else { return }
         guard authorizationGranted else {
@@ -594,8 +625,12 @@ final class PhoneRunTracker: NSObject, ObservableObject {
         if let avgHr { phase["actualAvgHr"] = avgHr }
         if let maxHr { phase["actualMaxHr"] = maxHr }
 
+        // F072 · per-start session suffix so a same-day restart/double never
+        // collides with an earlier completion's row. See
+        // sessionSuffix(for:) doc above (same shape as the Watch's P1-34).
+        let wireWorkoutId = (workoutId ?? "phone_\(UUID().uuidString)") + Self.sessionSuffix(for: started)
         var payload: [String: Any] = [
-            "workoutId": workoutId ?? "phone_\(UUID().uuidString)",
+            "workoutId": wireWorkoutId,
             "startedAt": iso.string(from: started),
             "completedAt": iso.string(from: finishedAt),
             "status": status, // "completed" | "partial" | "abandoned"
@@ -792,8 +827,14 @@ extension PhoneRunTracker {
         if cp.elapsedSec > 0, cp.distanceMi > 0.05 {
             phase["actualPaceSPerMi"] = Int((Double(cp.elapsedSec) / cp.distanceMi).rounded())
         }
+        // F072 · same per-start suffix as the live-finish path (see
+        // sessionSuffix(for:) doc above), keyed off the checkpoint's own
+        // startedAt so a crash-recovered completion never collides with a
+        // second run started the same day. `cp.workoutId` itself (unsuffixed)
+        // is left untouched — it's still what `clearCheckpoint` matches
+        // against the file on disk.
         var payload: [String: Any] = [
-            "workoutId": cp.workoutId,
+            "workoutId": cp.workoutId + PhoneRunTracker.sessionSuffix(for: cp.startedAt),
             "startedAt": iso.string(from: cp.startedAt),
             "completedAt": iso.string(from: cp.updatedAt),
             "status": "partial",
@@ -986,7 +1027,15 @@ extension PhoneRunTracker {
                         currentPaceSecPerMi: Int?,
                         lastFixAgeIsStale: Bool = false,
                         hasFirstFix: Bool = true,
-                        trackHasGap: Bool = false) {
+                        trackHasGap: Bool = false,
+                        // F072 test seam · lets FaffTests stamp a specific
+                        // base workoutId / startedAt (e.g. two same-day
+                        // starts at different clock times) without touching
+                        // CoreLocation permission state, which unit tests
+                        // cannot grant. Every existing #Preview call site
+                        // omits these, so behaviour there is unchanged.
+                        workoutIdOverride: String? = nil,
+                        startedAtOverride: Date? = nil) {
         self.state = state
         self.elapsedSec = elapsedSec
         self.distanceMi = distanceMi
@@ -994,8 +1043,8 @@ extension PhoneRunTracker {
         self.lastFixAgeIsStale = lastFixAgeIsStale
         self.hasFirstFix = hasFirstFix
         self.trackHasGap = trackHasGap
-        self.workoutId = workoutId ?? "preview"
-        self.startedAt = startedAt ?? Date(timeIntervalSinceNow: -Double(elapsedSec))
+        self.workoutId = workoutIdOverride ?? workoutId ?? "preview"
+        self.startedAt = startedAtOverride ?? startedAt ?? Date(timeIntervalSinceNow: -Double(elapsedSec))
         self.authorizationGranted = true
     }
 }

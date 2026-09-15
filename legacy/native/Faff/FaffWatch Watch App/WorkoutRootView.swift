@@ -646,13 +646,21 @@ struct WorkoutRootView: View {
                 // recap instead of Start. Checked first, ahead of the stale-
                 // plan board: whether the CACHED prescription is fresh has
                 // nothing to say about a session that already happened.
-                V5LobbyRecap(
+                //
+                // F073 · the recap used to be the whole board and a dead end.
+                // A genuine second run is still a real, if rare, case ("a 2nd
+                // run really does happen" — David), so this wraps the recap
+                // with the SAME "Just run" escape hatch every other lobby
+                // state below offers, as an explicit second page — never the
+                // default, never automatic.
+                WatchCompletedTodaySurfaceV5(
                     typeLabel: workout.name,
                     distanceMi: recap.distanceMi,
                     durationSec: recap.durationSec,
                     paceSPerMi: recap.paceSPerMi,
                     rows: recap.rows,
-                    units: workout.unitsDistance
+                    units: workout.unitsDistance,
+                    onJustRun: { model.start(.makeJustRun()) }
                 )
             } else if model.stalePending && workout.isExpired {
                 // RK-2 — the cached plan is past its window and a refetch is

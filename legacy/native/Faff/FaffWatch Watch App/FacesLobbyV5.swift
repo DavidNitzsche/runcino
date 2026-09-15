@@ -387,6 +387,48 @@ struct V5LobbyRecap: View {
     }
 }
 
+// MARK: - 1c · Already run today, with an explicit way to run again (F073)
+//
+// `V5LobbyRecap` alone was a dead end: once today's session is marked done,
+// the runner had no way back to Start from this board at all — not even the
+// "just run" escape every OTHER lobby state below already carries. David's
+// own instruction: "after a run is completed the watch should not allow you
+// to run it again. can go to the stats and then also provide a 'just run'
+// option if a 2nd run really does happen."
+//
+// This wraps the existing recap board with the SAME `V5LobbyEscape` page
+// every other lobby state already uses for its override (2c above) — reused
+// verbatim, never a second casual-run mechanism — as a second, explicit
+// swipe-away page. Recap stays page 0, the default; the override is never
+// the first thing the runner sees, matching the "always the LAST page"
+// discipline `V5LobbyEscape`'s own header states.
+struct WatchCompletedTodaySurfaceV5: View {
+    let typeLabel: String
+    let distanceMi: Double
+    let durationSec: Int?
+    let paceSPerMi: Double?
+    let rows: [WatchCompletedRow]
+    var units: String? = nil
+    /// Starts a genuinely new, unstructured session — `model.start(.makeJustRun())`
+    /// at the call site, the exact same escape hatch `onEscape`/`onPlainRun`
+    /// invoke everywhere else in this router.
+    let onJustRun: () -> Void
+
+    private let pageCount = 2
+
+    var body: some View {
+        TabView {
+            V5LobbyRecap(typeLabel: typeLabel, distanceMi: distanceMi, durationSec: durationSec,
+                         paceSPerMi: paceSPerMi, rows: rows, units: units,
+                         pageCount: pageCount, pageIndex: 0)
+                .tag(0)
+            V5LobbyEscape(actionLabel: "Just run", pageCount: pageCount, pageIndex: 1, onStart: onJustRun)
+                .tag(1)
+        }
+        .tabViewStyle(.page(indexDisplayMode: .never))
+    }
+}
+
 // MARK: - 2 · Rest day and No session
 //
 // Refusals with a reason, not empty states. Rest day sits in the rest ramp so

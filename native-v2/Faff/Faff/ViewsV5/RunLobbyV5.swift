@@ -494,6 +494,19 @@ enum RunLobbyPlanCheck {
     }
 }
 
+// MARK: - Completion gate (F073, pure, testable)
+
+/// Whether today's prescription is already done — the one predicate
+/// `RunLobbyV5` gates its start tiles on. A named, testable function per
+/// Rule 15 rather than an inline `== .afterRun` buried in the view body,
+/// and the one place this screen's completion reading could ever drift
+/// from what `V5TodayState` actually means.
+enum RunLobbyCompletionGate {
+    static func alreadyDone(_ state: V5TodayState) -> Bool {
+        state == .afterRun
+    }
+}
+
 // MARK: - Workout fetch state (Rule 11: three facts, never one)
 
 enum RunLobbyWorkoutState {
@@ -568,6 +581,15 @@ struct RunLobbyV5: View {
     /// FIRST, so this alert's "review" action is reviewing the real update,
     /// not a stale display of the old one.
     @State private var planChanged = false
+    /// F073 · whether today's prescription is already recorded. Read from
+    /// the SAME `after_run` signal `TodayAfterV5` already renders on
+    /// (`V5Today.state`, via `API.fetchV5Today()`) — never a second,
+    /// independently-derived completion check for this screen. David,
+    /// direct: "after a run is completed the watch should not allow you to
+    /// run it again. can go to the stats and then also provide a 'just run'
+    /// option if a 2nd run really does happen." Gates the RUN tab's start
+    /// tiles the same way on the phone.
+    @State private var alreadyCompletedToday = false
 
     /// (2026-09-03 correction) · this used to be a bare `VStack` with no
     /// `ScrollView`, no header and no top alignment — the shape a sheet's
@@ -657,6 +679,23 @@ struct RunLobbyV5: View {
         go()
     }
 
+    /// F073 · the explicit second-run action. Deliberately does not re-fetch
+    /// or re-verify today's prescription the way `start(_:)` does — the
+    /// whole point is that this run is NOT today's prescription, regardless
+    /// of what a fresh read of it would say. Recording `.none` here is what
+    /// keeps a genuine second run from ever being mistaken for (and
+    /// overwriting) the completed one; F072's `#HHmm` workoutId suffix is
+    /// the separate, still-load-bearing guarantee that a same-day pair of
+    /// completions can never collide on the wire even if this gate were
+    /// somehow bypassed.
+    private func startJustRun(_ go: @escaping () -> Void) {
+        guard !isStarting else { return }
+        isStarting = true
+        defer { isStarting = false }
+        PendingRunPlanV5.shared.record(.none, dateISO: RunLobbyDate.todayISO())
+        go()
+    }
+
     /// Fetches the workout only — no coach-purpose read any more (2026-09-03
     /// correction). "What am I doing and why" is Today's question to answer;
     /// Run confirms exactly what is about to start and how to execute it.
@@ -670,16 +709,49 @@ struct RunLobbyV5: View {
         } catch {
             workoutState = .failed
         }
+        // F073 · reuses `API.fetchV5Today()` — the exact call `TodayHostV5`
+        // makes to decide `TodayAfterV5` vs `TodayBeforeLiveV5` — rather than
+        // inventing a second "is today done" read for this screen. Best-
+        // effort: a failed read here must never block Start, so it simply
+        // leaves this screen at its pre-F073 behaviour for this one load,
+        // the same posture every other optional read in this file takes.
+        if case .ok(let today) = (try? await API.fetchV5Today()) ?? .failed {
+            alreadyCompletedToday = RunLobbyCompletionGate.alreadyDone(today.state)
+        }
+        if Self.forceAlreadyCompletedForRender { alreadyCompletedToday = true }
+    }
+
+    /// DEBUG-only render-verification seam, sibling of `FaffV5Root`'s
+    /// `-faffTab` (CLAUDE.md Rule 13: a runner-facing change is verified by
+    /// RENDERING it against the real app, not by asserting the absence of
+    /// the old bug). Forces this screen into the "already done" gate so
+    /// F073's phone behaviour can be screenshotted on a build whose live
+    /// account may or may not have actually completed today's run yet —
+    /// substitutes nothing else, fetches everything else exactly as normal.
+    /// Never compiled into a release build.
+    private static var forceAlreadyCompletedForRender: Bool {
+        #if DEBUG
+        ProcessInfo.processInfo.arguments.contains("-faffRunCompleted")
+        #else
+        false
+        #endif
     }
 
     // MARK: - What's about to start
 
     @ViewBuilder
     private var workoutSection: some View {
-        switch workoutState {
-        case .loading:
-            Skeleton(lines: 3)
-        case .failed:
+        // F073 · checked BEFORE the workout switch below — a workout can
+        // still exist and load cleanly for a session that is already done;
+        // completion, not "was a prescription fetched," is what decides
+        // whether this screen offers to start it again.
+        if alreadyCompletedToday {
+            alreadyDoneCard
+        } else {
+            switch workoutState {
+            case .loading:
+                Skeleton(lines: 3)
+            case .failed:
             // FAILRECOVERY-1 (2026-09-03 correction) · no `onRetry` here.
             // The old shape had Retry inside this card, a SECOND "Retry
             // workout" button in `startSection` below, and (until the same
@@ -688,12 +760,33 @@ struct RunLobbyV5: View {
             // `startSection`'s "Retry workout". This card only explains,
             // once — "Explain the state once" — and leaves acting on it to
             // the one button.
-            ErrorNote(text: "Today's planned workout couldn't be loaded. You can retry or intentionally record an unstructured run.")
-        case .none:
-            Silence(reason: "Nothing scheduled today. Starting now will record an unstructured run.")
-        case .ready(let w):
-            workoutCard(w)
+                ErrorNote(text: "Today's planned workout couldn't be loaded. You can retry or intentionally record an unstructured run.")
+            case .none:
+                Silence(reason: "Nothing scheduled today. Starting now will record an unstructured run.")
+            case .ready(let w):
+                workoutCard(w)
+            }
         }
+    }
+
+    /// F073 · replaces the workout confirmation once today's session is
+    /// already recorded. Says the one fact this screen needs to state —
+    /// per Rule 17, the full recap already lives on Today/`TodayAfterV5`
+    /// and does not need repeating here — and points at the explicit
+    /// second-run action in `startSection` rather than re-showing Start.
+    private var alreadyDoneCard: some View {
+        VStack(alignment: .leading, spacing: V5.S.s8) {
+            V5SectionLabel(text: "Today's workout", color: V5.textQuiet, size: TypeScaleV5.label12)
+            Text("Already recorded")
+                .font(.faffDisplay(20))
+                .foregroundStyle(V5.textPrimary)
+            Text("Today's session is done. See it on Today, or record an explicit second run below.")
+                .font(.faffText(TypeScaleV5.body15))
+                .foregroundStyle(V5.textSecondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(V5.S.tilePad)
+        .background(V5.materialTile, in: RoundedRectangle(cornerRadius: V5.R.r22, style: .continuous))
     }
 
     /// Confirmation only (2026-09-03 correction) — identity, distance and
@@ -873,13 +966,37 @@ struct RunLobbyV5: View {
             // execution alternatives only after the user understands they
             // are intentionally starting without the plan." Only `.failed`
             // gets a Retry — `.none` already answered cleanly ("nothing
-            // scheduled"), and there is nothing there to retry.
-            if case .failed = workoutState {
+            // scheduled"), and there is nothing there to retry. Never shown
+            // once today is already done (`alreadyCompletedToday`) — a
+            // stale/failed prescription read has nothing to say about a
+            // session that already happened, same reasoning `panelFill`
+            // applies on Today.
+            if case .failed = workoutState, !alreadyCompletedToday {
                 FaffButton("Retry workout", variant: .secondary, size: .md,
                            action: { Task { workoutState = .loading; await loadWorkout() } })
             }
 
-            if unstructured {
+            if alreadyCompletedToday {
+                // F073 · the only action left is an EXPLICIT second run —
+                // never a resumed "start today's workout." Routed through
+                // `startJustRun`, which records `.none` regardless of what
+                // `workoutState` holds, so this can never silently re-run
+                // (and re-overwrite, absent F072's fix) the session that is
+                // already done. Reuses this file's own existing
+                // unstructured-run tiles/copy (the same ones `unstructured`
+                // below draws for "nothing scheduled today") rather than a
+                // new casual-run mechanism.
+                if watchCanExecute {
+                    choice(title: "Just run · Apple Watch", sub: "A second, unstructured session",
+                           action: { startJustRun(onWatch) })
+                } else {
+                    watchBlockedRow
+                }
+                choice(title: "Just run · Outdoor on iPhone", sub: "GPS pace and route, no plan",
+                       action: { startJustRun(onOutdoor) })
+                choice(title: "Just run · Treadmill", sub: "Speed and incline, no plan",
+                       action: { startJustRun(onTreadmill) })
+            } else if unstructured {
                 // "Do not show an Apple Watch Retry row when no canonical
                 // workout has loaded; first recover the workout, then
                 // evaluate Watch sync." The watch tile/blocked-row is

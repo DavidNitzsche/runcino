@@ -81,6 +81,25 @@ final class RunLobbyRecordingOwnerTests: XCTestCase {
     }
 }
 
+// MARK: - F073 · the RUN tab's completion gate
+
+final class RunLobbyCompletionGateTests: XCTestCase {
+    func test_afterRunIsDone() {
+        XCTAssertTrue(RunLobbyCompletionGate.alreadyDone(.afterRun))
+    }
+
+    /// FALSIFIES F073's phone gap directly: before this gate existed, the
+    /// RUN tab offered to start today's prescription regardless of state,
+    /// including on the exact state (`after_run`) that means it already
+    /// happened. Every other state must still be startable.
+    func test_everyOtherStateIsNotDone() {
+        for s: V5TodayState in [.beforeRun, .injuryFlare, .sick, .weekOff, .offSeason, .raceDay, .notOnPhoneYet] {
+            XCTAssertFalse(RunLobbyCompletionGate.alreadyDone(s),
+                           "\(s) must still offer Start — only after_run means the session is done")
+        }
+    }
+}
+
 final class RunLobbyTitleTests: XCTestCase {
     func test_splitsHeadlineFromDescriptorAtAtSign() {
         let (headline, descriptor) = RunLobbyTitle.split("10\u{00D7}60s hills @ 5K-10K effort \u{00B7} 2 min jog down")
@@ -600,5 +619,141 @@ final class PhoneRunTrackerCanonicalIdTests: XCTestCase {
     func test_bothNilProducesASyntheticPhoneId() {
         let id = PhoneRunTracker.resolveStartWorkoutId(canonical: nil, pending: nil)
         XCTAssertTrue(id.hasPrefix("phone_"), "an unstructured run must still get SOME id: \(id)")
+    }
+}
+
+// MARK: - F072 · same-day workoutId collision (Watch's P1-34, copied to phone)
+
+final class PhoneRunTrackerSessionSuffixTests: XCTestCase {
+
+    // Same safety pattern RecorderConcurrencyTests establishes (2026-08-21
+    // incident: unstubbed POSTs from a test landed real phantom runs in
+    // production). Every network path in this class is intercepted.
+    override func setUp() async throws {
+        try await super.setUp()
+        URLProtocol.registerClass(TestStubProtocol.self)
+        SignInFlowTests.responder = { request in
+            let resp = HTTPURLResponse(url: request.url ?? URL(string: "https://faff.run")!,
+                                        statusCode: 200, httpVersion: nil, headerFields: nil)!
+            return (resp, Data("{}".utf8))
+        }
+    }
+
+    override func tearDown() async throws {
+        URLProtocol.unregisterClass(TestStubProtocol.self)
+        SignInFlowTests.responder = nil
+        SignInFlowTests.lastBody = nil
+        try await super.tearDown()
+    }
+
+    private func localDate(hour: Int, minute: Int, day: Int = 14) -> Date {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = .current
+        return cal.date(from: DateComponents(year: 2026, month: 9, day: day, hour: hour, minute: minute))!
+    }
+
+    /// Same format as the Watch's `WorkoutEngine.sessionSuffix(for:)` —
+    /// `#HHmm`, always 4 digits, zero-padded.
+    func test_suffixFormatMatchesWatch() {
+        XCTAssertEqual(PhoneRunTracker.sessionSuffix(for: localDate(hour: 7, minute: 5)), "#0705")
+        XCTAssertEqual(PhoneRunTracker.sessionSuffix(for: localDate(hour: 18, minute: 30)), "#1830")
+        XCTAssertEqual(PhoneRunTracker.sessionSuffix(for: localDate(hour: 0, minute: 0)), "#0000")
+    }
+
+    /// Retry-safety: the durable queue re-POSTs the same payload on failure,
+    /// and the suffix must not mint fresh on each attempt — otherwise a
+    /// retried completion would land as a THIRD distinct run instead of
+    /// deduping against its own earlier attempt.
+    func test_sameStartProducesSameSuffix_retrySafe() {
+        let start = localDate(hour: 6, minute: 12)
+        XCTAssertEqual(PhoneRunTracker.sessionSuffix(for: start),
+                       PhoneRunTracker.sessionSuffix(for: start))
+    }
+
+    /// FALSIFIES F072 directly: two genuinely separate runs recorded the
+    /// same calendar day, off the SAME server-issued per-day base id
+    /// (`${userId}-${YYYY-MM-DD}`, exactly as route.ts issues it) — the
+    /// collision this file's own header comment describes ("same
+    /// workoutId → same id, so re-POSTing overwrites"). Before F072 both
+    /// payloads' `workoutId` were byte-identical; this asserts they are
+    /// now DISTINCT, while the tracker's own plan-linkage `workoutId`
+    /// property (unsuffixed, used for checkpoint matching / WatchSync) is
+    /// untouched — same split the Watch's P1-34 fix made.
+    @MainActor
+    func test_twoSameDayRuns_noLongerCollide() {
+        let baseId = "u1-2026-09-14" // same shape route.ts issues, per-day
+        let morning = localDate(hour: 7, minute: 5)
+        let evening = localDate(hour: 18, minute: 30)
+
+        let runA = PhoneRunTracker()
+        runA.seedForPreview(state: .running, elapsedSec: 1800, distanceMi: 4.0,
+                             currentPaceSecPerMi: 450,
+                             workoutIdOverride: baseId, startedAtOverride: morning)
+        let payloadA = runA.buildCompletionPayload(status: "completed")
+
+        let runB = PhoneRunTracker()
+        runB.seedForPreview(state: .running, elapsedSec: 1500, distanceMi: 3.0,
+                             currentPaceSecPerMi: 500,
+                             workoutIdOverride: baseId, startedAtOverride: evening)
+        let payloadB = runB.buildCompletionPayload(status: "completed")
+
+        let wireIdA = payloadA["workoutId"] as? String
+        let wireIdB = payloadB["workoutId"] as? String
+        XCTAssertNotEqual(wireIdA, wireIdB,
+                           "two same-day runs must produce distinct wire workoutIds — "
+                           + "identical ids is the exact F072 collision (second run's "
+                           + "upsert silently overwrites the first).")
+        XCTAssertEqual(wireIdA, baseId + "#0705")
+        XCTAssertEqual(wireIdB, baseId + "#1830")
+
+        // The plan-linkage key itself stays the shared base id — the Watch's
+        // P1-34 pattern keeps `workout.workoutId` untouched and only
+        // suffixes the wire payload.
+        XCTAssertEqual(runA.workoutId, baseId)
+        XCTAssertEqual(runB.workoutId, baseId)
+    }
+
+    /// A crash-recovered completion (`flushInterruptedRun`) must apply the
+    /// identical suffix, keyed off the checkpoint's own `startedAt`, so a
+    /// jetsam-killed run recovered on relaunch cannot collide with a second
+    /// run started later the same day either.
+    func test_flushInterruptedRun_appliesSameSuffix() async throws {
+        let dir = try FileManager.default.url(for: .applicationSupportDirectory,
+                                               in: .userDomainMask,
+                                               appropriateFor: nil,
+                                               create: true)
+        let url = dir.appendingPathComponent("phone-run-checkpoint.json")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let started = localDate(hour: 6, minute: 45)
+        let cp = PhoneRunCheckpoint(workoutId: "u1-2026-09-14",
+                                    startedAt: started,
+                                    // > 15s old so `interruptedRun()` treats
+                                    // it as a genuinely abandoned session
+                                    // rather than a live recorder's own
+                                    // in-flight checkpoint.
+                                    updatedAt: Date(timeIntervalSinceNow: -30),
+                                    elapsedSec: 1200,
+                                    movingSec: 900,
+                                    distanceMi: 2.0,
+                                    polyline: nil,
+                                    hadGap: false)
+        let data = try JSONEncoder().encode(cp)
+        try data.write(to: url, options: Data.WritingOptions.atomic)
+
+        let recovered = PhoneRunTracker.flushInterruptedRun()
+        XCTAssertNotNil(recovered, "a checkpoint older than 15s with real distance must be recoverable")
+        XCTAssertEqual(recovered?.workoutId, "u1-2026-09-14",
+                       "the recovered checkpoint's OWN workoutId field stays unsuffixed — "
+                       + "only the wire payload built from it carries the suffix")
+
+        // `flushInterruptedRun` fires its POST from a detached `Task`; give
+        // it a beat to run through the stubbed URLProtocol before reading
+        // what actually went on the wire.
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        XCTAssertEqual(SignInFlowTests.lastBody?["workoutId"] as? String, "u1-2026-09-14#0645",
+                       "the WIRE payload for a crash-recovered completion must carry the same "
+                       + "#HHmm suffix as a live finish — otherwise recovery reopens the exact "
+                       + "collision F072 fixed for the normal path")
     }
 }
