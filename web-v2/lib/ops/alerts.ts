@@ -66,6 +66,14 @@ export type AlertKind = 'plan_convergence' | 'cron_fail' | 'cron_ok' | 'cron_sta
    * a queue read failure or a genuinely-thrown persist would have sat in an
    * unread string forever. */
   | 'deferral_queue_carry'
+  /* F126 (2026-09-15) · Safety's own `mayEmitRunnableWorkout` predicate
+   * (`lib/safety/safety-verdict.ts`) says the runner should get no runnable
+   * session today — STOP or UNKNOWN posture — yet the response `v5/today`
+   * is about to send actually names one. Detect-only: raised by
+   * `lib/ops/safety-readiness-check.ts` so there is real incidence data
+   * before F096 designs the arbitration policy this contradiction needs;
+   * it never changes what gets served. */
+  | 'safety_readiness_mismatch'
   | 'unknown';
 export type AlertSeverity = 'info' | 'warn' | 'error' | 'critical';
 

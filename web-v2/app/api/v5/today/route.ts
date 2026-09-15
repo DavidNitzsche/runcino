@@ -49,6 +49,7 @@ import {
   safetyVerdictLine,
   type SafetyResolution,
 } from '@/lib/safety/safety-verdict';
+import { detectSafetyReadinessMismatch } from '@/lib/ops/safety-readiness-check';
 import { mapWatchPhases } from '@/lib/coach/run-state';
 import { derivePhaseMileSplitsFromCompletion } from '@/lib/runs/derive-phase-splits';
 import { deriveReadingScopes } from '@/lib/coach/reading-scope';
@@ -2523,6 +2524,29 @@ async function composeToday(req: NextRequest): Promise<NextResponse> {
           : proposalRead.items.filter((w) => w.dateISO === proposalRead.todayISO);
         ctx.proposalsRead = proposalRead.read;
       }
+
+  // F126 (2026-09-15) · DETECT-ONLY. This is the one branch that can reach a
+  // runnable prescription at all — every STOP/UNKNOWN verdict above returns
+  // its own panel before `todayPlan` is even resolved (line ~755), so by
+  // construction this point should never be reached with
+  // `mayEmitRunnableWorkout(safety)` false. If it ever is, that is exactly
+  // the contradiction F096 needs real incidence data on before it can design
+  // an arbitration policy. Never blocks or alters the response either way —
+  // see `lib/ops/safety-readiness-check.ts`.
+  await detectSafetyReadinessMismatch(
+    safety,
+    todayPlan != null && dayPrescribesARun(todayPlan.type),
+    todayPlan != null
+      ? {
+          planId: activePlan?.id ?? null,
+          dateISO: today,
+          plannedType: todayPlan.type,
+          subLabel: todayPlan.subLabel,
+          prescriptionType,
+          sessionHeadline: prescription?.headline ?? null,
+        }
+      : null,
+  );
 
   return NextResponse.json(composeV5Today(ctx));
 }
