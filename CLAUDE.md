@@ -1277,6 +1277,42 @@ integrity, not to second-guess whether he's right that he didn't say it.
 
 ---
 
+## Rule 25 · Never ask a runner to pick a number and not give it to them (locked 2026-09-15)
+
+**David, direct, via David's Desk, on F103 (onboarding's mileage stepper
+silently snapping a runner's chosen value down to the nearest of a fixed
+rung set before it reaches the engine — the default itself, 24, resolves to
+15, a 37% understatement, with zero disclosure): "This whole thing seems
+broken. Why would the default be 24 but they get 15? We should never ask a
+runner to pick a number and not give it to them. Other agents need to weigh
+in here because this isn't a simple answer it seems like a broken system."**
+
+He did not pick either fix option the finding originally offered
+(rung-only stepper vs. show-the-resolved-value) — he widened the question
+instead. Two things that means, both still open:
+
+1. **Why does the DEFAULT itself land off-rung?** The stepper's own default
+   value (24) doesn't resolve to a valid rung either — this may be a deeper
+   bug than "a runner's deliberate choice gets rounded," since it means the
+   system ships every onboarding session already broken before a runner
+   touches the control.
+2. **Does this same shape — ask for one number, silently substitute
+   another — appear anywhere else in onboarding, or elsewhere in the app?**
+   Not assumed, not yet checked. This needs a real investigation across
+   more than one role, per David's own "other agents need to weigh in,"
+   not a single quick fix.
+
+**The standing principle, general beyond this one finding:** any control
+that presents itself as accepting the runner's own input — a stepper, a
+slider, a free-text field, a picker — must either use the value the runner
+actually selected, or tell them plainly what value it's actually going to
+use instead. Silent substitution between "what the runner picked" and
+"what the system does with it" is the violation, regardless of which
+specific number is involved or how small the rounding looks from the
+engine's side.
+
+---
+
 ## What to do if a doc referenced above is missing
 
 If any of the required-reading documents is missing or empty when you go to read it, stop and tell me which one is missing. Don't proceed by inference.
