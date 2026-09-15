@@ -60,10 +60,13 @@ struct TargetsProjectionDepth: View {
                             .tracking(0.8)
                             .foregroundStyle(Theme.txt.opacity(0.7))
                         Spacer()
-                        // RULE ONE · a modelled row wears the amber ~, drawn
-                        // by the client off the row's own `modelled` flag
-                        // (the server's hand-drawn "~" prefix is stripped so
-                        // the mark is never doubled — `timeDisplay`).
+                        // RULE ONE, RETIRED MARK (CLAUDE.md, 2026-09-14): a
+                        // modelled row used to wear the amber ~; now it
+                        // renders identically to a measured row. The row's
+                        // own `modelled` flag is still read (`timeDisplay`
+                        // still strips any legacy server-drawn prefix so
+                        // nothing doubles up), it just no longer changes
+                        // what's drawn.
                         projectionTimeText(entry)
                             .font(.display(18, weight: .semibold))
                             .tracking(-0.5)
@@ -76,7 +79,10 @@ struct TargetsProjectionDepth: View {
                     Rectangle()
                         .fill(Color.white.opacity(0.06))
                         .frame(height: 1)
-                    Text("~ includes +\(Int(pct.rounded())) percent until marathon-specific training is in the block.")
+                    // No leading tilde — CLAUDE.md's standing override,
+                    // 2026-09-14. "Includes... until..." already discloses
+                    // this is an adjustment, not a measured figure.
+                    Text("Includes +\(Int(pct.rounded())) percent until marathon-specific training is in the block.")
                         .font(.body(10.5, weight: .medium))
                         .foregroundStyle(Theme.warnText.opacity(0.85))
                         .fixedSize(horizontal: false, vertical: true)
@@ -88,11 +94,11 @@ struct TargetsProjectionDepth: View {
         }
     }
 
-    /// The time cell: amber tilde on a modelled row, bare time otherwise.
+    /// No tilde — CLAUDE.md's standing override, 2026-09-14. `isModelled`
+    /// is kept for whoever eventually adds an accessibility label here; the
+    /// visible text is identical either way.
     private func projectionTimeText(_ entry: RaceProjectionEntry) -> Text {
-        entry.isModelled
-            ? Text("~").foregroundColor(Theme.warnText) + Text(entry.timeDisplay)
-            : Text(entry.timeDisplay)
+        Text(entry.timeDisplay)
     }
 
     // ── Shared section chrome (matches TargetsView styling) ───────────────

@@ -440,12 +440,12 @@ struct TreadmillView: View {
                 // param since treadmill distance benefits from the finer
                 // live read.
                 //
-                // 2026-08-21 · the mark. When part of this distance was
-                // credited across seconds the app did not witness (screen
-                // locked, app backgrounded), the number is partly an estimate
-                // and says so — amber tilde, same mark the rest of the app
-                // uses for a modelled number. Rule one is a system rule, not
-                // one screen's fix.
+                // 2026-08-21 · the mark, RETIRED 2026-09-15 per CLAUDE.md's
+                // standing override (no `~` mark on modelled numbers, ever).
+                // `provenanceNote` below already says in words, when part of
+                // this distance was credited across seconds the app did not
+                // witness (screen locked, app backgrounded), that the number
+                // is partly an estimate — the glyph was redundant with it.
                 topStat("DISTANCE",
                         "\(Units.formatDistance(miles: session.belt.distanceMi, decimals: 2)) \(Units.distanceLabel())",
                         modelled: distanceIsModelled)
@@ -526,19 +526,19 @@ struct TreadmillView: View {
         return "\(span) ran with the app in the background · that distance is estimated at the belt speed you last set."
     }
 
+    /// `modelled` no longer draws a glyph (CLAUDE.md's standing override,
+    /// 2026-09-14: no `~` mark on modelled numbers, ever) — it only feeds
+    /// VoiceOver, the same distinction `FaffValueText` keeps for the same
+    /// reason: the wire still knows the basis, only the visible mark is
+    /// gone. `provenanceNote` says the same thing in words for a sighted
+    /// runner.
     private func topStat(_ k: String, _ v: String, modelled: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             SpecLabel(text: k, size: 9, tracking: 1.5, color: Theme.txt.opacity(0.58))
-            HStack(alignment: .firstTextBaseline, spacing: 0) {
-                if modelled {
-                    Text(Theme.V5.modelledMark)
-                        .font(.display(21, weight: .bold))
-                        .scaleEffect(0.62, anchor: .bottomTrailing)
-                        .foregroundStyle(Theme.warnText)
-                        .accessibilityLabel("estimated")
-                }
-                Text(v).font(.display(21, weight: .bold)).tracking(-0.5)
-            }
+            Text(v)
+                .font(.display(21, weight: .bold))
+                .tracking(-0.5)
+                .accessibilityLabel(modelled ? "estimated \(v)" : v)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

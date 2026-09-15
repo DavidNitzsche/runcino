@@ -163,24 +163,14 @@ struct PacesMovedV5: View {
         }
     }
 
-    /// "~ Modelled from training · not confirmed by a race" — the mark here
-    /// is the same `Theme.V5.modelledMark` token `FaffValueText` renders, not
-    /// a hand-typed "~", so it stays inside the one place the build gate
-    /// allows the glyph to be named.
+    /// "Modelled from training · not confirmed by a race" — no leading mark.
+    /// CLAUDE.md's standing override, 2026-09-14: no `~` on a modelled
+    /// number, ever. The sentence itself already says "Modelled from
+    /// training", which was always the whole content — the glyph this
+    /// caption used to draw ahead of it was decoration, per this file's own
+    /// prior reasoning below.
     private func modelledCaption(_ text: String) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: V5.S.s4) {
-            Text(Theme.V5.modelledMark)
-                .font(.faffText(TypeScaleV5.label13))
-                .foregroundStyle(V5.attention)
-                // A LONE TILDE IS PUNCTUATION, NOT A MARK.
-                //
-                // On a value the tilde is spoken as "estimated", because
-                // `FaffValueText` names it. Here it is the caption's own
-                // bullet and it reached VoiceOver as a bare "~" element —
-                // announced as "tilde" or swallowed, depending on the voice.
-                // The sentence beside it already says "Modelled from training",
-                // which is the whole content, so the glyph is decoration.
-                .accessibilityHidden(true)
             Text(text)
                 .font(.faffText(TypeScaleV5.label13))
                 .foregroundStyle(V5.textQuiet)

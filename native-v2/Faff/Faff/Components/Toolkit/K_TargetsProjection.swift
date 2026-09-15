@@ -560,10 +560,11 @@ struct TargetsProjectionPanel: View {
     /// (`projectionSpecificity` non-nil), both times it serves here are
     /// adjusted models and carry the amber ~ — the design contract's one mark
     /// for "estimated". Absent the flag, byte-identical to before.
+    // No tilde — CLAUDE.md's standing override, 2026-09-14 (no ~ mark on
+    // modelled numbers, ever). This component has no live call site
+    // currently, but is fixed rather than left carrying a banned glyph.
     private func specTime(_ sec: Int?) -> Text {
-        let t = Text(projFormatTime(sec))
-        guard summary.projectionSpecificity != nil, sec != nil else { return t }
-        return Text("~").foregroundColor(Theme.warnText) + t
+        Text(projFormatTime(sec))
     }
 
     private func todayToRaceRow(_ st: ProjState) -> some View {
