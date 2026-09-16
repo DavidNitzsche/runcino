@@ -536,7 +536,7 @@ struct TodayHostV5: View {
         // retry below (the existing pending-card contract) is not held up
         // by it; if the snapshot sync lands first, `date` may resolve
         // straight from it without `goTo` needing its own fetch at all.
-        Task { await syncPlanSnapshot() }
+        Task { await syncPlanSnapshot(reason: .retry) }
         goTo(date, todayISO: knownTodayISO ?? date, force: true, skipWeekPrefetch: true)
     }
 
@@ -951,7 +951,7 @@ struct TodayHostV5: View {
             // landing, not to the (much larger) whole-block sync. The first
             // frame paints from whatever `loadFromDiskSynchronously()` just
             // restored; this fills in a fresher snapshot behind it.
-            Task { await syncPlanSnapshot() }
+            Task { await syncPlanSnapshot(reason: .launch) }
         }
         // Learn the real today the instant any payload actually carries it —
         // see `todayISO(_:)`. A plain side effect, not a render-time read: a
@@ -1006,9 +1006,9 @@ struct TodayHostV5: View {
         // PLANSNAPSHOT-1 · a plan mutation (reschedule apply/undo — see
         // `RescheduleV5.swift`) is a named sync trigger.
         .onReceive(NotificationCenter.default.publisher(for: .faffPlanMutated)) { _ in
-            Task { await syncPlanSnapshot() }
+            Task { await syncPlanSnapshot(reason: .mutation) }
         }
-        .refreshable { await surface.load(); await syncPlanSnapshot() }
+        .refreshable { await surface.load(); await syncPlanSnapshot(reason: .manualRefresh) }
         // REQUESTSTORM-2 (2026-09-06) · `surface.load()` dropped from here.
         // `V5Surface`'s own `.faffForegroundRefresh` observer already
         // reloads this surface once per real foreground (throttled in
@@ -1019,7 +1019,7 @@ struct TodayHostV5: View {
         // foreground trigger for the plan snapshot (PLANSNAPSHOT-1 above),
         // and its own 3s throttle correctly collapses the app's two
         // deliberate posts into one snapshot sync.
-        .v5ReloadOnForeground { await syncPlanSnapshot() }
+        .v5ReloadOnForeground { await syncPlanSnapshot(reason: .foreground) }
     }
 
     /// SHAREDSHELL-1 (2026-09-04) · the ROOT CAUSE closure for the physical-
@@ -2117,10 +2117,59 @@ struct TodayHostV5: View {
     /// `@MainActor` (this whole type is) makes the check-then-store below
     /// atomic against the other four call sites without a lock: nothing
     /// else can run between reading `planSnapshotSyncTask` and setting it.
+    /// BA-01R item 6 · how long a `.foreground` signal alone must wait
+    /// before it is allowed to rebuild a snapshot that just completed
+    /// successfully. This block is expensive (BA01-CODE-FORENSIC-
+    /// 2026-09-15.md documents ~329 `pool.query` calls per request) and a
+    /// bare foreground event carries no evidence anything actually changed
+    /// — retry/mutation/manual-refresh all skip this cooldown entirely,
+    /// because each of THOSE is itself the evidence something might have
+    /// changed. 60s, not `ForegroundWork.foregroundLoadCoalesceSec`'s 3s:
+    /// that constant coalesces two back-to-back SURFACE loads a few seconds
+    /// apart; this one asks a materially different question — "is it worth
+    /// re-running the whole block's brain work again for a plain
+    /// foreground with no known invalidation" — over a longer, deliberately
+    /// separate window.
+    static let planSnapshotForegroundCooldownSec: TimeInterval = 60
+
+    /// BA-01R item 6 · pulled out of `syncPlanSnapshot` as a plain, static,
+    /// input-to-output function — same reasoning as
+    /// `shouldSkipNavigation`/`shouldPrefetchWeek`/`shouldRenderFromSnapshot`
+    /// elsewhere in this file: a decision expressed as inputs and an
+    /// output is directly testable, where the original inline `if` inside
+    /// an `async` method touching `@State`/a shared singleton was provable
+    /// only by driving a live sync through the real network.
+    ///
+    /// A `.foreground` signal with no known plan/fact invalidation cannot
+    /// rebuild a snapshot that just completed successfully. Every other
+    /// reason bypasses this — each already carries its own evidence
+    /// something may have changed (an explicit Retry, a plan mutation, a
+    /// manual pull-to-refresh, a cold launch, a post-import completion, or
+    /// a navigation that missed the current snapshot's own date range).
+    static func shouldSkipForegroundSync(
+        reason: PlanSnapshotStore.SyncReason,
+        currentState: PlanSnapshotStore.SyncState,
+        lastSuccessfulSyncAt: Date?,
+        now: Date
+    ) -> Bool {
+        guard reason == .foreground, currentState == .idle, let lastGood = lastSuccessfulSyncAt else {
+            return false
+        }
+        return now.timeIntervalSince(lastGood) < planSnapshotForegroundCooldownSec
+    }
+
     @discardableResult
-    func syncPlanSnapshot() async -> Bool {
+    func syncPlanSnapshot(reason: PlanSnapshotStore.SyncReason) async -> Bool {
         if let existing = planSnapshotSyncTask {
             return await existing.value
+        }
+        if Self.shouldSkipForegroundSync(
+            reason: reason,
+            currentState: PlanSnapshotStore.shared.syncState,
+            lastSuccessfulSyncAt: PlanSnapshotStore.shared.lastSuccessfulSyncAt,
+            now: Date()
+        ) {
+            return true
         }
         // No `await` between the check above and the store below — this
         // whole function runs on the main actor, so nothing else can
@@ -2129,7 +2178,7 @@ struct TodayHostV5: View {
         // overwrite it with a DIFFERENT task before this one clears it:
         // the only writer is this function, and it only writes when it
         // found nil. Clearing unconditionally after our own await is safe.
-        let task = Task { await performPlanSnapshotSync() }
+        let task = Task { await performPlanSnapshotSync(reason: reason) }
         planSnapshotSyncTask = task
         let result = await task.value
         planSnapshotSyncTask = nil
@@ -2145,17 +2194,17 @@ struct TodayHostV5: View {
     /// itself never touches it on failure, and a genuine cancellation
     /// (e.g. this task superseded by a newer sync request) is read as
     /// routine, not a failure, so it does not even reach `markSyncFailed`.
-    private func performPlanSnapshotSync() async -> Bool {
-        PlanSnapshotStore.shared.markSyncing()
+    private func performPlanSnapshotSync(reason: PlanSnapshotStore.SyncReason) async -> Bool {
+        PlanSnapshotStore.shared.markSyncing(syncReason: reason)
         let raw: Data
         do {
             raw = try await API.fetchPlanSnapshotRaw()
         } catch {
             if API.isCancellation(error) { return false }
-            PlanSnapshotStore.shared.markSyncFailed(String(describing: error).prefix(300).description)
+            PlanSnapshotStore.shared.markSyncFailed(String(describing: error).prefix(300).description, syncReason: reason)
             return false
         }
-        switch PlanSnapshotStore.shared.commit(rawData: raw) {
+        switch PlanSnapshotStore.shared.commit(rawData: raw, syncReason: reason) {
         case .success:
             return true
         case .failure:

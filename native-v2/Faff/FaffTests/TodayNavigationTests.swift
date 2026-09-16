@@ -203,4 +203,68 @@ final class TodayNavigationTests: XCTestCase {
         XCTAssertFalse(TodayHostV5.shouldPrefetchWeek(dateAlreadyCached: true, skipWeekPrefetch: false))
         XCTAssertFalse(TodayHostV5.shouldPrefetchWeek(dateAlreadyCached: true, skipWeekPrefetch: true))
     }
+
+    // MARK: - shouldSkipForegroundSync(reason:currentState:lastSuccessfulSyncAt:now:) — BA-01R item 6
+    //
+    // "A foreground signal without a known plan/fact invalidation cannot
+    // rebuild a snapshot that just completed successfully." Every other
+    // trigger (retry, mutation, manual refresh, launch, post-import,
+    // range-miss) already carries its own evidence of change and must
+    // never be skipped by this cooldown.
+
+    private let cooldownReference = Date(timeIntervalSince1970: 2_000_000)
+
+    /// The regression this exists to prevent: a bare foreground event,
+    /// moments after a successful sync, re-running the whole ~329-query
+    /// block rebuild for no new reason at all.
+    func testRuleEighteenFalsifier_foregroundRightAfterASuccessIsSkipped() {
+        XCTAssertTrue(TodayHostV5.shouldSkipForegroundSync(
+            reason: .foreground,
+            currentState: .idle,
+            lastSuccessfulSyncAt: cooldownReference,
+            now: cooldownReference.addingTimeInterval(1)))
+    }
+
+    /// A foreground signal genuinely past the cooldown window is a real
+    /// signal again — must proceed, not be skipped forever.
+    func testForegroundPastTheCooldownWindowIsNotSkipped() {
+        XCTAssertFalse(TodayHostV5.shouldSkipForegroundSync(
+            reason: .foreground,
+            currentState: .idle,
+            lastSuccessfulSyncAt: cooldownReference,
+            now: cooldownReference.addingTimeInterval(TodayHostV5.planSnapshotForegroundCooldownSec + 1)))
+    }
+
+    /// Every other reason bypasses the cooldown entirely, even at zero gap —
+    /// each already IS the evidence something may have changed.
+    func testEveryOtherReasonBypassesTheCooldownEntirely() {
+        for reason: PlanSnapshotStore.SyncReason in [.launch, .retry, .mutation, .manualRefresh, .postImport, .rangeMiss] {
+            XCTAssertFalse(TodayHostV5.shouldSkipForegroundSync(
+                reason: reason,
+                currentState: .idle,
+                lastSuccessfulSyncAt: cooldownReference,
+                now: cooldownReference),
+                "\(reason) must never be skipped by the foreground cooldown")
+        }
+    }
+
+    /// A foreground signal while a PRIOR attempt is still `.syncing` or
+    /// `.failed` is not "a snapshot that just completed successfully" —
+    /// the cooldown only ever protects a genuinely fresh `.idle` success.
+    func testForegroundIsNeverSkippedWhenTheLastAttemptWasNotAnIdleSuccess() {
+        XCTAssertFalse(TodayHostV5.shouldSkipForegroundSync(
+            reason: .foreground, currentState: .syncing,
+            lastSuccessfulSyncAt: cooldownReference, now: cooldownReference.addingTimeInterval(1)))
+        XCTAssertFalse(TodayHostV5.shouldSkipForegroundSync(
+            reason: .foreground, currentState: .failed("boom"),
+            lastSuccessfulSyncAt: cooldownReference, now: cooldownReference.addingTimeInterval(1)))
+    }
+
+    /// No prior successful sync at all (a cold account, or one cleared by
+    /// sign-out) must never be treated as "just completed successfully."
+    func testForegroundIsNeverSkippedWithNoPriorSuccessfulSync() {
+        XCTAssertFalse(TodayHostV5.shouldSkipForegroundSync(
+            reason: .foreground, currentState: .idle,
+            lastSuccessfulSyncAt: nil, now: cooldownReference))
+    }
 }

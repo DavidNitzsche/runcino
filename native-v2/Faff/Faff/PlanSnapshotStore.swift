@@ -38,6 +38,25 @@ final class PlanSnapshotStore {
         case failed(String)
     }
 
+    /// BA-01R item 5 (2026-09-15) · what actually asked for this sync.
+    /// `syncGeneration` alone proved "this app process attempted or
+    /// committed the full snapshot N times" but not WHY any of them fired —
+    /// per BA01-CODE-FORENSIC-2026-09-15.md's own finding: "generation 7
+    /// does not by itself prove seven simultaneous requests or an automatic
+    /// retry loop... The diagnostics should record a reason for every
+    /// generation." `syncPlanSnapshot()` has five independent callers
+    /// (launch, foreground, explicit Retry, pull-to-refresh, a plan
+    /// mutation/completion notification); this names which one fired.
+    enum SyncReason: String {
+        case launch
+        case foreground
+        case postImport = "post_import"
+        case retry
+        case mutation
+        case manualRefresh = "manual_refresh"
+        case rangeMiss = "range_miss"
+    }
+
     enum CommitError: Error, Equatable {
         case decodeFailed(String)
         case invalidShape(String)
@@ -55,6 +74,10 @@ final class PlanSnapshotStore {
     /// attempt is this" the same way `RequestDiagnosticsLog` shows which
     /// navigation generation a request belonged to.
     private(set) var syncGeneration: Int = 0
+    /// BA-01R item 5 · which trigger owns the CURRENT/most recent sync
+    /// attempt (`syncGeneration`'s own reason). See `SyncReason`'s own doc
+    /// comment for why a bare generation count was not enough on its own.
+    private(set) var lastSyncReason: SyncReason?
 
     private let fileURL: URL
     private let tmpURL: URL
@@ -109,8 +132,9 @@ final class PlanSnapshotStore {
     /// has whatever was valid before this call, per the brief's own rule:
     /// "a failed, cancelled, partial, or malformed sync cannot damage it."
     @discardableResult
-    func commit(rawData: Data) -> Result<PlanSnapshot, CommitError> {
+    func commit(rawData: Data, syncReason: SyncReason) -> Result<PlanSnapshot, CommitError> {
         syncGeneration += 1
+        lastSyncReason = syncReason
         let decoded: PlanSnapshot
         do {
             decoded = try JSONDecoder().decode(PlanSnapshot.self, from: rawData)
@@ -183,8 +207,9 @@ final class PlanSnapshotStore {
 
     // MARK: - State the sync coordinator drives directly
 
-    func markSyncing() {
+    func markSyncing(syncReason: SyncReason) {
         syncState = .syncing
+        lastSyncReason = syncReason
     }
 
     /// Called by the sync coordinator when a fetch itself failed before
@@ -193,10 +218,16 @@ final class PlanSnapshotStore {
     /// from `commit`'s own failure path so a caller can choose not to call
     /// this for a routine cancellation — see `TodayHostV5`'s sync
     /// coordinator for that distinction.
-    func markSyncFailed(_ reason: String) {
+    ///
+    /// `reason` (the error message) and `syncReason` (BA-01R item 5's
+    /// trigger name) are deliberately two different parameters, not a
+    /// naming collision — the first says WHAT went wrong, the second says
+    /// WHY this attempt was made at all.
+    func markSyncFailed(_ reason: String, syncReason: SyncReason) {
         syncGeneration += 1
         lastError = reason
         syncState = .failed(reason)
+        lastSyncReason = syncReason
     }
 
     /// F022/F024 (2026-09-14) · account isolation. This file is USER-TIED
@@ -222,6 +253,7 @@ final class PlanSnapshotStore {
         lastError = nil
         syncState = .idle
         syncGeneration = 0
+        lastSyncReason = nil
         try? FileManager.default.removeItem(at: fileURL)
     }
 

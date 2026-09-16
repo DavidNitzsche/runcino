@@ -48,7 +48,7 @@ final class PlanSnapshotStoreTests: XCTestCase {
         let store = PlanSnapshotStore(testDirectory: tempDir)
         XCTAssertNil(store.current)
 
-        let result = store.commit(rawData: validSnapshotJSON())
+        let result = store.commit(rawData: validSnapshotJSON(), syncReason: .launch)
         switch result {
         case .success(let snap):
             XCTAssertEqual(snap.plan_id, "pln_abc")
@@ -71,7 +71,7 @@ final class PlanSnapshotStoreTests: XCTestCase {
 
     func testNoActivePlanIsAValidCommit() {
         let store = PlanSnapshotStore(testDirectory: tempDir)
-        let result = store.commit(rawData: noActivePlanJSON())
+        let result = store.commit(rawData: noActivePlanJSON(), syncReason: .launch)
         if case .failure(let e) = result { XCTFail("expected success, got \(e)") }
         XCTAssertEqual(store.current?.message, "No active plan.")
         XCTAssertEqual(store.current?.days.count, 0)
@@ -81,12 +81,12 @@ final class PlanSnapshotStoreTests: XCTestCase {
 
     func testMalformedCommitNeverReplacesAValidSnapshot() {
         let store = PlanSnapshotStore(testDirectory: tempDir)
-        _ = store.commit(rawData: validSnapshotJSON(planId: "pln_good"))
+        _ = store.commit(rawData: validSnapshotJSON(planId: "pln_good"), syncReason: .launch)
         XCTAssertEqual(store.current?.plan_id, "pln_good")
 
         // Garbage bytes — not even valid JSON.
         let garbage = "{not json".data(using: .utf8)!
-        let result = store.commit(rawData: garbage)
+        let result = store.commit(rawData: garbage, syncReason: .launch)
         if case .success = result { XCTFail("garbage must not be accepted") }
 
         // `current` is UNTOUCHED.
@@ -102,12 +102,12 @@ final class PlanSnapshotStoreTests: XCTestCase {
 
     func testStructurallyInvalidShapeIsRejectedEvenThoughItDecodes() {
         let store = PlanSnapshotStore(testDirectory: tempDir)
-        _ = store.commit(rawData: validSnapshotJSON(planId: "pln_good"))
+        _ = store.commit(rawData: validSnapshotJSON(planId: "pln_good"), syncReason: .launch)
 
         // Decodes fine as JSON/PlanSnapshot, but bounds with zero days —
         // a real plan can never have no authored days.
         let invalid = validSnapshotJSON(planId: "pln_bad", days: "[]")
-        let result = store.commit(rawData: invalid)
+        let result = store.commit(rawData: invalid, syncReason: .launch)
         if case .success = result { XCTFail("a real plan with zero days must be refused") }
         XCTAssertEqual(store.current?.plan_id, "pln_good", "the last VALID snapshot must survive")
     }
@@ -115,7 +115,7 @@ final class PlanSnapshotStoreTests: XCTestCase {
     func testPlanStartAfterPlanEndIsRejected() {
         let store = PlanSnapshotStore(testDirectory: tempDir)
         let backwards = validSnapshotJSON(start: "2026-12-06", end: "2026-08-24")
-        let result = store.commit(rawData: backwards)
+        let result = store.commit(rawData: backwards, syncReason: .launch)
         if case .success = result { XCTFail("plan_start_iso after plan_end_iso must be refused") }
     }
 
@@ -127,7 +127,7 @@ final class PlanSnapshotStoreTests: XCTestCase {
         [{"plan_workout_id":null,"date_iso":"2026-09-03","dow":4,"type":"rest","is_rest":true,"is_race":false,"is_quality":false,"is_long":false,"distance_mi":0,"sub_label":null,"notes":null,"card":null,"treadmill":null,"matched_run":null,"supplemental_runs":[]}],
          "message":"No active plan."}
         """.data(using: .utf8)!
-        let result = store.commit(rawData: json)
+        let result = store.commit(rawData: json, syncReason: .launch)
         if case .success = result { XCTFail("message + real days is self-contradicting") }
     }
 
@@ -136,11 +136,11 @@ final class PlanSnapshotStoreTests: XCTestCase {
     func testPlanVersionChangeReplacesTheWholeSnapshotAtomically() {
         let store = PlanSnapshotStore(testDirectory: tempDir)
         _ = store.commit(rawData: validSnapshotJSON(version: "pln_abc:v1",
-            days: #"[{"plan_workout_id":"pw_old","date_iso":"2026-09-03","dow":4,"type":"easy","is_rest":false,"is_race":false,"is_quality":false,"is_long":false,"distance_mi":4,"sub_label":null,"notes":null,"card":null,"treadmill":null,"matched_run":null,"supplemental_runs":[]}]"#))
+            days: #"[{"plan_workout_id":"pw_old","date_iso":"2026-09-03","dow":4,"type":"easy","is_rest":false,"is_race":false,"is_quality":false,"is_long":false,"distance_mi":4,"sub_label":null,"notes":null,"card":null,"treadmill":null,"matched_run":null,"supplemental_runs":[]}]"#), syncReason: .launch)
         XCTAssertEqual(store.current?.day(on: "2026-09-03")?.plan_workout_id, "pw_old")
 
         _ = store.commit(rawData: validSnapshotJSON(version: "pln_abc:v2",
-            days: #"[{"plan_workout_id":"pw_new","date_iso":"2026-09-03","dow":4,"type":"threshold","is_rest":false,"is_race":false,"is_quality":true,"is_long":false,"distance_mi":6,"sub_label":null,"notes":null,"card":null,"treadmill":null,"matched_run":null,"supplemental_runs":[]}]"#))
+            days: #"[{"plan_workout_id":"pw_new","date_iso":"2026-09-03","dow":4,"type":"threshold","is_rest":false,"is_race":false,"is_quality":true,"is_long":false,"distance_mi":6,"sub_label":null,"notes":null,"card":null,"treadmill":null,"matched_run":null,"supplemental_runs":[]}]"#), syncReason: .launch)
         // The WHOLE day for that date came from the new version — no trace
         // of the old row's id or type survives a coherent replacement.
         XCTAssertEqual(store.current?.plan_version, "pln_abc:v2")
@@ -153,9 +153,9 @@ final class PlanSnapshotStoreTests: XCTestCase {
     func testSyncGenerationIncrementsOnEveryCommitAttempt() {
         let store = PlanSnapshotStore(testDirectory: tempDir)
         XCTAssertEqual(store.syncGeneration, 0)
-        _ = store.commit(rawData: validSnapshotJSON())
+        _ = store.commit(rawData: validSnapshotJSON(), syncReason: .launch)
         XCTAssertEqual(store.syncGeneration, 1)
-        _ = store.commit(rawData: "garbage".data(using: .utf8)!)
+        _ = store.commit(rawData: "garbage".data(using: .utf8)!, syncReason: .launch)
         XCTAssertEqual(store.syncGeneration, 2)
     }
 
