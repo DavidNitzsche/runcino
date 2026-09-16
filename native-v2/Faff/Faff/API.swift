@@ -132,11 +132,19 @@ extension Notification.Name {
     /// Auth contract changed 2026-05-30 · /api/* no longer falls back to
     /// the default user when no token is present.
     static let faffSessionExpired = Notification.Name("faff.session.expired")
-    /// Posted when an authed request fails at the NETWORK layer (offline /
-    /// can't reach the server) rather than returning a status. RootTabView
-    /// shows a loud "can't reach Faff" banner so failures aren't silent —
-    /// the alternative is every surface quietly falling back to empty/stale
-    /// cache, which reads as data loss (see the 2026-06-12 keychain episode).
+    /// Posted when an authed request fails at the NETWORK layer with a
+    /// GENUINE transport reachability loss — never for a mere timeout.
+    /// RootTabView shows a loud "can't reach Faff" banner so failures
+    /// aren't silent — the alternative is every surface quietly falling
+    /// back to empty/stale cache, which reads as data loss (see the
+    /// 2026-06-12 keychain episode).
+    ///
+    /// BA-01R items 10/11 (2026-09-15) · this used to fire identically for
+    /// EVERY thrown transport error, timeout included, which is the actual
+    /// mechanism behind F147 (Rule 26): a slow-but-reachable server made a
+    /// fully connected phone read as offline. `authedSend`'s own catch
+    /// block now gates this on `SettingsLoadFailure.categorize(error) ==
+    /// .offline` specifically — see that call site for the full reasoning.
     static let faffReachabilityLost = Notification.Name("faff.reachability.lost")
     /// PLANSNAPSHOT-1 · posted whenever the runner's authored block just
     /// changed server-side — a reschedule applied/undone, a run completion
@@ -286,6 +294,29 @@ enum API {
         return false
     }
 
+    /// BA-01R items 10/11 (2026-09-15) · whether a transport-layer failure
+    /// may raise `.faffReachabilityLost` (the app-wide "can't reach faff"
+    /// signal `isOffline` in `HostsV5.swift` is driven by). Extracted as its
+    /// own plain, static, input-to-output function for the same reason
+    /// `isCancellation` above is — the exact distinction `authedSend`'s
+    /// catch block relies on is directly testable, not provable only by
+    /// triggering a real dropped connection.
+    ///
+    /// Delegates to `SettingsLoadFailure.categorize` (`HostsV5.swift`,
+    /// F061) — this app's one existing classifier for "which kind of
+    /// failure was this," already reused by every host that needs the
+    /// distinction rather than duplicated (Rule 16) — and answers true only
+    /// for its `.offline` case: a genuine transport reachability loss
+    /// (`SettingsLoadFailure.offlineCodes` — no internet, cannot connect to
+    /// host, DNS failure, and the like). A `.timeout` reads as false here on
+    /// purpose. Before this predicate existed, `authedSend` raised the
+    /// banner for EVERY thrown transport error identically, which is the
+    /// actual mechanism behind F147 (Rule 26): a slow-but-reachable server
+    /// made a fully connected phone read as offline.
+    static func shouldRaiseReachabilityLost(_ error: Error) -> Bool {
+        SettingsLoadFailure.categorize(error) == .offline
+    }
+
     /// Auth-aware request helper for ANY HTTP method (POST/PATCH/DELETE/etc.).
     /// Caller assembles the URLRequest (method, headers, body); we attach the
     /// bearer + do 401 handling so write paths share the same session contract
@@ -396,9 +427,10 @@ enum API {
                 await RequestDiagnosticsLog.shared.finish(diagGen, outcome: .cancelled)
                 throw error
             }
-            // Network-level failure (offline / can't reach Faff). Surface a
-            // loud global signal so the runner sees "can't reach Faff" instead
-            // of every surface silently falling back to empty/stale cache.
+            // Network-level failure. Surface a loud global signal so the
+            // runner sees "can't reach Faff" instead of every surface
+            // silently falling back to empty/stale cache — but ONLY for a
+            // genuine transport reachability loss, never for a mere timeout.
             let isTimeout = (error as? URLError)?.code == .timedOut
             await RequestDiagnosticsLog.shared.finish(
                 diagGen,
@@ -412,11 +444,13 @@ enum API {
             if API.isStuckConnectionSignal(error) {
                 await StuckConnectionMonitor.shared.recordStuckSignal()
             }
-            // REQUESTSTORM-2 · see `announcesReachability` in this function's
-            // header. Background ingest fails silently HERE and loudly
-            // everywhere else that matters: it still throws, and it is still
-            // in the diagnostics log two lines above.
-            if announcesReachability {
+            // BA-01R items 10/11 · see `shouldRaiseReachabilityLost`'s own
+            // header for the full reasoning (F147/Rule 26/Rule 16). `.timeout`
+            // and every other non-offline classification still `throw error`
+            // below exactly as before, so the CALLING surface sees the
+            // failure and can retry — it simply no longer gets relabelled as
+            // an app-wide outage.
+            if announcesReachability, API.shouldRaiseReachabilityLost(error) {
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(name: .faffReachabilityLost, object: nil)
                 }

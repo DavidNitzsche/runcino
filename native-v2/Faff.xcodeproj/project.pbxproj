@@ -288,6 +288,7 @@
 		F1732AC53879D98FF1A0B267 /* _SessionSim.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3ECBCD6E9046A23C7E277F44 /* _SessionSim.swift */; };
 		F1CA1817A927220804808DA0 /* FormatVectors.generated.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F5209191C2534DDE41358F8 /* FormatVectors.generated.swift */; };
 		F1EBE72777276DB9CF30B556 /* ColdOpenCacheHonestyTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CC343D52437E543E2D19500 /* ColdOpenCacheHonestyTests.swift */; };
+		F34AD4E1A72EACC0EFEA0482 /* ReachabilityClassificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 273395D561394C21EDF1DA7B /* ReachabilityClassificationTests.swift */; };
 		F36FFE86BA1F5C6A8215B496 /* PanelV5.swift in Sources */ = {isa = PBXBuildFile; fileRef = B89B85857DDA2DA69F8C141A /* PanelV5.swift */; };
 		F474EE6E137971ABDB247394 /* SettingsFailureStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF573E25421532FFE0349AD /* SettingsFailureStateTests.swift */; };
 		F49B3EBC0A1F993634B137EA /* ScrollHeaderStatusBarCollisionUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 423AB39B1BD0F7BF3F253700 /* ScrollHeaderStatusBarCollisionUITests.swift */; };
@@ -423,6 +424,7 @@
 		268F401A22CCF1DA992BD635 /* RetryOwnershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RetryOwnershipTests.swift; sourceTree = "<group>"; };
 		270299E44E94590D5B9B8501 /* OFL-InstrumentSans.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "OFL-InstrumentSans.txt"; sourceTree = "<group>"; };
 		270E206761D6C2E5F2A3E4F7 /* StaleStateV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StaleStateV5.swift; sourceTree = "<group>"; };
+		273395D561394C21EDF1DA7B /* ReachabilityClassificationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReachabilityClassificationTests.swift; sourceTree = "<group>"; };
 		288A593E39610B2FC7AD4784 /* CartoConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CartoConfig.swift; sourceTree = "<group>"; };
 		29E036C5FD2EC231D2FCDC1A /* Watch.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Watch.swift; sourceTree = "<group>"; };
 		2BC0F0DA346169545F683D08 /* WatchLayout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLayout.swift; sourceTree = "<group>"; };
@@ -682,7 +684,7 @@
 		FDD94A793DBBFF639901CD96 /* RunLogV5.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RunLogV5.swift; sourceTree = "<group>"; };
 		FDECB6913184502BD42150CF /* ReadinessBriefSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadinessBriefSheet.swift; sourceTree = "<group>"; };
 		FEB1203BDC4F7A35386FA264 /* LiveRunTreadmillNominalTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LiveRunTreadmillNominalTests.swift; sourceTree = "<group>"; };
-		"TEMP_94847C96-7DED-496B-AD52-DB8AAC0CE234" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
+		"TEMP_B66C13E3-A439-47DE-9C9C-C2EA5602B8D0" /* Secrets.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Secrets.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -744,6 +746,7 @@
 				8A34FDF3F6A6AE06227A16DD /* PlanSnapshotNavigationTests.swift */,
 				39372D39D00335DD55A60910 /* PlanSnapshotStoreTests.swift */,
 				0C7F0C958D7BCB61A44F07CC /* PlanVersionInvalidationTests.swift */,
+				273395D561394C21EDF1DA7B /* ReachabilityClassificationTests.swift */,
 				3A85664CAD8235007F2987E2 /* RecorderConcurrencyTests.swift */,
 				A4E743ABB66D0CB5E7D6FED2 /* RepCompletionSummaryTests.swift */,
 				C1A242C88EB2882D83A0A0E7 /* RequestCoalescingTests.swift */,
@@ -1152,10 +1155,10 @@
 			path = FaffUITests;
 			sourceTree = "<group>";
 		};
-		"TEMP_423FE398-EB89-4859-9F2F-5FAEF6508BB5" /* native-v2 */ = {
+		"TEMP_045021B0-E01F-43AA-A2F3-12A9176AA1E4" /* native-v2 */ = {
 			isa = PBXGroup;
 			children = (
-				"TEMP_94847C96-7DED-496B-AD52-DB8AAC0CE234" /* Secrets.xcconfig */,
+				"TEMP_B66C13E3-A439-47DE-9C9C-C2EA5602B8D0" /* Secrets.xcconfig */,
 			);
 			path = "native-v2";
 			sourceTree = "<group>";
@@ -1474,6 +1477,7 @@
 				B6A6774CA499DC489DCEC981 /* PlanSnapshotStoreTests.swift in Sources */,
 				BBA603C1BA581CA74ECEFB35 /* PlanVersionInvalidationTests.swift in Sources */,
 				A2221A3F9596AA26A0DA2BE4 /* RPECaptureTests.swift in Sources */,
+				F34AD4E1A72EACC0EFEA0482 /* ReachabilityClassificationTests.swift in Sources */,
 				EFAA4C1C630B5B39F42C3003 /* RecorderConcurrencyTests.swift in Sources */,
 				AE498C495063F6C98677718F /* RegisterSweepTests.swift in Sources */,
 				31E799F64B8C6E58A2BFB0AF /* RepCompletionSummaryTests.swift in Sources */,
@@ -1741,7 +1745,7 @@
 /* Begin XCBuildConfiguration section */
 		0D95FB212EAB452FEF8FF123 /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_94847C96-7DED-496B-AD52-DB8AAC0CE234" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_B66C13E3-A439-47DE-9C9C-C2EA5602B8D0" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
@@ -1970,7 +1974,7 @@
 		};
 		730A99E08A5CCDDD01792ABC /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = "TEMP_94847C96-7DED-496B-AD52-DB8AAC0CE234" /* Secrets.xcconfig */;
+			baseConfigurationReference = "TEMP_B66C13E3-A439-47DE-9C9C-C2EA5602B8D0" /* Secrets.xcconfig */;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
 				CLANG_ANALYZER_NONNULL = YES;
