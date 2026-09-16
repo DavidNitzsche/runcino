@@ -406,7 +406,11 @@ const ALLOWLIST: readonly AllowedImport[] = [
     symbols: new Set(['enqueueDeferrals', 'reconsiderAtBoundary']),
   },
   { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/input', symbols: new Set(['measured', 'absent', 'failed']) },
-  { file: ALLOWED_LOADER_FILE, module: '@/lib/adaptation/canonical/stimulus', symbols: new Set(['gradeStimulus']) },
+  {
+    file: ALLOWED_LOADER_FILE,
+    module: '@/lib/adaptation/canonical/stimulus',
+    symbols: new Set(['gradeStimulus', 'absorptionGradeFromAssessment']),
+  },
   // HRCEILING-1 (2026-09-04) · the loader must ask the ONE owner of "what HR
   // ceiling bounds this session's work" rather than reading `hr_cap_bpm` at
   // face value. Taking it at face value graded every threshold session against

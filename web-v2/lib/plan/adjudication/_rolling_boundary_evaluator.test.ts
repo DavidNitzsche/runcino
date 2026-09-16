@@ -179,8 +179,8 @@ describe('rolling-boundary-evaluator · declared race priority, Research/00b\'s 
   });
 });
 
-describe('rolling-boundary-evaluator · boundary 2\'s stated, honest gap', () => {
-  it('readAbsorbedGrade returns null today — an honest stub, not a fabricated grade', async () => {
+describe('rolling-boundary-evaluator · boundary 2 refuses without exact execution identity', () => {
+  it('returns null when no workout id identifies the prescription to grade', async () => {
     await expect(readAbsorbedGrade('any-user', '2026-09-22')).resolves.toBeNull();
   });
 });

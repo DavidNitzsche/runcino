@@ -34,26 +34,12 @@
  * conservative on purpose, named so the next pass knows exactly what to
  * deepen:
  *
- *   1. STIMULUS GRADING (`buildGradedSession`). `gradeStimulus`'s C1/C2
- *      (work duration / segment completion) need a PRESCRIBED work duration
- *      per segment, which lives inside `plan_workouts.workout_spec`'s
- *      interval structure — a parser this loader does not yet have. Rather
- *      than approximate it, C1/C2 are supplied as `absent()`, which
- *      `gradeStimulus` itself resolves to `INSUFFICIENT` (its own rule: "the
- *      work denominator itself must be readable, or there is nothing to
- *      grade"). C3 (pace) and C4 (HR) ARE read, from watch/phone phase data
- *      when present, because those numbers are already parsed and reconciled
- *      by `run-shape.ts` and need no additional interpretation here — but a
- *      session with no phases at all (`dataCompleteAndSegmented: false`)
- *      resolves to `INSUFFICIENT` before either channel is even read, via
- *      `gradeStimulus`'s own C7 precondition.
- *      CONSEQUENCE, STATED PLAINLY: most live sessions will grade
- *      `INSUFFICIENT` until a work-duration parser is built, which means the
- *      THRESHOLD_PACE lever will mostly REFUSE for lack of qualifying
- *      evidence in this first wiring. A REFUSE is an honest output — the
- *      canonical engine's own contract treats it as a successful evaluation,
- *      not an error — and it is a categorically safer failure mode than a
- *      confidently wrong FULL/SUBSTANTIAL grade feeding a pace change.
+ *   1. STIMULUS GRADING (`assessLiveSession`). Prescribed work/recovery
+ *      duration and segment count come from `expandSpecToPhases`, the same
+ *      single workout-spec expander that feeds the watch. Completed duration,
+ *      pace, HR and segment verdicts come from `runPhases`. A missing spec,
+ *      missing duration on any required phase, or unsegmented activity remains
+ *      explicitly unreadable and `gradeStimulus` resolves it to INSUFFICIENT.
  *   2. LONG-RUN THIRDS (`buildThirds`). Built from `splitsWithHrAndPace`,
  *      comparing the mean of the middle third of splits against the final
  *      third. `comparable` is only `true` when there are at least 6 splits
@@ -73,7 +59,10 @@ import {
   type LongRunObservation, type Measured, type Provenance, type WeekObservation,
   type AuthoredPlanMode, type PaceRepresentativenessFlag,
 } from '@/lib/adaptation/canonical/input';
-import { gradeStimulus, type StimulusInput } from '@/lib/adaptation/canonical/stimulus';
+import {
+  absorptionGradeFromAssessment, gradeStimulus,
+  type StimulusAssessment, type StimulusInput,
+} from '@/lib/adaptation/canonical/stimulus';
 import { workHrCeilingFor } from '@/lib/adaptation/canonical/work-hr-ceiling';
 import { workTraceIsCredible } from '@/lib/adaptation/canonical/hr-trace-credibility';
 import { classifyRunContext } from '@/lib/evidence/classify-evidence';
@@ -103,6 +92,7 @@ import {
 } from '@/lib/runs/run-shape';
 import { wireVerdictLandedTheWork } from '@/lib/training/execution-semantics';
 import { distanceMiOfMeta } from '@/lib/race/distance';
+import { expandSpecToPhases } from '@/lib/training/expand-spec';
 import { resolveAthleteWeeklyDemandCeiling } from '@/lib/adaptation/canonical/demand-ceiling';
 import {
   contextForWeek, demonstratedWeeksFrom, prescribedWeekQuantities,
@@ -463,19 +453,51 @@ export function buildPrescriptionRunMatches(
   return matches;
 }
 
-/** See the file header · C1/C2 supplied as `absent()`, which resolves to
- *  INSUFFICIENT via `gradeStimulus`'s own precondition rather than a guess. */
-function buildGradedSession(args: {
+/** Build the canonical session grade from the authored phase geometry and the
+ * matched execution. Missing structure remains unreadable rather than guessed. */
+export function assessLiveSession(args: {
   activityId: string;
   dateISO: string;
   run: RunData;
   workout: PlanWorkoutRow;
-}): GradedSession {
+}): { readonly session: GradedSession; readonly assessment: ReturnType<typeof gradeStimulus> } {
   const { activityId, dateISO, run, workout } = args;
   const provenance = provenanceFor(run, activityId, dateISO);
   const phases = runPhases(run);
   const workPhases = phases.filter((p) => p.type === 'work');
   const hasPhases = workPhases.length > 0;
+
+  // The workout expander is the single owner of persisted workout_spec ->
+  // prescribed phase geometry. Reading its work/recovery durations here keeps
+  // the canonical grader on the same prescription the watch received instead
+  // of introducing a second parser for adaptation.
+  const prescribedPhases = workout.workout_spec
+    ? expandSpecToPhases({
+        spec: workout.workout_spec as never,
+        totalMi: num(workout.distance_mi) ?? 0,
+        easyPaceSec: null,
+      })
+    : null;
+  const prescribedWork = prescribedPhases?.filter((p) => p.type === 'work') ?? [];
+  const prescribedRecovery = prescribedPhases?.filter((p) => p.type === 'recovery') ?? [];
+  const prescribedWorkSeconds = prescribedWork.length > 0
+    && prescribedWork.every((p) => p.durationSec != null && p.durationSec > 0)
+    ? sum(prescribedWork.map((p) => p.durationSec!))
+    : 0;
+  const completedWorkSeconds: Measured<number> = workPhases.length > 0
+    && workPhases.every((p) => p.actualDurationSec != null)
+    ? measured(sum(workPhases.map((p) => Number(p.actualDurationSec))))
+    : absent('completed work duration not recorded for every work phase');
+  const prescribedRecoverySeconds = prescribedRecovery.every(
+    (p) => p.durationSec != null && p.durationSec > 0,
+  ) ? sum(prescribedRecovery.map((p) => p.durationSec!)) : 0;
+  const recoveryPhases = phases.filter((p) => p.type === 'recovery');
+  const actualRecoverySeconds: Measured<number> = prescribedRecoverySeconds === 0
+    ? measured(0)
+    : recoveryPhases.length === prescribedRecovery.length
+      && recoveryPhases.every((p) => p.actualDurationSec != null)
+      ? measured(sum(recoveryPhases.map((p) => Number(p.actualDurationSec))))
+      : absent('completed recovery duration not recorded for every prescribed recovery');
 
   const targetPaceSecPerMi = num(workout.workout_spec?.tempo_pace_s_per_mi)
     ?? num(workout.pace_target_s_per_mi)
@@ -502,6 +524,16 @@ function buildGradedSession(args: {
     }
   }
 
+  const workVerdicts = workPhases.map((p) => p.verdict);
+  const majorLateCollapse: Measured<boolean> = workPhases.length >= 2
+    && workVerdicts.every((v) => v != null)
+    ? measured(
+        !wireVerdictLandedTheWork(workVerdicts[workVerdicts.length - 1])
+        && workVerdicts.slice(0, -1).filter((v) => wireVerdictLandedTheWork(v)).length
+          >= Math.ceil((workVerdicts.length - 1) / 2),
+      )
+    : absent('work-phase verdicts do not support a late-session comparison');
+
   // HRCEILING-1 · not taken at face value. A generic aerobic cap stamped on a
   // quality row is a pre-ZONEBAND-1 artefact and is not a bound on threshold or
   // interval work; `workHrCeilingFor` is the one owner of that distinction and
@@ -510,10 +542,9 @@ function buildGradedSession(args: {
   const hrCapBpm = num(workout.workout_spec?.hr_cap_bpm);
 
   const input: StimulusInput = {
-    // See file header · deliberately absent rather than approximated.
-    prescribedWorkSeconds: 0,
-    completedWorkSeconds: absent('prescribed per-segment work duration not parsed from workout_spec'),
-    prescribedSegments: hasPhases ? workPhases.length : 0,
+    prescribedWorkSeconds,
+    completedWorkSeconds,
+    prescribedSegments: prescribedWork.length,
     acceptableSegments,
     targetWorkPaceSecPerMi: targetPaceSecPerMi ?? 0,
     actualWorkPaceSecPerMi,
@@ -521,16 +552,16 @@ function buildGradedSession(args: {
     hrCeilingBpm: workHrCeilingFor(sessionTests(workout), hrCapBpm),
     workSegmentHrBpm,
     hrReliable: isHrReliable(run),
-    majorLateCollapse: absent('late-session comparison not built for live evaluation yet'),
-    prescribedRecoverySeconds: 0,
-    actualRecoverySeconds: absent('recovery duration not parsed from workout_spec'),
-    dataCompleteAndSegmented: hasPhases,
+    majorLateCollapse,
+    prescribedRecoverySeconds,
+    actualRecoverySeconds,
+    dataCompleteAndSegmented: hasPhases && prescribedWork.length > 0,
     paceDiscountFlags: provenance.paceFlags,
   };
 
   const assessment = gradeStimulus(input);
 
-  return {
+  const session: GradedSession = {
     provenance,
     tests: sessionTests(workout),
     grade: assessment.grade,
@@ -554,6 +585,25 @@ function buildGradedSession(args: {
     },
     raceDistance: null,
   };
+  return { session, assessment };
+}
+
+export function buildGradedSession(args: {
+  activityId: string;
+  dateISO: string;
+  run: RunData;
+  workout: PlanWorkoutRow;
+}): GradedSession {
+  return assessLiveSession(args).session;
+}
+
+/** The canonical stimulus owner's translation, re-exposed through the one
+ * authorised live loader so downstream orchestration does not import around
+ * the adaptation boundary. */
+export function absorptionGradeForAssessment(
+  assessment: StimulusAssessment,
+): 'FULL' | 'PARTIAL' | 'POOR' | null {
+  return absorptionGradeFromAssessment(assessment);
 }
 
 /**

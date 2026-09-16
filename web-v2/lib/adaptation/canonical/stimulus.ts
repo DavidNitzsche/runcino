@@ -169,6 +169,28 @@ export interface StimulusAssessment {
   readonly limiting: readonly ConditionId[];
 }
 
+/**
+ * The rolling-boundary vocabulary is intentionally smaller than the evidence
+ * grade. This translation lives beside the canonical grade owner so the plan
+ * boundary cannot invent a second interpretation of FULL/SUBSTANTIAL/etc.
+ * A DIFFERENT session is poor absorption only when excessive physiological
+ * cost or inflated recovery changed the stimulus; an easier/different session
+ * is useful partial work, not evidence the runner failed to absorb training.
+ */
+export function absorptionGradeFromAssessment(
+  assessment: StimulusAssessment,
+): 'FULL' | 'PARTIAL' | 'POOR' | null {
+  if (assessment.grade === 'FULL' || assessment.grade === 'SUBSTANTIAL') return 'FULL';
+  if (assessment.grade === 'PARTIAL') return 'PARTIAL';
+  if (assessment.grade === 'INSUFFICIENT') return null;
+  const excessiveCost = assessment.conditions.some(
+    (condition) =>
+      (condition.id === 'C4_HR_COMPATIBLE' || condition.id === 'C6_RECOVERIES_INTACT')
+      && condition.verdict === 'NOT_MET',
+  );
+  return excessiveCost ? 'POOR' : 'PARTIAL';
+}
+
 /* ══════════════════════════════════════════════════════════════════════════
  * THE GRADER
  * ═══════════════════════════════════════════════════════════════════════ */

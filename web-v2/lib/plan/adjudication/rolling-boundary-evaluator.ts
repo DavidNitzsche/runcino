@@ -81,19 +81,13 @@
  *     `runwayOpennessFor` below — honestly, including where a real reader
  *     (fatigue/safety) does not exist yet.
  *
- * BOUNDARY 2 (weekend_after_quality) has its DISPATCH and MUTATION plumbing
- * complete, but the one input it needs — whether the mid-week session graded
- * FULL/SUBSTANTIAL/PARTIAL/DIFFERENT/INSUFFICIENT — is NOT computed here.
- * `gradeStimulus` (`lib/adaptation/canonical/stimulus.ts`) needs a prescribed
- * per-segment work duration that `lib/adaptation/canonical-shadow/
- * live-input.ts`'s own header already documents as unbuilt ("most live
- * sessions will grade INSUFFICIENT until a work-duration parser is built").
- * Building a second, narrower parser here to avoid that gap would be exactly
- * the second engine `docs/BRAIN_CONSTITUTION.md` forbids for a question that
- * already has one canonical owner. `readAbsorbedGrade` below is therefore an
- * HONEST stub: it always returns `null` (ungraded) until that parser exists
- * anywhere in the app, which makes boundary 2 REFUSE in production rather
- * than fabricate a grade — a stated, not a hidden, gap (Rule 20).
+ * BOUNDARY 2 (weekend_after_quality) reads the exact plan row and its
+ * canonically matched execution, then delegates both structural parsing and
+ * grading to `canonical-shadow/live-input.ts` + `canonical/stimulus.ts`.
+ * `expandSpecToPhases` remains the only workout-spec parser and
+ * `gradeStimulus` remains the only owner of the session grade. Missing specs,
+ * ambiguous run identity, unsegmented data, and failed reads all return null,
+ * which makes boundary 2 REFUSE rather than manufacture absorption.
  *
  * BOUNDARY 3 (long_run_after_race) reads the race's DECLARED priority from
  * `races.meta.priority` and classifies by `Research/00b`'s own "Recovery by
@@ -157,6 +151,11 @@ import { qualityMinutesOfWeek } from './quality-minutes';
 import { roundTo } from '@/lib/format/run';
 import { loadPlannedWeeks, type LiveWeek } from './live-sequence';
 import { GRADED_RACE_PRIORITIES, isGradedRacePriority } from '@/lib/race/effort-authority';
+import {
+  absorptionGradeForAssessment, assessLiveSession, buildPrescriptionRunMatches,
+  type GradingRunRow, type PlanWorkoutRow,
+} from '@/lib/adaptation/canonical-shadow/live-input';
+import { asRunData, runDay, runDaySql, runNotMergedSql } from '@/lib/runs/run-shape';
 import {
   priceWeek, demandBaseline, boundaryBeforeWeek, boundaryAfterQuality, boundaryAfterRace, clamp01,
   NEUTRAL_FATIGUE_SAFETY_CLEARANCE, NEUTRAL_UNKNOWN_CONTEXT,
@@ -474,16 +473,57 @@ export async function readProposedWeekDemand(
  * ═══════════════════════════════════════════════════════════════════════ */
 
 /**
- * `null` always, deliberately — see the header's BOUNDARY 2 section. The
- * function exists (rather than inlining `null` at the call site) so the day a
- * real stimulus-grade reader lands elsewhere in the app, this is the one place
- * that changes.
+ * Read the exact prescription and its canonically matched run, then ask the
+ * canonical stimulus owner for the grade. This function performs orchestration
+ * only: it neither parses workout structure nor invents an absorption rule.
  */
 export async function readAbsorbedGrade(
-  _userUuid: string,
-  _dateISO: string,
+  userUuid: string,
+  dateISO: string,
+  workoutId?: string,
 ): Promise<'FULL' | 'PARTIAL' | 'POOR' | null> {
-  return null;
+  if (!workoutId) return null;
+  try {
+    const workoutRead = await pool.query<PlanWorkoutRow>(
+      `SELECT pw.id::text AS id, pw.week_id::text AS week_id, pw.date_iso::text AS date_iso,
+              pw.type, pw.distance_mi, pw.pace_target_s_per_mi, pw.workout_spec,
+              pw.is_quality, pw.is_long, pw.sub_label
+         FROM plan_workouts pw
+         JOIN training_plans tp ON tp.id = pw.plan_id
+        WHERE pw.id = $1 AND tp.user_uuid = $2::uuid AND pw.date_iso = $3::date
+        LIMIT 1`,
+      [workoutId, userUuid, dateISO],
+    );
+    const workout = workoutRead.rows[0];
+    if (!workout) return null;
+
+    const runRead = await pool.query<{ id: string; data: unknown }>(
+      `SELECT id::text AS id, data
+         FROM runs
+        WHERE user_uuid = $1::uuid
+          AND ${runDaySql()} = $2::date
+          AND ${runNotMergedSql()}
+        ORDER BY id ASC`,
+      [userUuid, dateISO],
+    );
+    const runs: GradingRunRow[] = runRead.rows.flatMap((row) => {
+      const data = asRunData(row.data);
+      const day = runDay(data);
+      return day ? [{ id: row.id, d: data, dateISO: day }] : [];
+    });
+    const matchedRunId = buildPrescriptionRunMatches([workout], runs).get(workout.id);
+    const matchedRun = matchedRunId ? runs.find((run) => run.id === matchedRunId) : null;
+    if (!matchedRun) return null;
+    const { assessment } = assessLiveSession({
+      activityId: matchedRun.id,
+      dateISO: matchedRun.dateISO,
+      run: matchedRun.d,
+      workout,
+    });
+    return absorptionGradeForAssessment(assessment);
+  } catch {
+    return null;
+  }
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -650,12 +690,12 @@ export async function evaluateAndResolveRollingBoundaryItem(
     else missingEvidence.push(`no mid-week quality row found in ${weekStartISO}`);
     if (longRow) availableEvidence.push(`weekend long row: ${longRow.dateISO} (${longRow.distanceMi} mi)`);
     else missingEvidence.push(`no weekend long row found in ${weekStartISO}`);
-    const absorbed = qualityRow ? await readAbsorbedGrade(item.userUuid, qualityRow.dateISO) : null;
+    const absorbed = qualityRow
+      ? await readAbsorbedGrade(item.userUuid, qualityRow.dateISO, qualityRow.id)
+      : null;
     if (absorbed === null) {
       missingEvidence.push(
-        'mid-week stimulus absorption grade: no reader is built yet (readAbsorbedGrade is an honest '
-        + 'stub · gradeStimulus needs a prescribed-work-duration parser that does not exist anywhere '
-        + 'in the app today)',
+        'mid-week stimulus absorption grade could not be read from the matched prescription and run',
       );
     } else {
       availableEvidence.push(`mid-week absorption graded: ${absorbed}`);

@@ -24,7 +24,10 @@
  * and is out of reach for a suite that must pass on a clean checkout.
  */
 import { describe, it, expect } from 'vitest';
-import { buildPrescriptionRunMatches, type PlanWorkoutRow, type GradingRunRow } from './live-input';
+import {
+  absorptionGradeForAssessment, assessLiveSession, buildPrescriptionRunMatches,
+  type PlanWorkoutRow, type GradingRunRow,
+} from './live-input';
 import type { RunData } from '@/lib/runs/run-shape';
 
 function workout(overrides: Partial<PlanWorkoutRow> = {}): PlanWorkoutRow {
@@ -104,5 +107,62 @@ describe('SUPPLEMENTALGRADE-1 · a same-date run is never mistaken for the presc
     // into this date's resolution.
     const matches = buildPrescriptionRunMatches([w], [wrongDayRun]);
     expect(matches.has('pw_x')).toBe(false);
+  });
+});
+
+describe('MIDWEEK-ABSORPTION-1 · persisted prescription geometry reaches the canonical grader', () => {
+  const prescribed = workout({
+    distance_mi: 7,
+    pace_target_s_per_mi: 420,
+    workout_spec: {
+      kind: 'threshold', rep_count: 3, rep_duration_s: 600,
+      rep_rest_s: 60, rep_pace_s_per_mi: 420, warmup_mi: 1.5, cooldown_mi: 1,
+    },
+  });
+
+  const phase = (type: string, duration: number, verdict: string | null, pace = 420) => ({
+    type, actualDurationSec: duration, actualPaceSPerMi: pace,
+    completed: true, verdict,
+  });
+
+  it('grades a complete, controlled set as absorbed using the expander’s work denominator', () => {
+    const completed = run('run_tempo', prescribed.date_iso, {
+      planWorkoutId: prescribed.id,
+      phases: [
+        phase('work', 600, 'hit'), phase('recovery', 60, null, 600),
+        phase('work', 600, 'hit'), phase('recovery', 60, null, 600),
+        phase('work', 600, 'hit'),
+      ],
+    });
+    const { assessment } = assessLiveSession({
+      activityId: completed.id, dateISO: completed.dateISO, run: completed.d, workout: prescribed,
+    });
+    expect(assessment.conditions.find((c) => c.id === 'C1_WORK_DURATION')?.verdict).toBe('MET');
+    expect(assessment.conditions.find((c) => c.id === 'C2_SEGMENTS_ACCEPTABLE')?.verdict).toBe('MET');
+    expect(absorptionGradeForAssessment(assessment)).toBe('FULL');
+  });
+
+  it('does not call a shortened set absorbed merely because the completed reps hit pace', () => {
+    const shortened = run('run_short', prescribed.date_iso, {
+      planWorkoutId: prescribed.id,
+      phases: [
+        phase('work', 600, 'hit'), phase('recovery', 60, null, 600),
+        phase('work', 300, 'incomplete'),
+      ],
+    });
+    const { assessment } = assessLiveSession({
+      activityId: shortened.id, dateISO: shortened.dateISO, run: shortened.d, workout: prescribed,
+    });
+    expect(assessment.grade).toBe('PARTIAL');
+    expect(absorptionGradeForAssessment(assessment)).toBe('PARTIAL');
+  });
+
+  it('refuses an unsegmented activity rather than treating missing phases as clean absorption', () => {
+    const unsegmented = run('run_plain', prescribed.date_iso, { planWorkoutId: prescribed.id });
+    const { assessment } = assessLiveSession({
+      activityId: unsegmented.id, dateISO: unsegmented.dateISO, run: unsegmented.d, workout: prescribed,
+    });
+    expect(assessment.grade).toBe('INSUFFICIENT');
+    expect(absorptionGradeForAssessment(assessment)).toBeNull();
   });
 });
