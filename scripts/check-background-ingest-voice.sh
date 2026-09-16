@@ -167,13 +167,29 @@ fi
 # `announcesReachability` is deleted from authedSend, every call site above
 # becomes a compile error — but if it is kept and merely stops gating the
 # notification post, nothing else would notice.
+#
+# BA-01R items 10/11 (2026-09-15) · the second grep below used to match ONLY
+# the bare `if announcesReachability {` shape. That is real and correct
+# fragility for a text scanner — Rule 22's own liveness posture — but a
+# gate this brittle also fires on a semantically IDENTICAL refactor with no
+# regression at all: `authedSend` now also checks whether the failure is a
+# genuine transport-unreachable one (`API.shouldRaiseReachabilityLost`)
+# before raising the banner, so the condition became
+# `if announcesReachability, <predicate> {` — still gated on
+# `announcesReachability` first, just joined with a comma instead of a bare
+# brace. The bracket class below accepts EITHER a space (the original bare
+# form) or a comma (a compound condition) immediately after
+# `announcesReachability` in an `if` — both still require the literal text
+# "if announcesReachability" to open a real conditional, so a parameter that
+# stopped gating anything (Rule 20's own worry) still fails this exactly as
+# before; only the character that may follow it was widened.
 API="$ROOT/API.swift"
 if ! grep -q 'announcesReachability: Bool = true' "$API"; then
   echo "check-background-ingest-voice: FAIL · authedSend no longer declares"
   echo "  'announcesReachability: Bool = true' in $API."
   fail=1
 fi
-if ! grep -q 'if announcesReachability {' "$API"; then
+if ! grep -qE 'if announcesReachability[, ]' "$API"; then
   echo "check-background-ingest-voice: FAIL · $API posts .faffReachabilityLost"
   echo "  without gating it on announcesReachability. The parameter is now"
   echo "  decoration, which is worse than not having it (Rule 20)."
