@@ -79,9 +79,7 @@ import {
 import { hrTargets, narrowToPrescriptionType, strictPrescriptionType } from '@/lib/training/prescriptions';
 import { classifySession, sessionToleranceSec } from '@/lib/training/execution-semantics';
 import type { WorkoutSpec } from '@/lib/plan/spec-builder';
-import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
-import { raceProjectionFromOutlook } from '@/lib/training/race-projection';
-import { formatRaceTime } from '@/lib/training/vdot';
+import { readLastKnownGoodProjection, projectionCacheKey } from '@/lib/race/last-known-good-projection';
 import { rowsOrEmpty } from '@/lib/db/read';
 
 // Same two doctrine-cited constants `build-workout.ts` uses for its own
@@ -187,123 +185,33 @@ export const RACE_PROJECTION_MEASURED_WORST_MS = 5_413;
 export const RACE_PROJECTION_DEADLINE_MS = 8_000;
 
 /**
- * How stale a last-known-good projection may be before it stops being served.
- *
- * Rule 16 is the constraint that sets this, not comfort: Race Detail and the
- * Races list resolve this same quantity FRESH on their own screens, so a value
- * served here after a mid-day evidence change could disagree with them. Fifteen
- * minutes bounds that window to something a runner cannot practically observe
- * (it takes a new run landing, plus a snapshot load whose fresh resolution
- * FAILED, plus opening Race Detail, inside the same quarter hour), while still
- * covering a burst of foregrounds — which is the case this exists for.
- *
- * Rule 10 posture, stated explicitly as that rule requires: RECOMPUTE. The
- * anchor is `(userUuid, today)` and it is in the key, so nothing here can
- * outlive the day it was derived for or cross to another runner; every request
- * that beats the budget re-derives and overwrites. This is a fallback for a
- * read that could not complete, never a substitute for doing the read.
+ * BA-01R item 12 (2026-09-15) · the last-known-good projection cache moved
+ * to `lib/race/last-known-good-projection.ts` — this file is now only a
+ * READER of it (see that file's own header for why, and this file's
+ * `loadPlanSnapshot` race-date loop below for how). Re-exported under its
+ * original names so nothing importing `__resetLastKnownGoodProjectionsForTest`
+ * from here needs to change.
  */
-const RACE_PROJECTION_LKG_MAX_AGE_MS = 15 * 60_000;
-
-/** Hard ceiling on the map, so a long-lived process cannot grow it without
- *  bound if pruning by age alone is not enough (many users, many races). */
-const RACE_PROJECTION_LKG_MAX_ENTRIES = 500;
+export { __resetLastKnownGoodProjectionsForTest } from '@/lib/race/last-known-good-projection';
 
 /**
- * The last projection this process resolved SUCCESSFULLY, per runner, per race,
- * per day.
+ * FINISHEST-RELIABILITY-1's tagged result. Its canonical definition now
+ * lives in `lib/route/deadline-budget.ts` (BA-01R item 8/9) so the newer
+ * between-phase cooperative checks — see `DeadlineBudget` and
+ * `race-outlook.ts`'s `resolveRaceOutlookCooperative` — share the exact
+ * same three-outcome shape `withDeadline` established here, rather than
+ * inventing a second name for the same union. Re-exported under this name
+ * so nothing importing it from this file needs to change.
  *
- * WHY THIS IS NOT THE THING READS-DEDUP-1 REFUSED TO BUILD. That file's header
- * argues, correctly, against a TTL cache over the EVIDENCE BUNDLE: those reads
- * decide coaching, and one request must never serve another request's view of
- * the runner. This holds something categorically smaller and later — a
- * formatted string that has already been through `raceProjectionFromOutlook`,
- * kept only so that a resolution which FAILED does not silently change what is
- * on the screen. It is never consulted on a successful resolution, so it can
- * never override live evidence; the only thing it can do is stop a timeout from
- * blanking a figure this process has already stood behind.
- *
- * WHAT IT DELIBERATELY DOES NOT DO: label itself differently to the runner. An
- * identical stat IS the fix — a value that changes appearance when the backend
- * was slow is the same flicker in a different costume. The honesty is paid
- * where it is actionable: a distinct `console.error` per serve, and
- * `PlanSnapshotResult.projection_served_stale` on the response.
+ * It was originally a closure, so nothing could unit-test it, which is
+ * precisely how a past review was able to collapse the timeout branch back
+ * into `{status:'ok', value: null}` and watch the entire suite stay green.
+ * The discriminated union is the whole mechanism: the `timeout` and `error`
+ * branches carry NO `value` field, so `attempt.value` does not compile
+ * until the caller has narrowed to `ok`.
  */
-const lastKnownGoodProjection = new Map<string, { text: string; at: number }>();
-
-function projectionCacheKey(userUuid: string, slug: string, today: string): string {
-  return `${userUuid}::${slug}::${today}`;
-}
-
-function readLastKnownGoodProjection(key: string): { text: string; at: number } | null {
-  const hit = lastKnownGoodProjection.get(key);
-  if (!hit) return null;
-  if (Date.now() - hit.at > RACE_PROJECTION_LKG_MAX_AGE_MS) {
-    lastKnownGoodProjection.delete(key);
-    return null;
-  }
-  return hit;
-}
-
-/**
- * FINISHEST-RESURRECT-1 · forget a projection the engine has WITHDRAWN.
- *
- * The cache above exists so a resolution that FAILED does not blank a figure
- * this process already stood behind. It must never survive the engine's own
- * decision to stop making the claim. Without this, the sequence is: the
- * projection resolves and is remembered; a later load legitimately reaches
- * case 2 and the stat correctly disappears; a third load times out and puts
- * the withdrawn figure back on the screen as a live value.
- *
- * That is strictly worse than the flicker this whole file exists to cure — a
- * flicker is visible and this is not — and it is Rule 11 exactly: "withdrawn"
- * and "we could not find out" are different facts, and a cache that outlives
- * the withdrawal collapses them into the last good one.
- */
-function clearLastKnownGoodProjection(key: string): void {
-  lastKnownGoodProjection.delete(key);
-}
-
-function writeLastKnownGoodProjection(key: string, text: string): void {
-  lastKnownGoodProjection.set(key, { text, at: Date.now() });
-  const cutoff = Date.now() - RACE_PROJECTION_LKG_MAX_AGE_MS;
-  for (const [k, v] of lastKnownGoodProjection) {
-    if (v.at < cutoff) lastKnownGoodProjection.delete(k);
-  }
-  // Insertion order is eviction order; `set` on an existing key does not move
-  // it, so a hot entry can be evicted — acceptable, because eviction costs at
-  // most one render of the honest third state, never a wrong number.
-  while (lastKnownGoodProjection.size > RACE_PROJECTION_LKG_MAX_ENTRIES) {
-    const oldest = lastKnownGoodProjection.keys().next();
-    if (oldest.done) break;
-    lastKnownGoodProjection.delete(oldest.value);
-  }
-}
-
-/** Test-only reset. The cache is process-global by design, which is exactly
- *  what makes it invisible to a test that cannot clear it. */
-export function __resetLastKnownGoodProjectionsForTest(): void {
-  lastKnownGoodProjection.clear();
-}
-
-/**
- * FINISHEST-RELIABILITY-1's tagged result, unchanged in contract and now
- * EXPORTED and defined at module scope rather than re-declared inside
- * `loadPlanSnapshot` on every call.
- *
- * It was a closure, so nothing could unit-test it, which is precisely how the
- * review was able to collapse the timeout branch back into
- * `{status:'ok', value: null}` and watch the entire suite stay green. A
- * discriminated union is the whole mechanism: the `timeout` and `error`
- * branches carry NO `value` field, so `attempt.value` does not compile until
- * the caller has narrowed to `ok` — the same discipline `NormalReading<T>`
- * uses for Rule 8's refusal-versus-zero distinction, and the reason a
- * genuinely-null projection can never be mistaken for one we never got.
- */
-export type DeadlineResult<T> =
-  | { status: 'ok'; value: T }
-  | { status: 'timeout' }
-  | { status: 'error'; error: unknown };
+export type { DeadlineResult } from '@/lib/route/deadline-budget';
+import type { DeadlineResult } from '@/lib/route/deadline-budget';
 
 /**
  * Race `p` against `ms`. Three outcomes, never two.
@@ -721,6 +629,35 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
   // map is the fourth and oldest fact: nothing to project, say nothing.
   const projectedFinishByDate = new Map<string, PlanSnapshotNumber | null>();
   let projectionServedStale = false;
+  // BA-01R item 12 (2026-09-15), TEMPORARY · this loop no longer calls
+  // `resolveRaceOutlookBySlug` (or `withDeadline`) at all. Per
+  // BACKEND-IMPLEMENTATION-SCOPE-AND-SETUP-2026-09-15.md item 12:
+  // "Temporarily remove race-outlook recomputation from Plan Snapshot if a
+  // prepared last-good value exists; otherwise return an explicit
+  // pending/unknown field rather than hold the entire block request."
+  //
+  // The prior version DID call the resolver here, wrapped in `withDeadline`
+  // — which is exactly the shape BA01-CODE-FORENSIC-2026-09-15.md flagged:
+  // a Promise.race that stops the RESPONSE from waiting but leaves the
+  // resolution's own DB work running anyway. Since this route's card-level
+  // "Projected finish" stat is a convenience duplicate of what `/api/v5/races`
+  // and Race Detail already resolve fresh and fully (Rule 16 — they remain
+  // THE source of truth; nothing here ever fed either of them), the correct
+  // fix for the interim is not a better deadline on the resolution, it is
+  // to stop attempting the resolution from this path at all: either a
+  // recent successful resolution is already sitting in
+  // `lastKnownGoodProjection` (written by `/api/v5/races` or Race Detail's
+  // own calls to `resolveRaceOutlookBySlug`/`resolveRaceOutlookCooperative`,
+  // which keep resolving fresh on their own schedule) and this route serves
+  // it as-is, or nothing is cached yet and this route says so honestly
+  // rather than paying for a fresh resolution on every Plan Snapshot build.
+  //
+  // `projectionServedStale` — renamed in spirit but not in wire shape, so
+  // the client needs no change — is now true whenever this route served a
+  // cached figure BECAUSE it declined to attempt a fresh one, not only when
+  // a fresh attempt failed. Both are the same fact from the runner's side
+  // (this number is not this instant's live resolution), which is exactly
+  // what the flag has always meant.
   if (raceDates.length > 0) {
     // A failed slug lookup and "this race has no `races` row yet" reach the
     // identical outcome for every consumer below: no slug to resolve an
@@ -736,80 +673,30 @@ export async function loadPlanSnapshot(userUuid: string, today: string): Promise
         [userUuid, raceDates],
       ),
     );
-    await Promise.all(slugRows.map(async (r) => {
+    for (const r of slugRows) {
       const lkgKey = projectionCacheKey(userUuid, r.slug, today);
-      const attempt = await withDeadline(
-        resolveRaceOutlookBySlug(userUuid, r.slug, today),
-        RACE_PROJECTION_DEADLINE_MS,
-      );
-
-      if (attempt.status !== 'ok') {
-        // ── CASE 3 · the resolution failed or ran out of budget ────────────
-        //
-        // Logged as its own fact, never silently folded into case 2. What the
-        // RUNNER sees is decided by whether this same race, this same day,
-        // has already been resolved successfully in this process.
-        console.error(
-          `[plan-snapshot] race outlook resolution ${attempt.status} for slug=${r.slug} date=${r.date_iso}`,
-          attempt.status === 'error' ? attempt.error : undefined,
-        );
-        const lastGood = readLastKnownGoodProjection(lkgKey);
-        if (lastGood) {
-          // The screen does not move. This is the whole point of the cache —
-          // see its own doc comment: an identical stat is what "no flicker"
-          // MEANS, so the honesty owed here is owed to OPS, not to the pixel.
-          // `projection_served_stale` on the result is where it is paid.
-          projectionServedStale = true;
-          console.error(
-            `[plan-snapshot] serving last-known-good projection for slug=${r.slug} ` +
-            `date=${r.date_iso} (resolved ${Math.round((Date.now() - lastGood.at) / 1000)}s ago)`,
-          );
-          projectedFinishByDate.set(r.date_iso, { text: lastGood.text, modelled: true });
-          return;
-        }
-        // Nothing known, and we could not find out. NOT the same as case 2,
-        // and no longer rendered the same way: `text: null` is the phone's
-        // own `unreadable` — a fault-red dash where the figure would be.
-        projectedFinishByDate.set(r.date_iso, null);
-        return;
+      const lastGood = readLastKnownGoodProjection(lkgKey);
+      if (lastGood) {
+        // The screen does not move. This is the whole point of the cache —
+        // see its own doc comment: an identical stat is what "no flicker"
+        // MEANS, so the honesty owed here is owed to OPS, not to the pixel.
+        // `projection_served_stale` on the result is where it is paid.
+        projectionServedStale = true;
+        projectedFinishByDate.set(r.date_iso, { text: lastGood.text, modelled: true });
+        continue;
       }
-
-      const outlook = attempt.value;
-      // WKSTRIP-UTC-1 verification round · this used to show
-      // `likelyRangeSec` as a range ("42:05–43:49") when the same outlook's
-      // `projectedSec` renders as a single point ("42:57") on both Races
-      // and Race Detail — one quantity read two ways on three surfaces,
-      // exactly the class of bug Rule 16 exists for (the CIM
-      // three-projections incident this file's own header cites). Race
-      // Detail's plate is `formatRaceTime(projection.projectedSec)` and
-      // nothing else (`lib/faff/race-plate.ts`'s `middleSec`); this now
-      // matches it byte-for-byte rather than presenting a second, wider
-      // answer to the same question.
-      const projection = raceProjectionFromOutlook(outlook);
-      // ── CASE 2 · genuinely nothing to project ───────────────────────────
-      // No goal, no capacity evidence yet, race too far out, or no `races`
-      // row for this slug at all. Correct, silent, and NOT logged: the
-      // expected steady state for a race with no evidence behind it, not an
-      // anomaly. The date stays OUT of the map entirely, so no stat renders.
-      //
-      // FINISHEST-RESURRECT-1 · and it FORGETS. A projection this process
-      // remembered and the engine has since withdrawn may not be served back
-      // by a later failure — see `clearLastKnownGoodProjection`. Both exits
-      // clear, because the second (a value that survives the null check and
-      // then fails to format) reaches the identical outcome for the runner.
-      if (projection.projectedSec == null) {
-        clearLastKnownGoodProjection(lkgKey);
-        return;
-      }
-      const text = formatRaceTime(projection.projectedSec);
-      if (!text) {
-        clearLastKnownGoodProjection(lkgKey);
-        return;
-      }
-      // ── CASE 1 · a real projection. Render it, and remember it. ──────────
-      writeLastKnownGoodProjection(lkgKey, text);
-      projectedFinishByDate.set(r.date_iso, { text, modelled: true });
-    }));
+      // ── explicit pending/unknown ─────────────────────────────────────
+      // No prepared value to serve, and per item 12 this path does not
+      // attempt a fresh resolution to get one. `text: null` is this file's
+      // own pre-existing third state (FINISHEST-DETERMINISM-1): the phone
+      // renders it as `.unreadable`, a fault-red dash — never a silently
+      // absent stat, and never a number pretending to be current. Distinct
+      // from a genuine resolution FAILURE (Rule 11): nothing was attempted
+      // here, so nothing is logged as an error — `projection_served_stale`
+      // still marks the response as carrying an incomplete race projection.
+      projectionServedStale = true;
+      projectedFinishByDate.set(r.date_iso, null);
+    }
   }
 
   const days: PlanSnapshotDay[] = rows.map((row) => {

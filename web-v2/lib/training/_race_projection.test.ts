@@ -61,7 +61,15 @@ describe('every "Projected" consumer reads the brain and nothing else', () => {
     it(`${rel} resolves through the outlook`, () => {
       const s = code(rel);
       expect(s, `${rel} must map through raceProjectionFromOutlook`).toMatch(/raceProjectionFromOutlook/);
-      expect(s, `${rel} must resolve the outlook (by slug or via resolveOutlookForGap)`).toMatch(/resolveRaceOutlookBySlug|resolveOutlookForGap|resolveRaceOutlook\(/);
+      // BA-01R items 8/9 (2026-09-15) · `resolveRaceOutlookCooperative` is a
+      // second, budget-aware entry point `/api/v5/races` now calls instead of
+      // `resolveRaceOutlookBySlug` — same two I/O phases
+      // (`loadRaceForOutlook`/`loadRaceOutlookReads`), same
+      // `composeRaceOutlook` compose step, checked cooperatively between
+      // phases rather than raced against a timer. It resolves through the
+      // exact same brain; recognized here alongside the other three shapes.
+      expect(s, `${rel} must resolve the outlook (by slug, cooperatively, or via resolveOutlookForGap)`)
+        .toMatch(/resolveRaceOutlookBySlug|resolveRaceOutlookCooperative|resolveOutlookForGap|resolveRaceOutlook\(/);
       expect(s, `${rel} must not call computeGoalProjection for a projection`).not.toMatch(/resolveRaceProjection\(/);
       expect(s, `${rel} must not read predictRaceTime for a race projection`).not.toMatch(/predictRaceTime\(/);
     });

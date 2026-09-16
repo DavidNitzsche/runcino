@@ -65,6 +65,12 @@
  */
 import { pool } from '@/lib/db/pool';
 import { runnerToday } from '@/lib/runtime/runner-tz';
+import { DeadlineBudget, type DeadlineResult } from '@/lib/route/deadline-budget';
+import { raceProjectionFromOutlook } from '@/lib/training/race-projection';
+import { formatRaceTime } from '@/lib/training/vdot';
+import {
+  projectionCacheKey, writeLastKnownGoodProjection, clearLastKnownGoodProjection,
+} from '@/lib/race/last-known-good-projection';
 import { CANONICAL_ROW_SQL, runDaySql, type RunData } from '@/lib/runs/run-shape';
 import { fmtMi, roundTo } from '@/lib/format/run';
 import { coherentPace } from '@/lib/runs/coherence';
@@ -1109,12 +1115,95 @@ async function loadLthr(userUuid: string): Promise<number | null> {
   return v;
 }
 
+/**
+ * BA-01R item 12 (2026-09-15) · stand behind a fresh, successful resolution
+ * by writing it into the shared last-known-good cache
+ * (`lib/race/last-known-good-projection.ts`) — the same derivation
+ * (`raceProjectionFromOutlook` → `formatRaceTime`) every caller of
+ * `resolveRaceOutlookBySlug`/`resolveRaceOutlookCooperative` already
+ * performs on the returned `RaceOutlook`, done once here so
+ * `loadPlanSnapshot` (which no longer resolves fresh at all) has something
+ * real to read. Mirrors the two CASE-2 exits `plan-snapshot.ts`'s old
+ * inline version had (FINISHEST-RESURRECT-1): a genuinely-nothing-to-project
+ * outlook, and a projection that fails to FORMAT, both CLEAR the cache
+ * rather than leaving a withdrawn figure standing.
+ */
+function cacheProjectionFromOutlook(userUuid: string, slug: string, todayISO: string, outlook: RaceOutlook): void {
+  const key = projectionCacheKey(userUuid, slug, todayISO);
+  const projection = raceProjectionFromOutlook(outlook);
+  if (projection.projectedSec == null) {
+    clearLastKnownGoodProjection(key);
+    return;
+  }
+  const text = formatRaceTime(projection.projectedSec);
+  if (!text) {
+    clearLastKnownGoodProjection(key);
+    return;
+  }
+  writeLastKnownGoodProjection(key, text);
+}
+
 /** Convenience: resolve by slug. Null when the race does not exist. */
 export async function resolveRaceOutlookBySlug(userUuid: string, slug: string, todayISO?: string): Promise<RaceOutlook | null> {
   const today = todayISO ?? await runnerToday(userUuid);
   const race = await loadRaceForOutlook(userUuid, slug, today);
   if (!race || !(race.distanceMi > 0)) return null;
-  return resolveRaceOutlook(userUuid, race, today);
+  const outlook = await resolveRaceOutlook(userUuid, race, today);
+  cacheProjectionFromOutlook(userUuid, slug, today, outlook);
+  return outlook;
+}
+
+/**
+ * BA-01R items 8/9 · the cooperative replacement for wrapping
+ * `resolveRaceOutlookBySlug` in `plan-snapshot.ts`'s `withDeadline`.
+ *
+ * This resolution has exactly two I/O phases — `loadRaceForOutlook` (one
+ * query), then `loadRaceOutlookReads` (the seven-way, single-flighted
+ * `Promise.all` plus `resolveExecutionSignal`) — followed by
+ * `composeRaceOutlook`, which is pure and does no I/O. `budget.expired` is
+ * checked BEFORE each I/O phase starts, never mid-phase: a phase already
+ * running is always let finish naturally (a single runaway statement is
+ * `lib/db/pool.ts`'s 30s `statement_timeout`'s job to bound, not this
+ * budget's), so nothing here abandons a promise the way `Promise.race`
+ * does. Declining to START the next phase once the budget is spent is what
+ * "cooperative" means in item 9's own wording.
+ *
+ * `budget.lastStage` is recorded after every phase completes, so a timeout
+ * result always names exactly how far the resolution got (item 8).
+ *
+ * `/api/v5/races` is the intended caller — it must resolve fresh every
+ * time (Rule 16: it is the source of truth Race Detail and the Races list
+ * both read), so it keeps calling all the way through rather than skipping
+ * to a cached value the way `loadPlanSnapshot` now does per item 12. This
+ * function's only job is to make ITS OWN slow-path degrade gracefully in
+ * the same honest, non-silent way.
+ */
+export async function resolveRaceOutlookCooperative(
+  userUuid: string,
+  slug: string,
+  todayISO: string,
+  budgetMs: number,
+): Promise<DeadlineResult<RaceOutlook | null>> {
+  const budget = new DeadlineBudget(budgetMs);
+  try {
+    if (budget.expired) return { status: 'timeout', lastStage: budget.lastStage };
+
+    const race = await loadRaceForOutlook(userUuid, slug, todayISO);
+    budget.markStage('race-lookup');
+    if (!race || !(race.distanceMi > 0)) return { status: 'ok', value: null };
+    if (budget.expired) return { status: 'timeout', lastStage: budget.lastStage };
+
+    const reads = await loadRaceOutlookReads(userUuid, race, todayISO);
+    budget.markStage('user-reads');
+    if (budget.expired) return { status: 'timeout', lastStage: budget.lastStage };
+
+    const outlook = await composeRaceOutlook(race, todayISO, reads);
+    budget.markStage('compose');
+    cacheProjectionFromOutlook(userUuid, slug, todayISO, outlook);
+    return { status: 'ok', value: outlook };
+  } catch (error) {
+    return { status: 'error', error };
+  }
 }
 
 /** The pace-side invariant every consumer may assert: adjacent bridge steps

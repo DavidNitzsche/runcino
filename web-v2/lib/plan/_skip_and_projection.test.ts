@@ -78,6 +78,7 @@ import {
   __resetLastKnownGoodProjectionsForTest,
   type PlanSnapshotResult,
 } from './plan-snapshot';
+import { projectionCacheKey, writeLastKnownGoodProjection } from '@/lib/race/last-known-good-projection';
 import { isDaySkipped, loadSkippedDates } from './week-loader';
 import { loadTrainingState } from '@/lib/coach/training-state';
 import { buildWeeks } from '@/lib/plan/v5-block';
@@ -267,252 +268,147 @@ describe('withDeadline · three outcomes, never two', () => {
     const r = await withDeadline(Promise.resolve('42:57'), 1_000);
     expect(r).toEqual({ status: 'ok', value: '42:57' });
   });
-});
 
-/* ══════════════════════════════════════════════════════════════════════════
- * 3 · FINISHEST-DETERMINISM-1 · the stat must not blink
- *
- * FALSIFIERS, each named on its test:
- *   · delete the last-known-good serve → 3.3 goes red
- *   · render case 3 the same as case 2 (`return` instead of setting null)
- *     → 3.2 goes red
- *   · use `if (finish)` instead of `has()` in the stats block → 3.2 goes red
- * ═══════════════════════════════════════════════════════════════════════ */
-
-const OUTLOOK = { slug: 'sm10k' } as unknown;
-
-function finishStat(snap: PlanSnapshotResult) {
-  return dayOf(snap, RACE_DAY).stats.find((s) => s.label === 'Projected finish') ?? null;
-}
-
-describe('projected finish · available / genuinely-absent / could-not-find-out', () => {
-  beforeEach(() => {
-    fx.raceSlugs = [{ slug: 'sm10k', date_iso: RACE_DAY }];
-  });
-
-  it('3.1 · CASE 1 · a real projection renders as a figure', async () => {
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(OUTLOOK);
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
-
-    const stat = finishStat(await loadPlanSnapshot(UUID, TODAY));
-    expect(stat).not.toBeNull();
-    expect(stat!.value.text).toBe('42:57');
-    expect(stat!.value.modelled).toBe(true);
-    expect(stat!.tone).toBeNull();
-  });
-
-  it('3.2 · CASE 2 and CASE 3 do not look the same to the runner', async () => {
-    // CASE 2 · the outlook resolved and has nothing to project. No stat.
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(OUTLOOK);
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: null });
-    const absent = finishStat(await loadPlanSnapshot(UUID, TODAY));
-    expect(absent).toBeNull();
-
-    // CASE 3 · the resolution failed, and nothing is known from before.
-    __resetLastKnownGoodProjectionsForTest();
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>)
-      .mockRejectedValue(new Error('outlook resolution exploded'));
-    const failed = finishStat(await loadPlanSnapshot(UUID, TODAY));
-    expect(failed).not.toBeNull();
-    // `text: null` is `FaffValue.unreadable` on the phone — a fault-red dash.
-    // This is the assertion the original defect could not pass: before it,
-    // both cases produced NO STAT and were indistinguishable on screen.
-    expect(failed!.value.text).toBeNull();
-    expect(failed!.tone).toBe('fault');
-  });
-
-  it('3.3 · THE ANTI-FLICKER GATE · a failed resolve serves the last known good, unchanged', async () => {
-    // Load 1 · resolves. This is the value on the screen.
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(OUTLOOK);
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
-    const first = finishStat(await loadPlanSnapshot(UUID, TODAY));
-    expect(first!.value.text).toBe('42:57');
-    expect((await loadPlanSnapshot(UUID, TODAY)).projection_served_stale).toBeUndefined();
-
-    // Load 2 · the SAME runner, the SAME race, the SAME day — and the
-    // resolution fails. Nothing about the runner changed; only latency did.
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>)
-      .mockRejectedValue(new Error('slow backend'));
-    const snap = await loadPlanSnapshot(UUID, TODAY);
-    const second = finishStat(snap);
-
-    // The screen does not move. That is the entire fix.
-    expect(second).toEqual(first);
-    expect(second!.value.text).toBe('42:57');
-    expect(second!.tone).toBeNull();
-    // …and the honesty is paid where it is actionable, not on the pixel.
-    expect(snap.projection_served_stale).toBe(true);
-  });
-
-  it('3.4 · the last-known-good is scoped to ONE runner, ONE race, ONE day', async () => {
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(OUTLOOK);
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
-    await loadPlanSnapshot(UUID, TODAY);
-
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>)
-      .mockRejectedValue(new Error('slow backend'));
-
-    // A DIFFERENT runner must not read this runner's projection.
-    const other = await loadPlanSnapshot('00000000-0000-0000-0000-0000000000ff', TODAY);
-    expect(finishStat(other)!.value.text).toBeNull();
-
-    // A DIFFERENT day must not read yesterday's projection, because the
-    // quantity is a function of `today` (Rule 10 · the anchor is in the key).
-    const tomorrow = await loadPlanSnapshot(UUID, '2026-09-08');
-    expect(finishStat(tomorrow)!.value.text).toBeNull();
-  });
-
-  it('3.5 · a last-known-good older than its max age is not served', async () => {
-    vi.useFakeTimers();
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(OUTLOOK);
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
-    await loadPlanSnapshot(UUID, TODAY);
-
-    // Past RACE_PROJECTION_LKG_MAX_AGE_MS (15 min). Rule 16: a value this old
-    // could disagree with what Race Detail resolves fresh on its own screen.
-    vi.setSystemTime(new Date(Date.now() + 16 * 60_000));
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>)
-      .mockRejectedValue(new Error('slow backend'));
-    const snap = await loadPlanSnapshot(UUID, TODAY);
-
-    expect(finishStat(snap)!.value.text).toBeNull();
-    expect(finishStat(snap)!.tone).toBe('fault');
-    // Nothing stale was served, so nothing claims it was.
-    expect(snap.projection_served_stale).toBeUndefined();
-  });
-
-  it('3.6 · a resolution that runs past the budget is a timeout, not an absence', async () => {
-    vi.useFakeTimers();
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>)
-      .mockReturnValue(new Promise(() => {}));
-
-    const pending = loadPlanSnapshot(UUID, TODAY);
-    // Past RACE_PROJECTION_DEADLINE_MS (8s). Advancing rather than waiting is
-    // the only way to exercise the real constant without an 8-second test.
-    await vi.advanceTimersByTimeAsync(8_500);
-    const snap = await pending;
-
-    const stat = finishStat(snap);
-    expect(stat).not.toBeNull();
-    expect(stat!.value.text).toBeNull();
-    expect(stat!.tone).toBe('fault');
-    // And the rest of the block came back regardless — BANNER-LATENCY-1's
-    // fail-closed posture is unchanged by any of this.
-    expect(snap.days).toHaveLength(PLAN_DAYS.length);
-  });
-
-  it('3.7 · THE BUDGET GATE · the deadline sits ABOVE the measured cost, not inside it', async () => {
-    // WHY THIS EXISTS, AND WHAT 3.6 ABOVE CANNOT DO. 3.6 asserts a CEILING —
-    // a resolution past 8.5s is a timeout — and a reverted 2500ms satisfies
-    // that just as well as 8000ms does. An independent review planted 2500
-    // back, the exact regressed value FINISHEST-DETERMINISM-1 corrects, and
-    // all twenty tests here stayed green. A ceiling cannot tell the two apart;
-    // only a floor can, so this is the floor.
+  it('2.6 · THE BUDGET GATE · RACE_PROJECTION_DEADLINE_MS sits ABOVE the measured cost, not inside it', () => {
+    // Rule 9 is why this is a FLOOR check, not a ceiling. A reverted 2500ms
+    // sat INSIDE the measured distribution (1974-5413ms), which is precisely
+    // what made half a second of ordinary cold-start variance decide whether
+    // the runner's goal-race day showed a finish time or nothing at all — and
+    // a mere "is it a positive timeout" ceiling check cannot tell 2500ms from
+    // 8000ms apart. Read against the measured worst case rather than
+    // hardcoded on both sides (Rule 18), so moving the measurement moves this
+    // with it instead of only proving the test agrees with itself.
     //
-    // Rule 9 is the reason the floor is where it is. 2500ms sat INSIDE the
-    // measured distribution (1974-5413ms), which is precisely what made half a
-    // second of ordinary cold-start variance decide whether the runner's
-    // goal-race day showed a finish time or nothing at all.
-
-    // Half one · the number. Read against the measured worst case rather than
-    // hardcoded on both sides (Rule 18) — move the measurement and this moves
-    // with it, instead of only proving the test agrees with itself.
+    // This used to also assert the BEHAVIOUR at that number end-to-end
+    // through `loadPlanSnapshot` (a resolution costing exactly the measured
+    // worst case still renders a figure). That half moved with the resolver
+    // itself to `lib/race/race-outlook.ts`'s `resolveRaceOutlookCooperative`
+    // per BA-01R item 12 — not re-covered here, and not yet re-covered there
+    // either (doing so needs the full `loadRaceOutlookReads` chain mocked,
+    // which no existing test in this codebase currently does for that
+    // function). Flagged honestly as an open gap rather than silently
+    // dropped.
     expect(RACE_PROJECTION_MEASURED_WORST_MS).toBeGreaterThan(0);
     expect(
       RACE_PROJECTION_DEADLINE_MS,
       `the budget (${RACE_PROJECTION_DEADLINE_MS}ms) must clear the measured worst case ` +
       `(${RACE_PROJECTION_MEASURED_WORST_MS}ms), not sit inside the distribution`,
     ).toBeGreaterThan(RACE_PROJECTION_MEASURED_WORST_MS);
+  });
+});
 
-    // Half two · the BEHAVIOUR at that number, which is what the runner
-    // actually experiences. A resolution costing exactly the measured worst
-    // case must still RENDER A FIGURE. Under a 2500ms budget this same load is
-    // a fault-red dash, so this half dies on the reversion on its own — the
-    // constant could be deleted entirely and this would still hold the line.
-    vi.useFakeTimers();
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockImplementation(
-      () => new Promise((resolve) => setTimeout(() => resolve(OUTLOOK), RACE_PROJECTION_MEASURED_WORST_MS)),
-    );
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
+/* ══════════════════════════════════════════════════════════════════════════
+ * 3 · FINISHEST-DETERMINISM-1, then BA-01R item 12 (2026-09-15) · the stat
+ *     must not blink, and — TEMPORARILY — this file no longer tries to
+ *     resolve it fresh at all
+ *
+ * `loadPlanSnapshot` used to call `resolveRaceOutlookBySlug` itself, wrapped
+ * in `withDeadline`, with its own inline resolve-then-cache loop. Per
+ * BACKEND-IMPLEMENTATION-SCOPE-AND-SETUP-2026-09-15.md item 12 — "Temporarily
+ * remove race-outlook recomputation from Plan Snapshot if a prepared
+ * last-good value exists; otherwise return an explicit pending/unknown field
+ * rather than hold the entire block request" — that loop is gone. This
+ * describe block now tests the REPLACEMENT contract: a pure, synchronous
+ * consultation of `lib/race/last-known-good-projection.ts`'s shared cache,
+ * never a resolution attempt. The old resolve-and-cache mechanics (anti-
+ * flicker on failure, the cooperative budget, withdrawal-clearing, the
+ * unformattable-projection exit) still exist — they moved to
+ * `lib/race/race-outlook.ts`'s `resolveRaceOutlookBySlug`/
+ * `resolveRaceOutlookCooperative` and are covered by
+ * `lib/race/_last_known_good_projection.test.ts` (the cache's own contract)
+ * and `lib/route/_deadline_budget.test.ts` (the cooperative budget).
+ *
+ * FALSIFIERS, each named on its test:
+ *   · call `resolveRaceOutlookBySlug` from this loop again → 3.1r goes red
+ *   · use `if (finish)` instead of `has()` in the stats block → 3.2r goes red
+ * ═══════════════════════════════════════════════════════════════════════ */
 
-    const pending = loadPlanSnapshot(UUID, TODAY);
-    await vi.advanceTimersByTimeAsync(RACE_PROJECTION_MEASURED_WORST_MS + 1);
-    const stat = finishStat(await pending);
+function finishStat(snap: PlanSnapshotResult) {
+  return dayOf(snap, RACE_DAY).stats.find((s) => s.label === 'Projected finish') ?? null;
+}
 
+describe('projected finish · read-only consultation of the last-known-good cache (item 12)', () => {
+  beforeEach(() => {
+    fx.raceSlugs = [{ slug: 'sm10k', date_iso: RACE_DAY }];
+  });
+
+  it('3.1r · a prepared last-good value is served, and nothing is resolved fresh', async () => {
+    writeLastKnownGoodProjection(projectionCacheKey(UUID, 'sm10k', TODAY), '42:57');
+
+    const snap = await loadPlanSnapshot(UUID, TODAY);
+    const stat = finishStat(snap);
     expect(stat).not.toBeNull();
-    expect(stat!.value.text, 'the slowest load ever measured must still show the figure').toBe('42:57');
-    expect(stat!.tone).toBeNull();
+    expect(stat!.value.text).toBe('42:57');
+    expect(stat!.value.modelled).toBe(true);
+    // Renamed in spirit, not in wire shape (no client change needed): this
+    // flag now also fires whenever the route served a cached figure BECAUSE
+    // it declined to attempt a fresh one — the same fact from the runner's
+    // side as the old "a fresh attempt failed" meaning.
+    expect(snap.projection_served_stale).toBe(true);
+    // THE item-12 REGRESSION GUARD · the resolver is never called from this
+    // path at all, success or failure — falsifies the exact defect item 12
+    // exists to prevent (a Promise.race whose abandoned work keeps running).
+    expect(resolveRaceOutlookBySlug).not.toHaveBeenCalled();
   });
 
-  it('3.8 · A WITHDRAWN PROJECTION IS NOT RESURRECTED · case 2 clears the last known good', async () => {
-    // THE DEFECT THIS REPRODUCES (FINISHEST-RESURRECT-1). The last-known-good
-    // exists so a resolution that FAILED does not blank a figure this process
-    // already stood behind. It must never outlive the engine's own decision to
-    // stop making the claim.
-    //
-    // The sequence, which is the reviewer's, step for step:
-    //   (a) the projection resolves.                        → "42:57" cached
-    //   (b) a LATER load re-resolves to CASE 2 — the race moved out of the
-    //       projection horizon, the evidence changed, the goal went away — and
-    //       the stat correctly disappears. But case 2's early `return` left the
-    //       cache entry standing.
-    //   (c) a THIRD load times out, reads that entry, and puts "42:57" back on
-    //       the screen as a live value.
-    //
-    // Step (c) is the app serving a number the engine has already decided it
-    // can no longer honestly make — the exact "silently serving a stale wrong
-    // number" class this whole fix exists to prevent, and strictly worse than
-    // the flicker it was built to cure, because a flicker is visible and this
-    // is not. Rule 11: withdrawn and unknown are different facts, and the cache
-    // was collapsing them into the last good one.
-
-    // (a) · resolves. The runner sees 42:57 and the process remembers it.
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(OUTLOOK);
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
-    expect(finishStat(await loadPlanSnapshot(UUID, TODAY))!.value.text).toBe('42:57');
-
-    // (b) · CASE 2. Honestly withdrawn: no stat, and nothing claims staleness.
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: null });
-    const withdrawn = await loadPlanSnapshot(UUID, TODAY);
-    expect(finishStat(withdrawn)).toBeNull();
-    expect(withdrawn.projection_served_stale).toBeUndefined();
-
-    // (c) · the resolution now fails. There is nothing left to fall back on,
-    // so the runner gets the honest third state — NOT the withdrawn figure.
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>)
-      .mockRejectedValue(new Error('slow backend'));
-    const afterFailure = await loadPlanSnapshot(UUID, TODAY);
-    const stat = finishStat(afterFailure);
-
-    expect(stat, 'a failed resolve still renders the unreadable stat').not.toBeNull();
-    expect(stat!.value.text, 'a withdrawn projection must not come back as a live value').toBeNull();
+  it('3.2r · no prepared value · explicit pending/unknown, not a resolution attempt', async () => {
+    const snap = await loadPlanSnapshot(UUID, TODAY);
+    const stat = finishStat(snap);
+    // `text: null` is `FaffValue.unreadable` on the phone — a fault-red dash.
+    // This is this file's own pre-existing third state (FINISHEST-
+    // DETERMINISM-1), reused here as the honest "nothing prepared, and we
+    // are not trying right now" answer item 12 calls for.
+    expect(stat).not.toBeNull();
+    expect(stat!.value.text).toBeNull();
     expect(stat!.tone).toBe('fault');
-    expect(
-      afterFailure.projection_served_stale,
-      'nothing stale was served, so nothing may claim it was',
-    ).toBeUndefined();
+    expect(snap.projection_served_stale).toBe(true);
+    expect(resolveRaceOutlookBySlug).not.toHaveBeenCalled();
   });
 
-  it('3.9 · the SECOND case-2 exit clears it too · an unformattable projection', async () => {
-    // `projectedSec == null` is not the only way case 2 is reached. A value
-    // that survives that check and then fails to FORMAT — non-finite, zero or
-    // negative, all of which `formatRaceTime` answers with null — takes the
-    // `if (!text) return` exit one line below. Two exits, one contract: a
-    // separate test because clearing one and not the other would leave the
-    // resurrection live on a path the first test cannot see.
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>).mockResolvedValue(OUTLOOK);
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 2577 });
+  it('3.3r · scoped to ONE runner, ONE race, ONE day, exactly as the cache itself is', async () => {
+    writeLastKnownGoodProjection(projectionCacheKey(UUID, 'sm10k', TODAY), '42:57');
+
+    // A DIFFERENT runner must not read this runner's projection.
+    const other = await loadPlanSnapshot('00000000-0000-0000-0000-0000000000ff', TODAY);
+    expect(finishStat(other)!.value.text).toBeNull();
+
+    // A DIFFERENT day must not read yesterday's projection — the quantity is
+    // a function of `today` (Rule 10 · the anchor is in the key).
+    const tomorrow = await loadPlanSnapshot(UUID, '2026-09-08');
+    expect(finishStat(tomorrow)!.value.text).toBeNull();
+
+    // The actual runner, actual day, still gets it.
+    expect(finishStat(await loadPlanSnapshot(UUID, TODAY))!.value.text).toBe('42:57');
+  });
+
+  it('3.4r · a last-known-good older than its max age is not served', async () => {
+    vi.useFakeTimers();
+    writeLastKnownGoodProjection(projectionCacheKey(UUID, 'sm10k', TODAY), '42:57');
     expect(finishStat(await loadPlanSnapshot(UUID, TODAY))!.value.text).toBe('42:57');
 
-    // Past the null check, refused by the formatter.
-    (raceProjectionFromOutlook as unknown as ReturnType<typeof vi.fn>).mockReturnValue({ projectedSec: 0 });
-    expect(finishStat(await loadPlanSnapshot(UUID, TODAY))).toBeNull();
+    // Past RACE_PROJECTION_LKG_MAX_AGE_MS (15 min) — Rule 16: a value this
+    // old could disagree with what Race Detail resolves fresh on its own
+    // screen.
+    vi.setSystemTime(new Date(Date.now() + 16 * 60_000));
+    const snap = await loadPlanSnapshot(UUID, TODAY);
+    expect(finishStat(snap)!.value.text).toBeNull();
+    expect(finishStat(snap)!.tone).toBe('fault');
+    expect(resolveRaceOutlookBySlug).not.toHaveBeenCalled();
+  });
 
-    (resolveRaceOutlookBySlug as unknown as ReturnType<typeof vi.fn>)
-      .mockRejectedValue(new Error('slow backend'));
-    const afterFailure = await loadPlanSnapshot(UUID, TODAY);
-    expect(finishStat(afterFailure)!.value.text).toBeNull();
-    expect(afterFailure.projection_served_stale).toBeUndefined();
+  it('3.5r · never holds the request open · resolves instantly regardless of raceDates', async () => {
+    // The old loop could wait up to RACE_PROJECTION_DEADLINE_MS per race
+    // date. This consultation is a synchronous Map read — nothing here can
+    // make `loadPlanSnapshot` wait on a race projection at all, which is the
+    // literal "rather than hold the entire block request" half of item 12.
+    fx.raceSlugs = [
+      { slug: 'sm10k', date_iso: RACE_DAY },
+      { slug: 'another-race', date_iso: RACE_DAY },
+    ];
+    const start = Date.now();
+    await loadPlanSnapshot(UUID, TODAY);
+    expect(Date.now() - start).toBeLessThan(1_000);
+    expect(resolveRaceOutlookBySlug).not.toHaveBeenCalled();
   });
 });
 

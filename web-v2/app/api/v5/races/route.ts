@@ -48,8 +48,8 @@ import { parseRaceTime, formatRaceTime } from '@/lib/training/vdot';
 import { assessGoal } from '@/lib/training/goal-assessment';
 import { computeGoalProjection } from '@/lib/training/goal-projection';
 import { raceProjectionFromOutlook } from '@/lib/training/race-projection';
-import { resolveRaceOutlookBySlug } from '@/lib/race/race-outlook';
-import { withDeadline, RACE_PROJECTION_DEADLINE_MS } from '@/lib/plan/plan-snapshot';
+import { resolveRaceOutlookCooperative } from '@/lib/race/race-outlook';
+import { RACE_PROJECTION_DEADLINE_MS } from '@/lib/plan/plan-snapshot';
 import { taperWeeksForDistance } from '@/lib/training/fitness-trajectory';
 import { normalWeeklyMileage } from '@/lib/training/normal-window';
 import { selectionAuthority, authorityTier, type AuthorityTier } from '@/lib/race/effort-authority';
@@ -421,28 +421,35 @@ async function handleGET(req: NextRequest) {
       // reads the live outlook a few lines later. See `GoalAssessmentInput.
       // outlook`'s doc comment.
       // BA-01-9 (2026-09-15) · this call used to await resolveRaceOutlookBySlug
-      // directly with only a .catch(() => null) — no time bound at all. Every
-      // OTHER caller of this same, single-flighted, occasionally-slow
-      // resolution (plan-snapshot.ts's block-wide race read) wraps it in
-      // withDeadline(..., RACE_PROJECTION_DEADLINE_MS), specifically so a slow
-      // resolution degrades gracefully instead of blocking the whole response.
-      // This route had no such bound, so a slow resolution here held the
-      // entire /api/v5/races response open until the PHONE's own 12-13s
-      // client timeout gave up — confirmed live: David's real-device trace on
-      // build 303 showed /api/v5/races timing out at exactly that ceiling,
-      // and request_failures recorded zero server-side rows for that
-      // correlation id, meaning the server itself never decided anything —
-      // it was still waiting. Reusing the SAME deadline and helper
-      // plan-snapshot.ts already uses (Rule 16: one resolver, one bound) makes
-      // this route fail the SAME way theirs does: gracefully, well under the
-      // phone's own ceiling, with a distinct log line rather than a silent
-      // hang.
+      // directly with only a .catch(() => null) — no time bound at all — which
+      // let a slow resolution here hold the entire /api/v5/races response open
+      // until the PHONE's own 12-13s client timeout gave up. Confirmed live:
+      // David's real-device trace on build 303 showed /api/v5/races timing out
+      // at exactly that ceiling, with zero server-side request_failures rows
+      // for that correlation id — the server itself never decided anything, it
+      // was still waiting.
+      //
+      // BA-01R items 8/9 (2026-09-15) · the interim fix above wrapped this in
+      // plan-snapshot.ts's withDeadline, which stopped the RESPONSE from
+      // hanging but — per BA01-CODE-FORENSIC-2026-09-15.md's own finding —
+      // left the abandoned resolution's DB work running anyway. This route
+      // still needs a FRESH resolution every time (Rule 16: it is the source
+      // of truth Race Detail and the Races list both read), so it cannot skip
+      // to a cached value the way `loadPlanSnapshot` now does for its own
+      // block-wide read (item 12). `resolveRaceOutlookCooperative` is the
+      // between-phase alternative: it checks the same RACE_PROJECTION_DEADLINE_MS
+      // budget before starting each of the resolution's two I/O phases rather
+      // than racing the whole call, so a phase already running is always let
+      // finish and nothing here is silently abandoned mid-flight.
       const nextAOutlookAttempt = (distanceMi != null && distanceMi > 0)
-        ? await withDeadline(resolveRaceOutlookBySlug(userId, nextA.slug, todayISO), RACE_PROJECTION_DEADLINE_MS)
+        ? await resolveRaceOutlookCooperative(userId, nextA.slug, todayISO, RACE_PROJECTION_DEADLINE_MS)
         : null;
       if (nextAOutlookAttempt != null && nextAOutlookAttempt.status !== 'ok') {
+        const stageNote = nextAOutlookAttempt.status === 'timeout'
+          ? ` lastStage=${nextAOutlookAttempt.lastStage ?? 'unknown'}`
+          : '';
         console.error(
-          `[v5/races] race outlook resolution ${nextAOutlookAttempt.status} for slug=${nextA.slug} date=${todayISO}`,
+          `[v5/races] race outlook resolution ${nextAOutlookAttempt.status} for slug=${nextA.slug} date=${todayISO}${stageNote}`,
           nextAOutlookAttempt.status === 'error' ? nextAOutlookAttempt.error : undefined,
         );
       }
