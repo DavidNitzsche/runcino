@@ -88,6 +88,7 @@ import { shapeTravelWindows, type TravelWindow } from './travel-windows'; // TRA
 import { ROLE_POST_QUALITY_FREE_DAYS, isRaceRole } from '@/lib/race/race-role'; // RACEROLE-1 (2026-08-28) · answered tune-up roles
 import { snapshotSealedDays, logSealSkip, type SealedPrescription } from './seal';
 import { resolveBlockAnchor } from './block-anchor';
+import { protectVolumePrimaryWeeks } from './volume-primary-safeguard';
 // PLANVERSION-1 (2026-08-30) · the quality-habit readers describe what the
 // RUNNER RAN, so they read `runs` through the shared shape helpers rather than
 // joining `training_plans` (which duplicates a day once per plan version).
@@ -11595,6 +11596,18 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       })
     : [];
 
+  // VOLUME-PRIMARY-1 · Research/00a's one-primary-stressor rule, applied to
+  // the exact compound shape the generic weekly checker cannot see: a new
+  // volume high, a deliberately authored race→next-day-long weekend, and an
+  // additional quality session. The race weekend stays; the independent
+  // quality day becomes easy mileage, so weekly load and placement do not
+  // acquire a second owner here. Goal pace is deliberately absent from this
+  // resolver's input.
+  const volumePrimarySafeguards = protectVolumePrimaryWeeks({
+    weeks,
+    demonstratedSustainedMi: input.rampBaseEvidence?.sustainedMi ?? null,
+  });
+
   // TRAVEL-1 · after the race embed (a tune-up day must already read as a
   // race so the travel pass leaves it alone), before the run-up guard (which
   // must see the calendar with travel already shaped — a long run this pass
@@ -12108,6 +12121,9 @@ export function composePlan(input: ComposePlanInput): ComposePlanResult {
       // row that says so". Absent when no race sat near a long run. Brief
       // §5.5's named compromises; see lib/plan/combined-stress.ts.
       ...(placementCompromises.length > 0 ? { placement_compromises: placementCompromises } : {}),
+      ...(volumePrimarySafeguards.length > 0
+        ? { volume_primary_safeguards: volumePrimarySafeguards }
+        : {}),
       // RACE-RUNUP-1 · the dates the goal-race run-up guard rewrote, so a
       // block that had a long run inside race week says so on its own record
       // rather than only in a diff. Absent when it changed nothing, which is
