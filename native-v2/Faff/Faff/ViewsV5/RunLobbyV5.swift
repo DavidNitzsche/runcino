@@ -617,7 +617,25 @@ struct RunLobbyV5: View {
         }
         .background(V5.surfacePage)
         .scrollIndicators(.hidden)
-        .task { await loadWorkout() }
+        // LAUNCHCOORD-1 (2026-09-15, BA-01R) · this used to be a plain
+        // `.task { await loadWorkout() }`, firing unconditionally the moment
+        // this view mounts — which happens whenever "start runs from this
+        // phone" is on, at launch, regardless of which tab is actually
+        // selected (this view sits in `ShellV5`'s ZStack at `opacity(0)`
+        // like Block/Races, never removed). `loadWorkout()` calls BOTH
+        // `API.fetchWatchWorkout()` AND its own independent
+        // `API.fetchV5Today()` — a THIRD, fully redundant `/api/v5/today`
+        // read stacked on top of `TodayHostV5`'s own launch read. `Run` is
+        // not even in `FaffApp.swift`'s launch-gate wait set
+        // (`RootContainer.launchSurfaces` is `{today, block, races}`), so
+        // nothing was ever waiting on this `.task` at all — it was pure,
+        // avoidable demand with no launch-gate purpose to justify it. No
+        // `.task` needed here any more: the only trigger is an actual
+        // selection, once per cold launch, same discipline as Block/Races.
+        .onReceive(NotificationCenter.default.publisher(for: .faffTabSelected)) { note in
+            guard (note.object as? FaffTabV5) == .run else { return }
+            LaunchCoordinator.shared.warmIfNeeded(.run) { await loadWorkout() }
+        }
         .alert("Your plan updated", isPresented: $planChanged) {
             Button("Review") {}
         } message: {

@@ -47,6 +47,75 @@ extension Notification.Name {
     /// `object` is the `FaffTabV5` that was re-tapped, so a listener on one tab
     /// never answers for another.
     static let faffTabReselected = Notification.Name("faff.tab.reselected")
+
+    /// LAUNCHCOORD-1 (2026-09-15, BA-01R) · posted the instant the runner
+    /// switches TO a tab that was not already selected — the sibling signal
+    /// `.faffTabReselected` never carried, since a genuine new selection took
+    /// its own separate branch in the same binding and posted nothing. Block,
+    /// Races, and Run listen for this to fire their OWN first live read, once
+    /// per cold launch, rather than eagerly on mount. `object` is the
+    /// `FaffTabV5` being switched TO.
+    static let faffTabSelected = Notification.Name("faff.tab.selected")
+}
+
+/// LAUNCHCOORD-1 (2026-09-15, BA-01R) · the one app-launch coordinator that
+/// owns which tabs have had their live network read triggered this app
+/// process.
+///
+/// WHY THIS EXISTS. `ShellV5`'s own real shell keeps Today, Block, Races, and
+/// (when the runner has phone-recording on) Run all mounted at once — hidden
+/// tabs sit at `opacity(0)`, never removed — specifically so the launch gate
+/// (`FaffApp.swift`'s `RootContainer`) can hold the splash until every
+/// destination reports it is painted, per that file's own comment: "the
+/// splash overlay stays over .main until every tab has loaded." Before this
+/// fix, "loaded" meant each host's own `.task` called `surface.load()`
+/// unconditionally — a live network fetch on EVERY cold launch, for all three
+/// (four with Run) destinations at once, regardless of which one the runner
+/// could actually see. Confirmed live on David's build-303 trace and by
+/// direct code reading (BA01-CODE-FORENSIC-2026-09-15.md, "Confirmed client
+/// cause: the real shell still launches every surface").
+///
+/// The fix keeps the launch-gate contract intact — every host still posts
+/// `.faffSurfaceReady` immediately, painting from the disk cache each
+/// `V5Surface`/`WatchSync` already seeds synchronously at construction — but
+/// only Today's own live read (and Plan Snapshot, via its existing separate
+/// sync) fires unconditionally at launch, matching the launch budget
+/// (`BACKEND-IMPLEMENTATION-SCOPE-AND-SETUP-2026-09-15.md`'s BA-01R item 3:
+/// "The launch budget is two runner-state reads: Today and Plan Snapshot").
+/// Block, Races, and Run defer their own live fetch until the runner actually
+/// selects that tab, via `.faffTabSelected` — and then only ONCE per cold
+/// launch, tracked here, so re-selecting a tab already warmed this session
+/// does not re-fetch (that is `.faffForegroundRefresh`'s job, not launch's).
+///
+/// A single, explicit `@MainActor` singleton — the same established pattern
+/// as `PlanSnapshotStore.shared`/`TokenStore.shared` elsewhere in this
+/// codebase — rather than a value threaded through `RootV5`'s six generic
+/// content-closure parameters, which would have meant widening a type most of
+/// this file does not otherwise need to touch.
+@MainActor
+final class LaunchCoordinator {
+    static let shared = LaunchCoordinator()
+    private init() {}
+
+    private var warmed: Set<FaffTabV5> = []
+
+    /// Runs `fetch` the first time this is called for `tab` since the last
+    /// `reset()` (a cold launch or a sign-out), and never again until then.
+    /// Every OTHER call for the same tab is a genuine no-op — not even a
+    /// cancelled Task — so re-selecting an already-warmed tab costs nothing.
+    func warmIfNeeded(_ tab: FaffTabV5, fetch: @escaping () async -> Void) {
+        guard !warmed.contains(tab) else { return }
+        warmed.insert(tab)
+        Task { await fetch() }
+    }
+
+    /// F022/F024-shaped account-isolation hygiene, same reasoning as
+    /// `PlanSnapshotStore.clearForSignOut()`: a launch-warmth flag is
+    /// per-account state exactly like a cached payload would be, and must not
+    /// survive into a different signed-in identity. Called from the same
+    /// `SessionHygiene.signOut()` / `AppCache.bindOwner` sites that already
+    /// clear the other per-account stores.
+    func reset() { warmed.removeAll() }
 }
 
 // MARK: - Destinations
@@ -597,7 +666,17 @@ struct RootV5<TodayContent: View, BlockContent: View, RacesContent: View, RunCon
                         // Tapping the tab you are already on pops that tab's
                         // stack to its root, which is the only thing a second
                         // tap can usefully mean.
-                        guard tab == selected else { selected = tab; return }
+                        // LAUNCHCOORD-1 · a genuine new selection, not a
+                        // re-tap of the tab already showing — the sibling
+                        // branch below posts `.faffTabReselected` for that
+                        // case; this one posts `.faffTabSelected` so a
+                        // hidden Block/Races/Run host can fire its own
+                        // deferred first live read.
+                        guard tab == selected else {
+                            selected = tab
+                            NotificationCenter.default.post(name: .faffTabSelected, object: tab)
+                            return
+                        }
                         paths[tab] = []
                         // A path is not all of a tab's state. Today can be
                         // stepped onto another day without pushing anything,

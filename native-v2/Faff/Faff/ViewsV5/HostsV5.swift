@@ -3100,9 +3100,19 @@ struct BlockHostV5: View {
                 .background(V5.surfacePage)
             }
         }
+        // LAUNCHCOORD-1 (BA-01R) · the launch gate only needs "painted", not
+        // "freshly fetched" — `V5Surface.init` already seeds `surface.model`
+        // synchronously from disk (`AppCache`), so posting ready here is
+        // honest even with no network call at all. The live read is deferred
+        // to `.faffTabSelected` below, and fires at most once per cold
+        // launch. See `LaunchCoordinator`'s own header for the full incident
+        // this closes.
         .task {
-            await surface.load()
             NotificationCenter.default.post(name: .faffSurfaceReady, object: "block")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .faffTabSelected)) { note in
+            guard (note.object as? FaffTabV5) == .block else { return }
+            LaunchCoordinator.shared.warmIfNeeded(.block) { await surface.load() }
         }
         .refreshable { await surface.load() }
         // REQUESTSTORM-2 (2026-09-06) · this modifier removed. It called
@@ -3242,9 +3252,16 @@ struct RacesHostV5: View {
                     .background(V5.surfacePage)
                 }
             }
+            // LAUNCHCOORD-1 (BA-01R) · see BlockHostV5's identical comment —
+            // the launch gate needs "painted", not "freshly fetched", and
+            // `surface.model` is already seeded synchronously from disk. The
+            // live read defers to `.faffTabSelected`, once per cold launch.
             .task {
-                await surface.load()
                 NotificationCenter.default.post(name: .faffSurfaceReady, object: "races")
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .faffTabSelected)) { note in
+                guard (note.object as? FaffTabV5) == .races else { return }
+                LaunchCoordinator.shared.warmIfNeeded(.races) { await surface.load() }
             }
             .refreshable { await surface.load() }
             // REQUESTSTORM-2 (2026-09-06) · `.v5ReloadOnForeground { await
